@@ -19,6 +19,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 export default async function ClientOverview({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, period, scope, periodOptions, entityOptions, base, scopeLabel } = await loadClientPage(params, searchParams);
   const s = { clientId: client.id, entityIds: scope.entityIds };
+  const withOpening = new Set(
+    (await prisma.journalEntry.findMany({ where: { entityId: { in: client.entities.map((e) => e.id) }, kind: "OPENING" }, select: { entityId: true } })).map((j) => j.entityId),
+  );
+  const noOpening = client.entities.filter((e) => !withOpening.has(e.id));
   const [series, is, tax, controls, openReview, auto, periodRow] = await Promise.all([
     monthlySeries(prisma, s, period.end, 6),
     incomeStatement(prisma, s, period.start, period.end),
@@ -48,6 +52,10 @@ export default async function ClientOverview({ params, searchParams }: { params:
 
       {locked ? (
         <NextStep tone="done">Buku {formatPeriod(period.year, period.month)} sudah ditutup.</NextStep>
+      ) : noOpening.length ? (
+        <NextStep href={`${base}/opening`} cta="Isi saldo awal">
+          Isi saldo awal {noOpening.map((e) => e.shortName).join(" dan ")} dulu, supaya saldo bank di buku cocok dengan rekening koran.
+        </NextStep>
       ) : missing.length ? (
         <NextStep href={`${base}/import`} cta="Impor mutasi">
           Mutasi {missing.map((m) => m.title.replace("Rekonsiliasi ", "")).join(", ")} untuk {formatPeriod(period.year, period.month)} belum diimpor.

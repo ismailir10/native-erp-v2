@@ -11,8 +11,10 @@ import { LedgerError, postJournal } from "@/lib/ledger/post";
 import { ParseError } from "@/lib/import/types";
 import { PdfPasswordError } from "@/lib/import/parsers/pdf";
 import { parseRupiah } from "@/lib/money";
+import { dateOnly } from "@/lib/format";
 import { liveUploadFile, seedDemo } from "@/lib/demo/seed";
 import { addClient, OnboardingError, type NewClientInput } from "@/lib/onboarding";
+import { OpeningError, postOpening, type OpeningLineInput } from "@/lib/opening";
 import type { TaxTag } from "@/lib/generated/prisma/enums";
 
 /**
@@ -23,7 +25,7 @@ type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string; needs
 
 function fail(e: unknown): { ok: false; error: string; needsPassword?: boolean } {
   if (e instanceof PdfPasswordError) return { ok: false, error: e.message, needsPassword: true };
-  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OnboardingError) return { ok: false, error: e.message };
+  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OnboardingError || e instanceof OpeningError) return { ok: false, error: e.message };
   console.error(e);
   return { ok: false, error: "Terjadi kesalahan tak terduga. Coba lagi." };
 }
@@ -182,6 +184,19 @@ export async function addClientAction(input: NewClientInput): Promise<Result<{ c
     const client = await addClient(prisma, firm.id, input);
     revalidatePath("/", "layout");
     return { ok: true, clientId: client.id };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function openingAction(input: { clientId: string; entityId: string; date: string; lines: OpeningLineInput[] }): Promise<Result> {
+  try {
+    const client = await getClientForFirm(input.clientId);
+    const m = input.date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return { ok: false, error: "Isi tanggal saldo awal." };
+    await postOpening(prisma, { clientId: client.id, entityId: input.entityId, date: dateOnly(Number(m[1]), Number(m[2]), Number(m[3])), lines: input.lines });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
   } catch (e) {
     return fail(e);
   }

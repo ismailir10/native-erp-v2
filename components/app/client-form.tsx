@@ -41,7 +41,7 @@ export function ClientForm() {
         return;
       }
       toast.success(`${name} ditambahkan`);
-      router.push(`/clients/${r.clientId}`);
+      router.push(`/clients/${r.clientId}/opening`);
     } finally {
       setBusy(false);
     }

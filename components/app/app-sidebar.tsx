@@ -12,6 +12,7 @@ import {
   FileSpreadsheet,
   Home,
   Inbox,
+  Landmark,
   LayoutDashboard,
   NotebookPen,
   RotateCcw,
@@ -52,6 +53,7 @@ import { resetDemoAction } from "@/app/actions";
 /** Order = the monthly close workflow, top to bottom. */
 const CLIENT_NAV = [
   { href: "", label: "Ringkasan", icon: LayoutDashboard },
+  { href: "/opening", label: "Saldo Awal", icon: Landmark },
   { href: "/import", label: "Impor Mutasi", icon: Upload },
   { href: "/review", label: "Review", icon: Inbox, badge: true },
   { href: "/ledger", label: "Buku Besar", icon: BookOpen },
