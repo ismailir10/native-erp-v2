@@ -55,7 +55,6 @@ const between = (lo: number, hi: number) => lo + rand() * (hi - lo);
 /** Rupiah amount in [lo, hi] juta, rounded to `step`. */
 const jt = (lo: number, hi: number, step = 50_000) => BigInt(Math.round((between(lo, hi) * 1_000_000) / step) * step);
 const day = (lo: number, hi: number) => Math.floor(between(lo, hi + 1));
-const pick = <T,>(xs: T[]) => xs[Math.floor(rand() * xs.length)];
 const ref = () => `${Math.floor(between(10000, 99999))}`;
 const d = (y: number, m: number, dd: number) => dateOnly(y, m, Math.min(dd, new Date(Date.UTC(y, m, 0)).getUTCDate()));
 const bcaDesc = (dir: "DB" | "CR", y: number, m: number, dd: number, who: string) =>
@@ -246,7 +245,7 @@ function grupAyam(): ClientScenario {
       name: "Grup Ayam Nusantara",
       industry: "agritech peternakan ayam",
       entities: [
-        { name: PT, shortName: "PT AND", kind: "PT", npwp: "01.234.567.8-015.000", banks: [{ bank: "BCA", number: "8720145566", label: "BCA Giro" }, { bank: "MANDIRI", number: "1370098765432", label: "Mandiri Giro" }] },
+        { name: PT, shortName: "PT Ayam Nusantara", kind: "PT", npwp: "01.234.567.8-015.000", banks: [{ bank: "BCA", number: "8720145566", label: "BCA Giro" }, { bank: "MANDIRI", number: "1370098765432", label: "Mandiri Giro" }] },
         { name: OWNER, shortName: "Budi (Pemilik)", kind: "PERORANGAN", banks: [{ bank: "BCA", number: "5210887766", label: "BCA Tahapan" }, { bank: "BRI", number: "012301004455509", label: "BRI Simpedes" }] },
       ],
       rules: [

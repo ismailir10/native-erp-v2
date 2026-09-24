@@ -25,6 +25,7 @@ export async function runControls(db: Db, clientId: string, year: number, month:
   const acks = new Map(period?.acks.map((a) => [a.controlKey, a.note]) ?? []);
   const controls: Control[] = [];
   const base = `/clients/${clientId}`;
+  const clientScope = entities.length > 1 ? "Grup" : (entities[0]?.shortName ?? "Klien");
 
   for (const e of entities) {
     const scope = { clientId, entityIds: [e.id] };
@@ -101,7 +102,7 @@ export async function runControls(db: Db, clientId: string, year: number, month:
   controls.push({
     key: "suspense",
     title: "Tidak ada transaksi belum terklasifikasi (1999)",
-    scope: "Grup",
+    scope: clientScope,
     status: open === 0 ? "PASS" : "REVIEW",
     detail: open === 0 ? "Semua mutasi sudah diklasifikasi" : `${open} transaksi menunggu review`,
     href: `${base}/review`,

@@ -8,11 +8,7 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        // text-foreground (not text-primary-foreground/white) — white-on-brand-teal
-        // is ~2.42:1, fails WCAG AA 4.5:1 for normal text (finding F2). Dark text on
-        // the unchanged brand teal comfortably passes (~7.2:1) without darkening the
-        // brand color itself, which is used pervasively across all three portals.
-        default: "bg-primary text-foreground [a]:hover:bg-primary/80",
+        default: "bg-primary text-primary-foreground shadow-xs hover:bg-primary/90 [a]:hover:bg-primary/90",
         outline:
           "border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
         secondary:
