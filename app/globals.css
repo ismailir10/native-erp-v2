@@ -1,0 +1,128 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/inter";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Buku design tokens — Stripe-dashboard feel: light canvas, white cards,
+ * hairline borders, navy text, one strong blue. Rules: .claude/skills/ui-rules/SKILL.md
+ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-heading: var(--font-sans);
+
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+
+  /* Control status: PASS / REVIEW / FAIL */
+  --color-pass: var(--pass);
+  --color-pass-subtle: var(--pass-subtle);
+  --color-review: var(--review);
+  --color-review-subtle: var(--review-subtle);
+  --color-fail: var(--fail);
+  --color-fail-subtle: var(--fail-subtle);
+  --color-primary-subtle: var(--primary-subtle);
+}
+
+:root {
+  --background: #F6F9FC;
+  --foreground: #0A2540;
+  --card: #FFFFFF;
+  --card-foreground: #0A2540;
+  --popover: #FFFFFF;
+  --popover-foreground: #0A2540;
+
+  /* Strong blue — 5.0:1 on white, usable for text and fills */
+  --primary: #0A5CFF;
+  --primary-foreground: #FFFFFF;
+  --primary-subtle: #EAF1FF;
+
+  --secondary: #EEF3FB;
+  --secondary-foreground: #0A2540;
+  --muted: #F1F4F8;
+  --muted-foreground: #4B5B70;
+  --accent: #EEF3FB;
+  --accent-foreground: #0A2540;
+  --destructive: #C0123C;
+
+  --border: #E3E8EE;
+  --input: #D5DCE5;
+  --ring: #0A5CFF;
+  --radius: 0.5rem;
+
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #3C4B61;
+  --sidebar-primary: #0A5CFF;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #EEF3FB;
+  --sidebar-accent-foreground: #0A2540;
+  --sidebar-border: #E3E8EE;
+  --sidebar-ring: #0A5CFF;
+
+  /* Blue-led chart palette */
+  --chart-1: #0A5CFF;
+  --chart-2: #7FA7FF;
+  --chart-3: #0A2540;
+  --chart-4: #14B8A6;
+  --chart-5: #F59E0B;
+
+  --pass: #0E7C4A;
+  --pass-subtle: #E6F6EE;
+  --review: #9A5B00;
+  --review-subtle: #FFF4DB;
+  --fail: #C0123C;
+  --fail-subtle: #FDE8EC;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+}

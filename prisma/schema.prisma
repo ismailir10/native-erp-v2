@@ -1,0 +1,345 @@
+// Buku data model. Invariants live in .claude/skills/accounting-rules/SKILL.md.
+// Money is integer Rupiah (BigInt). Balances are never stored — always derived from JournalLine.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum EntityKind {
+  PT
+  CV
+  PERORANGAN
+}
+
+enum AccountType {
+  ASET
+  LIABILITAS
+  EKUITAS
+  PENDAPATAN
+  BEBAN
+}
+
+enum NormalBalance {
+  DEBIT
+  CREDIT
+}
+
+enum TaxTag {
+  PPN_KELUARAN
+  PPN_MASUKAN
+  PPH_21
+  PPH_23
+  PPH_4_2
+  PPH_25
+}
+
+enum BankCode {
+  BCA
+  MANDIRI
+  BRI
+  GENERIC
+}
+
+enum PeriodStatus {
+  OPEN
+  LOCKED
+}
+
+enum TxStatus {
+  POSTED
+  NEEDS_REVIEW
+  REVIEWED
+}
+
+enum ClassifyMethod {
+  TRANSFER
+  RULE
+  MEMORY
+  AI
+  HEURISTIC
+  MANUAL
+}
+
+enum EntryKind {
+  OPENING
+  BANK
+  RECLASS
+  ADJUSTMENT
+}
+
+enum Direction {
+  IN
+  OUT
+}
+
+model Firm {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  clients   Client[]
+  rules     Rule[]
+  aiUsage   AiUsage[]
+}
+
+model Client {
+  id           String        @id @default(cuid())
+  firmId       String
+  firm         Firm          @relation(fields: [firmId], references: [id])
+  name         String
+  industry     String?
+  createdAt    DateTime      @default(now())
+  entities     Entity[]
+  accounts     Account[]
+  periods      Period[]
+  rules        Rule[]
+  memories     Memory[]
+  coaVersion   Int           @default(1)
+
+  @@index([firmId])
+}
+
+model Entity {
+  id           String         @id @default(cuid())
+  firmId       String
+  clientId     String
+  client       Client         @relation(fields: [clientId], references: [id])
+  name         String
+  shortName    String
+  kind         EntityKind
+  npwp         String?
+  bankAccounts BankAccount[]
+  entries      JournalEntry[]
+
+  @@index([clientId])
+}
+
+/// Chart of accounts is per Client (shared by its entities) so combined reports line up by code.
+model Account {
+  id             String        @id @default(cuid())
+  firmId         String
+  clientId       String
+  client         Client        @relation(fields: [clientId], references: [id])
+  code           String
+  name           String
+  type           AccountType
+  normalBalance  NormalBalance
+  fsLine         String
+  isBank         Boolean       @default(false)
+  isIntercompany Boolean       @default(false)
+  isClearing     Boolean       @default(false)
+  isSuspense     Boolean       @default(false)
+  isRetained     Boolean       @default(false)
+  taxTag         TaxTag?
+  lines          JournalLine[]
+  bankAccounts   BankAccount[]
+
+  @@unique([clientId, code])
+}
+
+model BankAccount {
+  id           String            @id @default(cuid())
+  firmId       String
+  entityId     String
+  entity       Entity            @relation(fields: [entityId], references: [id])
+  accountId    String
+  account      Account           @relation(fields: [accountId], references: [id])
+  bank         BankCode
+  number       String
+  label        String
+  imports      StatementImport[]
+  transactions BankTransaction[]
+
+  @@unique([entityId, number])
+}
+
+model Period {
+  id        String         @id @default(cuid())
+  firmId    String
+  clientId  String
+  client    Client         @relation(fields: [clientId], references: [id])
+  year      Int
+  month     Int
+  status    PeriodStatus   @default(OPEN)
+  lockedAt  DateTime?
+  lockNote  String?
+  entries   JournalEntry[]
+  acks      ControlAck[]
+  signoffs  CloseSignoff[]
+
+  @@unique([clientId, year, month])
+}
+
+model StatementImport {
+  id             String            @id @default(cuid())
+  firmId         String
+  bankAccountId  String
+  bankAccount    BankAccount       @relation(fields: [bankAccountId], references: [id])
+  fileName       String
+  format         BankCode
+  periodStart    DateTime          @db.Date
+  periodEnd      DateTime          @db.Date
+  openingBalance BigInt
+  closingBalance BigInt
+  rowCount       Int
+  duplicateCount Int               @default(0)
+  continuityOk   Boolean
+  continuityNote String?
+  createdAt      DateTime          @default(now())
+  transactions   BankTransaction[]
+}
+
+model BankTransaction {
+  id                 String          @id @default(cuid())
+  firmId             String
+  importId           String
+  import             StatementImport @relation(fields: [importId], references: [id])
+  bankAccountId      String
+  bankAccount        BankAccount     @relation(fields: [bankAccountId], references: [id])
+  entityId           String
+  date               DateTime        @db.Date
+  description        String
+  merchantKey        String
+  direction          Direction
+  /// Signed: positive = money in, negative = money out.
+  amount             BigInt
+  balance            BigInt?
+  rowNumber          Int
+  rawRow             String
+  hash               String
+  status             TxStatus
+  method             ClassifyMethod
+  confidence         Float
+  reason             String
+  accountCode        String?
+  suggestedCode      String?
+  taxTag             TaxTag?
+  matchedTxId        String?
+  entries            JournalEntry[]
+  createdAt          DateTime        @default(now())
+
+  @@unique([bankAccountId, hash])
+  @@index([entityId, date])
+  @@index([status])
+}
+
+model JournalEntry {
+  id                String           @id @default(cuid())
+  firmId            String
+  entityId          String
+  entity            Entity           @relation(fields: [entityId], references: [id])
+  periodId          String
+  period            Period           @relation(fields: [periodId], references: [id])
+  date              DateTime         @db.Date
+  kind              EntryKind
+  memo              String
+  bankTransactionId String?
+  bankTransaction   BankTransaction? @relation(fields: [bankTransactionId], references: [id])
+  createdAt         DateTime         @default(now())
+  lines             JournalLine[]
+
+  @@index([entityId, date])
+  @@index([bankTransactionId])
+}
+
+/// DB CHECK constraints (see migration): debit >= 0, credit >= 0, exactly one side non-zero.
+model JournalLine {
+  id        String       @id @default(cuid())
+  firmId    String
+  entryId   String
+  entry     JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  entityId  String
+  accountId String
+  account   Account      @relation(fields: [accountId], references: [id])
+  date      DateTime     @db.Date
+  debit     BigInt       @default(0)
+  credit    BigInt       @default(0)
+  memo      String?
+
+  @@index([entityId, accountId, date])
+  @@index([accountId])
+}
+
+model Rule {
+  id          String     @id @default(cuid())
+  firmId      String
+  firm        Firm       @relation(fields: [firmId], references: [id])
+  clientId    String?
+  client      Client?    @relation(fields: [clientId], references: [id])
+  /// Case-insensitive substring of the normalized description.
+  pattern     String
+  direction   Direction?
+  accountCode String
+  taxTag      TaxTag?
+  priority    Int        @default(100)
+  source      String     @default("SEED")
+  createdAt   DateTime   @default(now())
+}
+
+model Memory {
+  id          String    @id @default(cuid())
+  clientId    String
+  client      Client    @relation(fields: [clientId], references: [id])
+  merchantKey String
+  direction   Direction
+  accountCode String
+  taxTag      TaxTag?
+  hits        Int       @default(1)
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([clientId, merchantKey, direction])
+}
+
+/// Persistent LLM answer cache — the same merchant pattern is never paid for twice.
+model AiSuggestion {
+  id          String   @id @default(cuid())
+  cacheKey    String   @unique
+  merchantKey String
+  direction   Direction
+  accountCode String
+  confidence  Float
+  taxTag      TaxTag?
+  reason      String
+  model       String
+  createdAt   DateTime @default(now())
+}
+
+model AiUsage {
+  id               String   @id @default(cuid())
+  firmId           String
+  firm             Firm     @relation(fields: [firmId], references: [id])
+  at               DateTime @default(now())
+  model            String
+  keysRequested    Int
+  cacheHits        Int
+  calls            Int
+  promptTokens     Int
+  completionTokens Int
+  ok               Boolean
+  note             String?
+}
+
+model ControlAck {
+  id         String   @id @default(cuid())
+  periodId   String
+  period     Period   @relation(fields: [periodId], references: [id])
+  controlKey String
+  note       String
+  createdAt  DateTime @default(now())
+
+  @@unique([periodId, controlKey])
+}
+
+model CloseSignoff {
+  id       String   @id @default(cuid())
+  periodId String
+  period   Period   @relation(fields: [periodId], references: [id])
+  key      String
+  doneAt   DateTime @default(now())
+
+  @@unique([periodId, key])
+}
