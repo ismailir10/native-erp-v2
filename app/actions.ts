@@ -9,6 +9,7 @@ import { acceptSimilar, reviewTransaction } from "@/lib/review";
 import { CloseError, lockPeriod } from "@/lib/controls";
 import { LedgerError, postJournal } from "@/lib/ledger/post";
 import { ParseError } from "@/lib/import/types";
+import { PdfPasswordError } from "@/lib/import/parsers/pdf";
 import { parseRupiah } from "@/lib/money";
 import { liveUploadFile, seedDemo } from "@/lib/demo/seed";
 import type { TaxTag } from "@/lib/generated/prisma/enums";
@@ -17,9 +18,10 @@ import type { TaxTag } from "@/lib/generated/prisma/enums";
  * Server actions — the only write path from the UI. Each returns {ok, …} or {ok:false, error}
  * with a Bahasa message the UI shows verbatim. Domain errors are expected; others are bugs.
  */
-type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
+type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string; needsPassword?: boolean };
 
-function fail(e: unknown): { ok: false; error: string } {
+function fail(e: unknown): { ok: false; error: string; needsPassword?: boolean } {
+  if (e instanceof PdfPasswordError) return { ok: false, error: e.message, needsPassword: true };
   if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError) return { ok: false, error: e.message };
   console.error(e);
   return { ok: false, error: "Terjadi kesalahan tak terduga. Coba lagi." };
@@ -32,11 +34,12 @@ export async function importAction(formData: FormData): Promise<Result<{ summary
     const clientId = String(formData.get("clientId"));
     const bankAccountId = String(formData.get("bankAccountId"));
     const file = formData.get("file");
+    const password = String(formData.get("password") ?? "") || undefined; // used once to open the PDF, never stored
     const client = await getClientForFirm(clientId);
     if (!client.entities.some((e) => e.bankAccounts.some((b) => b.id === bankAccountId))) return { ok: false, error: "Pilih rekening bank dulu." };
-    if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Pilih file mutasi (CSV atau XLSX)." };
+    if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Pilih file rekening koran (PDF, CSV, atau XLSX)." };
     if (file.size > MAX_UPLOAD) return { ok: false, error: "File terlalu besar (maks. 5 MB)." };
-    const summary = await importStatement(prisma, { bankAccountId, fileName: file.name, data: Buffer.from(await file.arrayBuffer()), provider: await resolveProvider(prisma) });
+    const summary = await importStatement(prisma, { bankAccountId, fileName: file.name, data: Buffer.from(await file.arrayBuffer()), provider: await resolveProvider(prisma), password });
     revalidatePath(`/clients/${clientId}`, "layout");
     return { ok: true, summary };
   } catch (e) {

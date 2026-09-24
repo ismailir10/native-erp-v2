@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { FileText, FileUp, Loader2 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
@@ -21,7 +22,14 @@ const METHOD_LABEL: Record<string, string> = { TRANSFER: "Transfer antar rekenin
 export function ImportForm({ clientId, banks, sample }: { clientId: string; banks: BankOption[]; sample?: { bankAccountId: string; fileName: string } }) {
   const router = useRouter();
   const [bankId, setBankId] = useState<string>(sample?.bankAccountId ?? banks[0]?.id ?? "");
-  const [file, setFile] = useState<File | null>(null);
+  const [file, setFileState] = useState<File | null>(null);
+  const [password, setPassword] = useState("");
+  const [needsPassword, setNeedsPassword] = useState(false);
+  const setFile = (f: File | null) => {
+    setFileState(f);
+    setPassword("");
+    setNeedsPassword(false);
+  };
   const [drag, setDrag] = useState(false);
   const [result, setResult] = useState<ImportSummary | null>(null);
   const [pending, start] = useTransition();
@@ -30,6 +38,7 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
 
   const done = (r: Awaited<ReturnType<typeof importAction>>) => {
     if (!r.ok) {
+      if (r.needsPassword) setNeedsPassword(true);
       toast.error(r.error);
       return;
     }
@@ -46,6 +55,7 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
       fd.set("clientId", clientId);
       fd.set("bankAccountId", bankId);
       fd.set("file", file);
+      if (password) fd.set("password", password);
       done(await importAction(fd));
     });
 
@@ -101,11 +111,18 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
               {file ? <span className="font-medium">{file.name}</span> : <span><span className="font-medium text-primary">Pilih file</span> atau tarik ke sini</span>}
               <span className="text-xs text-muted-foreground">Maks. 5 MB · baris yang sudah pernah diimpor otomatis dilewati</span>
             </button>
-            <input ref={inputRef} type="file" accept=".csv,.xlsx" className="sr-only" data-testid="file-input" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            <input ref={inputRef} type="file" accept=".pdf,.csv,.xlsx" className="sr-only" data-testid="file-input" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
             <FieldDescription>Kami cek saldo berjalan tiap baris — kalau ada baris hilang, Anda akan diberi tahu.</FieldDescription>
           </Field>
+          {needsPassword && (
+            <Field>
+              <FieldLabel htmlFor="pdf-password">Kata sandi PDF</FieldLabel>
+              <Input id="pdf-password" type="password" autoComplete="off" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} />
+              <FieldDescription>Biasanya tanggal lahir atau kode dari bank. Hanya dipakai untuk membuka file ini, tidak disimpan.</FieldDescription>
+            </Field>
+          )}
           <div className="flex flex-wrap items-center gap-2">
-            <Button onClick={submit} disabled={!file || !bankId || pending}>
+            <Button onClick={submit} disabled={!file || !bankId || pending || (needsPassword && !password)}>
               {pending ? <Loader2 className="animate-spin" /> : <FileUp />} Proses mutasi
             </Button>
             {sample && (
