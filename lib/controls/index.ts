@@ -94,7 +94,7 @@ export async function runControls(db: Db, clientId: string, year: number, month:
       title: "Kliring transfer (1199) = 0",
       scope: e.shortName,
       status: clearing === 0n ? "PASS" : "REVIEW",
-      detail: clearing === 0n ? "Semua transfer antar rekening berpasangan" : `Sisa ${formatRupiah(clearing)} — ada transfer yang pasangannya belum diimpor`,
+      detail: clearing === 0n ? "Semua transfer antar rekening berpasangan" : `Sisa ${formatRupiah(clearing)}. Ada transfer yang pasangannya belum diimpor`,
       href: `${base}/ledger/${ACCOUNT_CODES.CLEARING}?entity=${e.id}`,
       ack: acks.get(clKey),
     });
@@ -152,8 +152,8 @@ export async function lockPeriod(db: Db, clientId: string, year: number, month: 
   const r = closeReadiness(controls, period.signoffs.map((s) => s.key));
   if (!r.ready) {
     const why = [
-      r.fails.length ? `${r.fails.length} kontrol GAGAL` : "",
-      r.unacked.length ? `${r.unacked.length} kontrol REVIEW belum diberi catatan` : "",
+      r.fails.length ? `${r.fails.length} kontrol gagal` : "",
+      r.unacked.length ? `${r.unacked.length} kontrol Perlu dicek belum diberi catatan` : "",
       r.missing.length ? `${r.missing.length} checklist belum dicentang` : "",
     ].filter(Boolean);
     throw new CloseError(`Belum bisa tutup buku: ${why.join(", ")}.`);

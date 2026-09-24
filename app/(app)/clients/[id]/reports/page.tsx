@@ -135,7 +135,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
                 </table>
                 {ws.residual !== 0n && (
                   <p className="px-6 pt-3 text-sm text-review">
-                    Selisih <Money value={ws.residual} /> — biasanya karena mutasi salah satu entitas belum diimpor.
+                    Selisih <Money value={ws.residual} />. Biasanya karena mutasi salah satu entitas belum diimpor.
                   </p>
                 )}
               </CardContent>

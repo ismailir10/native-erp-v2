@@ -12,11 +12,13 @@ import {
   FileSpreadsheet,
   Home,
   Inbox,
+  Landmark,
   LayoutDashboard,
   NotebookPen,
   RotateCcw,
   Scale,
   Settings2,
+  SlidersHorizontal,
   Upload,
 } from "lucide-react";
 import {
@@ -51,6 +53,7 @@ import { resetDemoAction } from "@/app/actions";
 /** Order = the monthly close workflow, top to bottom. */
 const CLIENT_NAV = [
   { href: "", label: "Ringkasan", icon: LayoutDashboard },
+  { href: "/opening", label: "Saldo Awal", icon: Landmark },
   { href: "/import", label: "Impor Mutasi", icon: Upload },
   { href: "/review", label: "Review", icon: Inbox, badge: true },
   { href: "/ledger", label: "Buku Besar", icon: BookOpen },
@@ -138,8 +141,16 @@ export function AppSidebar({
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>
-      {demoMode && (
-        <SidebarFooter className="border-t">
+      <SidebarFooter className="border-t">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton isActive={pathname === "/settings"} render={<Link href="/settings" />}>
+              <SlidersHorizontal />
+              <span>Pengaturan</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+        {demoMode && (
           <AlertDialog>
             <AlertDialogTrigger render={<SidebarMenuButton disabled={pending} className="text-muted-foreground" />}>
               <RotateCcw className={pending ? "animate-spin" : ""} />
@@ -149,7 +160,7 @@ export function AppSidebar({
               <AlertDialogHeader>
                 <AlertDialogTitle>Reset data demo?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Semua perubahan di demo dihapus dan data 3 klien dibangun ulang lewat pipeline impor (±5 detik). Tidak memakai kredit AI.
+                  Semua perubahan di demo dihapus, lalu data 3 klien dibangun ulang lewat proses impor yang sama. Butuh sekitar 20 detik dan tidak memakai kredit AI.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -171,8 +182,8 @@ export function AppSidebar({
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
-        </SidebarFooter>
-      )}
+        )}
+      </SidebarFooter>
     </Sidebar>
   );
 }

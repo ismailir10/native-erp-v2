@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Plus } from "lucide-react";
 import { getCurrentFirm } from "@/lib/tenant";
 import { automationByMonth, clientStatuses, STATE_LABEL } from "@/lib/queries";
 import { formatDate, formatPeriod } from "@/lib/format";
@@ -9,6 +9,7 @@ import { NextStep, PageHeader, Stat } from "@/components/app/page-header";
 import { StatusPill } from "@/components/app/status";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { buttonVariants } from "@/components/ui/button";
 
 export default async function HomePage() {
   const firm = await getCurrentFirm();
@@ -25,9 +26,23 @@ export default async function HomePage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Beranda" description={`Tutup buku ${formatPeriod(year, month)} · ${rows.length} klien`} />
+      <PageHeader
+        title="Beranda"
+        description={rows.length ? `Tutup buku ${formatPeriod(year, month)} · ${rows.length} klien` : undefined}
+        actions={
+          rows.length > 0 && (
+            <Link href="/clients/new" className={buttonVariants({ variant: "outline", size: "sm" })}>
+              <Plus /> Tambah klien
+            </Link>
+          )
+        }
+      />
 
-      {priority ? (
+      {rows.length === 0 ? (
+        <NextStep href="/clients/new" cta="Tambah klien">
+          Belum ada klien. Tambahkan klien pertama beserta rekening banknya.
+        </NextStep>
+      ) : priority ? (
         <NextStep href={`/clients/${priority.client.id}${priority.missingStatements ? "/import" : priority.openReview ? "/review" : "/close"}`} cta="Kerjakan">
           {priority.client.name}{" "}
           {priority.missingStatements
@@ -40,59 +55,63 @@ export default async function HomePage() {
         <NextStep tone="done">Semua klien sudah tutup buku {formatPeriod(year, month)}.</NextStep>
       )}
 
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        <Stat label="Klien selesai tutup buku" value={`${locked} / ${rows.length}`} hint={formatPeriod(year, month)} />
-        <Stat label="Transaksi perlu review" value={totalReview} hint="Semua klien" />
-        <Stat label="Dikode otomatis bulan ini" value={`${current?.pct ?? 0}%`} hint={first && current && first.ym !== current.ym ? `${current.pct >= first.pct ? "Naik" : "Turun"} dari ${first.pct}% di bulan pertama` : undefined} />
-        <Stat label="Mutasi diproses bulan ini" value={current?.total ?? 0} hint="Baris rekening koran" />
-      </div>
+      {rows.length > 0 && (
+        <>
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+          <Stat label="Klien selesai tutup buku" value={`${locked} / ${rows.length}`} hint={formatPeriod(year, month)} />
+          <Stat label="Transaksi perlu review" value={totalReview} hint="Semua klien" />
+          <Stat label="Dikode otomatis bulan ini" value={`${current?.pct ?? 0}%`} hint={first && current && first.ym !== current.ym ? `${current.pct >= first.pct ? "Naik" : "Turun"} dari ${first.pct}% di bulan pertama` : undefined} />
+          <Stat label="Mutasi diproses bulan ini" value={current?.total ?? 0} hint="Baris rekening koran" />
+        </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Klien</CardTitle>
-          <CardDescription>Status tutup buku {formatPeriod(year, month)}</CardDescription>
-        </CardHeader>
-        <CardContent className="px-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="pl-6">Klien</TableHead>
-                <TableHead className="hidden md:table-cell">Entitas</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="hidden text-right sm:table-cell">Perlu review</TableHead>
-                <TableHead className="hidden md:table-cell">Impor terakhir</TableHead>
-                <TableHead className="w-8 pr-4" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((r) => {
-                const s = STATE_LABEL[r.state];
-                return (
-                  <TableRow key={r.client.id}>
-                    <TableCell className="pl-6">
-                      <Link href={`/clients/${r.client.id}`} className="font-medium hover:text-primary">
-                        {r.client.name}
-                      </Link>
-                      <div className="text-xs text-muted-foreground">{r.client.industry}</div>
-                    </TableCell>
-                    <TableCell className="hidden text-muted-foreground md:table-cell">{r.client.entities.map((e) => e.shortName).join(", ")}</TableCell>
-                    <TableCell>
-                      <StatusPill status={s.status} label={s.label} />
-                    </TableCell>
-                    <TableCell className="num hidden text-right sm:table-cell">{r.openReview || "–"}</TableCell>
-                    <TableCell className="hidden text-muted-foreground md:table-cell">{r.lastImport ? formatDate(r.lastImport.createdAt) : "–"}</TableCell>
-                    <TableCell className="pr-4 text-right">
-                      <Link href={`/clients/${r.client.id}`} aria-label={`Buka ${r.client.name}`} className="inline-flex text-muted-foreground hover:text-primary">
-                        <ChevronRight className="size-4" />
-                      </Link>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Klien</CardTitle>
+            <CardDescription>Status tutup buku {formatPeriod(year, month)}</CardDescription>
+          </CardHeader>
+          <CardContent className="px-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="pl-6">Klien</TableHead>
+                  <TableHead className="hidden md:table-cell">Entitas</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="hidden text-right sm:table-cell">Perlu review</TableHead>
+                  <TableHead className="hidden md:table-cell">Impor terakhir</TableHead>
+                  <TableHead className="w-8 pr-4" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((r) => {
+                  const s = STATE_LABEL[r.state];
+                  return (
+                    <TableRow key={r.client.id}>
+                      <TableCell className="pl-6">
+                        <Link href={`/clients/${r.client.id}`} className="font-medium hover:text-primary">
+                          {r.client.name}
+                        </Link>
+                        <div className="text-xs text-muted-foreground">{r.client.industry}</div>
+                      </TableCell>
+                      <TableCell className="hidden text-muted-foreground md:table-cell">{r.client.entities.map((e) => e.shortName).join(", ")}</TableCell>
+                      <TableCell>
+                        <StatusPill status={s.status} label={s.label} />
+                      </TableCell>
+                      <TableCell className="num hidden text-right sm:table-cell">{r.openReview || "–"}</TableCell>
+                      <TableCell className="hidden text-muted-foreground md:table-cell">{r.lastImport ? formatDate(r.lastImport.createdAt) : "–"}</TableCell>
+                      <TableCell className="pr-4 text-right">
+                        <Link href={`/clients/${r.client.id}`} aria-label={`Buka ${r.client.name}`} className="inline-flex text-muted-foreground hover:text-primary">
+                          <ChevronRight className="size-4" />
+                        </Link>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+        </>
+      )}
     </div>
   );
 }

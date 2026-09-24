@@ -34,7 +34,7 @@ test("statement in → reviewed → traceable reports → combined → closed", 
     await page.keyboard.press("Enter");
     await expect(items).toHaveCount(n - 1);
   }
-  await expect(page.getByText("Antrian kosong")).toBeVisible();
+  await expect(page.getByText("Antrean kosong")).toBeVisible();
 
   // 4. Every number traces to its bank row: P&L → account → ledger line → statement row
   await page.getByRole("link", { name: "Laporan Keuangan" }).click();

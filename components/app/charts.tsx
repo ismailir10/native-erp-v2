@@ -59,7 +59,7 @@ export function AutomationChart({ data }: { data: Point[] }) {
         <CartesianGrid vertical={false} strokeOpacity={0.5} />
         <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} />
         <YAxis tickLine={false} axisLine={false} width={44} domain={[0, 100]} ticks={[0, 50, 100]} tickFormatter={(v) => `${v}%`} />
-        <ChartTooltip content={<ChartTooltipContent formatter={(v) => `${v}% tanpa sentuhan manusia`} />} />
+        <ChartTooltip content={<ChartTooltipContent formatter={(v) => `${v}% dikode otomatis`} />} />
         <Bar isAnimationActive={false} dataKey="pct" fill="var(--color-pct)" radius={[4, 4, 0, 0]} maxBarSize={32} label={{ position: "top", fontSize: 11, fill: "var(--muted-foreground)", formatter: (v: unknown) => `${v}%` }} />
       </BarChart>
     </ChartContainer>

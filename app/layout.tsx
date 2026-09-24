@@ -3,8 +3,8 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 
 export const metadata: Metadata = {
-  title: "Buku — tutup buku otomatis untuk kantor akuntan",
-  description: "Mutasi rekening koran menjadi laporan keuangan yang bisa ditelusuri, dalam menit.",
+  title: "Buku · tutup buku bulanan untuk kantor akuntan",
+  description: "Rekening koran jadi jurnal, buku besar, dan laporan keuangan. Setiap angka bisa ditelusuri ke baris banknya.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
