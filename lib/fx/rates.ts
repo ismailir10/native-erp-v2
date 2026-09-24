@@ -88,6 +88,18 @@ export function averageRate(rows: RateRow[], currency: string, quote: string, pe
   return inverse ? invertRate(inverse.rate) : null;
 }
 
+/**
+ * Whether an entity has income/expense lines in the year of `asOf` up to `asOf`. Without them the year's average rate
+ * translates nothing (prior years' P&L sits in retained earnings at the historical rate), so it isn't needed.
+ */
+export async function hasYearPl(db: Db, entityId: string, asOf: Date): Promise<boolean> {
+  const line = await db.journalLine.findFirst({
+    where: { entityId, date: { gte: dateOnly(asOf.getUTCFullYear(), 1, 1), lte: asOf }, account: { type: { in: ["PENDAPATAN", "BEBAN"] } } },
+    select: { id: true },
+  });
+  return line !== null;
+}
+
 export type RateNeed = { currency: string; quote: string; kind: "SPOT" | "AVERAGE"; date: Date; label: string; present: boolean };
 
 /** Rates the Gabungan (IDR) needs for every non-IDR entity: historical, each year-end spot and each year's average. */
@@ -108,12 +120,12 @@ export async function rateNeeds(db: Db, clientId: string, asOf?: Date): Promise<
     if (asOf && +asOf >= +first) {
       // The period on screen: its closing spot and its year's average.
       push("SPOT", monthEnd(asOf), `Kurs penutup ${formatPeriod(asOf.getUTCFullYear(), asOf.getUTCMonth() + 1)}`, closingRate(rows, c, "IDR", monthEnd(asOf)) !== null);
-      push("AVERAGE", monthEnd(asOf), `Kurs rata-rata s.d. ${formatPeriod(asOf.getUTCFullYear(), asOf.getUTCMonth() + 1)}`, averageRate(rows, c, "IDR", monthEnd(asOf)) !== null);
+      if (await hasYearPl(db, e.id, monthEnd(asOf))) push("AVERAGE", monthEnd(asOf), `Kurs rata-rata s.d. ${formatPeriod(asOf.getUTCFullYear(), asOf.getUTCMonth() + 1)}`, averageRate(rows, c, "IDR", monthEnd(asOf)) !== null);
     }
     for (let y = first.getUTCFullYear(); y <= span._max.date.getUTCFullYear(); y++) {
       const end = y === span._max.date.getUTCFullYear() ? monthEnd(span._max.date) : new Date(Date.UTC(y, 11, 31));
       push("SPOT", end, `Kurs penutup ${y}`, closingRate(rows, c, "IDR", end) !== null);
-      push("AVERAGE", end, `Kurs rata-rata ${y}`, averageRate(rows, c, "IDR", end) !== null);
+      if (await hasYearPl(db, e.id, end)) push("AVERAGE", end, `Kurs rata-rata ${y}`, averageRate(rows, c, "IDR", end) !== null);
     }
   }
   return needs;

@@ -54,16 +54,15 @@ describe("rate table", () => {
     const g = await makeGroup();
     await db.entity.update({ where: { id: g.pt.entity.id }, data: { functionalCurrency: "SGD" } });
     const acc = async (code: string) => (await db.account.findUniqueOrThrow({ where: { clientId_code: { clientId: g.client.id, code } } })).id;
-    const [kas, modal] = [await acc("1110"), await acc("3100")];
-    for (const d of [dateOnly(2023, 1, 3), dateOnly(2024, 5, 15)]) {
-      await db.$transaction((tx) => postJournal(tx, { entityId: g.pt.entity.id, date: d, kind: "ADJUSTMENT", memo: "x", lines: [{ accountId: kas, debit: 100n }, { accountId: modal, credit: 100n }] }));
-    }
+    const [kas, modal, beban] = [await acc("1110"), await acc("3100"), await acc("6190")];
+    // 2023: capital only (no P&L → no average needed); 2024: an expense.
+    await db.$transaction((tx) => postJournal(tx, { entityId: g.pt.entity.id, date: dateOnly(2023, 1, 3), kind: "ADJUSTMENT", memo: "x", lines: [{ accountId: kas, debit: 100n }, { accountId: modal, credit: 100n }] }));
+    await db.$transaction((tx) => postJournal(tx, { entityId: g.pt.entity.id, date: dateOnly(2024, 5, 15), kind: "ADJUSTMENT", memo: "x", lines: [{ accountId: beban, debit: 10n }, { accountId: kas, credit: 10n }] }));
     await upsertRate(db, g.firm.id, R("SGD", "IDR", 2023, 12, 31, "SPOT", "11900"));
     const needs = await rateNeeds(db, g.client.id);
     expect(needs.map((n) => [n.label, n.kind, n.date.toISOString().slice(0, 10), n.present])).toEqual([
       ["Kurs historis PT Uji (entri pertama)", "SPOT", "2023-01-31", false],
       ["Kurs penutup 2023", "SPOT", "2023-12-31", true],
-      ["Kurs rata-rata 2023", "AVERAGE", "2023-12-31", false],
       ["Kurs penutup 2024", "SPOT", "2024-05-31", false],
       ["Kurs rata-rata 2024", "AVERAGE", "2024-05-31", false],
     ]);

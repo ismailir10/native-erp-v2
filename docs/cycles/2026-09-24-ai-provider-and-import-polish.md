@@ -79,7 +79,7 @@ real-data preview (owner already approved sending account names to the gateway).
       mapping tests green; `npm run verify:real -- chickin goers` unchanged
 - [x] T4 Honest journal count at staging (`lib/ledger-import/post.ts`) — accept: DB test with an all-zero group: staged
       count = posted count
-- [ ] T5 Average-rate need + translation skip for years without P&L (`lib/fx/rates.ts`, `lib/reports/fx.ts`) — accept:
+- [x] T5 Average-rate need + translation skip for years without P&L (`lib/fx/rates.ts`, `lib/reports/fx.ts`) — accept:
       DB test: SGD entity with only an opening Neraca in year 1 → no average need for year 1, Gabungan translates
 - [ ] T6 Searchable mapping combobox (`components/app/mapping-panel.tsx`, reuse `components/ui/combobox.tsx`) — accept:
       e2e ledger walk updated to type-to-filter; browser check
@@ -100,10 +100,14 @@ real-data preview (owner already approved sending account names to the gateway).
   the 1130 rule skips staff/related-party/loan receivables so they fall to 1140.
 - T4: `lib/ledger-import/post.ts` — `willPost()` (≥ 2 lines incl. rounding/1999) filters groups at staging; the STATS check
   still reports "N jurnal bernilai nol dilewati".
+- T5: `lib/fx/rates.ts` `hasYearPl()`; `rateNeeds` lists a year's average only when that year has PENDAPATAN/BEBAN lines;
+  `lib/reports/fx.ts` `entityRates` doesn't demand the average then (it translates only zeros; falls back to closing).
 ## Verification
 - T1 gate: lint ✔ · typecheck ✔ · `Test Files 23 passed (23) · Tests 122 passed (122)`
 - T2 gate: lint ✔ · typecheck ✔ · `Test Files 23 passed (23) · Tests 125 passed (125)`
 - T3: `npm run verify:real -- all` before/after the rule change: output identical (diff empty), ending
   "✓ Semua pemeriksaan lolos". Gate: `Test Files 23 passed (23) · Tests 125 passed (125)`.
 - T4 gate: lint ✔ · typecheck ✔ · `Test Files 23 passed (23) · Tests 126 passed (126)`
+- T5 gate: lint ✔ · typecheck ✔ · `Test Files 23 passed (23) · Tests 127 passed (127)` · `verify:books` (after demo:reset)
+  "ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth." · `verify:real -- all` identical to baseline.
 ## Ship Notes
