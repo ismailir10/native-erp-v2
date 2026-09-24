@@ -61,7 +61,7 @@ export function LedgerTable({ rows, opening }: { rows: LedgerRow[]; opening: str
         </TableBody>
       </Table>
       <Sheet open={Boolean(open)} onOpenChange={(o) => !o && setOpen(null)}>
-        <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
+        <SheetContent className="w-full overflow-y-auto data-[side=right]:w-full data-[side=right]:sm:max-w-2xl">
           {open && (
             <>
               <SheetHeader>
@@ -83,14 +83,14 @@ export function LedgerTable({ rows, opening }: { rows: LedgerRow[]; opening: str
                 )}
                 <section>
                   <h3 className="mb-2 text-sm font-semibold">Jurnal</h3>
-                  <Table className="text-sm">
+                  <Table className="table-fixed text-sm">
                     <TableHeader>
-                      <TableRow><TableHead>Akun</TableHead><TableHead className="text-right">Debit</TableHead><TableHead className="text-right">Kredit</TableHead></TableRow>
+                      <TableRow><TableHead>Akun</TableHead><TableHead className="w-36 text-right">Debit</TableHead><TableHead className="w-36 text-right">Kredit</TableHead></TableRow>
                     </TableHeader>
                     <TableBody>
                       {open.entry.lines.map((l, i) => (
                         <TableRow key={i}>
-                          <TableCell><span className="num text-muted-foreground">{l.code}</span> {l.name}</TableCell>
+                          <TableCell className="truncate"><span className="num text-muted-foreground">{l.code}</span> {l.name}</TableCell>
                           <TableCell className="num text-right">{m(l.debit)}</TableCell>
                           <TableCell className="num text-right">{m(l.credit)}</TableCell>
                         </TableRow>

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { notFound } from "next/navigation";
 import { getClientForFirm } from "@/lib/tenant";
 import { formatPeriod } from "@/lib/format";
 import { parsePeriod, resolveEntityScope, type SearchParams } from "@/lib/scope";
@@ -7,7 +8,8 @@ import { parsePeriod, resolveEntityScope, type SearchParams } from "@/lib/scope"
 export async function loadClientPage(params: Promise<{ id: string }>, searchParams: SearchParams, opts: { defaultCombined?: boolean } = {}) {
   const { id } = await params;
   const sp = await searchParams;
-  const client = await getClientForFirm(id);
+  // Unknown or other-firm client → 404 page, not a 500.
+  const client = await getClientForFirm(id).catch(() => notFound());
   const period = parsePeriod(sp.period);
   const scope = resolveEntityScope(sp.entity, client.entities, opts.defaultCombined ?? true);
   const periods = await prisma.period.findMany({ where: { clientId: id }, orderBy: [{ year: "desc" }, { month: "desc" }] });
