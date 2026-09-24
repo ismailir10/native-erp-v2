@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { getClientForFirm } from "@/lib/tenant";
+import { getClientForFirm, getCurrentFirm } from "@/lib/tenant";
 import { importStatement, type ImportSummary } from "@/lib/import/pipeline";
 import { resolveProvider } from "@/lib/settings/ai";
 import { acceptSimilar, reviewTransaction } from "@/lib/review";
@@ -12,6 +12,7 @@ import { ParseError } from "@/lib/import/types";
 import { PdfPasswordError } from "@/lib/import/parsers/pdf";
 import { parseRupiah } from "@/lib/money";
 import { liveUploadFile, seedDemo } from "@/lib/demo/seed";
+import { addClient, OnboardingError, type NewClientInput } from "@/lib/onboarding";
 import type { TaxTag } from "@/lib/generated/prisma/enums";
 
 /**
@@ -22,7 +23,7 @@ type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string; needs
 
 function fail(e: unknown): { ok: false; error: string; needsPassword?: boolean } {
   if (e instanceof PdfPasswordError) return { ok: false, error: e.message, needsPassword: true };
-  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError) return { ok: false, error: e.message };
+  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OnboardingError) return { ok: false, error: e.message };
   console.error(e);
   return { ok: false, error: "Terjadi kesalahan tak terduga. Coba lagi." };
 }
@@ -170,6 +171,17 @@ export async function adjustmentAction(input: {
     );
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true, entryId: entry.id };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function addClientAction(input: NewClientInput): Promise<Result<{ clientId: string }>> {
+  try {
+    const firm = await getCurrentFirm();
+    const client = await addClient(prisma, firm.id, input);
+    revalidatePath("/", "layout");
+    return { ok: true, clientId: client.id };
   } catch (e) {
     return fail(e);
   }
