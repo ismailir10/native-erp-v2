@@ -280,10 +280,11 @@ export function planLedger(
     if (!mine.length) continue;
     const debit = mine.reduce((s, e) => s + e.lines.reduce((t, l) => t + (l.amount > 0n ? l.amount : 0n), 0n), 0n);
     const rounding = mine.reduce((s, e) => s + (e.rounding < 0n ? -e.rounding : e.rounding), 0n);
+    const zero = mine.filter((e) => e.imbalance === 0n && e.lines.every((l) => l.amount === 0n)).length;
     checks.push({
       severity: "INFO",
       code: "STATS",
-      message: `${info.name}: ${mine.reduce((s, e) => s + e.lines.length, 0)} baris dalam ${mine.length} jurnal, Σdebit ${formatMoney(debit, info.currency)}${rounding ? `, pembulatan ke 7190 total ${formatMoney(rounding, info.currency)} di ${mine.filter((e) => e.rounding).length} jurnal` : ""}.`,
+      message: `${info.name}: ${mine.reduce((s, e) => s + e.lines.length, 0)} baris dalam ${mine.length} jurnal, Σdebit ${formatMoney(debit, info.currency)}${rounding ? `, pembulatan ke 7190 total ${formatMoney(rounding, info.currency)} di ${mine.filter((e) => e.rounding).length} jurnal` : ""}${zero ? `, ${zero} jurnal bernilai nol dilewati` : ""}.`,
       refs: [],
       entityKey: ek,
     });
