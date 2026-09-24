@@ -162,8 +162,8 @@ vs equity), putting real data in tests, CI or the public demo.
    synthetic look-alike, which isn't part of this cycle.
 
 ## Tasks
-- [ ] T1 ADR 0006 (input widening + multi-currency) + accounting-rules updates (rules 6, 9, 11, 12, 15, rounding, revaluation) — accept: docs reviewed; `CLAUDE.md` top-5 updated where rule 3 changes
-- [ ] T2 Migration: currency registry, ExchangeRate, SourceAccount, LedgerImport, ImportCheck, `Entity.functionalCurrency`, entry/line source + fx fields, EntryKind.IMPORTED, BankCode.SMBC, BankAccount.isOverdraft/currency, template 7190/7200/translation-difference line; `postJournal` accepts refs + fx fields, checks fx consistency, merges by (account, source account, currency) — accept: `prisma migrate dev` clean; DB tests; `npm run verify:books` ALL PASS (IDR demo unchanged) (dep: T1)
+- [x] T1 ADR 0006 (input widening + multi-currency) + accounting-rules updates (rules 6, 9, 11, 12, 15, rounding, revaluation) — accept: docs reviewed; `CLAUDE.md` top-5 updated where rule 3 changes
+- [x] T2 Migration: currency registry, ExchangeRate, SourceAccount, LedgerImport, ImportCheck, `Entity.functionalCurrency`, entry/line source + fx fields, EntryKind.IMPORTED, BankCode.SMBC, BankAccount.isOverdraft/currency, template 7190/7200/translation-difference line; `postJournal` accepts refs + fx fields, checks fx consistency, merges by (account, source account, currency) — accept: `prisma migrate dev` clean; DB tests; `npm run verify:books` ALL PASS (IDR demo unchanged) (dep: T1)
 - [ ] T3 Money: `lib/money.ts` currency-aware parse/format (minor units by exponent), IDR sen → Rupiah `roundEntry()` with 7190 line, bigint-scaled rate multiply — accept: unit tests: float noise, half-up, Σ preserved, JPY/IDR exponent 0, SGD 2
 - [ ] T4 `lib/ledger-import/read.ts`: XLSX/CSV → header detection across sheets (incl. currency/rate columns and `Rate:` notes) → rows with `sheet!row`; ledger + Neraca modes (reuse `xlsxToRows`, `readCsv`) — accept: unit tests on synthetic workbooks (Chickin-shaped multi-entity + multi-currency sheet; Jurnal-shaped Neraca with total rows)
 - [ ] T5 `lib/ledger-import/check.ts`: grouping + BLOCK/REVIEW/INFO checks with row refs, incl. currency checks — accept: unit tests reproduce −5,000,000 pair, `#VALUE!`, code-name reuse, credit-balance receivable, USD-vs-SGD same-number group, IDR line in SGD ledger (dep: T3, T4)
@@ -181,5 +181,10 @@ vs equity), putting real data in tests, CI or the public demo.
 - [ ] T17 Docs: `docs/real-data.md` ledger/Neraca/Kurs section + SMBC note, `docs/demo/chickin-demo.md`, README feature table — accept: runbook steps match the UI
 
 ## Implementation
+- Plan: tasks T1–T17 sequential, done inline (one driver keeps the invariants consistent across schema, money, reports and import; no subagents requested).
+- Deviation: the currency registry lives in code (`lib/fx/currency.ts`), not a DB table — test/demo resets TRUNCATE every table, and codes are stored as strings (`Entity.functionalCurrency`, `JournalLine.currency`, `ExchangeRate.currency`).
+- T1: `docs/adrs/0006-ledger-input-and-multicurrency.md`, `.claude/skills/accounting-rules/SKILL.md` (rules 6/6a/6b, 9/9a, 11, 15/15a, 17, 22), `CLAUDE.md` top-5 #3/#5.
+- T2: `prisma/schema.prisma` + migration `20260924094628_ledger_import_multicurrency` (SourceAccount, LedgerImport, ImportCheck, ExchangeRate, entry/line refs + fx fields, `JournalLine_fx_check`, 3900/7190/7200 backfilled for existing clients); `lib/fx/currency.ts` (registry, exact bigint rate math); `lib/ledger/post.ts` (source-account ownership, fx consistency ±1 minor unit, refs); `lib/coa/template.ts` (3900/7190/7200, `SELISIH_PENJABARAN`, `overdraftAccountCode`); Neraca equity includes the translation line. `postJournal` never merged lines, so no merge-key change was needed.
 ## Verification
+- T2: `npm test` → Test Files 14 passed, Tests 67 passed. `verify:books` on a freshly reset demo → `ALL PASS — 1069 pemeriksaan saldo cocok dengan ground truth.` (The first run failed 13 checks on a stale local DB edited by hand earlier; `demo:reset` fixed it — not caused by this change.)
 ## Ship Notes

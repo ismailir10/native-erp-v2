@@ -142,7 +142,7 @@ export async function balanceSheet(db: Db, scope: Scope, asOf: Date): Promise<Ba
     const amount = icCredit.reduce((s, r) => s - r.amount, 0n);
     liabilities.push({ fsLine: "UTANG_ANTAR_ENTITAS", label: "Utang antar entitas", amount, accounts: icCredit.map((r) => ({ code: r.account.code, name: r.account.name, amount: -r.amount })) });
   }
-  const equity = group(eqRows, ["MODAL", "SALDO_LABA", "PRIVE"]);
+  const equity = group(eqRows, ["MODAL", "SALDO_LABA", "PRIVE", "SELISIH_PENJABARAN"]);
   const ytdProfit = tb.filter((r) => isPL(r.account)).reduce((s, r) => s - r.net, 0n);
   equity.push({ fsLine: "LABA_BERJALAN", label: "Laba (rugi) tahun berjalan", amount: ytdProfit, accounts: [] });
 

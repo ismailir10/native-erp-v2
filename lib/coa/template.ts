@@ -28,6 +28,9 @@ export const ACCOUNT_CODES = {
   PPN_MASUKAN: "1150",
   PPN_KELUARAN: "2130",
   OPENING_EQUITY: "3100",
+  TRANSLATION: "3900",
+  ROUNDING: "7190",
+  FX_GAIN_LOSS: "7200",
 } as const;
 
 export const FS_LINES = {
@@ -47,6 +50,7 @@ export const FS_LINES = {
   MODAL: { label: "Modal", section: "EKUITAS" },
   SALDO_LABA: { label: "Saldo laba", section: "EKUITAS" },
   PRIVE: { label: "Prive / penarikan pemilik", section: "EKUITAS" },
+  SELISIH_PENJABARAN: { label: "Selisih penjabaran mata uang asing", section: "EKUITAS" },
   PENDAPATAN_USAHA: { label: "Pendapatan usaha", section: "LABA_RUGI" },
   HPP: { label: "Beban pokok pendapatan", section: "LABA_RUGI" },
   BEBAN_PENJUALAN: { label: "Beban penjualan", section: "LABA_RUGI" },
@@ -92,6 +96,7 @@ export const COA_TEMPLATE: AccountSeed[] = [
   a("3100", "Modal Disetor", "EKUITAS", "MODAL"),
   a("3200", "Saldo Laba", "EKUITAS", "SALDO_LABA", { isRetained: true }),
   a("3300", "Prive / Penarikan Pemilik", "EKUITAS", "PRIVE", { normalBalance: "DEBIT" }),
+  a("3900", "Selisih Penjabaran Mata Uang Asing", "EKUITAS", "SELISIH_PENJABARAN"),
   a("4100", "Penjualan", "PENDAPATAN", "PENDAPATAN_USAHA"),
   a("4110", "Pendapatan Jasa", "PENDAPATAN", "PENDAPATAN_USAHA"),
   a("4900", "Pendapatan Bunga & Jasa Giro", "PENDAPATAN", "PENDAPATAN_LAIN"),
@@ -110,6 +115,8 @@ export const COA_TEMPLATE: AccountSeed[] = [
   a("6190", "Beban Umum Lain-lain", "BEBAN", "BEBAN_UMUM_ADM"),
   a("7100", "Beban Administrasi Bank", "BEBAN", "BEBAN_LAIN"),
   a("7110", "Beban Bunga Pinjaman", "BEBAN", "BEBAN_LAIN"),
+  a("7190", "Selisih Pembulatan", "BEBAN", "BEBAN_LAIN"),
+  a("7200", "Laba/Rugi Selisih Kurs", "BEBAN", "BEBAN_LAIN"),
   a("8100", "Beban Pajak Penghasilan", "BEBAN", "BEBAN_PAJAK", { taxTag: "PPH_25" }),
   a("8200", "Beban Pajak Final PPh 4(2)", "BEBAN", "BEBAN_PAJAK", { taxTag: "PPH_4_2" }),
 ];
@@ -118,6 +125,12 @@ export const COA_TEMPLATE: AccountSeed[] = [
 export function bankAccountCode(index: number): string {
   if (index < 0 || index > 8) throw new Error("Maksimal 9 rekening bank per klien");
   return `110${index + 1}`;
+}
+
+/** Overdraft (PRK) bank GL accounts live at 2201–2209: liabilities, FS line Utang bank. */
+export function overdraftAccountCode(index: number): string {
+  if (index < 0 || index > 8) throw new Error("Maksimal 9 rekening PRK per klien");
+  return `220${index + 1}`;
 }
 
 export const TAX_TAG_LABEL: Record<TaxTag, string> = {
