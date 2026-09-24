@@ -1,0 +1,271 @@
+import { randomUUID } from "node:crypto";
+import type { Db } from "@/lib/db";
+import { Prisma } from "@/lib/generated/prisma/client";
+import { ANSWER_PLAN_MAX_TOKENS, AiAnswerError, EVIDENCE_PROMPT_VERSION, buildAnswerPlanPrompt, parseEvidenceAnswerPlan, type AiProvider, type EvidenceAnswerPlan } from "@/lib/ai/provider";
+import { AiBudgetError, QUESTION_TOKEN_LIMIT, runBudgetedAi } from "@/lib/ai/budget";
+import { formatMoney } from "@/lib/money";
+import { isCurrency } from "@/lib/fx/currency";
+import { periodBounds } from "@/lib/format";
+import { incomeStatement, trialBalance } from "@/lib/reports/ledger";
+import { runControls } from "@/lib/controls";
+import { intakeForFirm, json, hash } from "./store";
+import type { EvidenceFigure, EvidenceUnit } from "./types";
+
+export type EvidenceQuestion = { question: string; entityId?: string; period?: string | { from: string; to: string } };
+export type EvidenceAnswer = {
+  text: string;
+  rows?: { label: string; value: string; source: string }[];
+  citations: { versionId: string; locator: string; label: string }[];
+  links?: { label: string; href: string }[];
+  limitations: string[];
+};
+const MAX_RESULTS = 30;
+const STOP = new Set("apa apakah yang dan atau dengan dari ke untuk ini itu pada saya berapa tolong bagaimana why what the a an of in on is are can me please show compare bandingkan banding tahun lalu dokumen file laporan perusahaan company profile cari find search saldo balance transaksi transaction akun account saat sekarang terakhir latest".split(" "));
+function searchTerms(question: string) {
+  return [...new Set(question.toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}.-]*/gu) ?? [])].filter((t) => t.length > 1 && !STOP.has(t)).slice(0, 8);
+}
+export function fallbackEvidencePlan(question: string): EvidenceAnswerPlan {
+  const q = question.toLowerCase();
+  const intent = /banding|compare|perbandingan/.test(q) ? "COMPARE" : /kurang|missing|belum lengkap/.test(q) ? "MISSING" : /rekonsiliasi|selisih|control|kontrol|kenapa saldo/.test(q) ? "CONTROLS" : /profil|company|perusahaan|usaha|fiskal/.test(q) ? "CONTEXT" : /dokumen|file|unggah/.test(q) ? "SEARCH" : /transaksi|transaction/.test(q) ? "TRANSACTIONS" : /saldo|balance/.test(q) ? "BALANCE" : "SEARCH";
+  const accountCode = q.match(/(?:akun|account)\s+([0-9][a-z0-9.-]{0,29})\b/i)?.[1];
+  return { intent, terms: searchTerms(question), ...(accountCode ? { accountCode } : {}) };
+}
+function date(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error("Tanggal pertanyaan harus YYYY-MM-DD.");
+  const out = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(+out) || out.toISOString().slice(0, 10) !== value) throw new Error("Tanggal pertanyaan tidak valid.");
+  return out;
+}
+function rangeFor(period: EvidenceQuestion["period"], plan: EvidenceAnswerPlan, fallback: Date) {
+  if (typeof period === "string") {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) throw new Error("Periode pertanyaan harus YYYY-MM.");
+    return periodBounds(Number(period.slice(0, 4)), Number(period.slice(5)));
+  }
+  const start = period?.from ?? plan.from, end = period?.to ?? plan.to;
+  if (start || end) {
+    if (!start || !end) throw new Error("Pilih tanggal awal dan akhir pertanyaan.");
+    const from = date(start), to = date(end);
+    if (from > to) throw new Error("Tanggal awal melebihi tanggal akhir.");
+    return { start: from, end: to };
+  }
+  return periodBounds(fallback.getUTCFullYear(), fallback.getUTCMonth() + 1);
+}
+function canonical(value: string) { return value.toLowerCase().replace(/[^\p{L}\p{N}]/gu, ""); }
+function matches(label: string, terms: string[]) {
+  return !terms.length || terms.some((t) => canonical(label).includes(canonical(t)));
+}
+function validFigure(value: EvidenceFigure) {
+  return typeof value?.label === "string" && typeof value.amount === "string" && /^-?\d+$/.test(value.amount) && isCurrency(value.currency) && typeof value.locator === "string" && !!value.periodEnd;
+}
+
+/** All arithmetic is deterministic; the model chooses from bounded read tools only. */
+export async function askEvidence(db: Db, firmId: string, intakeId: string, input: EvidenceQuestion, provider?: AiProvider | null): Promise<EvidenceAnswer> {
+  const question = input.question.trim();
+  if (!question || question.length > 2000) throw new Error("Tulis pertanyaan antara 1 dan 2.000 karakter.");
+  const intake = await intakeForFirm(db, firmId, intakeId);
+  const entities = intake.clientId ? await db.entity.findMany({ where: { firmId, clientId: intake.clientId }, select: { id: true, name: true, shortName: true, functionalCurrency: true }, orderBy: { name: "asc" } }) : [];
+  if (input.entityId && !entities.some((e) => e.id === input.entityId)) throw new Error("Entitas di luar klien kumpulan dokumen.");
+  // Validate explicit range before any paid call.
+  if (input.period) rangeFor(input.period, { intent: "SEARCH", terms: [] }, new Date());
+  const answer: EvidenceAnswer = { text: "", citations: [], limitations: [] };
+  let plan = fallbackEvidencePlan(question);
+  if (provider?.planEvidenceAnswer) {
+    const context = JSON.stringify({ clientId: intake.clientId, entityId: input.entityId, period: input.period, entities: entities.slice(0, 20) });
+    try {
+      const documentState = await db.evidenceDocument.findMany({ where: { firmId, intakeId }, select: { id: true, currentVersionId: true, excluded: true, status: true }, orderBy: { id: "asc" } });
+      const currentIds = documentState.flatMap(d => d.currentVersionId ? [d.currentVersionId] : []);
+      const content = currentIds.length ? await db.evidenceVersion.findMany({ where: { firmId, id: { in: currentIds } }, select: { id: true, hash: true }, orderBy: { id: "asc" } }) : [];
+      const prompt = buildAnswerPlanPrompt(question, context);
+      const key = hash(JSON.stringify([firmId, intakeId, intake.clientId, intake.contextVersion, documentState, content, EVIDENCE_PROMPT_VERSION, provider.model, prompt]));
+      const scope = `intake:${intakeId}:answer-plan`;
+      const cached = await db.evidenceAiCache.findFirst({ where: { key, firmId, scope } });
+      if (cached) plan = parseEvidenceAnswerPlan(JSON.stringify(cached.payload));
+      else {
+        const result = await runBudgetedAi(db, { firmId, scope: `question:${randomUUID()}`, prompt, maxCompletionTokens: ANSWER_PLAN_MAX_TOKENS, scopeTokenLimit: QUESTION_TOKEN_LIMIT, model: provider.model }, async () => {
+          const result = await provider.planEvidenceAnswer!(question, context);
+          try { return { ...result, plan: parseEvidenceAnswerPlan(JSON.stringify(result.plan)) }; }
+          catch { throw new AiAnswerError("Rencana jawaban AI tidak valid; gunakan pencarian dokumen.", result.promptTokens, result.completionTokens, result.model); }
+        });
+        plan = result.plan;
+        await db.evidenceAiCache.upsert({ where: { key }, create: { key, firmId, scope, payload: json(plan) }, update: {} });
+      }
+    } catch (error) {
+      answer.limitations.push(error instanceof AiBudgetError ? error.message : "AI tidak tersedia atau rencana tidak valid; pencarian deterministik digunakan.");
+    }
+  }
+  if (plan.entityId && (!entities.some((e) => e.id === plan.entityId) || input.entityId && input.entityId !== plan.entityId)) throw new Error("Entitas jawaban di luar cakupan yang dipilih.");
+  const entityId = input.entityId ?? plan.entityId;
+  const selectedEntities = entityId ? entities.filter((e) => e.id === entityId) : entities;
+  const compareBooks = plan.intent === "COMPARE" && /\b(?:buku|gl|bulan)\b/i.test(question) && !!intake.clientId && selectedEntities.length > 0;
+  const latestForCompare = compareBooks ? await db.journalEntry.findFirst({ where: { firmId, entityId: { in: selectedEntities.map(e => e.id) } }, orderBy: { date: "desc" }, select: { date: true } }) : null;
+  if (compareBooks && latestForCompare) {
+    const requested = rangeFor(input.period, plan, latestForCompare.date);
+    const current = periodBounds(requested.end.getUTCFullYear(), requested.end.getUTCMonth() + 1);
+    const previousDate = new Date(Date.UTC(current.start.getUTCFullYear(), current.start.getUTCMonth() - 1, 1));
+    const previous = periodBounds(previousDate.getUTCFullYear(), previousDate.getUTCMonth() + 1);
+    const currentPeriod = current.start.toISOString().slice(0, 7), previousPeriod = previous.start.toISOString().slice(0, 7);
+    answer.rows = []; answer.links = [];
+    for (const entity of selectedEntities.slice(0, 20)) {
+      const scope = { clientId: intake.clientId!, entityIds: [entity.id] };
+      const [before, after] = await Promise.all([incomeStatement(db, scope, previous.start, previous.end), incomeStatement(db, scope, current.start, current.end)]);
+      const previousHref = `/clients/${intake.clientId}/reports?entity=${encodeURIComponent(entity.id)}&period=${previousPeriod}`;
+      const currentHref = `/clients/${intake.clientId}/reports?entity=${encodeURIComponent(entity.id)}&period=${currentPeriod}`;
+      for (const [key, label] of [["revenue", "Pendapatan"], ["grossProfit", "Laba kotor"], ["netProfit", "Laba bersih"]] as const) {
+        const delta = after.totals[key] - before.totals[key];
+        answer.rows.push({ label: `${entity.shortName} · ${label}`, value: `${previousPeriod}: ${formatMoney(before.totals[key], entity.functionalCurrency)} → ${currentPeriod}: ${formatMoney(after.totals[key], entity.functionalCurrency)}; perubahan ${formatMoney(delta, entity.functionalCurrency)}`, source: currentHref });
+      }
+      answer.links.push({ label: `${entity.shortName} · ${previousPeriod}`, href: previousHref }, { label: `${entity.shortName} · ${currentPeriod}`, href: currentHref });
+    }
+    answer.text = `Perbandingan bulanan dari buku Buku: ${previousPeriod} dengan ${currentPeriod}. Angka dihitung ulang dari jurnal.`;
+    answer.limitations.push("Perbandingan memakai dua bulan kalender penuh; setiap entitas tetap dalam mata uangnya. Angka nol berarti tidak ada nilai tercatat pada cakupan tersebut, bukan bukti dokumen lengkap. Penyebab perubahan belum dibuktikan.");
+    if (!input.period && !plan.from && !plan.to) answer.limitations.push(`Bulan jurnal terbaru ${currentPeriod} digunakan; pilih periode untuk mengubah cakupan.`);
+    if (selectedEntities.length > 20) answer.limitations.push("Cakupan dibatasi 20 entitas pertama; pilih satu entitas.");
+  } else if (["BALANCE", "TRANSACTIONS", "CONTROLS"].includes(plan.intent) && intake.clientId && selectedEntities.length) {
+    const latest = await db.journalEntry.findFirst({ where: { firmId, entityId: { in: selectedEntities.map((e) => e.id) } }, orderBy: { date: "desc" }, select: { date: true } });
+    const range = rangeFor(input.period, plan, latest?.date ?? new Date());
+    const period = range.end.toISOString().slice(0, 7);
+    answer.rows = [];
+    answer.links = [];
+    if (!input.period && !plan.from && !plan.to) answer.limitations.push(`Periode buku ${period} digunakan; pilih periode untuk mengubah cakupan.`);
+    if (plan.intent === "BALANCE") {
+      for (const entity of selectedEntities.slice(0, 20)) {
+        const tb = await trialBalance(db, { clientId: intake.clientId, entityIds: [entity.id] }, range.end);
+        const terms = plan.terms.filter((t) => !STOP.has(t.toLowerCase()));
+        const rows = tb.filter((r) => plan.accountCode ? r.account.code === plan.accountCode : r.net !== 0n && matches(`${r.account.code} ${r.account.name}`, terms));
+        for (const row of rows.slice(0, MAX_RESULTS)) {
+          const href = `/clients/${intake.clientId}/ledger/${encodeURIComponent(row.account.code)}?entity=${encodeURIComponent(entity.id)}&period=${period}`;
+          answer.rows.push({ label: `${entity.shortName} · ${row.account.code} ${row.account.name}`, value: `${formatMoney(row.net < 0n ? -row.net : row.net, entity.functionalCurrency)} ${row.net < 0n ? "Kredit" : "Debit"}`, source: href });
+          answer.links.push({ label: `${entity.shortName} · ${row.account.code}`, href });
+        }
+        if (rows.length > MAX_RESULTS) answer.limitations.push(`${entity.shortName}: hanya ${MAX_RESULTS} akun pertama; sebutkan kode akun.`);
+      }
+      answer.text = `Saldo dari buku Buku per ${range.end.toISOString().slice(0, 10)}. Tiap entitas ditampilkan dalam mata uangnya.`;
+      answer.limitations.push("Saldo laba/rugi mengikuti periode pembukuan Buku (tahun kalender); angka dokumen unggahan tetap terpisah.");
+    } else if (plan.intent === "TRANSACTIONS") {
+      const contentTerms = plan.terms.filter((t) => !STOP.has(t.toLowerCase()) && t !== plan.accountCode);
+      const lines = await db.journalLine.findMany({ where: { ...(contentTerms.length ? { OR: contentTerms.flatMap((term) => [{ memo: { contains: term, mode: "insensitive" as const } }, { entry: { memo: { contains: term, mode: "insensitive" as const } } }, { account: { name: { contains: term, mode: "insensitive" as const } } }]) } : {}), firmId, entityId: { in: selectedEntities.map((e) => e.id) }, date: { gte: range.start, lte: range.end }, ...(plan.accountCode ? { account: { firmId, clientId: intake.clientId, code: plan.accountCode } } : {}) }, include: { account: { select: { code: true, name: true } }, entry: { select: { memo: true, sourceRef: true, bankTransactionId: true } } }, orderBy: [{ date: "desc" }, { id: "desc" }], take: MAX_RESULTS + 1 });
+      for (const row of lines.slice(0, MAX_RESULTS)) {
+        const entity = selectedEntities.find((e) => e.id === row.entityId)!;
+        const href = `/clients/${intake.clientId}/ledger/${encodeURIComponent(row.account.code)}?entity=${encodeURIComponent(entity.id)}&period=${period}`;
+        answer.rows.push({ label: `${row.date.toISOString().slice(0, 10)} · ${entity.shortName} · ${row.account.name} · ${row.memo || row.entry.memo}`, value: `Debit ${formatMoney(row.debit, entity.functionalCurrency)}; kredit ${formatMoney(row.credit, entity.functionalCurrency)}`, source: href });
+        answer.links.push({ label: row.entry.sourceRef || row.sourceRef || "Lihat baris buku dan sumber", href });
+      }
+      answer.text = "Baris jurnal dari buku Buku; satu transaksi dapat memiliki beberapa baris.";
+      if (lines.length > MAX_RESULTS) answer.limitations.push(`Hanya ${MAX_RESULTS} baris terbaru ditampilkan. Persempit periode atau kode akun.`);
+    } else {
+      const controls = await runControls(db, intake.clientId, range.end.getUTCFullYear(), range.end.getUTCMonth() + 1);
+      const scoped = entityId ? controls.filter((c) => c.scope === selectedEntities[0].shortName) : controls;
+      for (const c of scoped.slice(0, MAX_RESULTS)) {
+        const href = c.href || `/clients/${intake.clientId}/close?period=${period}`;
+        answer.rows.push({ label: `${c.scope} · ${c.title}`, value: `${c.status} · ${c.detail}`, source: href });
+        answer.links.push({ label: c.title, href });
+      }
+      answer.text = `Hasil kontrol buku untuk ${period}. Selisih terukur bukan bukti penyebabnya.`;
+      if (entityId) answer.limitations.push("Kontrol gabungan dan kontrol impor tingkat klien tersedia di Tutup Buku.");
+    }
+    if (!answer.rows.length) answer.limitations.push("Belum ada baris buku yang cocok. Dokumen unggahan tidak otomatis menjadi jurnal.");
+    if (selectedEntities.length > 20) answer.limitations.push("Cakupan dibatasi 20 entitas pertama; pilih satu entitas.");
+  } else {
+    if (["BALANCE", "TRANSACTIONS", "CONTROLS"].includes(plan.intent)) answer.limitations.push("Buku belum tersedia untuk cakupan ini; berikut bukti dokumen, bukan saldo buku.");
+    const documents = await db.evidenceDocument.findMany({ where: { firmId, intakeId }, orderBy: { id: "asc" }, take: 501, select: { id: true, name: true, excluded: true, status: true, issue: true, currentVersionId: true } });
+    const current = documents.slice(0, 500).filter((d) => !d.excluded && d.status === "READY" && d.currentVersionId);
+    const versionIds = current.map((d) => d.currentVersionId!);
+    const names = new Map(current.map((d) => [d.currentVersionId!, d.name]));
+    if (versionIds.length) {
+      const truncated = await db.$queryRaw<{ id: string }[]>(Prisma.sql`
+        SELECT v.id FROM "EvidenceVersion" v
+        WHERE v."firmId" = ${firmId} AND v.id IN (${Prisma.join(versionIds)}) AND
+          (jsonb_path_exists(v.issues, '$[*] ? (@ like_regex "Ekstraksi dibatasi")') OR
+           jsonb_path_exists(v.units, '$[*].issues[*] ? (@ like_regex "Ekstraksi dibatasi")')) LIMIT 1`);
+      if (truncated.length) answer.limitations.push("Sebagian isi dokumen melewati batas ekstraksi; jawaban hanya mencakup bagian yang sudah dibaca. Pecah dokumen untuk hasil lengkap.");
+    }
+    const sourceRange = input.period ? rangeFor(input.period, plan, new Date()) : null;
+    const sourceSelections = entityId || sourceRange ? await db.evidenceSelection.findMany({ where: { firmId, intakeId, versionId: { in: versionIds }, ...(entityId ? { entityId, confirmed: true } : {}) }, select: { versionId: true, unitKey: true, periodStart: true, periodEnd: true } }) : null;
+    const permitted = sourceSelections?.filter((s) => {
+      if (!sourceRange) return true;
+      if (!s.periodEnd) return false;
+      const end = sourceRange.end.toISOString().slice(0, 10), start = sourceRange.start.toISOString().slice(0, 10);
+      return plan.intent === "COMPARE" ? s.periodEnd <= end : s.periodEnd >= start && (s.periodStart ?? s.periodEnd) <= end;
+    });
+    const permittedKeys = permitted ? new Set(permitted.map((s) => `${s.versionId}\0${s.unitKey}`)) : null;
+    const unitAllowed = (versionId: string, unitKey: string) => !permittedKeys || permittedKeys.has(`${versionId}\0${unitKey}`);
+    if (sourceSelections) answer.limitations.push("Cakupan sumber memakai entitas yang dikonfirmasi dan periode dokumen; bagian tanpa cakupan yang cocok tidak disertakan.");
+    if (documents.length > 500) answer.limitations.push("Pencarian dibatasi 500 dokumen pertama.");
+    const partial = documents.some((d) => !d.excluded && d.status !== "DIRECTORY" && (d.issue || !d.currentVersionId || ["REMOVED", "INACCESSIBLE", "ERROR", "MISSING"].includes(d.status)));
+    if (partial || intake.issue || !["READY", "COMPLETE", "DONE"].includes(intake.status)) answer.limitations.push("Sebagian dokumen belum diproses atau tidak dapat diakses; hasil belum mencakup seluruh kumpulan.");
+    const citation = (versionId: string, locator: string) => {
+      if (!names.has(versionId)) return;
+      if (!answer.citations.some((c) => c.versionId === versionId && c.locator === locator)) answer.citations.push({ versionId, locator, label: names.get(versionId)! });
+    };
+    if (plan.intent === "MISSING") {
+      const conflicts = await db.evidenceConflict.findMany({ where: { firmId, intakeId, resolved: false }, take: MAX_RESULTS, orderBy: { id: "asc" } });
+      answer.rows = documents.filter((d) => !d.excluded && d.status !== "DIRECTORY" && (d.issue || !d.currentVersionId)).slice(0, MAX_RESULTS).map((d) => ({ label: d.name, value: d.issue || "Belum selesai diperiksa", source: "Kumpulan dokumen" }));
+      answer.rows.push(...conflicts.map((c) => ({ label: c.kind, value: c.message, source: "Pengecualian dokumen" })));
+      answer.text = answer.rows.length ? "Dokumen dan keputusan yang masih perlu ditangani:" : "Tidak ada pengecualian terbuka yang tercatat.";
+      answer.limitations.push("Daftar ini bukan jaminan dokumen lengkap; kelengkapan bergantung rekening, entitas, dan periode yang dikonfirmasi.");
+    } else if (plan.intent === "CONTEXT") {
+      const facts = versionIds.length ? await db.evidenceFact.findMany({ where: { firmId, intakeId, versionId: { in: versionIds }, status: { in: ["CONFIRMED", "PROPOSED", "CONFLICTING"] } }, orderBy: [{ status: "asc" }, { id: "asc" }], take: MAX_RESULTS }) : [];
+      const scopedFacts = facts.filter((f) => unitAllowed(f.versionId, f.unitKey));
+      answer.rows = scopedFacts.map((f) => {
+        citation(f.versionId, f.locator);
+        return { label: f.key, value: `${f.value} (${f.status === "CONFIRMED" ? "dikonfirmasi" : "belum dikonfirmasi"})`, source: `${names.get(f.versionId)} · ${f.locator}` };
+      });
+      answer.text = answer.rows.length ? "Konteks perusahaan beserta status konfirmasi:" : "Belum ada fakta perusahaan dari versi dokumen aktif.";
+    } else if (plan.intent === "COMPARE") {
+      const versions = versionIds.length ? await db.evidenceVersion.findMany({ where: { firmId, id: { in: versionIds } }, select: { id: true, units: true }, take: 30, orderBy: { id: "asc" } }) : [];
+      if (versionIds.length > 30) answer.limitations.push("Perbandingan dibatasi 30 dokumen pertama; pisahkan kumpulan untuk hasil lengkap.");
+      const groups = new Map<string, { f: EvidenceFigure; versionId: string; entity: string; scale: string }[]>();
+      for (const version of versions) {
+        const units = Array.isArray(version.units) ? version.units as unknown as EvidenceUnit[] : [];
+        for (const unit of units) {
+          if (unit.kind !== "REPORT" || !unit.entity || unit.scale === "UNKNOWN" || !unitAllowed(version.id, unit.key)) continue;
+          if (entityId && !selectedEntities.some((e) => canonical(e.name) === canonical(unit.entity!))) continue;
+          for (const f of unit.figures ?? []) {
+            if (!validFigure(f) || !matches(f.label, plan.terms.filter((t) => !STOP.has(t)))) continue;
+            const duration = f.periodStart && f.periodEnd ? Math.round((+date(f.periodEnd) - +date(f.periodStart)) / 86400000) : null;
+            const periodType = duration === null ? "point" : duration >= 364 && duration <= 366 ? "annual" : `days:${duration}`;
+            const key = `${canonical(unit.entity)}|${canonical(f.label)}|${f.currency}|${unit.scale}|${periodType}`;
+            groups.set(key, [...(groups.get(key) ?? []), { f, versionId: version.id, entity: unit.entity, scale: unit.scale }]);
+          }
+        }
+      }
+      answer.rows = [];
+      for (const group of groups.values()) {
+        if (answer.rows.length >= MAX_RESULTS) break;
+        const sorted = group.sort((a, b) => a.f.periodEnd!.localeCompare(b.f.periodEnd!));
+        const periods = new Set(sorted.map((x) => `${x.f.periodStart}/${x.f.periodEnd}`));
+        if (periods.size !== sorted.length) { answer.limitations.push(`${sorted[0].entity} · ${sorted[0].f.label}: lebih dari satu sumber untuk periode sama; pilih sumber sebelum membandingkan.`); continue; }
+        if (sorted.length < 2) continue;
+        const previous = sorted[sorted.length - 2], latest = sorted[sorted.length - 1];
+        if (latest.f.periodStart && latest.f.periodStart <= previous.f.periodEnd!) { answer.limitations.push(`${latest.f.label}: rentang periode bertumpang tindih; tidak dihitung.`); continue; }
+        const delta = BigInt(latest.f.amount) - BigInt(previous.f.amount);
+        citation(previous.versionId, previous.f.locator); citation(latest.versionId, latest.f.locator);
+        answer.rows.push({ label: `${latest.entity} · ${latest.f.label}`, value: `${previous.f.periodEnd}: ${formatMoney(BigInt(previous.f.amount), previous.f.currency)} → ${latest.f.periodEnd}: ${formatMoney(BigInt(latest.f.amount), latest.f.currency)}; perubahan ${formatMoney(delta, latest.f.currency)}`, source: `${names.get(previous.versionId)} · ${previous.f.locator}; ${names.get(latest.versionId)} · ${latest.f.locator}` });
+      }
+      answer.text = answer.rows.length ? "Perbandingan angka yang dilaporkan dokumen; belum merupakan saldo buku Buku." : "Belum ada pasangan angka dengan entitas, label, mata uang, satuan, dan periode yang dapat dibandingkan.";
+      answer.limitations.push("Perubahan dihitung dari angka sumber. Penyebab perubahan belum dibuktikan. Versi bertentangan dan kolom periode ambigu perlu ditinjau.");
+    } else {
+      let hits: { versionId: string; unitKey: string; locator: string; text: string }[] = [];
+      const terms = plan.terms.map((t) => t.trim()).filter(Boolean).slice(0, 8);
+      if (versionIds.length && terms.length) {
+        try {
+          const unitFilter = permitted ? permitted.length ? Prisma.sql`AND (${Prisma.join(permitted.map((s) => Prisma.sql`(p."versionId" = ${s.versionId} AND p."unitKey" = ${s.unitKey})`), " OR ")})` : Prisma.sql`AND FALSE` : Prisma.empty;
+          hits = await db.$queryRaw<{ versionId: string; unitKey: string; locator: string; text: string }[]>(Prisma.sql`
+            SELECT p."versionId", p."unitKey", p.locator, p.text FROM "EvidencePassage" p
+            WHERE p."firmId" = ${firmId} AND p."versionId" IN (${Prisma.join(versionIds)})
+              ${unitFilter}
+              AND to_tsvector('simple', p.text) @@ plainto_tsquery('simple', ${terms.join(" ")})
+            ORDER BY p.id LIMIT ${MAX_RESULTS}`);
+        } catch { answer.limitations.push("Indeks pencarian belum tersedia; pencarian teks digunakan."); }
+      }
+      if (!hits.length && versionIds.length) hits = await db.evidencePassage.findMany({ where: { firmId, versionId: { in: versionIds }, AND: [...(permitted ? [{ OR: permitted.map((s) => ({ versionId: s.versionId, unitKey: s.unitKey })) }] : []), ...(terms.length ? [{ OR: terms.map((term) => ({ text: { contains: term, mode: "insensitive" as const } })) }] : [])] }, select: { versionId: true, unitKey: true, locator: true, text: true }, orderBy: { id: "asc" }, take: MAX_RESULTS });
+      answer.rows = hits.filter((h) => names.has(h.versionId) && unitAllowed(h.versionId, h.unitKey)).map((hit) => { citation(hit.versionId, hit.locator); return { label: names.get(hit.versionId)!, value: hit.text.slice(0, 1600), source: hit.locator }; });
+      answer.text = answer.rows.length ? "Kutipan dokumen yang cocok. Ini bukti sumber, bukan penjelasan atau saldo buku yang diverifikasi." : "Tidak ada bukti yang cocok pada versi dokumen aktif. Coba istilah lebih spesifik atau lengkapi dokumen.";
+      if (hits.length >= MAX_RESULTS) answer.limitations.push(`Hanya ${MAX_RESULTS} kutipan pertama ditampilkan; persempit pertanyaan.`);
+      answer.limitations.push("Kutipan dapat memuat instruksi atau klaim dari penulis dokumen; tidak dijalankan atau dianggap benar tanpa pemeriksaan.");
+    }
+  }
+  answer.limitations = [...new Set(answer.limitations)];
+  await db.evidenceMessage.create({ data: { firmId, intakeId, question, answer: json(answer), scope: json({ clientId: intake.clientId, entityId: entityId ?? null, period: input.period ?? null, contextVersion: intake.contextVersion }) } });
+  return answer;
+}

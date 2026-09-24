@@ -22,7 +22,7 @@ Accountants receive mixed folders containing statements, ledgers, reports, compa
 - [x] T3 Versioned extraction with exact source coordinates.
 - [x] T4 Resumable inventory, company context, conflicts and shared AI foundation.
 - [x] T5 Unified workspace, onboarding and approved import handoff.
-- [ ] T6 Ask bar, cited read tools and scoped answer-planning caches.
+- [x] T6 Ask bar, cited read tools and scoped answer-planning caches.
 - [ ] T7 Synthetic integration/E2E verification, accounting and private rollout docs.
 
 ## Implementation
@@ -37,6 +37,8 @@ Accountants receive mixed folders containing statements, ledgers, reports, compa
 - T4: Resumable inventory, proposed facts, bounded conflicts and shared AI budget/cache foundation.
 
 - T5: Unified Dokumen workspace, source review, onboarding and explicit import approval.
+
+- T6: Cited document questions, comparisons and live ledger/control tools with scoped plan caches.
 
 ## Verification
 
@@ -78,6 +80,14 @@ Duration  37.08s (tests 79%, import 17%, transform 4%)
 Test Files  33 passed (33)
 Tests  252 passed (252)
 Duration  39.01s (tests 79%, import 18%, transform 2%)
+```
+
+### T6 gate
+`npm run lint && npm run typecheck && npm test` passed.
+```text
+Test Files  33 passed (33)
+Tests  252 passed (252)
+Duration  33.74s (tests 80%, import 17%, transform 2%)
 ```
 
 ## Ship Notes
