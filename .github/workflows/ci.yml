@@ -38,6 +38,13 @@ jobs:
         run: npm run demo:reset && npm run verify:books
       - name: Playwright investor walk (layer 3)
         run: npx playwright install --with-deps chromium && npm run test:e2e
+      - name: Evidence workspace (private pilot, synthetic data)
+        run: npm run test:e2e -- e2e/evidence-workspace.spec.ts
+        env:
+          EVIDENCE_ENABLED: "true"
+          DEMO_MODE: "false"
+          AI_API_KEY: ""
+          AI_MODEL: ""
       - uses: actions/upload-artifact@v4
         if: failure()
         with: { name: playwright-report, path: test-results, retention-days: 7 }

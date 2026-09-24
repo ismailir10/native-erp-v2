@@ -171,6 +171,9 @@ export async function askEvidence(db: Db, firmId: string, intakeId: string, inpu
     const current = documents.slice(0, 500).filter((d) => !d.excluded && d.status === "READY" && d.currentVersionId);
     const versionIds = current.map((d) => d.currentVersionId!);
     const names = new Map(current.map((d) => [d.currentVersionId!, d.name]));
+    const historic = plan.intent === "CONTEXT" ? await db.evidenceVersion.findMany({ where: { firmId, documentId: { in: documents.slice(0, 500).filter(d => !d.excluded).map(d => d.id) } }, select: { id: true, name: true } }) : [];
+    for (const version of historic) names.set(version.id, version.name);
+    const contextVersionIds = [...new Set([...versionIds, ...historic.map(v => v.id)])];
     if (versionIds.length) {
       const truncated = await db.$queryRaw<{ id: string }[]>(Prisma.sql`
         SELECT v.id FROM "EvidenceVersion" v
@@ -179,8 +182,8 @@ export async function askEvidence(db: Db, firmId: string, intakeId: string, inpu
            jsonb_path_exists(v.units, '$[*].issues[*] ? (@ like_regex "Ekstraksi dibatasi")')) LIMIT 1`);
       if (truncated.length) answer.limitations.push("Sebagian isi dokumen melewati batas ekstraksi; jawaban hanya mencakup bagian yang sudah dibaca. Pecah dokumen untuk hasil lengkap.");
     }
-    const sourceRange = input.period ? rangeFor(input.period, plan, new Date()) : null;
-    const sourceSelections = entityId || sourceRange ? await db.evidenceSelection.findMany({ where: { firmId, intakeId, versionId: { in: versionIds }, ...(entityId ? { entityId, confirmed: true } : {}) }, select: { versionId: true, unitKey: true, periodStart: true, periodEnd: true } }) : null;
+    const sourceRange = input.period || plan.from || plan.to ? rangeFor(input.period, plan, new Date()) : null;
+    const sourceSelections = entityId || sourceRange ? await db.evidenceSelection.findMany({ where: { firmId, intakeId, versionId: { in: plan.intent === "CONTEXT" ? contextVersionIds : versionIds }, ...(entityId ? { entityId, confirmed: true } : {}) }, select: { versionId: true, unitKey: true, periodStart: true, periodEnd: true } }) : null;
     const permitted = sourceSelections?.filter((s) => {
       if (!sourceRange) return true;
       if (!s.periodEnd) return false;
@@ -204,13 +207,15 @@ export async function askEvidence(db: Db, firmId: string, intakeId: string, inpu
       answer.text = answer.rows.length ? "Dokumen dan keputusan yang masih perlu ditangani:" : "Tidak ada pengecualian terbuka yang tercatat.";
       answer.limitations.push("Daftar ini bukan jaminan dokumen lengkap; kelengkapan bergantung rekening, entitas, dan periode yang dikonfirmasi.");
     } else if (plan.intent === "CONTEXT") {
-      const facts = versionIds.length ? await db.evidenceFact.findMany({ where: { firmId, intakeId, versionId: { in: versionIds }, status: { in: ["CONFIRMED", "PROPOSED", "CONFLICTING"] } }, orderBy: [{ status: "asc" }, { id: "asc" }], take: MAX_RESULTS }) : [];
-      const scopedFacts = facts.filter((f) => unitAllowed(f.versionId, f.unitKey));
+      const facts = contextVersionIds.length ? await db.evidenceFact.findMany({ where: { firmId, intakeId, AND: [{ OR: [{ versionId: { in: versionIds }, status: { in: ["CONFIRMED", "PROPOSED", "CONFLICTING"] } }, { versionId: { in: contextVersionIds }, status: "CONFIRMED" }] }, ...(permitted ? [{ OR: permitted.map(s => ({ versionId: s.versionId, unitKey: s.unitKey })) }] : [])] }, orderBy: [{ status: "asc" }, { id: "asc" }], take: MAX_RESULTS + 1 }) : [];
+      if (facts.length > MAX_RESULTS) answer.limitations.push(`Hanya ${MAX_RESULTS} fakta pertama ditampilkan; persempit cakupan.`);
+      const scopedFacts = facts.slice(0, MAX_RESULTS).filter((f) => unitAllowed(f.versionId, f.unitKey));
+      if (scopedFacts.some(f => !versionIds.includes(f.versionId))) answer.limitations.push("Konteks dikonfirmasi dari versi sebelumnya tetap dipertahankan. Usulan baru tidak menggantikannya tanpa keputusan Anda.");
       answer.rows = scopedFacts.map((f) => {
         citation(f.versionId, f.locator);
-        return { label: f.key, value: `${f.value} (${f.status === "CONFIRMED" ? "dikonfirmasi" : "belum dikonfirmasi"})`, source: `${names.get(f.versionId)} · ${f.locator}` };
+        return { label: f.key, value: `${f.value} (${f.status === "CONFIRMED" ? versionIds.includes(f.versionId) ? "dikonfirmasi" : "dikonfirmasi; versi sebelumnya" : f.status === "CONFLICTING" ? "bertentangan; belum dikonfirmasi" : "belum dikonfirmasi"})`, source: `${names.get(f.versionId)} · ${f.locator}` };
       });
-      answer.text = answer.rows.length ? "Konteks perusahaan beserta status konfirmasi:" : "Belum ada fakta perusahaan dari versi dokumen aktif.";
+      answer.text = answer.rows.length ? "Konteks perusahaan beserta status konfirmasi:" : "Belum ada fakta perusahaan untuk cakupan sumber yang dipilih.";
     } else if (plan.intent === "COMPARE") {
       const versions = versionIds.length ? await db.evidenceVersion.findMany({ where: { firmId, id: { in: versionIds } }, select: { id: true, units: true }, take: 30, orderBy: { id: "asc" } }) : [];
       if (versionIds.length > 30) answer.limitations.push("Perbandingan dibatasi 30 dokumen pertama; pisahkan kumpulan untuk hasil lengkap.");

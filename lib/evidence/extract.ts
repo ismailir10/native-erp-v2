@@ -274,7 +274,7 @@ export async function extractEvidence(name: string, data: Buffer, opts: { passwo
     return { units, issues };
   }
   if (/\.pdf$/i.test(name) || data.subarray(0, 5).toString() === "%PDF-") {
-    const lines = await readLines(data, opts.password);
+    const lines = await readLines(data, opts.password, { maxPages: 300, maxItems: 100_000 });
     if (lines.reduce((n, l) => n + l.cells.map((c) => c.text).join("").trim().length, 0) < 20) throw new Error("PDF hasil scan atau tanpa teks. OCR belum didukung; unggah PDF dengan teks atau CSV/Excel.");
     const rows = lines.slice(0, MAX_ROWS).map((line, index) => ({ locator: `halaman ${line.page}, baris ${index + 1}`, cells: line.cells.map((c) => ({ text: c.text, locator: `halaman ${line.page}, baris ${index + 1}` })) }));
     return { units: [buildUnit("document", name, rows, lines.length > MAX_ROWS ? [TRUNCATED] : [])], issues: [] };

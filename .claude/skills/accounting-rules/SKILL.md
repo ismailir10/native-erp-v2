@@ -9,7 +9,7 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
 "GL = single source of truth, no hidden plugs, 3-layer verification") turned into a product.
 
 ## Ledger
-1. **GL is the single source of truth.** Never store balances. TB, Laba Rugi, Neraca, combined worksheet,
+1. **GL is the single source of truth for Buku books.** Never store derived ledger balances. Versioned source-reported figures in `lib/evidence/` are evidence, explicitly labeled separately, and never feed Buku financial reports directly (ADR 0007). TB, Laba Rugi, Neraca, combined worksheet,
    charts and tax card are all derived from `JournalLine` at read time (`lib/reports/*`).
 2. **`postJournal()` (`lib/ledger/post.ts`) is the only writer.** It enforces Σdebit = Σcredit, ≥2 lines,
    one positive side per line, open period, accounts in the entity's client COA. The DB also CHECKs
@@ -65,10 +65,10 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
 
 ## AI (credit is limited — treat every call as money)
 17. LLM runs **outside** DB transactions, only for leftovers, **one request per unique merchant key + direction**,
-    batched (≤40/call), cached forever in `AiSuggestion` keyed by `(merchantKey, direction, coaVersion)`.
+    batched (≤40/call), cached in `AiSuggestion` with firm/client isolation (key implementation: `lib/ai/classify.ts`).
     Account mapping (rule 9a) follows the same discipline: names + type hints only (no amounts, no descriptions), ≤40 per call,
     cached by `(normalised name, type hint, coaVersion)`, whitelisted against the client chart, counted in the same caps.
-18. Hard caps: `AI_MAX_CALLS_PER_IMPORT`, `AI_MONTHLY_TOKEN_BUDGET`; every call logged in `AiUsage`. No retry loops.
+18. All paid paths reserve the shared monthly allowance atomically through `lib/ai/budget.ts` before network calls. Evidence context proposals and read-only query plans use bounded source passages, versioned citations, and scope/model/prompt caches; monetary answers are deterministic tool results (ADR 0007). Existing classification/mapping payload restrictions still apply. Hard caps: `AI_MAX_CALLS_PER_IMPORT`, `AI_MONTHLY_TOKEN_BUDGET`; every call logged in `AiUsage`. No retry loops.
 19. Bank text is untrusted: output codes must be in the client's COA whitelist (`parseAiResponse`), else dropped.
 20. Tests and the seed **never** call a real model (`MockProvider`, pre-cached answers). `npm run ai:smoke` is the only live call.
 21. Provider is OpenAI-compatible `fetch` (OpenCode Zen default) behind `AiProvider`; swap by config, not code.

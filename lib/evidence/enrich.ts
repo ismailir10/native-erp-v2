@@ -20,7 +20,8 @@ export async function analyzeVersion(db: Db, firmId: string, intakeId: string, v
     // Compact aliases are unambiguous across sheets and map only to this immutable version.
     const locations = new Map(passages.map((p, i) => [`source:${i}`, p]));
     const client = contextIntake.clientId ? await db.client.findFirst({ where: { id: contextIntake.clientId, firmId }, select: { name: true, industry: true } }) : null;
-    const confirmed = await db.evidenceFact.findMany({ where: { firmId, intakeId, status: "CONFIRMED" }, select: { key: true, value: true }, orderBy: { id: "asc" }, take: 12 });
+    const includedVersions = await db.evidenceVersion.findMany({ where: { firmId, document: { firmId, intakeId, excluded: false } }, select: { id: true } });
+    const confirmed = await db.evidenceFact.findMany({ where: { firmId, intakeId, status: "CONFIRMED", versionId: { in: includedVersions.map(v => v.id) } }, select: { key: true, value: true }, orderBy: { id: "asc" }, take: 12 });
     const input = { context: JSON.stringify({ client: client ?? contextIntake.name, confirmed }), passages: [...locations].map(([locator, p]) => ({ locator, text: p.text })) };
     const prompt = buildEvidencePrompt(input);
     const key = hash(JSON.stringify([firmId, intakeId, contextIntake.clientId, contextIntake.contextVersion, current.hash, EVIDENCE_PROMPT_VERSION, provider.model, prompt]));

@@ -81,7 +81,46 @@ export async function parsePdfSections(data: Buffer, opts: { password?: string }
 }
 
 /** Positioned text lines. Exported for `npm run inspect:statement -- --lines` when tuning a new layout. */
-export async function readLines(data: Buffer, password?: string): Promise<Line[]> {
+export type ReadLinesLimits = { maxPages?: number; maxItems?: number };
+type PositionedItem = { str: string; x: number; y: number; width: number; fontSize: number };
+
+/** Bounded evidence reads do not allocate text for all pages concurrently. */
+async function boundedTextItems(doc: Awaited<ReturnType<typeof getDocumentProxy>>, maxItems: number): Promise<PositionedItem[][]> {
+  const pages: PositionedItem[][] = [];
+  let count = 0;
+  for (let number = 1; number <= doc.numPages; number++) {
+    const page = await doc.getPage(number);
+    const reader = page.streamTextContent().getReader() as ReadableStreamDefaultReader<Awaited<ReturnType<typeof page.getTextContent>>>;
+    const items: PositionedItem[] = [];
+    let overLimit = false;
+    try {
+      for (;;) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        for (const item of chunk.value.items) {
+          if (!("str" in item)) continue;
+          if (++count > maxItems) { overLimit = true; continue; }
+          // Keep the same positioned-text normalization as unpdf.extractTextItems.
+          const [, , c, d, x, y] = item.transform;
+          items.push({ str: item.str, x, y, width: item.width, fontSize: Math.hypot(c, d) });
+        }
+      }
+      // Drain the active page without retaining excess items. Cancelling an active
+      // PDF.js stream can race its close message; no later page is requested.
+      if (overLimit) throw new ParseError(`Teks PDF melebihi batas ${maxItems.toLocaleString("id-ID")} bagian. Pecah PDF menjadi beberapa file lalu unggah kembali.`);
+      pages.push(items);
+    } finally {
+      reader.releaseLock();
+      page.cleanup();
+    }
+  }
+  return pages;
+}
+
+export async function readLines(data: Buffer, password?: string, limits: ReadLinesLimits = {}): Promise<Line[]> {
+  for (const value of [limits.maxPages, limits.maxItems]) {
+    if (value !== undefined && (!Number.isSafeInteger(value) || value < 1)) throw new ParseError("Batas ekstraksi PDF tidak valid.");
+  }
   let doc;
   try {
     doc = await getDocumentProxy(new Uint8Array(data), { password: password || undefined });
@@ -90,33 +129,39 @@ export async function readLines(data: Buffer, password?: string): Promise<Line[]
     if (err.name === "PasswordException") throw new PdfPasswordError(err.code === 2 ? "wrong" : "needed");
     throw new ParseError("File PDF rusak atau tidak bisa dibuka.");
   }
-  const { items } = await extractTextItems(doc);
-  const out: Line[] = [];
-  items.forEach((pageItems, p) => {
-    const rows: { y: number; parts: { x: number; w: number; s: string; size: number }[] }[] = [];
-    for (const it of pageItems) {
-      if (!it.str.trim()) continue;
-      const tol = Math.max(2, it.fontSize * 0.35);
-      let row = rows.find((r) => Math.abs(r.y - it.y) <= tol);
-      if (!row) rows.push((row = { y: it.y, parts: [] }));
-      row.parts.push({ x: it.x, w: it.width, s: it.str, size: it.fontSize || 8 });
-    }
-    rows.sort((a, b) => b.y - a.y); // PDF y grows upwards → top of page first
-    for (const r of rows) {
-      r.parts.sort((a, b) => a.x - b.x);
-      const cells: Cell[] = [];
-      for (const part of r.parts) {
-        const last = cells[cells.length - 1];
-        const gap = last ? part.x - last.x1 : Infinity;
-        if (last && gap < part.size * 0.9) {
-          last.text += (gap > part.size * 0.15 ? " " : "") + part.s.trim();
-          last.x1 = part.x + part.w;
-        } else cells.push({ x0: part.x, x1: part.x + part.w, text: part.s.trim() });
+  try {
+    if (limits.maxPages !== undefined && doc.numPages > limits.maxPages) throw new ParseError(`PDF melebihi batas ${limits.maxPages} halaman. Pecah PDF menjadi beberapa file lalu unggah kembali.`);
+    const items = limits.maxItems === undefined ? (await extractTextItems(doc)).items : await boundedTextItems(doc, limits.maxItems);
+    const out: Line[] = [];
+    items.forEach((pageItems, p) => {
+      const rows: { y: number; parts: { x: number; w: number; s: string; size: number }[] }[] = [];
+      for (const it of pageItems) {
+        if (!it.str.trim()) continue;
+        const tol = Math.max(2, it.fontSize * 0.35);
+        let row = rows.find((r) => Math.abs(r.y - it.y) <= tol);
+        if (!row) rows.push((row = { y: it.y, parts: [] }));
+        row.parts.push({ x: it.x, w: it.width, s: it.str, size: it.fontSize || 8 });
       }
-      out.push({ page: p + 1, y: r.y, cells });
-    }
-  });
-  return out;
+      rows.sort((a, b) => b.y - a.y); // PDF y grows upwards → top of page first
+      for (const r of rows) {
+        r.parts.sort((a, b) => a.x - b.x);
+        const cells: Cell[] = [];
+        for (const part of r.parts) {
+          const last = cells[cells.length - 1];
+          const gap = last ? part.x - last.x1 : Infinity;
+          if (last && gap < part.size * 0.9) {
+            last.text += (gap > part.size * 0.15 ? " " : "") + part.s.trim();
+            last.x1 = part.x + part.w;
+          } else cells.push({ x0: part.x, x1: part.x + part.w, text: part.s.trim() });
+        }
+        out.push({ page: p + 1, y: r.y, cells });
+      }
+    });
+    return out;
+  } finally {
+    // unpdf retains caller-owned proxies; release workers and cached page data on every exit.
+    await doc.loadingTask.destroy();
+  }
 }
 
 const lineText = (l: Line) => l.cells.map((c) => c.text).join(" ");

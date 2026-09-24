@@ -150,6 +150,24 @@ describe("bounded evidence answers", () => {
     expect(raw.evidenceSelection.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ entityId: "e1", confirmed: true }) }));
   });
 
+  it("applies planned source dates while the visible period takes precedence", async () => {
+    const { db, raw } = setup();
+    const provider = new MockProvider();
+    vi.spyOn(provider, "planEvidenceAnswer").mockResolvedValue({ plan: { intent: "SEARCH", terms: ["Revenue"], from: "2024-01-01", to: "2024-01-31" }, model: "mock", promptTokens: 2, completionTokens: 2 });
+    raw.evidenceSelection.findMany.mockResolvedValue([
+      { versionId: "v1", unitKey: "current", periodStart: "2024-01-01", periodEnd: "2024-01-31" },
+      { versionId: "v1", unitKey: "previous", periodStart: "2023-01-01", periodEnd: "2023-01-31" },
+    ]);
+    raw.$queryRaw.mockResolvedValue([
+      { versionId: "v1", unitKey: "current", locator: "current!B5", text: "Revenue 2024" },
+      { versionId: "v1", unitKey: "previous", locator: "previous!B5", text: "Revenue 2023" },
+    ]);
+    const planned = await askEvidence(db, "f1", "i1", { question: "Cari Revenue Januari 2024" }, provider);
+    expect(planned.rows?.map(row => row.value)).toEqual(["Revenue 2024"]);
+    const visible = await askEvidence(db, "f1", "i1", { question: "Cari Revenue Januari 2024", period: "2023-01" }, provider);
+    expect(visible.rows?.map(row => row.value)).toEqual(["Revenue 2023"]);
+  });
+
   it("shows live controls without converting observed differences into causes", async () => {
     const { db } = setup(true);
     vi.mocked(runControls).mockResolvedValue([{ key: "bank", scope: "Citra Ternak", title: "Bank", status: "FAIL", detail: "Bank Rp 100 vs buku Rp 90" }, { key: "other", scope: "Other", title: "Other", status: "PASS", detail: "ok" }]);
@@ -167,7 +185,7 @@ describe("bounded evidence answers", () => {
     const answer = await askEvidence(db, "f1", "i1", { question: "Profil perusahaan" });
     expect(answer.rows).toHaveLength(2);
     expect(answer.rows![0].value).toContain("(dikonfirmasi)");
-    expect(answer.rows![1].value).toContain("(belum dikonfirmasi)");
+    expect(answer.rows![1].value).toContain("(bertentangan; belum dikonfirmasi)");
     expect(answer.citations).toHaveLength(2);
   });
 

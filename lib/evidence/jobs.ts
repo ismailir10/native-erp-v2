@@ -212,10 +212,14 @@ async function rebuildCurrentConflicts(db: Tx, firmId: string, intakeId: string)
   if (detected.length) await db.evidenceConflict.createMany({ data: detected, skipDuplicates: true });
   if (!capped) await db.evidenceConflict.updateMany({ where: { firmId, intakeId, key: { notIn: activeKeys }, resolved: false }, data: { resolved: true, note: OBSOLETE } });
   await db.evidenceConflict.updateMany({ where: { firmId, intakeId, key: { in: activeKeys }, resolved: true, note: OBSOLETE }, data: { resolved: false, note: null } });
-  const fetchedFacts = await db.evidenceFact.findMany({ where: { firmId, intakeId, versionId: { in: activeVersions }, status: { not: "REJECTED" } }, orderBy: { id: "asc" }, take: MAX_CONFLICT_FACTS + 1 });
+  const includedVersions = await db.evidenceVersion.findMany({ where: { firmId, document: { firmId, intakeId, excluded: false } }, select: { id: true } });
+  const fetchedFacts = await db.evidenceFact.findMany({ where: { firmId, intakeId, OR: [{ versionId: { in: activeVersions }, status: { not: "REJECTED" } }, { versionId: { in: includedVersions.map(v => v.id) }, status: "CONFIRMED" }] }, orderBy: { id: "asc" }, take: MAX_CONFLICT_FACTS + 1 });
   const factsCapped = fetchedFacts.length > MAX_CONFLICT_FACTS;
   const facts = fetchedFacts.slice(0, MAX_CONFLICT_FACTS);
   const entityByUnit = new Map(records.map(({ d, v, u }) => [`${v.id}:${u.key}`, u.entity ? `entity:${u.entity.trim().toLowerCase()}` : `document:${d.id}`]));
+  const historicIds = [...new Set(facts.filter(f => !activeVersions.includes(f.versionId)).map(f => f.versionId))];
+  const historic = historicIds.length ? await db.evidenceVersion.findMany({ where: { firmId, id: { in: historicIds } }, select: { id: true, documentId: true, units: true } }) : [];
+  for (const v of historic) for (const u of v.units as unknown as EvidenceUnit[]) entityByUnit.set(`${v.id}:${u.key}`, u.entity ? `entity:${u.entity.trim().toLowerCase()}` : `document:${v.documentId}`);
   const groupKey = (f: (typeof facts)[number]) => {
     const entity = entityByUnit.get(`${f.versionId}:${f.unitKey}`);
     return entity ? JSON.stringify([entity, f.key]) : null;

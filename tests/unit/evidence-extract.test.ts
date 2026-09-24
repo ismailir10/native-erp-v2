@@ -2,6 +2,7 @@ import { deflateRawSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import ExcelJS from "exceljs";
 import { extractEvidence } from "@/lib/evidence/extract";
+import { readLines } from "@/lib/import/parsers/pdf";
 import { makePdf } from "../pdf-fixture";
 
 async function workbook(sheets: Record<string, unknown[][]>) {
@@ -99,6 +100,25 @@ describe("evidence extraction", () => {
     await expect(extractEvidence("report.pdf", data, { password: "wrong" })).rejects.toMatchObject({ reason: "wrong" });
     const { units: [unit] } = await extractEvidence("report.pdf", data, { password: "secret" });
     expect(unit.figures[0]).toMatchObject({ amount: "123456000", locator: "halaman 2, baris 5" });
+  });
+
+  it("rejects oversized PDF page counts before evidence text extraction", async () => {
+    const data = makePdf(Array.from({ length: 301 }, () => []));
+    await expect(extractEvidence("large.pdf", data)).rejects.toThrow(/melebihi batas 300 halaman.*Pecah PDF/);
+    // Bank parser callers keep their existing unbounded default behavior.
+    await expect(readLines(data)).resolves.toEqual([]);
+  });
+
+  it("caps streamed PDF text items while keeping normal positions and password errors", async () => {
+    const pages = [[{ x: 40, y: 800, text: "First evidence line" }, { x: 40, y: 780, text: "Second evidence line" }], [{ x: 40, y: 800, text: "Third evidence line" }]];
+    const data = makePdf(pages);
+    const normal = await readLines(data);
+    await expect(readLines(data, undefined, { maxPages: 2, maxItems: 100 })).resolves.toEqual(normal);
+    await expect(readLines(data, undefined, { maxPages: 2, maxItems: 1 })).rejects.toThrow(/Teks PDF melebihi batas 1 bagian.*Pecah PDF/);
+    const locked = makePdf(pages, { userPassword: "secret" });
+    await expect(readLines(locked, undefined, { maxPages: 2, maxItems: 100 })).rejects.toMatchObject({ reason: "needed" });
+    await expect(readLines(locked, "wrong", { maxPages: 2, maxItems: 100 })).rejects.toMatchObject({ reason: "wrong" });
+    await expect(readLines(locked, "secret", { maxPages: 2, maxItems: 100 })).resolves.toEqual(normal);
   });
 
   it("rejects unsupported files and scanned PDFs with actionable messages", async () => {
