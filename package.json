@@ -15,6 +15,7 @@
     "demo:reset": "tsx scripts/seed.ts",
     "verify:books": "tsx scripts/verify-books.ts",
     "ai:smoke": "tsx scripts/ai-smoke.ts",
+    "inspect:statement": "tsx scripts/inspect-statement.ts",
     "vercel-build": "bash scripts/vercel-build.sh"
   },
   "dependencies": {

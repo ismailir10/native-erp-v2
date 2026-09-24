@@ -22,7 +22,7 @@ export class PdfPasswordError extends ParseError {
 }
 
 type Cell = { x0: number; x1: number; text: string };
-type Line = { page: number; y: number; cells: Cell[] };
+export type Line = { page: number; y: number; cells: Cell[] };
 type ColKind = "date" | "desc" | "debit" | "credit" | "amount" | "balance" | "flag";
 type Column = { kind: ColKind; x0: number; x1: number };
 
@@ -56,7 +56,8 @@ export async function parsePdf(data: Buffer, opts: { password?: string } = {}): 
   return parseLines(lines);
 }
 
-async function readLines(data: Buffer, password?: string): Promise<Line[]> {
+/** Positioned text lines. Exported for `npm run inspect:statement -- --lines` when tuning a new layout. */
+export async function readLines(data: Buffer, password?: string): Promise<Line[]> {
   let doc;
   try {
     doc = await getDocumentProxy(new Uint8Array(data), { password: password || undefined });
