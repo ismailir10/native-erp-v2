@@ -77,7 +77,7 @@ real-data preview (owner already approved sending account names to the gateway).
       accept: unit tests for filter/refusal; non-Zen base URL unaffected
 - [x] T3 Keyword rule fixes in `lib/ledger-import/mapping.ts` — accept: unit tests for the 4 names above + existing
       mapping tests green; `npm run verify:real -- chickin goers` unchanged
-- [ ] T4 Honest journal count at staging (`lib/ledger-import/post.ts`) — accept: DB test with an all-zero group: staged
+- [x] T4 Honest journal count at staging (`lib/ledger-import/post.ts`) — accept: DB test with an all-zero group: staged
       count = posted count
 - [ ] T5 Average-rate need + translation skip for years without P&L (`lib/fx/rates.ts`, `lib/reports/fx.ts`) — accept:
       DB test: SGD entity with only an opening Neraca in year 1 → no average need for year 1, Gabungan translates
@@ -98,9 +98,12 @@ real-data preview (owner already approved sending account names to the gateway).
   unavailable" rewritten to lead with the fix; `lib/settings/ai.ts` filters the model list and refuses such a model on save.
 - T3: `lib/ledger-import/mapping.ts` — `inferType` reads rent/pay names as BEBAN (guarded for prepaid/payable/lease/ROU);
   the 1130 rule skips staff/related-party/loan receivables so they fall to 1140.
+- T4: `lib/ledger-import/post.ts` — `willPost()` (≥ 2 lines incl. rounding/1999) filters groups at staging; the STATS check
+  still reports "N jurnal bernilai nol dilewati".
 ## Verification
 - T1 gate: lint ✔ · typecheck ✔ · `Test Files 23 passed (23) · Tests 122 passed (122)`
 - T2 gate: lint ✔ · typecheck ✔ · `Test Files 23 passed (23) · Tests 125 passed (125)`
 - T3: `npm run verify:real -- all` before/after the rule change: output identical (diff empty), ending
   "✓ Semua pemeriksaan lolos". Gate: `Test Files 23 passed (23) · Tests 125 passed (125)`.
+- T4 gate: lint ✔ · typecheck ✔ · `Test Files 23 passed (23) · Tests 126 passed (126)`
 ## Ship Notes

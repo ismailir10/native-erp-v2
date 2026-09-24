@@ -53,6 +53,11 @@ const toSaved = (entries: PlanEntry[], entities: Map<string, EntityInfo>): Saved
   })),
 });
 
+/** A group posts when it yields at least two lines: non-zero file lines plus any rounding or source-difference line. */
+function willPost(e: PlanEntry) {
+  return e.lines.filter((l) => l.amount !== 0n).length + (e.rounding !== 0n ? 1 : 0) + (e.imbalance !== 0n ? 1 : 0) >= 2;
+}
+
 export async function stageImport(db: Db, input: StageInput): Promise<StageResult> {
   const sheets = await readSheets(input.fileName, input.data);
   const candidates = detectTables(sheets);
@@ -121,6 +126,9 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
       }
     }
   }
+  // All-zero groups are reported in the checks ("… jurnal bernilai nol dilewati") but not staged, so the draft's
+  // "Catat N jurnal" is the number that will post.
+  const entries = plan.entries.filter(willPost);
   const neracaHints = read.mode === "NERACA" ? new Map(read.rows.map((r) => [r.code, r.typeHint])) : new Map();
   const imp = await db.$transaction(
     async (tx) => {
@@ -148,9 +156,9 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
           periodStart,
           periodEnd,
           rowCount: read.rows.length,
-          groupCount: plan.entries.length,
-          roundingTotal: plan.entries.reduce((s, e) => s + (e.rounding < 0n ? -e.rounding : e.rounding), 0n),
-          data: { ...toSaved(plan.entries, entityInfos), rates: [...fileRates.values()] } as unknown as Prisma.InputJsonValue,
+          groupCount: entries.length,
+          roundingTotal: entries.reduce((s, e) => s + (e.rounding < 0n ? -e.rounding : e.rounding), 0n),
+          data: { ...toSaved(entries, entityInfos), rates: [...fileRates.values()] } as unknown as Prisma.InputJsonValue,
           checks: {
             create: plan.checks.map((c) => ({
               severity: c.severity,
@@ -170,7 +178,7 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
   const entityIds = [...entityInfos.values()].map((e) => e.entityId);
   const codes = [...plan.accounts.values()].map((a) => a.code);
   const unmapped = await db.sourceAccount.count({ where: { entityId: { in: entityIds }, code: { in: codes }, accountId: null } });
-  return { status: "STAGED", importId: imp.id, mode: read.mode, checks: plan.checks, entries: plan.entries.length, sourceAccounts: plan.accounts.size, unmapped };
+  return { status: "STAGED", importId: imp.id, mode: read.mode, checks: plan.checks, entries: entries.length, sourceAccounts: plan.accounts.size, unmapped };
 }
 
 /** Rule 5: one opening entry per entity. */
