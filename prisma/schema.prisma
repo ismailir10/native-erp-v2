@@ -430,9 +430,13 @@ model SourceAccount {
   typeHint      AccountType?
   /// Set for monetary foreign-currency accounts (revaluation, rule 6b).
   currency      String?
+  /// Accepted mapping (set only by the accountant's click, rule 9a).
   accountId     String?
   account       Account?      @relation(fields: [accountId], references: [id])
   mappedBy      MapMethod?
+  /// Pending suggestion (rules or AI) — never used for posting until accepted.
+  suggestedCode String?
+  suggestedBy   MapMethod?
   mapConfidence Float?
   mapReason     String?
   lines         JournalLine[]
@@ -503,4 +507,17 @@ model ExchangeRate {
   createdAt DateTime   @default(now())
 
   @@unique([firmId, currency, quote, date, kind])
+}
+
+/// AI account-mapping answers, cached forever by (normalised name, type hint, coaVersion) — names only, never amounts.
+model AiAccountMap {
+  id          String   @id @default(cuid())
+  cacheKey    String   @unique
+  name        String
+  typeHint    String?
+  accountCode String
+  confidence  Float
+  reason      String
+  model       String
+  createdAt   DateTime @default(now())
 }

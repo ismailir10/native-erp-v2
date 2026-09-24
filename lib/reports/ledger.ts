@@ -85,6 +85,9 @@ function group(rows: { account: Account; amount: bigint }[], lines: FsLine[]): F
     .filter((i) => i.accounts.length > 0);
 }
 
+/** FS lines of a Neraca section, in template order — derived so no account can fall out of the balance sheet. */
+const linesOf = (section: string) => (Object.keys(FS_LINES) as FsLine[]).filter((k) => FS_LINES[k].section === section);
+
 const sum = (items: FsItem[]) => items.reduce((s, i) => s + i.amount, 0n);
 
 /** Laba Rugi for [from, to]. Income positive, expenses positive; net = income − expenses. */
@@ -135,14 +138,14 @@ export async function balanceSheet(db: Db, scope: Scope, asOf: Date): Promise<Ba
   const liabRows = bs.filter((r) => r.account.type === "LIABILITAS").map((r) => ({ account: r.account, amount: -r.net }));
   const eqRows = bs.filter((r) => r.account.type === "EKUITAS").map((r) => ({ account: r.account, amount: -r.net }));
 
-  const currentAssets = group(assets, ["KAS_SETARA_KAS", "PIUTANG_USAHA", "PIUTANG_LAIN", "PERSEDIAAN", "PAJAK_DIBAYAR_DIMUKA", "BIAYA_DIBAYAR_DIMUKA", "SUSPENSE"]);
-  const nonCurrentAssets = group(assets, ["ASET_TETAP", "AKUM_PENYUSUTAN"]);
-  const liabilities = group(liabRows, ["UTANG_USAHA", "UTANG_PAJAK", "UTANG_LAIN", "UTANG_BANK"]);
+  const currentAssets = group(assets, linesOf("ASET_LANCAR"));
+  const nonCurrentAssets = group(assets, linesOf("ASET_TIDAK_LANCAR"));
+  const liabilities = group(liabRows, linesOf("LIABILITAS"));
   if (icCredit.length) {
     const amount = icCredit.reduce((s, r) => s - r.amount, 0n);
     liabilities.push({ fsLine: "UTANG_ANTAR_ENTITAS", label: "Utang antar entitas", amount, accounts: icCredit.map((r) => ({ code: r.account.code, name: r.account.name, amount: -r.amount })) });
   }
-  const equity = group(eqRows, ["MODAL", "SALDO_LABA", "PRIVE", "SELISIH_PENJABARAN"]);
+  const equity = group(eqRows, linesOf("EKUITAS"));
   const ytdProfit = tb.filter((r) => isPL(r.account)).reduce((s, r) => s - r.net, 0n);
   equity.push({ fsLine: "LABA_BERJALAN", label: "Laba (rugi) tahun berjalan", amount: ytdProfit, accounts: [] });
 
