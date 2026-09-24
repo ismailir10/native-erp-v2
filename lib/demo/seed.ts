@@ -17,9 +17,10 @@ export const DEPRECIATION = { clientKey: "grup-ayam", entity: 0, monthly: 9_500_
 const lineKey = (accountNumber: string, date: Date, amount: bigint, description: string) =>
   `${accountNumber}|${date.toISOString().slice(0, 10)}|${amount}|${description}`;
 
+/** Wipes all firm data. Keeps migrations and AppSetting (deployment config such as the AI key). */
 export async function truncateAll(db: Db) {
   const tables = await db.$queryRawUnsafe<{ tablename: string }[]>(
-    `SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename <> '_prisma_migrations'`,
+    `SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename NOT IN ('_prisma_migrations', 'AppSetting')`,
   );
   if (tables.length) await db.$executeRawUnsafe(`TRUNCATE ${tables.map((t) => `"${t.tablename}"`).join(",")} CASCADE`);
 }

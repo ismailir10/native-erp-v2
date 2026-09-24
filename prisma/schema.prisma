@@ -343,3 +343,11 @@ model CloseSignoff {
 
   @@unique([periodId, key])
 }
+
+/// Deployment-wide settings edited in Pengaturan (e.g. AI key + model). Not firm data: survives demo reset.
+/// Secret values are AES-256-GCM encrypted with SETTINGS_SECRET (lib/settings/secret.ts).
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}

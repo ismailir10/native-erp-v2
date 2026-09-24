@@ -49,7 +49,9 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
 18. Hard caps: `AI_MAX_CALLS_PER_IMPORT`, `AI_MONTHLY_TOKEN_BUDGET`; every call logged in `AiUsage`. No retry loops.
 19. Bank text is untrusted: output codes must be in the client's COA whitelist (`parseAiResponse`), else dropped.
 20. Tests and the seed **never** call a real model (`MockProvider`, pre-cached answers). `npm run ai:smoke` is the only live call.
-21. Provider is OpenAI-compatible `fetch` (OpenCode Zen default) behind `AiProvider`; swap by env, not code.
+21. Provider is OpenAI-compatible `fetch` (OpenCode Zen default) behind `AiProvider`; swap by config, not code.
+    Key + model: **Pengaturan (DB, encrypted) overrides env** — resolve via `resolveAiConfig()` (`lib/settings/ai.ts`).
+    `AI_BASE_URL` stays **env-only** so a visitor can't redirect the stored key. *Cek koneksi* hits `GET /models` (no tokens).
 
 ## Close
 22. Controls (`lib/controls`): TB balanced, A = L + E, bank statement balance = GL per account, continuity,
