@@ -160,7 +160,7 @@ export function AppSidebar({
               <AlertDialogHeader>
                 <AlertDialogTitle>Reset data demo?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Semua perubahan di demo dihapus dan data 3 klien dibangun ulang lewat pipeline impor (±5 detik). Tidak memakai kredit AI.
+                  Semua perubahan di demo dihapus, lalu data 3 klien dibangun ulang lewat proses impor yang sama. Butuh sekitar 20 detik dan tidak memakai kredit AI.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>

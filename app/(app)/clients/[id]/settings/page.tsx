@@ -35,10 +35,10 @@ export default async function SettingsPage({ params, searchParams }: { params: P
     <div className="space-y-6">
       <PageHeader title="Aturan & AI" description="Urutan klasifikasi: transfer → aturan → memori → AI. AI hanya dipakai untuk yang belum pernah dilihat." />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Status AI" value={<StatusPill status={live ? "PASS" : "REVIEW"} label={live ? "Aktif" : "Mode aturan saja"} />} hint={live ? `${cfg.model} via ${new URL(cfg.baseUrl).host}` : <>Atur kunci & model di <Link href="/settings" className="text-primary hover:underline">Pengaturan</Link></>} />
+        <Stat label="Status AI" value={<StatusPill status={live ? "PASS" : "REVIEW"} label={live ? "Aktif" : "Aturan saja"} />} hint={live ? `${cfg.model} via ${new URL(cfg.baseUrl).host}` : <>Atur kunci & model di <Link href="/settings" className="text-primary hover:underline">Pengaturan</Link></>} />
         <Stat label="Dikode tanpa AI" value={`${total ? Math.round(((total - aiLines) / total) * 100) : 0}%`} hint={`${total} baris sejak awal`} />
         <Stat label="Panggilan AI (total)" value={usage._sum.calls ?? 0} hint={`${((usage._sum.promptTokens ?? 0) + (usage._sum.completionTokens ?? 0)).toLocaleString("id-ID")} token`} />
-        <Stat label="Jawaban AI tersimpan" value={cacheSize} hint="Tidak pernah dibayar dua kali" />
+        <Stat label="Jawaban AI tersimpan" value={cacheSize} hint="Merchant yang sama tidak ditanyakan lagi" />
       </div>
       <Card>
         <CardHeader>
@@ -53,7 +53,7 @@ export default async function SettingsPage({ params, searchParams }: { params: P
         <Card>
           <CardHeader>
             <CardTitle>Aturan klien</CardTitle>
-            <CardDescription>Menang atas aturan kantor. Tambah dari halaman Review dengan “Selalu gunakan akun ini”.</CardDescription>
+            <CardDescription>Didahulukan dari aturan kantor. Tambah dari halaman Review dengan “Selalu gunakan akun ini”.</CardDescription>
           </CardHeader>
           <CardContent className="px-0">
             <RuleTable rules={clientRules} accounts={accounts} />
@@ -72,7 +72,7 @@ export default async function SettingsPage({ params, searchParams }: { params: P
         <Card>
           <CardHeader>
             <CardTitle>Memori</CardTitle>
-            <CardDescription>Dipelajari dari keputusan reviewer — dipakai sebelum AI.</CardDescription>
+            <CardDescription>Dipelajari dari keputusan reviewer dan dipakai sebelum AI.</CardDescription>
           </CardHeader>
           <CardContent className="px-0">
             <Table>

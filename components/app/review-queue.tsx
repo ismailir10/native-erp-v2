@@ -92,7 +92,7 @@ export function ReviewQueue({ items, accounts }: { items: ReviewItem[]; accounts
     return (
       <div className="rounded-lg border bg-card px-6 py-12 text-center">
         <CheckCheck className="mx-auto size-8 text-pass" />
-        <div className="mt-2 font-medium">Antrian kosong</div>
+        <div className="mt-2 font-medium">Antrean kosong</div>
         <p className="text-sm text-muted-foreground">Semua mutasi sudah terklasifikasi.</p>
       </div>
     );

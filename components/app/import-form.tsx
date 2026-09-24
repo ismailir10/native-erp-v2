@@ -64,7 +64,7 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
       <Card className="lg:col-span-3">
         <CardHeader>
           <CardTitle>Unggah rekening koran</CardTitle>
-          <CardDescription>CSV KlikBCA, Excel Mandiri, CSV BRI, atau file lain dengan kolom tanggal/keterangan/debet/kredit/saldo.</CardDescription>
+          <CardDescription>PDF e-statement, CSV KlikBCA, Excel Mandiri, CSV BRI, atau file lain yang punya kolom tanggal, keterangan, debet/kredit, dan saldo.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
           <Field>
@@ -88,7 +88,7 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
             </Select>
           </Field>
           <Field>
-            <FieldLabel>2. File mutasi</FieldLabel>
+            <FieldLabel>2. File rekening koran</FieldLabel>
             <button
               type="button"
               onClick={() => inputRef.current?.click()}
@@ -112,7 +112,7 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
               <span className="text-xs text-muted-foreground">Maks. 5 MB · baris yang sudah pernah diimpor otomatis dilewati</span>
             </button>
             <input ref={inputRef} type="file" accept=".pdf,.csv,.xlsx" className="sr-only" data-testid="file-input" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-            <FieldDescription>Kami cek saldo berjalan tiap baris — kalau ada baris hilang, Anda akan diberi tahu.</FieldDescription>
+            <FieldDescription>Saldo berjalan dicek di setiap baris. Kalau ada baris yang hilang, hasilnya ditandai Ada celah.</FieldDescription>
           </Field>
           {needsPassword && (
             <Field>
@@ -132,7 +132,7 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
             )}
             {sample && (
               <a href={`/demo/${sample.fileName}`} download className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
-                atau unduh untuk dicoba tarik-lepas
+                atau unduh file contohnya
               </a>
             )}
           </div>
@@ -142,7 +142,7 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
       <Card className="lg:col-span-2" data-testid="import-result">
         <CardHeader>
           <CardTitle>Hasil</CardTitle>
-          <CardDescription>{result ? "Setiap baris sudah dijurnal. Yang belum yakin masuk antrian review." : "Hasil klasifikasi muncul di sini."}</CardDescription>
+          <CardDescription>{result ? "Setiap baris sudah dijurnal. Yang usulannya belum pasti masuk antrean review." : "Hasil klasifikasi muncul di sini."}</CardDescription>
         </CardHeader>
         <CardContent>
           {result ? (
@@ -174,7 +174,7 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
                 </Link>
               ) : (
                 <Link href={`/clients/${clientId}/close`} className={buttonVariants({ variant: "outline", className: "w-full" })}>
-                  Lanjut ke Tutup Buku
+                  Buka Tutup Buku
                 </Link>
               )}
             </div>

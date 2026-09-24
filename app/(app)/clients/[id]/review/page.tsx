@@ -40,7 +40,7 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
       <PageHeader title="Review" description={`${client.name} · ${txs.length} transaksi menunggu keputusan Anda`} />
       {txs.length > 0 ? (
         <NextStep>
-          Cek usulan akun. Tekan <b>Enter</b> untuk menerima, atau ganti akunnya — Buku mengingat pilihan Anda untuk impor berikutnya.
+          Cek usulan akun. Tekan <b>Enter</b> untuk menerima, atau ganti akunnya. Buku mengingat pilihan Anda untuk impor berikutnya.
         </NextStep>
       ) : (
         <NextStep href={`${base}/close`} cta="Tutup buku" tone="done">Semua transaksi sudah terklasifikasi.</NextStep>

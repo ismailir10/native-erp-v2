@@ -62,7 +62,7 @@ export default async function ClientOverview({ params, searchParams }: { params:
         </NextStep>
       ) : openReview ? (
         <NextStep href={`${base}/review`} cta="Mulai review">
-          {openReview} transaksi menunggu dicek. AI sudah menyiapkan usulan akunnya.
+          {openReview} transaksi perlu dicek. Semuanya sudah punya usulan akun.
         </NextStep>
       ) : (
         <NextStep href={`${base}/close`} cta="Tutup buku">
@@ -77,46 +77,55 @@ export default async function ClientOverview({ params, searchParams }: { params:
         <Stat label="Kontrol tutup buku" value={`${counts.PASS}/${controls.length}`} hint={counts.FAIL ? `${counts.FAIL} gagal` : counts.REVIEW ? `${counts.REVIEW} perlu dicek` : "Semua lolos"} />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      {auto.length === 0 ? (
         <Card>
           <CardHeader>
-            <CardTitle>Saldo kas & bank</CardTitle>
-            <CardDescription>Akhir bulan, 6 bulan terakhir</CardDescription>
+            <CardTitle>Belum ada mutasi</CardTitle>
+            <CardDescription>Grafik kas, pendapatan dan beban muncul setelah rekening koran pertama diimpor.</CardDescription>
           </CardHeader>
-          <CardContent>
-            <CashChart data={chartData} />
-          </CardContent>
         </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Pendapatan vs beban</CardTitle>
-            <CardDescription>Per bulan, dari buku besar</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <RevenueExpenseChart data={chartData} />
-            <Table className="mt-2 text-xs">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="h-7" />
-                  {chartData.map((p) => (
-                    <TableHead key={p.label} className="h-7 text-right">{p.label}</TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(["revenue", "expense"] as const).map((k) => (
-                  <TableRow key={k}>
-                    <TableCell className="py-1 text-muted-foreground">{k === "revenue" ? "Pendapatan" : "Beban"}</TableCell>
-                    {series.map((p) => (
-                      <TableCell key={`${p.month}`} className="num py-1 text-right">{formatRupiahCompact(p[k]).replace("Rp ", "")}</TableCell>
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Saldo kas & bank</CardTitle>
+              <CardDescription>Akhir bulan, 6 bulan terakhir</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <CashChart data={chartData} />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Pendapatan vs beban</CardTitle>
+              <CardDescription>Per bulan, dari buku besar</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <RevenueExpenseChart data={chartData} />
+              <Table className="mt-2 text-xs">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="h-7" />
+                    {chartData.map((p) => (
+                      <TableHead key={p.label} className="h-7 text-right">{p.label}</TableHead>
                     ))}
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      </div>
+                </TableHeader>
+                <TableBody>
+                  {(["revenue", "expense"] as const).map((k) => (
+                    <TableRow key={k}>
+                      <TableCell className="py-1 text-muted-foreground">{k === "revenue" ? "Pendapatan" : "Beban"}</TableCell>
+                      {series.map((p) => (
+                        <TableCell key={`${p.month}`} className="num py-1 text-right">{formatRupiahCompact(p[k]).replace("Rp ", "")}</TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-1">
@@ -142,7 +151,7 @@ export default async function ClientOverview({ params, searchParams }: { params:
         <Card>
           <CardHeader>
             <CardTitle>Pajak bulan ini</CardTitle>
-            <CardDescription>Estimasi dari mutasi — bukan SPT</CardDescription>
+            <CardDescription>Estimasi dari mutasi bank, bukan SPT</CardDescription>
           </CardHeader>
           <CardContent className="space-y-1.5 text-sm">
             {!hasPpn && tax.pph42 === 0n && tax.pph21 === 0n ? (
@@ -171,7 +180,11 @@ export default async function ClientOverview({ params, searchParams }: { params:
             <CardDescription>% mutasi tanpa review manual, per bulan</CardDescription>
           </CardHeader>
           <CardContent>
-            <AutomationChart data={auto.map((a) => ({ label: formatMonthShort(Number(a.ym.slice(0, 4)), Number(a.ym.slice(5))), pct: a.pct }))} />
+            {auto.length ? (
+              <AutomationChart data={auto.map((a) => ({ label: formatMonthShort(Number(a.ym.slice(0, 4)), Number(a.ym.slice(5))), pct: a.pct }))} />
+            ) : (
+              <p className="text-sm text-muted-foreground">Belum ada mutasi yang dikode.</p>
+            )}
           </CardContent>
         </Card>
       </div>

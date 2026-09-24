@@ -83,7 +83,7 @@ export function ClosePanel(props: {
         <Card>
           <CardHeader>
             <CardTitle>Checklist</CardTitle>
-            <CardDescription>Tanggung jawab akuntan — tidak bisa diotomatisasi</CardDescription>
+            <CardDescription>Diperiksa dan dicentang oleh akuntan</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {props.signoffs.map((s) => (
@@ -131,7 +131,7 @@ export function ClosePanel(props: {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Catatan: {ackFor?.title}</DialogTitle>
-            <DialogDescription>{ackFor?.detail}. Jelaskan kenapa ini wajar — catatan ikut tersimpan di arsip tutup buku.</DialogDescription>
+            <DialogDescription>{ackFor?.detail}. Jelaskan kenapa ini wajar. Catatan ikut tersimpan di arsip tutup buku.</DialogDescription>
           </DialogHeader>
           <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="mis. Transfer pinjaman pemilik, bukti di folder klien" rows={3} />
           <DialogFooter>

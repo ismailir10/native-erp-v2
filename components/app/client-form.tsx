@@ -57,11 +57,11 @@ export function ClientForm() {
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <Field>
             <FieldLabel htmlFor="client-name">Nama klien</FieldLabel>
-            <Input id="client-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Grup Maju Bersama" />
+            <Input id="client-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="mis. Grup Maju Bersama" />
           </Field>
           <Field>
             <FieldLabel htmlFor="client-industry">Bidang usaha</FieldLabel>
-            <Input id="client-industry" value={industry} onChange={(e) => setIndustry(e.target.value)} placeholder="distributor bahan bangunan" />
+            <Input id="client-industry" value={industry} onChange={(e) => setIndustry(e.target.value)} placeholder="mis. distributor bahan bangunan" />
             <FieldDescription>Dipakai AI sebagai konteks saat mengusulkan akun.</FieldDescription>
           </Field>
         </CardContent>
@@ -91,11 +91,11 @@ export function ClientForm() {
               </Field>
               <Field className="sm:col-span-2">
                 <FieldLabel htmlFor={`e-name-${i}`}>Nama lengkap</FieldLabel>
-                <Input id={`e-name-${i}`} value={e.name} onChange={(ev) => setEntity(i, { name: ev.target.value })} placeholder={e.kind === "PERORANGAN" ? "Budi Santoso" : "PT Maju Bersama Sejahtera"} />
+                <Input id={`e-name-${i}`} value={e.name} onChange={(ev) => setEntity(i, { name: ev.target.value })} placeholder={e.kind === "PERORANGAN" ? "mis. Budi Santoso" : "mis. PT Maju Bersama Sejahtera"} />
               </Field>
               <Field>
                 <FieldLabel htmlFor={`e-short-${i}`}>Nama singkat</FieldLabel>
-                <Input id={`e-short-${i}`} value={e.shortName} onChange={(ev) => setEntity(i, { shortName: ev.target.value })} placeholder={e.kind === "PERORANGAN" ? "Budi" : "PT Maju"} />
+                <Input id={`e-short-${i}`} value={e.shortName} onChange={(ev) => setEntity(i, { shortName: ev.target.value })} placeholder={e.kind === "PERORANGAN" ? "mis. Budi" : "mis. PT Maju"} />
               </Field>
               <Field className="sm:col-span-2">
                 <FieldLabel htmlFor={`e-npwp-${i}`}>NPWP (opsional)</FieldLabel>
