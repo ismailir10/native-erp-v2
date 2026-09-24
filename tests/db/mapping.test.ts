@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { db, makeGroup, resetDb } from "../helpers";
-import { MockProvider } from "@/lib/ai/provider";
+import { AiAnswerError, MockProvider, type AiProvider } from "@/lib/ai/provider";
 import { acceptMappings, deterministicSuggestion, inferType, MappingError, suggestMappings } from "@/lib/ledger-import/mapping";
 import { COA_TEMPLATE } from "@/lib/coa/template";
 
@@ -67,6 +67,25 @@ describe("suggestMappings + acceptMappings", () => {
     expect(r2.cacheHits).toBe(0); // Gofood already has an AI suggestion — not re-asked
     expect(provider2.calls).toBe(1);
     expect(await db.aiUsage.count()).toBe(2);
+  });
+
+  it("a truncated AI answer is a failed, billed call with a clear note — nothing suggested or cached", async () => {
+    const g = await makeGroup();
+    await sources(g, ["Royalti Artis Terutang"]);
+    const provider: AiProvider = {
+      model: "glm-5.3",
+      classify: async () => ({ answers: [], promptTokens: 0, completionTokens: 0, model: "glm-5.3" }),
+      mapAccounts: async () => {
+        throw new AiAnswerError("Jawaban AI terpotong (batas 1560 token). Coba lagi atau pilih model lain.", 1354, 1560, "glm-5.3");
+      },
+    };
+    const r = await suggestMappings(db, { firmId: g.firm.id, clientId: g.client.id, provider, useAi: true });
+    expect(r).toMatchObject({ calls: 1, aiAnswered: 0 });
+    expect(r.note).toMatch(/^AI gagal: Jawaban AI terpotong/);
+    const usage = await db.aiUsage.findFirstOrThrow();
+    expect([usage.ok, usage.promptTokens, usage.completionTokens, usage.model]).toEqual([false, 1354, 1560, "glm-5.3"]);
+    expect(await db.aiAccountMap.count()).toBe(0);
+    expect(await db.sourceAccount.count({ where: { suggestedBy: "AI" } })).toBe(0);
   });
 
   it("accepts mappings explicitly, creates new accounts under an FS line, refuses special accounts", async () => {

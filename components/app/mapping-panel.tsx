@@ -98,7 +98,7 @@ export function MappingPanel({
             run("ai", async () => {
               const r = await suggestMappingsAction(clientId, true);
               if (!r.ok) return void toast.error(r.error);
-              if (r.note) toast.message(r.note);
+              if (r.note) (r.note.startsWith("AI gagal") ? toast.error : toast.message)(r.note);
               else toast.success(`${r.aiAnswered} saran AI dari ${r.calls} panggilan`);
               router.refresh();
             })

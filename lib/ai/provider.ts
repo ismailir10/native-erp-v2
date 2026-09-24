@@ -21,6 +21,24 @@ export interface AiProvider {
 }
 
 export const AI_BATCH_SIZE = 40;
+
+/**
+ * Output budget per request. Reasoning models (GLM, Kimi, DeepSeek…) spend tokens thinking before the JSON; a tight
+ * budget truncates the answer. Billing is on tokens used, and the monthly budget still caps the total.
+ */
+export const maxTokensFor = (items: number) => Math.min(8000, 1500 + 60 * items);
+
+/** The call was billed but produced no usable answer (truncated or not JSON). Callers record it as a failed call. */
+export class AiAnswerError extends Error {
+  constructor(
+    message: string,
+    readonly promptTokens: number,
+    readonly completionTokens: number,
+    readonly model: string,
+  ) {
+    super(message);
+  }
+}
 const TAX_TAGS = ["PPN_KELUARAN", "PPN_MASUKAN", "PPH_21", "PPH_23", "PPH_4_2", "PPH_25"] as const;
 
 /** Env-only config (caps, base URL, env key/model). Use `resolveAiConfig()` for the effective key + model. */
@@ -70,17 +88,21 @@ export function parseMapResponse(text: string, items: MapItem[], validCodes: Set
   return parseAiResponse(text, items.map((i) => ({ key: i.key, direction: "IN" as const, sample: i.name })), validCodes).map(({ key, accountCode, confidence, reason }) => ({ key, accountCode, confidence, reason }));
 }
 
+/** The `items` array of the model's JSON answer, or null when the text holds no such JSON. */
+export function readItems(text: string): unknown[] | null {
+  const json = text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
+  try {
+    const rows = (JSON.parse(json) as { items?: unknown })?.items;
+    return Array.isArray(rows) ? rows : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Parse + validate the model's JSON. Unknown keys/codes are dropped (prompt-injection safe). */
 export function parseAiResponse(text: string, items: AiItem[], validCodes: Set<string>): AiAnswer[] {
-  const json = text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
-  let data: unknown;
-  try {
-    data = JSON.parse(json);
-  } catch {
-    return [];
-  }
-  const rows = (data as { items?: unknown[] })?.items;
-  if (!Array.isArray(rows)) return [];
+  const rows = readItems(text);
+  if (!rows) return [];
   const keys = new Set(items.map((i) => i.key));
   const out: AiAnswer[] = [];
   for (const r of rows as Record<string, unknown>[]) {
@@ -105,13 +127,13 @@ export class OpenAiCompatibleProvider implements AiProvider {
 
   async classify(items: AiItem[], accounts: { code: string; name: string }[], context: string): Promise<AiResult> {
     const { system, user } = buildPrompt(items, accounts, context);
-    const r = await this.complete(system, user, 60 + items.length * 45);
+    const r = await this.complete(system, user, maxTokensFor(items.length));
     return { ...r, answers: parseAiResponse(r.text, items, new Set(accounts.map((a) => a.code))) };
   }
 
   async mapAccounts(items: MapItem[], accounts: { code: string; name: string; group: string }[], context: string): Promise<MapResult> {
     const { system, user } = buildMapPrompt(items, accounts, context);
-    const r = await this.complete(system, user, 60 + items.length * 40);
+    const r = await this.complete(system, user, maxTokensFor(items.length));
     return { ...r, answers: parseMapResponse(r.text, items, new Set(accounts.map((a) => a.code))) };
   }
 
@@ -132,16 +154,20 @@ export class OpenAiCompatibleProvider implements AiProvider {
     });
     if (!res.ok) throw new Error(`AI ${res.status}: ${(await res.text()).slice(0, 300)}`);
     const body = (await res.json()) as {
-      choices?: { message?: { content?: string } }[];
+      choices?: { message?: { content?: string | null }; finish_reason?: string }[];
       usage?: { prompt_tokens?: number; completion_tokens?: number };
       model?: string;
     };
-    return {
+    const out = {
       text: body.choices?.[0]?.message?.content ?? "",
       promptTokens: body.usage?.prompt_tokens ?? 0,
       completionTokens: body.usage?.completion_tokens ?? 0,
       model: body.model ?? this.cfg.model,
     };
+    const fail = (msg: string) => new AiAnswerError(msg, out.promptTokens, out.completionTokens, out.model);
+    if (body.choices?.[0]?.finish_reason === "length") throw fail(`Jawaban AI terpotong (batas ${maxTokens} token). Coba lagi atau pilih model lain.`);
+    if (!readItems(out.text)) throw fail("Jawaban AI tidak terbaca (bukan JSON). Coba lagi atau pilih model lain.");
+    return out;
   }
 }
 

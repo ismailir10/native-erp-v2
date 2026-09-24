@@ -71,7 +71,7 @@ real-data preview (owner already approved sending account names to the gateway).
 4. Grouping file rates is display only; lookups (`closingRate`, `averageRate`) are unchanged.
 
 ## Tasks
-- [ ] T1 AI budget + truncation/unreadable errors in `lib/ai/provider.ts`, surfaced by `lib/ledger-import/mapping.ts`
+- [x] T1 AI budget + truncation/unreadable errors in `lib/ai/provider.ts`, surfaced by `lib/ledger-import/mapping.ts`
       and `lib/ai/classify.ts` — accept: unit tests with fake fetch (`finish_reason: length`, prose-only answer, good answer)
 - [ ] T2 Zen model compatibility: filter in `fetchModels`, refuse on save, 503 hint (`lib/settings/ai.ts`, provider) —
       accept: unit tests for filter/refusal; non-Zen base URL unaffected
@@ -91,5 +91,9 @@ real-data preview (owner already approved sending account names to the gateway).
 
 ## Implementation
 - Plan: tasks T1–T9 sequential, done inline (small slices touching shared files: provider/mapping/rates; no gain from delegation).
+- T1: `lib/ai/provider.ts` (`maxTokensFor` = 1500 + 60/item cap 8000, `AiAnswerError` on `finish_reason: length` or no
+  `{"items":[…]}` JSON, `readItems`), `lib/ledger-import/mapping.ts` + `lib/ai/classify.ts` record the billed tokens of
+  failed answers, `mapping-panel.tsx` shows "AI gagal…" as an error toast.
 ## Verification
+- T1 gate: lint ✔ · typecheck ✔ · `Test Files 23 passed (23) · Tests 122 passed (122)`
 ## Ship Notes

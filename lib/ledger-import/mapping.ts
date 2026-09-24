@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Db, Tx } from "@/lib/db";
 import type { AccountType, MapMethod } from "@/lib/generated/prisma/enums";
-import { AI_BATCH_SIZE, aiConfig, type AiProvider, type MapItem } from "@/lib/ai/provider";
+import { AI_BATCH_SIZE, AiAnswerError, aiConfig, type AiProvider, type MapItem } from "@/lib/ai/provider";
 import { ACCOUNT_CODES, FS_LINES, type FsLine } from "@/lib/coa/template";
 
 /**
@@ -203,7 +203,11 @@ export async function suggestMappings(db: Db, args: { firmId: string; clientId: 
           }
         } catch (e) {
           note = `AI gagal: ${(e as Error).message.slice(0, 120)}`;
-          await db.aiUsage.create({ data: { firmId: args.firmId, model: args.provider!.model, keysRequested: items.length, cacheHits, calls: 1, promptTokens: 0, completionTokens: 0, ok: false, note } });
+          // A truncated/unreadable answer was still billed: record its tokens.
+          const billed = e instanceof AiAnswerError ? e : null;
+          await db.aiUsage.create({
+            data: { firmId: args.firmId, model: billed?.model ?? args.provider!.model, keysRequested: items.length, cacheHits, calls: 1, promptTokens: billed?.promptTokens ?? 0, completionTokens: billed?.completionTokens ?? 0, ok: false, note },
+          });
         }
       }
       if (!note && queue.length > calls * AI_BATCH_SIZE) note = "Batas panggilan AI per permintaan tercapai. Klik lagi untuk melanjutkan.";
