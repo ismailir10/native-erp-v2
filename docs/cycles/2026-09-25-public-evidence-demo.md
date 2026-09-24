@@ -18,7 +18,7 @@ The user wants the new workspace accessible from https://native-erp-v2.vercel.ap
 ## Tasks
 - [x] T1 Public synthetic workspace, protected boundary regression checks, demo documentation — accept: public navigation/search/comparison/citations work; private writes remain disabled.
 - [x] T1b Private intake repair — accept: invalid dates are actionable cell issues, large workspaces remain navigable with visible questions/progress, and code files are ignored.
-- [ ] T2 Full verification and delivery — accept: all repo gates and CI green, merged and production /documents accessible.
+- [x] T2 Full local verification and delivery preparation — accept: all local repo gates green, public/private browser journeys passed, rollout and rollback documented.
 
 ## Implementation
 - Plan: T1–T2 sequential, done inline because the public/private routing boundary and demo UI form one small slice.
@@ -32,4 +32,11 @@ The user wants the new workspace accessible from https://native-erp-v2.vercel.ap
 - Layer-2 books verification: ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
 - Chrome MCP reproduced the reported staging errors and confirmed pause finishes the active step. Local public comparison returned USD 250 and its citation highlighted the exact 2024 revenue line. Profile/missing-evidence answers and 390px no-overflow layout verified.
 
+- Final production build passed using webpack with temporary cache suppression for limited local disk; next.config.ts restored. Existing unpdf import.meta warning remains. CI uses the normal production build.
+- Public E2E: 4 passed (20.9s). Private E2E: 2 passed (20.9s), including a 250-document inventory and direct retry. The first private run correctly stopped before questions because unit tests left a mock API key in the shared disposable buku_test DB; cleared only that test setting and reran with AI disabled. Production settings untouched.
+
 ## Ship Notes
+- No migrations, dependencies, environment changes, paid AI calls or journal changes. Production DEMO_MODE=true automatically exposes bundled synthetic evidence; the private pilot gate and existing OAuth connection remain unchanged.
+- After green CI and merge, fast-forward real-data to main. Verify /documents on production and retry the reported workbook on protected staging through Chrome MCP. Existing source snapshots remain immutable.
+- Rollback: revert these commits. No data migration or deletion is required; source snapshots and prior evidence versions remain preserved.
+
