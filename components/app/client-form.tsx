@@ -10,28 +10,30 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { addClientAction } from "@/app/actions";
+import { addClientAction, createEvidenceClientAction } from "@/app/actions";
 import { CURRENCIES, CURRENCY_CODES } from "@/lib/fx/currency";
 
-type Kind = "PT" | "CV" | "PERORANGAN";
+import type { NewClientInput } from "@/lib/onboarding";
+
+type Kind = "PT" | "CV" | "BADAN_USAHA_ASING" | "PERORANGAN";
 type Bank = "BCA" | "MANDIRI" | "BRI" | "SMBC" | "GENERIC";
 type BankRow = { bank: Bank; number: string; label: string; isOverdraft: boolean };
 type EntityRow = { name: string; shortName: string; kind: Kind; npwp: string; currency: string; banks: BankRow[] };
 
-const KIND_LABEL: Record<Kind, string> = { PT: "PT", CV: "CV", PERORANGAN: "Perorangan (pemilik)" };
+const KIND_LABEL: Record<Kind, string> = { PT: "PT", CV: "CV", BADAN_USAHA_ASING: "Badan usaha asing", PERORANGAN: "Perorangan (pemilik)" };
 const BANK_LABEL: Record<Bank, string> = { BCA: "BCA", MANDIRI: "Mandiri", BRI: "BRI", SMBC: "SMBC / Jenius", GENERIC: "Bank lain" };
 const newBank = (): BankRow => ({ bank: "BCA", number: "", label: "", isOverdraft: false });
 const newEntity = (kind: Kind): EntityRow => ({ name: "", shortName: "", kind, npwp: "", currency: "IDR", banks: [newBank()] });
 
-export function ClientForm() {
+export function ClientForm({ initial, evidenceIntakeId, onCreated }: { initial?: NewClientInput; evidenceIntakeId?: string; onCreated?: () => void } = {}) {
   const router = useRouter();
-  const [name, setName] = useState("");
-  const [industry, setIndustry] = useState("");
-  const [entities, setEntities] = useState<EntityRow[]>([newEntity("PT")]);
+  const [name, setName] = useState(initial?.name ?? "");
+  const [industry, setIndustry] = useState(initial?.industry ?? "");
+  const [entities, setEntities] = useState<EntityRow[]>(initial?.entities.map(e => ({ ...e, currency: e.currency ?? "IDR", banks: e.banks.map(b => ({ ...b, isOverdraft: b.isOverdraft ?? false })) })) ?? [newEntity("PT")]);
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   // The first entity's name follows the client name until the user types their own (the common case is one PT).
-  const [firstNameTouched, setFirstNameTouched] = useState(false);
+  const [firstNameTouched, setFirstNameTouched] = useState(Boolean(initial?.entities[0]?.name));
 
   const clearError = (...paths: string[]) =>
     setErrors((es) => (paths.some((p) => p in es) ? Object.fromEntries(Object.entries(es).filter(([k]) => !paths.includes(k))) : es));
@@ -48,6 +50,14 @@ export function ClientForm() {
   async function submit() {
     setBusy(true);
     try {
+      if (evidenceIntakeId) {
+        const linked = await createEvidenceClientAction(evidenceIntakeId, { name, industry, entities });
+        if (!linked.ok) return toast.error(linked.error);
+        toast.success(`${name} ditambahkan`);
+        onCreated?.();
+        router.refresh();
+        return;
+      }
       const r = await addClientAction({ name, industry, entities });
       if (!r.ok) {
         if (r.fields) {
@@ -143,7 +153,7 @@ export function ClientForm() {
               <Field>
                 <FieldLabel>Mata uang pembukuan</FieldLabel>
                 <Select value={e.currency} onValueChange={(v) => setEntity(i, { currency: v as string })}>
-                  <SelectTrigger className="w-full" aria-label="Mata uang pembukuan"><SelectValue>{e.currency}</SelectValue></SelectTrigger>
+                  <SelectTrigger className="w-full" aria-label="Mata uang pembukuan"><SelectValue>{e.currency || "Pilih mata uang"}</SelectValue></SelectTrigger>
                   <SelectContent>{CURRENCY_CODES.map((c) => <SelectItem key={c} value={c}>{c} · {CURRENCIES[c].name}</SelectItem>)}</SelectContent>
                 </Select>
                 <FieldError>{err(`entities.${i}.currency`)}</FieldError>
@@ -200,7 +210,7 @@ export function ClientForm() {
 
       <FieldError>{err("entities")}</FieldError>
       <div className="flex flex-wrap items-center gap-2">
-        <Button onClick={submit} disabled={busy}>
+        <Button variant={evidenceIntakeId ? "outline" : "default"} onClick={submit} disabled={busy}>
           {busy ? "Menyimpan…" : "Simpan klien"}
         </Button>
         <Button variant="outline" onClick={() => { setErrors({}); setEntities((es) => [...es, newEntity(es.some((x) => x.kind === "PERORANGAN") ? "PT" : "PERORANGAN")]); }}>

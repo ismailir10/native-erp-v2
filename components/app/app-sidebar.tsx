@@ -54,6 +54,7 @@ import { resetDemoAction } from "@/app/actions";
 /** Order = the monthly close workflow, top to bottom. */
 const CLIENT_NAV = [
   { href: "", label: "Ringkasan", icon: LayoutDashboard },
+  { href: "/documents", label: "Dokumen", icon: FileSpreadsheet },
   { href: "/opening", label: "Saldo Awal", icon: Landmark },
   { href: "/import", label: "Impor Mutasi", icon: Upload },
   { href: "/review", label: "Review", icon: Inbox, badge: true },
@@ -71,11 +72,13 @@ export function AppSidebar({
   clients,
   reviewCounts,
   demoMode,
+  evidenceEnabled = false,
 }: {
   firmName: string;
   clients: { id: string; name: string }[];
   reviewCounts: Record<string, number>;
   demoMode: boolean;
+  evidenceEnabled?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -102,6 +105,7 @@ export function AppSidebar({
                 <span>Beranda</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
+            {evidenceEnabled && <SidebarMenuItem><SidebarMenuButton isActive={pathname.startsWith("/documents")} render={<Link href="/documents" />}><FileSpreadsheet /><span>Dokumen</span></SidebarMenuButton></SidebarMenuItem>}
           </SidebarMenu>
         </SidebarGroup>
         <SidebarGroup>
@@ -120,7 +124,7 @@ export function AppSidebar({
                   {!isActive && reviewCounts[c.id] ? <SidebarMenuBadge className="mr-5">{reviewCounts[c.id]}</SidebarMenuBadge> : null}
                   {isActive && (
                     <SidebarMenuSub>
-                      {CLIENT_NAV.slice(1).map((n) => {
+                      {CLIENT_NAV.slice(1).filter(n => evidenceEnabled || n.href !== "/documents").map((n) => {
                         const href = `${base}${n.href}`;
                         const Icon = n.icon;
                         return (

@@ -357,3 +357,27 @@ export async function discardLedgerDraftAction(clientId: string, importId: strin
     return fail(e);
   }
 }
+
+// Public UI action facade; explicit async exports are required by Next.js.
+import * as evidenceActions from "./evidence-actions";
+import * as googleActions from "./google-actions";
+export async function createEvidenceAction(...args: Parameters<typeof evidenceActions.createEvidenceAction>) { return evidenceActions.createEvidenceAction(...args); }
+export async function loadEvidenceAction(...args: Parameters<typeof evidenceActions.loadEvidenceAction>) { return evidenceActions.loadEvidenceAction(...args); }
+export async function beginEvidenceUploadAction(...args: Parameters<typeof evidenceActions.beginEvidenceUploadAction>) { return evidenceActions.beginEvidenceUploadAction(...args); }
+export async function appendEvidenceUploadAction(...args: Parameters<typeof evidenceActions.appendEvidenceUploadAction>) { return evidenceActions.appendEvidenceUploadAction(...args); }
+export async function finishEvidenceUploadAction(...args: Parameters<typeof evidenceActions.finishEvidenceUploadAction>) { return evidenceActions.finishEvidenceUploadAction(...args); }
+export async function processEvidenceAction(...args: Parameters<typeof evidenceActions.processEvidenceAction>) { return evidenceActions.processEvidenceAction(...args); }
+export async function attachDriveAction(...args: Parameters<typeof evidenceActions.attachDriveAction>) { return evidenceActions.attachDriveAction(...args); }
+export async function includeEvidenceAction(...args: Parameters<typeof evidenceActions.includeEvidenceAction>) { return evidenceActions.includeEvidenceAction(...args); }
+export async function excludeEvidenceAction(...args: Parameters<typeof evidenceActions.excludeEvidenceAction>) { return evidenceActions.excludeEvidenceAction(...args); }
+export async function confirmEvidenceAction(...args: Parameters<typeof evidenceActions.confirmEvidenceAction>) { return evidenceActions.confirmEvidenceAction(...args); }
+export async function decideEvidenceFactAction(...args: Parameters<typeof evidenceActions.decideEvidenceFactAction>) { return evidenceActions.decideEvidenceFactAction(...args); }
+export async function resolveEvidenceConflictAction(...args: Parameters<typeof evidenceActions.resolveEvidenceConflictAction>) { return evidenceActions.resolveEvidenceConflictAction(...args); }
+export async function createEvidenceClientAction(...args: Parameters<typeof evidenceActions.createEvidenceClientAction>) { return evidenceActions.createEvidenceClientAction(...args); }
+export async function linkEvidenceClientAction(...args: Parameters<typeof evidenceActions.linkEvidenceClientAction>) { return evidenceActions.linkEvidenceClientAction(...args); }
+export async function analyzeEvidenceAction(...args: Parameters<typeof evidenceActions.analyzeEvidenceAction>) { return evidenceActions.analyzeEvidenceAction(...args); }
+export async function askEvidenceAction(...args: Parameters<typeof evidenceActions.askEvidenceAction>) { return evidenceActions.askEvidenceAction(...args); }
+export async function prepareEvidenceImportAction(...args: Parameters<typeof evidenceActions.prepareEvidenceImportAction>) { return evidenceActions.prepareEvidenceImportAction(...args); }
+export async function postEvidenceBankAction(...args: Parameters<typeof evidenceActions.postEvidenceBankAction>) { return evidenceActions.postEvidenceBankAction(...args); }
+export async function startGoogleAction(...args: Parameters<typeof googleActions.startGoogleAction>) { return googleActions.startGoogleAction(...args); }
+export async function disconnectGoogleAction(...args: Parameters<typeof googleActions.disconnectGoogleAction>) { return googleActions.disconnectGoogleAction(...args); }

@@ -13,7 +13,8 @@ file to a closed month.
 4. With an AI key set, *unrecognised* lines go to the AI gateway (OpenCode Zen): the merchant key, the first 80 characters
    of the description, and the client's name and business type. Lines matched by transfers, rules or memory are never sent.
    Leave the key empty for rules-only.
-5. PDF passwords are used once to open the file. They're never stored or logged.
+5. The opt-in private [evidence workspace](evidence-workspace.md) can send bounded source passages to AI for explicitly requested context proposals and question planning. This is broader than merchant/account-name classification above; source files and citations remain private.
+6. PDF passwords are used once to open the file. They're never stored or logged.
 
 ## 1. Check the file before importing (no database)
 ```bash

@@ -15,7 +15,7 @@ export class OnboardingError extends Error {
   }
 }
 
-const KINDS = ["PT", "CV", "PERORANGAN"] as const;
+const KINDS = ["PT", "CV", "BADAN_USAHA_ASING", "PERORANGAN"] as const;
 const BANKS = ["BCA", "MANDIRI", "BRI", "SMBC", "GENERIC"] as const;
 const BANK_NAME: Record<(typeof BANKS)[number], string> = { BCA: "BCA", MANDIRI: "Mandiri", BRI: "BRI", SMBC: "SMBC", GENERIC: "Bank" };
 
@@ -59,7 +59,7 @@ export function validateNewClient(input: NewClientInput): ClientSpec {
   if (Object.keys(fields).length) throw new OnboardingError(fields);
 
   // Companies first, then owners — the order every list in the app uses.
-  const rank = { PT: 0, CV: 1, PERORANGAN: 2 } as const;
+  const rank = { PT: 0, CV: 1, BADAN_USAHA_ASING: 2, PERORANGAN: 3 } as const;
   return { name, industry: input.industry.trim(), entities: [...entities].sort((a, b) => rank[a.kind] - rank[b.kind]) };
 }
 

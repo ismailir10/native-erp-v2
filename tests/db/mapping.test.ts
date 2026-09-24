@@ -76,7 +76,7 @@ describe("suggestMappings + acceptMappings", () => {
     // AI answers are cached: a second run makes no call for Gofood; Grabfood's invalid code was dropped and is asked again.
     const provider2 = new MockProvider({});
     const r2 = await suggestMappings(db, { firmId: g.firm.id, clientId: g.client.id, provider: provider2, useAi: true });
-    expect(r2.cacheHits).toBe(0); // Gofood already has an AI suggestion — not re-asked
+    expect(r2.cacheHits).toBe(1); // Gofood suggestion reused only after current model/context cache validation
     expect(provider2.calls).toBe(1);
     expect(await db.aiUsage.count()).toBe(2);
   });

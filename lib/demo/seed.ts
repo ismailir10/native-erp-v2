@@ -4,7 +4,7 @@ import { importStatement } from "@/lib/import/pipeline";
 import { reviewTransaction } from "@/lib/review";
 import { postJournal } from "@/lib/ledger/post";
 import { CLOSE_SIGNOFFS, lockPeriod, runControls } from "@/lib/controls";
-import { MockProvider } from "@/lib/ai/provider";
+import { DEMO_AI_MODEL, MockProvider } from "@/lib/ai/provider";
 import { dateOnly } from "@/lib/format";
 import { merchantKey } from "@/lib/import/normalize";
 import { aiCacheKey } from "@/lib/ai/classify";
@@ -52,7 +52,7 @@ export async function seedDemo(db: Db, opts: { log?: (s: string) => void; liveAi
       }),
     );
     const table = aiTable(sc);
-    const provider = new MockProvider(table, "demo-seed");
+    const provider = new MockProvider(table, DEMO_AI_MODEL);
     const files = statementFiles(sc);
 
     for (const { year, month } of DEMO_MONTHS) {
@@ -97,13 +97,14 @@ export async function seedDemo(db: Db, opts: { log?: (s: string) => void; liveAi
     // or credit. Set DEMO_LIVE_AI=1 (with AI_API_KEY) to leave them uncached and see a real call.
     if (sc.liveUpload && !opts.liveAi) {
       const lu = sc.liveUpload;
+      const chart = (await db.account.findMany({ where: { clientId: client.id }, orderBy: { code: "asc" } })).filter(a => !a.isBank && !a.isSuspense && !a.isRetained).map(a => ({ code: a.code, name: a.name }));
       for (const l of sc.lines.filter((l) => l.bankKey === lu.bankKey && l.ai && l.date.getUTCFullYear() === lu.year && l.date.getUTCMonth() + 1 === lu.month)) {
         const key = merchantKey(l.description);
         const direction = l.amount >= 0n ? "IN" : "OUT";
-        const cacheKey = aiCacheKey(key, direction, client.coaVersion);
+        const cacheKey = aiCacheKey(key, direction, client.coaVersion, { firmId: client.firmId, clientId: client.id, model: DEMO_AI_MODEL, clientName: `${client.name} (${client.industry ?? "umum"})`, accounts: chart, sample: l.description });
         await db.aiSuggestion.upsert({
           where: { cacheKey },
-          create: { cacheKey, merchantKey: key, direction, accountCode: l.ai!.accountCode, confidence: l.ai!.confidence, taxTag: l.ai!.taxTag, reason: l.ai!.reason, model: "demo-seed" },
+          create: { cacheKey, merchantKey: key, direction, accountCode: l.ai!.accountCode, confidence: l.ai!.confidence, taxTag: l.ai!.taxTag, reason: l.ai!.reason, model: DEMO_AI_MODEL },
           update: {},
         });
       }

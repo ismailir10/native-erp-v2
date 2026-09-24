@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import type { Db, Tx } from "@/lib/db";
 import type { AccountType, MapMethod } from "@/lib/generated/prisma/enums";
-import { AI_BATCH_SIZE, AiAnswerError, aiConfig, type AiProvider, type MapItem } from "@/lib/ai/provider";
+import { AI_BATCH_SIZE, ACCOUNT_MAPPING_PROMPT_VERSION, aiConfig, buildMapPrompt, maxTokensFor, type AiProvider, type MapItem } from "@/lib/ai/provider";
+import { AiBudgetError, runBudgetedAi } from "@/lib/ai/budget";
 import { ACCOUNT_CODES, FS_LINES, type FsLine } from "@/lib/coa/template";
 
 /**
@@ -120,8 +121,10 @@ export function deterministicSuggestion(
   return null;
 }
 
-export function aiMapCacheKey(name: string, typeHint: string | null, coaVersion: number) {
-  return createHash("sha1").update(`map|${normName(name)}|${typeHint ?? "-"}|v${coaVersion}`).digest("hex").slice(0, 32);
+export type AccountMapCacheContext = { firmId: string; clientId: string; model: string; clientName: string; accounts: { code: string; name: string; group: string }[]; sourceCode: string };
+export function aiMapCacheKey(name: string, typeHint: string | null, coaVersion: number, scope: AccountMapCacheContext) {
+  const prompt = buildMapPrompt([{ key: "cache-item", code: scope.sourceCode, name: normName(name), typeHint }], [...scope.accounts].sort((a, b) => a.code.localeCompare(b.code)), scope.clientName);
+  return createHash("sha256").update(JSON.stringify(["map", scope.firmId, scope.clientId, coaVersion, scope.model, ACCOUNT_MAPPING_PROMPT_VERSION, prompt])).digest("hex");
 }
 
 const TYPE_LABEL: Record<AccountType, string> = { ASET: "Aset", LIABILITAS: "Liabilitas", EKUITAS: "Ekuitas", PENDAPATAN: "Pendapatan", BEBAN: "Beban" };
@@ -137,7 +140,7 @@ async function mappableAccounts(db: Db | Tx, clientId: string): Promise<ClientAc
  * AI runs outside any transaction, one request per ≤40 accounts, capped by AI_MAX_CALLS_PER_IMPORT and the monthly budget.
  */
 export async function suggestMappings(db: Db, args: { firmId: string; clientId: string; provider: AiProvider | null; useAi: boolean }) {
-  const client = await db.client.findUniqueOrThrow({ where: { id: args.clientId } });
+  const client = await db.client.findUniqueOrThrow({ where: { id: args.clientId, firmId: args.firmId } });
   const accounts = await mappableAccounts(db, args.clientId);
   const sources = await db.sourceAccount.findMany({ where: { clientId: args.clientId }, orderBy: [{ entityId: "asc" }, { code: "asc" }] });
   const byCode = new Map(accounts.map((a) => [a.code, a]));
@@ -153,7 +156,7 @@ export async function suggestMappings(db: Db, args: { firmId: string; clientId: 
     if (sug) {
       deterministic++;
       await db.sourceAccount.update({ where: { id: s.id }, data: { suggestedCode: sug.accountCode, suggestedBy: sug.method, mapConfidence: sug.confidence, mapReason: sug.reason } });
-    } else if (s.suggestedBy !== "AI") leftovers.push(s);
+    } else leftovers.push(s);
   }
 
   let calls = 0;
@@ -161,7 +164,9 @@ export async function suggestMappings(db: Db, args: { firmId: string; clientId: 
   let aiAnswered = 0;
   let note: string | undefined;
   if (args.useAi && leftovers.length) {
-    const keyOf = (s: (typeof leftovers)[number]) => aiMapCacheKey(s.name, s.typeHint ?? inferType(s.code, s.name), client.coaVersion);
+    const chart = accounts.map((a) => ({ code: a.code, name: a.name, group: `${TYPE_LABEL[a.type]} · ${FS_LINES[a.fsLine as FsLine]?.label ?? a.fsLine}` }));
+    const context = `${client.name}${client.industry ? ` (${client.industry})` : ""}`;
+    const keyOf = (s: (typeof leftovers)[number]) => aiMapCacheKey(s.name, s.typeHint ?? inferType(s.code, s.name), client.coaVersion, { ...args, model: args.provider?.model ?? "disabled", clientName: context, accounts: chart, sourceCode: s.code });
     const cached = new Map((await db.aiAccountMap.findMany({ where: { cacheKey: { in: leftovers.map(keyOf) } } })).map((c) => [c.cacheKey, c]));
     const misses: typeof leftovers = [];
     for (const s of leftovers) {
@@ -169,7 +174,10 @@ export async function suggestMappings(db: Db, args: { firmId: string; clientId: 
       if (hit && byCode.has(hit.accountCode)) {
         cacheHits++;
         await db.sourceAccount.update({ where: { id: s.id }, data: { suggestedCode: hit.accountCode, suggestedBy: "AI", mapConfidence: hit.confidence, mapReason: `AI: ${hit.reason}` } });
-      } else misses.push(s);
+      } else {
+        if (s.suggestedBy === "AI") await db.sourceAccount.update({ where: { id: s.id }, data: { suggestedCode: null, suggestedBy: null, mapConfidence: null, mapReason: null } });
+        misses.push(s);
+      }
     }
     // One question per unique (name, type) — the same name in five entities is paid once.
     const unique = new Map<string, (typeof misses)[number]>();
@@ -178,17 +186,14 @@ export async function suggestMappings(db: Db, args: { firmId: string; clientId: 
     if (queue.length && !args.provider) note = "AI tidak aktif: isi kunci di Pengaturan, atau petakan manual.";
     else if (queue.length) {
       const cfg = aiConfig();
-      const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
-      const used = await db.aiUsage.aggregate({ where: { firmId: args.firmId, at: { gte: monthStart } }, _sum: { promptTokens: true, completionTokens: true } });
-      if ((used._sum.promptTokens ?? 0) + (used._sum.completionTokens ?? 0) >= cfg.monthlyTokenBudget) note = "Kuota token AI bulan ini habis";
-      const chart = accounts.map((a) => ({ code: a.code, name: a.name, group: `${TYPE_LABEL[a.type]} · ${FS_LINES[a.fsLine as FsLine]?.label ?? a.fsLine}` }));
       for (let i = 0; !note && i < queue.length && calls < cfg.maxCallsPerImport; i += AI_BATCH_SIZE) {
         const batch = queue.slice(i, i + AI_BATCH_SIZE);
         const items: MapItem[] = batch.map((s, j) => ({ key: `a${j}`, code: s.code, name: s.name, typeHint: s.typeHint ?? inferType(s.code, s.name) }));
-        calls++;
         try {
-          const res = await args.provider!.mapAccounts(items, chart, `${client.name}${client.industry ? ` (${client.industry})` : ""}`);
-          await db.aiUsage.create({ data: { firmId: args.firmId, model: res.model, keysRequested: items.length, cacheHits, calls: 1, promptTokens: res.promptTokens, completionTokens: res.completionTokens, ok: true, note: "pemetaan akun" } });
+          const res = await runBudgetedAi(db, { firmId: args.firmId, scope: `mapping:${args.clientId}`, prompt: buildMapPrompt(items, chart, context), maxCompletionTokens: maxTokensFor(items.length), model: args.provider!.model, keysRequested: items.length, cacheHits, note: "pemetaan akun" }, () => {
+            calls++;
+            return args.provider!.mapAccounts(items, chart, context);
+          });
           for (const a of res.answers) {
             const item = items.find((x) => x.key === a.key);
             // Rule 19: whatever the provider returns, only codes in the client chart survive.
@@ -205,12 +210,7 @@ export async function suggestMappings(db: Db, args: { firmId: string; clientId: 
             aiAnswered += same.length;
           }
         } catch (e) {
-          note = `AI gagal: ${(e as Error).message.slice(0, 120)}`;
-          // A truncated/unreadable answer was still billed: record its tokens.
-          const billed = e instanceof AiAnswerError ? e : null;
-          await db.aiUsage.create({
-            data: { firmId: args.firmId, model: billed?.model ?? args.provider!.model, keysRequested: items.length, cacheHits, calls: 1, promptTokens: billed?.promptTokens ?? 0, completionTokens: billed?.completionTokens ?? 0, ok: false, note },
-          });
+          note = e instanceof AiBudgetError ? e.message : `AI gagal: ${(e as Error).message.slice(0, 120)}`;
         }
       }
       if (!note && queue.length > calls * AI_BATCH_SIZE) note = "Batas panggilan AI per permintaan tercapai. Klik lagi untuk melanjutkan.";
