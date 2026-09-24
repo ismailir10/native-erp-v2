@@ -111,8 +111,10 @@ export class OpenAiCompatibleProvider implements AiProvider {
 /** Offline provider for tests/demo: answers from a fixed key → answer table. */
 export class MockProvider implements AiProvider {
   calls = 0;
-  readonly model = "mock";
-  constructor(private table: Record<string, Omit<AiAnswer, "key">> = {}) {}
+  constructor(
+    private table: Record<string, Omit<AiAnswer, "key">> = {},
+    readonly model = "mock",
+  ) {}
   async classify(items: AiItem[]): Promise<AiResult> {
     this.calls++;
     const answers = items.flatMap((i) => (this.table[i.key] ? [{ key: i.key, ...this.table[i.key] }] : []));

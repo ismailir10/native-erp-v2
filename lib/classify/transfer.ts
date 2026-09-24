@@ -37,18 +37,17 @@ export function matchTransfers(
     result.set(partner.id, { method: "TRANSFER", accountCode: code, taxTag: null, confidence: 0.99, reason, matchedTxId: o.id });
   }
 
-  // Unpaired, but names another own entity → intercompany, counterpart pending import.
+  // Unpaired but hinted: names another group entity → 1190; names its own entity → 1199.
+  // Either way the counterpart is pending import; the clearing/intercompany controls track it.
   for (const i of hinted) {
-    if (result.has(i.id) || i.matched) continue;
-    const other = ownNames.find((e) => e.entityId !== i.entityId && e.names.some((n) => i.description.toUpperCase().includes(n)));
+    if (result.has(i.id) || i.matched || !TRANSFER_HINT.test(i.description)) continue;
+    const d = i.description.toUpperCase();
+    const other = ownNames.find((e) => e.entityId !== i.entityId && e.names.some((n) => d.includes(n)));
+    const self = ownNames.find((e) => e.entityId === i.entityId && e.names.some((n) => d.includes(n)));
     if (other) {
-      result.set(i.id, {
-        method: "TRANSFER",
-        accountCode: ACCOUNT_CODES.INTERCOMPANY,
-        taxTag: null,
-        confidence: 0.92,
-        reason: "Transfer ke/dari entitas grup (pasangan belum diimpor)",
-      });
+      result.set(i.id, { method: "TRANSFER", accountCode: ACCOUNT_CODES.INTERCOMPANY, taxTag: null, confidence: 0.92, reason: "Transfer ke/dari entitas grup (pasangan belum diimpor)" });
+    } else if (self) {
+      result.set(i.id, { method: "TRANSFER", accountCode: ACCOUNT_CODES.CLEARING, taxTag: null, confidence: 0.92, reason: "Transfer antar rekening sendiri (pasangan belum diimpor)" });
     }
   }
   return result;

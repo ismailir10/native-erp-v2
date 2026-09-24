@@ -83,7 +83,8 @@ export async function importStatement(
         })
       ).map((t) => ({ ...t, id: t.id }))
     : [];
-  const ownNames = client.entities.map((e) => ({ entityId: e.id, names: [e.name.toUpperCase(), e.shortName.toUpperCase()] }));
+  // Short names ("PT AND") are too collision-prone for substring matching; use distinctive names only.
+  const ownNames = client.entities.map((e) => ({ entityId: e.id, names: [e.name, e.shortName].map((n) => n.toUpperCase()).filter((n) => n.length >= 8) }));
   const transfers = matchTransfers([...items, ...openCounterparts], ownNames);
 
   const rules = sortRules(await db.rule.findMany({ where: { firmId: client.firmId, OR: [{ clientId: client.id }, { clientId: null }] } }));

@@ -12,3 +12,4 @@ next-env.d.ts
 .env*.local
 data/private/
 .DS_Store
+scripts/_*

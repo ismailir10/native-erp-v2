@@ -12,8 +12,7 @@
     "test:e2e": "playwright test",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
-    "demo:generate": "tsx scripts/demo/generate.ts",
-    "demo:reset": "tsx scripts/demo/seed.ts",
+    "demo:reset": "tsx scripts/seed.ts",
     "verify:books": "tsx scripts/verify-books.ts",
     "ai:smoke": "tsx scripts/ai-smoke.ts"
   },

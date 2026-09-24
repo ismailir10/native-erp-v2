@@ -25,7 +25,7 @@ export function parseBca(text: string): ParsedStatement {
     if (/^No\.? ?rekening/i.test(r[0])) accountNumber = line.split(":")[1]?.replace(/[^\d]/g, "") || null;
     if (/^Periode/i.test(r[0])) period = periodFromText(line);
     if (/^Tanggal Transaksi/i.test(r[0])) headerIdx = i;
-    const total = line.match(/:\s*,?\s*"?([\d.,]+\d)/)?.[1];
+    const total = line.match(/:\s*,?\s*"?(-?[\d.,]+\d)/)?.[1];
     if (/^Saldo Awal/i.test(r[0]) && total) opening = parseRupiah(total);
     if (/^Saldo Akhir/i.test(r[0]) && total) closing = parseRupiah(total);
   });

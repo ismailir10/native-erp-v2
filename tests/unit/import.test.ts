@@ -98,3 +98,20 @@ describe("transfer matcher", () => {
     expect(r.has("f")).toBe(false);
   });
 });
+
+describe("transfer matcher — pending counterpart", () => {
+  it("own-name transfer with no pair yet goes to 1199, other-entity name to 1190", () => {
+    const d = new Date("2026-08-13T00:00:00Z");
+    const items = [
+      { id: "x", entityId: "own", bankAccountId: "bca", date: d, description: "TRSF E-BANKING DB 1308 ANDI WIJAYA KE BRI", merchantKey: "", direction: "OUT" as const, amount: -9_000_000n },
+      { id: "y", entityId: "own", bankAccountId: "bca", date: d, description: "TRSF E-BANKING DB PT UJI SEJAHTERA SETOR MODAL", merchantKey: "", direction: "OUT" as const, amount: -1_000_000n },
+    ];
+    const own = [
+      { entityId: "pt", names: ["PT UJI SEJAHTERA"] },
+      { entityId: "own", names: ["ANDI WIJAYA"] },
+    ];
+    const r = matchTransfers(items, own);
+    expect(r.get("x")?.accountCode).toBe("1199");
+    expect(r.get("y")?.accountCode).toBe("1190");
+  });
+});
