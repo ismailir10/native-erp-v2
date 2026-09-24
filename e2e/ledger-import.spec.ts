@@ -30,7 +30,14 @@ async function ledgerXlsx(): Promise<Buffer> {
 test("ledger import: checks, mapping, post, Kurs, Gabungan in IDR, Akun sumber", async ({ page }) => {
   await page.goto("/clients/new");
   await page.getByLabel("Nama klien").fill("Grup Uji Buku Besar");
-  await page.getByLabel("Nama lengkap").fill("PT Satu Uji");
+  await page.getByLabel("Nama lengkap").click();
+  await page.getByLabel("Nama lengkap").pressSequentially("PT Satu Uji");
+  await expect(page.getByLabel("Nama lengkap")).toHaveValue("PT Satu Uji");
+  await page.getByLabel("Nama klien").focus();
+  await page.getByLabel("Nama lengkap").click();
+  await page.getByLabel("Nama lengkap").press("End");
+  await page.getByLabel("Nama lengkap").pressSequentially(" Baru");
+  await expect(page.getByLabel("Nama lengkap")).toHaveValue("PT Satu Uji Baru");
   await page.getByLabel("Nama singkat").fill("SATU");
   await page.getByRole("button", { name: "Hapus rekening" }).click();
   await expect(page.getByText("Tanpa rekening bank.")).toBeVisible();
