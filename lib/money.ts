@@ -92,6 +92,3 @@ export function splitPpn(gross: bigint): { dpp: bigint; ppn: bigint } {
   const ppn = g - dpp;
   return neg ? { dpp: -dpp, ppn: -ppn } : { dpp, ppn };
 }
-
-export const absBig = (v: bigint) => (v < 0n ? -v : v);
-export const sumBig = (xs: bigint[]) => xs.reduce((a, b) => a + b, 0n);

@@ -1,13 +1,12 @@
-import { CURRENT } from "@/lib/demo/scenario";
 import { periodBounds } from "@/lib/format";
 
 /** URL state shared by client pages: ?period=2026-08&entity=<id>|combined */
 export type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
-export function parsePeriod(v: string | string[] | undefined) {
+export function parsePeriod(v: string | string[] | undefined, fallback: { year: number; month: number }) {
   const m = typeof v === "string" ? v.match(/^(\d{4})-(\d{2})$/) : null;
-  const year = m ? Number(m[1]) : CURRENT.year;
-  const month = m ? Number(m[2]) : CURRENT.month;
+  const year = m ? Number(m[1]) : fallback.year;
+  const month = m ? Number(m[2]) : fallback.month;
   return { year, month, ...periodBounds(year, month), key: `${year}-${String(month).padStart(2, "0")}` };
 }
 

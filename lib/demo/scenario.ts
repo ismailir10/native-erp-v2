@@ -67,7 +67,7 @@ const AI = (accountCode: string, reason: string, confidence = 0.86, taxTag: TaxT
 // 1) Grup Ayam Nusantara — PT (BCA + Mandiri) + owner Budi Santoso (BCA + BRI)
 // =====================================================================================
 function grupAyam(): ClientScenario {
-  const PT = "PT AYAM NUSANTARA DIGITAL";
+  const PT = "PT AYAM NUSANTARA DIGITAL"; // as it appears in bank descriptions
   const OWNER = "BUDI SANTOSO";
   const lines: DemoLine[] = [];
   const peternak = ["H. SLAMET RIYADI", "SITI AMINAH", "KOPERASI TERNAK MAJU", "AGUS PRASETYO", "DEDI KURNIAWAN", "RATNA SARI"];
@@ -245,8 +245,8 @@ function grupAyam(): ClientScenario {
       name: "Grup Ayam Nusantara",
       industry: "agritech peternakan ayam",
       entities: [
-        { name: PT, shortName: "PT Ayam Nusantara", kind: "PT", npwp: "01.234.567.8-015.000", banks: [{ bank: "BCA", number: "8720145566", label: "BCA Giro" }, { bank: "MANDIRI", number: "1370098765432", label: "Mandiri Giro" }] },
-        { name: OWNER, shortName: "Budi (Pemilik)", kind: "PERORANGAN", banks: [{ bank: "BCA", number: "5210887766", label: "BCA Tahapan" }, { bank: "BRI", number: "012301004455509", label: "BRI Simpedes" }] },
+        { name: "PT Ayam Nusantara Digital", shortName: "PT Ayam Nusantara", kind: "PT", npwp: "01.234.567.8-015.000", banks: [{ bank: "BCA", number: "8720145566", label: "BCA Giro" }, { bank: "MANDIRI", number: "1370098765432", label: "Mandiri Giro" }] },
+        { name: "Budi Santoso", shortName: "Budi (Pemilik)", kind: "PERORANGAN", banks: [{ bank: "BCA", number: "5210887766", label: "BCA Tahapan" }, { bank: "BRI", number: "012301004455509", label: "BRI Simpedes" }] },
       ],
       rules: [
         { pattern: "PAKAN JAYA", direction: "OUT", accountCode: "5100", taxTag: "PPN_MASUKAN", priority: 50 },
@@ -307,7 +307,7 @@ function sinarRetail(): ClientScenario {
     spec: {
       name: "CV Sinar Retail",
       industry: "ritel minimarket",
-      entities: [{ name: "CV SINAR RETAIL", shortName: "CV Sinar", kind: "CV", banks: [{ bank: "BCA", number: "3440556677", label: "BCA Giro" }] }],
+      entities: [{ name: "CV Sinar Retail", shortName: "CV Sinar", kind: "CV", banks: [{ bank: "BCA", number: "3440556677", label: "BCA Giro" }] }],
       rules: [{ pattern: "QRIS", direction: "IN", accountCode: "4100", taxTag: null, priority: 50 }],
     },
     banks: { bca: { entity: 0, bank: 0, opening: 145_000_000n } },
@@ -339,7 +339,7 @@ function jasaKreatif(): ClientScenario {
     spec: {
       name: "PT Jasa Kreatif Digital",
       industry: "agensi kreatif",
-      entities: [{ name: "PT JASA KREATIF DIGITAL", shortName: "PT JKD", kind: "PT", banks: [{ bank: "MANDIRI", number: "1570033221100", label: "Mandiri Giro" }] }],
+      entities: [{ name: "PT Jasa Kreatif Digital", shortName: "PT Jasa Kreatif", kind: "PT", banks: [{ bank: "MANDIRI", number: "1570033221100", label: "Mandiri Giro" }] }],
     },
     banks: { mdr: { entity: 0, bank: 0, opening: 320_000_000n } },
     openings: [[{ code: "1130", amount: 140_000_000n }, { code: "3100", amount: -250_000_000n }]],

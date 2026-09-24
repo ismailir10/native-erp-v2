@@ -23,14 +23,27 @@ description: Buku UI standard — Stripe-dashboard look (light canvas, white car
 - Don't block keyboard input on `useTransition` pending when a `router.refresh()` follows; use an explicit busy flag.
 
 ## "Don't make me think"
-1. **Every page says what to do next** — a `NextStep` banner with at most one CTA.
+1. **Every page says what to do next** — a `NextStep` banner: one plain sentence (the instruction itself, no
+   "Langkah berikutnya:" prefix, no icon except the check on completed states) and at most one CTA.
 2. One primary button per view; everything else `outline`/`ghost`.
 3. State lives in the URL (`?period=2026-08&entity=<id>|combined`) so every view is linkable; pickers via `ScopeBar`.
 4. Numbers right-aligned, accounting parentheses for negatives, `–` for zero.
 5. **Every report number is clickable down to its source** (FS line → account → ledger → bank row sheet).
 6. Status = icon + label + colour, never colour alone (`StatusPill`).
 7. Errors say what happened and what to do, in Bahasa (server actions return `{ok:false, error}` — show verbatim).
-8. Layout works at 390px: no horizontal page scroll; tables may scroll inside their card.
+8. Layout works at 390px: no horizontal page scroll. Hide secondary table columns on phones
+   (`hidden md:table-cell`); report comparison columns hide below `sm` (`FsTable`).
+9. Show each fact once. Don't repeat a value in a badge *and* a field (e.g. suggested account lives only in the select).
+10. Problems first: sort FAIL → REVIEW → PASS inside lists; summarise blockers as counts, the detail is already on screen.
+11. No hidden affordances — nothing that only appears on hover. Rows link via their name + a visible chevron.
+12. Empty states say what's true ("Tidak ada transaksi pajak terdeteksi bulan ini"), never a column of dashes.
+13. Companies before individuals (PT/CV, then the owner) everywhere entities are listed.
+
+## No AI-slop
+- No sparkles/magic-wand icons, no gradients-as-decoration, no glassmorphism, no emoji in UI.
+- No hype copy ("makin pintar", "ajaib", "powered by AI"). Label what it is: "Dikode otomatis", "Usulan AI".
+- AI is shown as a small `AI` method badge + a reason + a confidence; low confidence (<70%) is called out in review colour.
+- Hints must be true in both directions ("Naik/Turun …"), never a hard-coded "Naik".
 
 ## Copy (Bahasa)
 - Accountant vocabulary, not developer vocabulary: *Buku Besar, Neraca Saldo, Laba Rugi, Neraca, Tutup Buku,

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { FileUp, Loader2, Sparkles } from "lucide-react";
+import { FileText, FileUp, Loader2 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -110,8 +110,13 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
             </Button>
             {sample && (
               <Button variant="outline" disabled={pending} onClick={() => start(async () => done(await importSampleAction(clientId, sample.bankAccountId)))}>
-                <Sparkles /> Pakai file contoh ({sample.fileName})
+                <FileText /> Pakai file contoh ({sample.fileName})
               </Button>
+            )}
+            {sample && (
+              <a href={`/demo/${sample.fileName}`} download className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
+                atau unduh untuk dicoba tarik-lepas
+              </a>
             )}
           </div>
         </CardContent>

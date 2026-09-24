@@ -127,19 +127,18 @@ export function ReviewQueue({ items, accounts }: { items: ReviewItem[]; accounts
                   {amt > 0n ? "+" : "−"}{formatRupiah(amt < 0n ? -amt : amt)}
                 </div>
               </div>
-              <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md bg-muted/60 px-3 py-2 text-sm">
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
                 <MethodBadge method={i.method} />
-                <span className="font-medium">{i.suggestedCode} {nameOf(i.suggestedCode)}</span>
-                <span className="text-muted-foreground">— {i.reason.replace(/^AI: /, "")}</span>
+                <span>{i.reason.replace(/^AI: /, "")}</span>
                 {i.method === "AI" && (
-                  <span className={cn("num ml-auto text-xs", i.confidence < 0.7 ? "font-medium text-review" : "text-muted-foreground")}>
-                    {i.confidence < 0.7 ? "Keyakinan rendah — cek lagi · " : "keyakinan "}{Math.round(i.confidence * 100)}%
+                  <span className={cn("num text-xs", i.confidence < 0.7 && "font-medium text-review")}>
+                    · {i.confidence < 0.7 ? "keyakinan rendah, cek lagi" : "keyakinan"} {Math.round(i.confidence * 100)}%
                   </span>
                 )}
               </div>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
+              <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
                 <Select value={c.code} onValueChange={(v) => set(i, { code: v as string })}>
-                  <SelectTrigger className="w-72 max-w-full" aria-label="Akun">
+                  <SelectTrigger className="w-80 max-w-full" aria-label="Akun">
                     <SelectValue placeholder="Pilih akun" />
                   </SelectTrigger>
                   <SelectContent>

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowRight, Loader2, Lock, LockOpen, MessageSquare } from "lucide-react";
+import { Loader2, Lock, LockOpen, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,6 +13,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { StatusPill } from "@/components/app/status";
 import { ackControlAction, lockAction, signoffAction, unlockAction } from "@/app/actions";
 import type { Control } from "@/lib/controls";
+
+const ORDER = { FAIL: 0, REVIEW: 1, PASS: 2 } as const;
 
 export function ClosePanel(props: {
   clientId: string;
@@ -51,8 +53,11 @@ export function ClosePanel(props: {
               <CardTitle>{g}</CardTitle>
             </CardHeader>
             <CardContent className="divide-y px-0">
-              {props.controls.filter((c) => c.scope === g).map((c) => (
-                <div key={c.key} className="flex flex-wrap items-center gap-3 px-6 py-3" data-testid={`control-${c.key.split(":")[0]}`}>
+              {props.controls
+                .filter((c) => c.scope === g)
+                .sort((a, b) => ORDER[a.status] - ORDER[b.status])
+                .map((c) => (
+                <div key={c.key} className="flex flex-wrap items-center gap-3 px-6 py-2.5" data-testid={`control-${c.key.split(":")[0]}`}>
                   <StatusPill status={c.status} />
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium">{c.title}</div>
@@ -106,7 +111,7 @@ export function ClosePanel(props: {
           <CardContent className="space-y-3">
             {!props.locked && props.blockers.length > 0 && (
               <ul className="space-y-1 text-sm text-muted-foreground">
-                {props.blockers.map((b) => <li key={b} className="flex gap-2"><ArrowRight className="mt-0.5 size-3.5 shrink-0 text-review" /> {b}</li>)}
+                {props.blockers.map((b) => <li key={b}>• {b}</li>)}
               </ul>
             )}
             {props.locked ? (

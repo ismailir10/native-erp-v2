@@ -53,7 +53,7 @@ test("statement in → reviewed → traceable reports → combined → closed", 
   // 6. Accrual adjustment: August depreciation
   await page.getByRole("link", { name: "Jurnal Penyesuaian" }).click();
   await expect(page.getByRole("heading", { name: "Jurnal Penyesuaian" })).toBeVisible();
-  await expect(page.getByRole("combobox").first()).toContainText("PT AYAM NUSANTARA DIGITAL");
+  await expect(page.getByRole("combobox").first()).toContainText("PT Ayam Nusantara Digital");
   await page.getByRole("button", { name: "Penyusutan" }).click();
   const amounts = page.locator("input[inputmode=numeric]");
   await amounts.nth(0).fill("9.500.000");

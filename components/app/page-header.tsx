@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Lightbulb } from "lucide-react";
+import { ArrowRight, CircleCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
 
@@ -15,21 +15,18 @@ export function PageHeader({ title, description, actions }: { title: string; des
   );
 }
 
-/** "Langkah berikutnya" — every page tells the user the one thing to do next. */
+/** Every page states the one thing to do next, with at most one button. */
 export function NextStep({ children, href, cta, tone = "info" }: { children: React.ReactNode; href?: string; cta?: string; tone?: "info" | "done" }) {
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center gap-3 rounded-lg border px-4 py-3 text-sm",
-        tone === "done" ? "border-pass/20 bg-pass-subtle text-pass" : "border-primary/20 bg-primary-subtle text-foreground",
+        "flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border px-4 py-3 text-sm",
+        tone === "done" ? "border-pass/20 bg-pass-subtle text-pass" : "border-primary/15 bg-primary-subtle text-foreground",
       )}
       data-testid="next-step"
     >
-      <Lightbulb className={cn("size-4 shrink-0", tone === "done" ? "text-pass" : "text-primary")} aria-hidden />
-      <div className="min-w-0 flex-1">
-        <span className="font-medium">Langkah berikutnya: </span>
-        {children}
-      </div>
+      {tone === "done" && <CircleCheck className="size-4 shrink-0" aria-hidden />}
+      <div className="min-w-0 flex-1 font-medium">{children}</div>
       {href && cta && (
         <Link href={href} className={buttonVariants({ size: "sm" })}>
           {cta} <ArrowRight className="size-3.5" />

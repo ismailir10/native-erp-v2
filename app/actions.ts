@@ -47,7 +47,8 @@ export async function importAction(formData: FormData): Promise<Result<{ summary
 /** Demo shortcut: import the held-back statement without hunting for the file. */
 export async function importSampleAction(clientId: string, bankAccountId: string): Promise<Result<{ summary: ImportSummary }>> {
   try {
-    await getClientForFirm(clientId);
+    const client = await getClientForFirm(clientId);
+    if (!client.entities.some((e) => e.bankAccounts.some((b) => b.id === bankAccountId))) return { ok: false, error: "Rekening tidak ditemukan." };
     const f = await liveUploadFile();
     const summary = await importStatement(prisma, { bankAccountId, fileName: f.fileName, data: f.data, provider: defaultProvider() });
     revalidatePath(`/clients/${clientId}`, "layout");
@@ -85,19 +86,21 @@ export async function acceptSimilarAction(bankTxId: string): Promise<Result<{ co
   }
 }
 
-async function periodFor(clientId: string, year: number, month: number) {
+async function periodFor(clientId: string, year: number, month: number, opts: { mustBeOpen?: boolean } = {}) {
   const client = await getClientForFirm(clientId);
-  return prisma.period.upsert({
+  const period = await prisma.period.upsert({
     where: { clientId_year_month: { clientId, year, month } },
     create: { firmId: client.firmId, clientId, year, month },
     update: {},
   });
+  if (opts.mustBeOpen && period.status === "LOCKED") throw new CloseError("Periode sudah ditutup. Buka kembali dulu untuk mengubah.");
+  return period;
 }
 
 export async function ackControlAction(clientId: string, year: number, month: number, controlKey: string, note: string): Promise<Result> {
   try {
     if (note.trim().length < 5) return { ok: false, error: "Tulis catatan singkat (min. 5 karakter)." };
-    const period = await periodFor(clientId, year, month);
+    const period = await periodFor(clientId, year, month, { mustBeOpen: true });
     await prisma.controlAck.upsert({ where: { periodId_controlKey: { periodId: period.id, controlKey } }, create: { periodId: period.id, controlKey, note }, update: { note } });
     revalidatePath(`/clients/${clientId}`, "layout");
     return { ok: true };
@@ -108,7 +111,7 @@ export async function ackControlAction(clientId: string, year: number, month: nu
 
 export async function signoffAction(clientId: string, year: number, month: number, key: string, done: boolean): Promise<Result> {
   try {
-    const period = await periodFor(clientId, year, month);
+    const period = await periodFor(clientId, year, month, { mustBeOpen: true });
     if (done) await prisma.closeSignoff.upsert({ where: { periodId_key: { periodId: period.id, key } }, create: { periodId: period.id, key }, update: {} });
     else await prisma.closeSignoff.deleteMany({ where: { periodId: period.id, key } });
     revalidatePath(`/clients/${clientId}/close`);

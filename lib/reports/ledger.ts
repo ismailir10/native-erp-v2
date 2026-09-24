@@ -160,7 +160,10 @@ export async function balanceSheet(db: Db, scope: Scope, asOf: Date): Promise<Ba
 export type WorksheetRow = { key: string; code: string; name: string; values: bigint[]; elimination: bigint; combined: bigint };
 
 export async function combinedWorksheet(db: Db, clientId: string, asOf: Date) {
-  const entities = await db.entity.findMany({ where: { clientId }, orderBy: { name: "asc" } });
+  // Companies first, individuals (owners) last — how accountants read a group.
+  const entities = (await db.entity.findMany({ where: { clientId }, orderBy: { name: "asc" } })).sort(
+    (a, b) => Number(a.kind === "PERORANGAN") - Number(b.kind === "PERORANGAN"),
+  );
   const perEntity = await Promise.all(entities.map((e) => trialBalance(db, { clientId, entityIds: [e.id] }, asOf)));
   const accounts = perEntity[0]?.map((r) => r.account) ?? [];
   const rows: WorksheetRow[] = [];

@@ -45,6 +45,16 @@ approximations to validate with real files.
   defaulted to the owner instead of the PT; Next 16 `next dev` overwrote AGENTS.md/CLAUDE.md (`agentRules: false`).
 - T10 — `CLAUDE.md`, `.claude/{settings.json,skills/*}`, `docs/*`, `scripts/{session-start.sh,ai-smoke.ts}`, `.github/*`, `README.md`.
 
+- Review pass (post-ship, browser walk + code read):
+  - Code/security: server-action body limit raised to 6 MB (default 1 MB broke the advertised 5 MB upload);
+    sample import validates the bank account belongs to the client; sign-offs/notes rejected on locked periods;
+    default period derived from data (`lib/periods.ts`) instead of the demo module; unknown client → 404; dead code removed.
+  - UI ("don't make me think", no AI slop): banner reduced to one instruction + one button (no lightbulb/label);
+    Sparkles icon removed; review card shows each fact once; problems sorted first and blockers summarised on
+    Tutup Buku; no hover-only links; phone layouts hide secondary columns; tax empty state; truthful Naik/Turun
+    hints; plain chart titles; proper-case entity names; companies before owners; drill-down sheet full width;
+    firm rules folded under client rules. Lessons encoded in `.claude/skills/ui-rules`.
+
 ## Verification
 - Layer 1 `npx vitest run`: `Test Files 5 passed (5) · Tests 28 passed (28)` — incl. full pipeline against Postgres and the seeded demo vs ground truth + live upload (0 AI calls).
 - Layer 2 `npm run verify:books`: `ALL PASS — 997 pemeriksaan saldo cocok dengan ground truth.`
@@ -52,6 +62,8 @@ approximations to validate with real files.
 - `npm run lint` clean · `tsc --noEmit` clean.
 - Manual: screenshots reviewed at 1440px (all pages) and 390px (overview, review) — no horizontal scroll.
 - Palette: dataviz validator on `#0A5CFF,#14B8A6` → ALL CHECKS PASS (teal contrast WARN → values table under the chart).
+- After review pass: lint ✓ · typecheck ✓ · `Tests 28 passed (28)` · build ✓ · `ALL PASS — 997` · Playwright `1 passed (13.2s)` ·
+  Chromium walk of all 15 demo steps with console capture: `ERRORS: none`, controls `Lolos=16 Perlu dicek=0 Gagal=0`.
 - AI provider not exercised live (sandbox blocks `opencode.ai`); covered by fake-fetch unit test. Run `npm run ai:smoke` locally.
 
 ## Ship Notes

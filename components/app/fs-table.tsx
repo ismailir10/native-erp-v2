@@ -1,7 +1,11 @@
+import { Fragment } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Money } from "@/components/app/money";
 import type { FsItem } from "@/lib/reports/ledger";
+
+/** Comparison columns hide on phones so account names stay readable. */
+const HIDE_ON_PHONE = "hidden sm:table-cell";
 
 /** Financial-statement table: section → FS line → accounts (each links to its ledger). */
 export type FsSection = { title?: string; items: FsItem[][]; total?: { label: string; values: bigint[]; strong?: boolean } };
@@ -17,8 +21,8 @@ export function FsTable({ columns, sections, accountHref }: { columns: string[];
       <thead>
         <tr className="border-b text-xs text-muted-foreground">
           <th className="py-2 pl-6 text-left font-medium" />
-          {columns.map((c) => (
-            <th key={c} className="py-2 pr-6 text-right font-medium">{c}</th>
+          {columns.map((c, i) => (
+            <th key={c} className={cn("py-2 pr-6 text-right font-medium", i > 0 && HIDE_ON_PHONE)}>{c}</th>
           ))}
         </tr>
       </thead>
@@ -44,11 +48,11 @@ function SectionRows({ section, keys, accountHref }: { section: FsSection; keys:
         const label = cells.find(Boolean)!.label;
         const accountCodes = [...new Set(cells.flatMap((c) => c?.accounts.map((a) => a.code) ?? []))];
         return (
-          <FragmentRows key={k}>
+          <Fragment key={k}>
             <tr className="border-t border-border/60">
               <td className={cn("py-1.5 pl-6 font-medium", k === "SUSPENSE" && "text-review")}>{label}</td>
               {cells.map((c, i) => (
-                <td key={i} className="py-1.5 pr-6 text-right font-medium"><Money value={c?.amount ?? 0n} /></td>
+                <td key={i} className={cn("py-1.5 pr-6 text-right font-medium", i > 0 && HIDE_ON_PHONE)}><Money value={c?.amount ?? 0n} /></td>
               ))}
             </tr>
             {accountCodes.map((code) => {
@@ -61,26 +65,22 @@ function SectionRows({ section, keys, accountHref }: { section: FsSection; keys:
                     </Link>
                   </td>
                   {cells.map((c, i) => (
-                    <td key={i} className="py-1 pr-6 text-right"><Money value={c?.accounts.find((a) => a.code === code)?.amount ?? 0n} /></td>
+                    <td key={i} className={cn("py-1 pr-6 text-right", i > 0 && HIDE_ON_PHONE)}><Money value={c?.accounts.find((a) => a.code === code)?.amount ?? 0n} /></td>
                   ))}
                 </tr>
               );
             })}
-          </FragmentRows>
+          </Fragment>
         );
       })}
       {section.total && (
         <tr className="border-t-2 border-foreground/15">
           <td className={cn("py-2 pl-6", section.total.strong ? "font-semibold" : "font-medium")}>{section.total.label}</td>
           {section.total.values.map((v, i) => (
-            <td key={i} className="py-2 pr-6 text-right"><Money value={v} strong={section.total!.strong} /></td>
+            <td key={i} className={cn("py-2 pr-6 text-right", i > 0 && HIDE_ON_PHONE)}><Money value={v} strong={section.total!.strong} /></td>
           ))}
         </tr>
       )}
     </>
   );
-}
-
-function FragmentRows({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
 }

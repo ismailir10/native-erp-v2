@@ -20,7 +20,9 @@ export type Control = {
 
 export async function runControls(db: Db, clientId: string, year: number, month: number): Promise<Control[]> {
   const { start, end } = periodBounds(year, month);
-  const entities = await db.entity.findMany({ where: { clientId }, include: { bankAccounts: { include: { account: true } } }, orderBy: { name: "asc" } });
+  const entities = (
+    await db.entity.findMany({ where: { clientId }, include: { bankAccounts: { include: { account: true } } }, orderBy: { name: "asc" } })
+  ).sort((a, b) => Number(a.kind === "PERORANGAN") - Number(b.kind === "PERORANGAN")); // companies first
   const period = await db.period.findUnique({ where: { clientId_year_month: { clientId, year, month } }, include: { acks: true } });
   const acks = new Map(period?.acks.map((a) => [a.controlKey, a.note]) ?? []);
   const controls: Control[] = [];
@@ -101,7 +103,7 @@ export async function runControls(db: Db, clientId: string, year: number, month:
   const open = await db.bankTransaction.count({ where: { bankAccount: { entity: { clientId } }, status: "NEEDS_REVIEW", date: { lte: end } } });
   controls.push({
     key: "suspense",
-    title: "Tidak ada transaksi belum terklasifikasi (1999)",
+    title: "Semua mutasi terklasifikasi (1999)",
     scope: clientScope,
     status: open === 0 ? "PASS" : "REVIEW",
     detail: open === 0 ? "Semua mutasi sudah diklasifikasi" : `${open} transaksi menunggu review`,

@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { getCurrentFirm } from "@/lib/tenant";
 import { automationByMonth, clientStatuses, STATE_LABEL } from "@/lib/queries";
 import { formatDate, formatPeriod } from "@/lib/format";
-import { CURRENT } from "@/lib/demo/scenario";
+import { workingMonth } from "@/lib/periods";
+import { prisma } from "@/lib/db";
 import { NextStep, PageHeader, Stat } from "@/components/app/page-header";
 import { StatusPill } from "@/components/app/status";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -11,7 +12,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 export default async function HomePage() {
   const firm = await getCurrentFirm();
-  const { year, month } = CURRENT;
+  const clientIds = (await prisma.client.findMany({ where: { firmId: firm.id }, select: { id: true } })).map((c) => c.id);
+  const { year, month } = await workingMonth(clientIds);
   const order = { FAIL: 0, WAITING: 1, REVIEW: 2, ACK: 3, READY: 4, LOCKED: 5 } as const;
   const rows = (await clientStatuses(firm.id, year, month)).sort((a, b) => order[a.state] - order[b.state]);
   const auto = await automationByMonth(rows.map((r) => r.client.id));
@@ -38,10 +40,10 @@ export default async function HomePage() {
         <NextStep tone="done">Semua klien sudah tutup buku {formatPeriod(year, month)}.</NextStep>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <Stat label="Klien selesai tutup buku" value={`${locked} / ${rows.length}`} hint={formatPeriod(year, month)} />
         <Stat label="Transaksi perlu review" value={totalReview} hint="Semua klien" />
-        <Stat label="Dikode otomatis bulan ini" value={`${current?.pct ?? 0}%`} hint={first ? `Naik dari ${first.pct}% di bulan pertama` : undefined} />
+        <Stat label="Dikode otomatis bulan ini" value={`${current?.pct ?? 0}%`} hint={first && current && first.ym !== current.ym ? `${current.pct >= first.pct ? "Naik" : "Turun"} dari ${first.pct}% di bulan pertama` : undefined} />
         <Stat label="Mutasi diproses bulan ini" value={current?.total ?? 0} hint="Baris rekening koran" />
       </div>
 
@@ -55,33 +57,33 @@ export default async function HomePage() {
             <TableHeader>
               <TableRow>
                 <TableHead className="pl-6">Klien</TableHead>
-                <TableHead>Entitas</TableHead>
+                <TableHead className="hidden md:table-cell">Entitas</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right">Perlu review</TableHead>
-                <TableHead>Impor terakhir</TableHead>
-                <TableHead className="pr-6" />
+                <TableHead className="hidden text-right sm:table-cell">Perlu review</TableHead>
+                <TableHead className="hidden md:table-cell">Impor terakhir</TableHead>
+                <TableHead className="w-8 pr-4" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.map((r) => {
                 const s = STATE_LABEL[r.state];
                 return (
-                  <TableRow key={r.client.id} className="group">
+                  <TableRow key={r.client.id}>
                     <TableCell className="pl-6">
                       <Link href={`/clients/${r.client.id}`} className="font-medium hover:text-primary">
                         {r.client.name}
                       </Link>
                       <div className="text-xs text-muted-foreground">{r.client.industry}</div>
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{r.client.entities.map((e) => e.shortName).join(", ")}</TableCell>
+                    <TableCell className="hidden text-muted-foreground md:table-cell">{r.client.entities.map((e) => e.shortName).join(", ")}</TableCell>
                     <TableCell>
                       <StatusPill status={s.status} label={s.label} />
                     </TableCell>
-                    <TableCell className="num text-right">{r.openReview || "–"}</TableCell>
-                    <TableCell className="text-muted-foreground">{r.lastImport ? formatDate(r.lastImport.createdAt) : "–"}</TableCell>
-                    <TableCell className="pr-6 text-right">
-                      <Link href={`/clients/${r.client.id}`} className="inline-flex items-center gap-1 text-sm font-medium text-primary opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100">
-                        Buka <ArrowRight className="size-3.5" />
+                    <TableCell className="num hidden text-right sm:table-cell">{r.openReview || "–"}</TableCell>
+                    <TableCell className="hidden text-muted-foreground md:table-cell">{r.lastImport ? formatDate(r.lastImport.createdAt) : "–"}</TableCell>
+                    <TableCell className="pr-4 text-right">
+                      <Link href={`/clients/${r.client.id}`} aria-label={`Buka ${r.client.name}`} className="inline-flex text-muted-foreground hover:text-primary">
+                        <ChevronRight className="size-4" />
                       </Link>
                     </TableCell>
                   </TableRow>

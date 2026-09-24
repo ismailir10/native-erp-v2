@@ -8,6 +8,8 @@ import { formatMonthShort } from "@/lib/format";
 import { PageHeader, Stat } from "@/components/app/page-header";
 import { StatusPill } from "@/components/app/status";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ChevronRight } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export default async function SettingsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
@@ -20,6 +22,8 @@ export default async function SettingsPage({ params, searchParams }: { params: P
     prisma.aiSuggestion.count(),
   ]);
   const accounts = new Map((await prisma.account.findMany({ where: { clientId: client.id } })).map((a) => [a.code, a.name]));
+  const clientRules = rules.filter((r) => r.clientId);
+  const firmRules = rules.filter((r) => !r.clientId);
   const cfg = aiConfig();
   const live = Boolean(cfg.apiKey && cfg.model);
   const lastMonth = auto[auto.length - 1];
@@ -47,25 +51,21 @@ export default async function SettingsPage({ params, searchParams }: { params: P
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Aturan</CardTitle>
-            <CardDescription>Aturan klien menang atas aturan kantor. Buat dari halaman Review dengan “Selalu gunakan akun ini”.</CardDescription>
+            <CardTitle>Aturan klien</CardTitle>
+            <CardDescription>Menang atas aturan kantor. Tambah dari halaman Review dengan “Selalu gunakan akun ini”.</CardDescription>
           </CardHeader>
           <CardContent className="px-0">
-            <Table>
-              <TableHeader>
-                <TableRow><TableHead className="pl-6">Jika keterangan mengandung</TableHead><TableHead>Arah</TableHead><TableHead>Akun</TableHead><TableHead className="pr-6">Berlaku</TableHead></TableRow>
-              </TableHeader>
-              <TableBody>
-                {rules.map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell className="pl-6 font-mono text-xs">{r.pattern}</TableCell>
-                    <TableCell className="text-muted-foreground">{r.direction === "IN" ? "Masuk" : r.direction === "OUT" ? "Keluar" : "Semua"}</TableCell>
-                    <TableCell>{r.accountCode} {accounts.get(r.accountCode)}{r.taxTag && <span className="text-xs text-muted-foreground"> · {TAX_TAG_LABEL[r.taxTag]}</span>}</TableCell>
-                    <TableCell className="pr-6 text-muted-foreground">{r.clientId ? (r.source === "USER" ? "Klien (dibuat reviewer)" : "Klien") : "Semua klien"}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <RuleTable rules={clientRules} accounts={accounts} />
+            <Collapsible className="border-t">
+              <CollapsibleTrigger className="group flex w-full items-center gap-1 px-6 py-3 text-left text-sm font-medium text-primary hover:underline">
+                <ChevronRight className="size-4 transition-transform group-data-[panel-open]:rotate-90" aria-hidden />
+                Aturan kantor ({firmRules.length})
+                <span className="font-normal text-muted-foreground">· berlaku untuk semua klien</span>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <RuleTable rules={firmRules} accounts={accounts} />
+              </CollapsibleContent>
+            </Collapsible>
           </CardContent>
         </Card>
         <Card>
@@ -81,16 +81,37 @@ export default async function SettingsPage({ params, searchParams }: { params: P
               <TableBody>
                 {memories.map((m) => (
                   <TableRow key={m.id}>
-                    <TableCell className="pl-6 font-mono text-xs">{m.merchantKey}</TableCell>
-                    <TableCell>{m.accountCode} {accounts.get(m.accountCode)}</TableCell>
+                    <TableCell className="pl-6 font-mono text-xs whitespace-normal">{m.merchantKey}</TableCell>
+                    <TableCell className="whitespace-normal">{m.accountCode} {accounts.get(m.accountCode)}</TableCell>
                     <TableCell className="num pr-6 text-right">{m.hits}×</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
+            {memories.length === 0 && <p className="px-6 py-4 text-sm text-muted-foreground">Belum ada. Memori terisi saat Anda mereview transaksi.</p>}
           </CardContent>
         </Card>
       </div>
     </div>
+  );
+}
+
+function RuleTable({ rules, accounts }: { rules: { id: string; pattern: string; direction: string | null; accountCode: string; taxTag: keyof typeof TAX_TAG_LABEL | null; source: string }[]; accounts: Map<string, string> }) {
+  if (rules.length === 0) return <p className="px-6 py-4 text-sm text-muted-foreground">Belum ada aturan khusus untuk klien ini.</p>;
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow><TableHead className="pl-6">Keterangan mengandung</TableHead><TableHead>Arah</TableHead><TableHead className="pr-6">Akun</TableHead></TableRow>
+      </TableHeader>
+      <TableBody>
+        {rules.map((r) => (
+          <TableRow key={r.id}>
+            <TableCell className="pl-6 font-mono text-xs whitespace-normal">{r.pattern}{r.source === "USER" && <span className="ml-2 font-sans text-muted-foreground">(dari review)</span>}</TableCell>
+            <TableCell className="text-muted-foreground">{r.direction === "IN" ? "Masuk" : r.direction === "OUT" ? "Keluar" : "Semua"}</TableCell>
+            <TableCell className="pr-6 whitespace-normal">{r.accountCode} {accounts.get(r.accountCode)}{r.taxTag && <span className="text-xs text-muted-foreground"> · {TAX_TAG_LABEL[r.taxTag]}</span>}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   );
 }

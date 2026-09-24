@@ -36,6 +36,7 @@ export default async function ClientOverview({ params, searchParams }: { params:
   const missing = controls.filter((c) => c.key.startsWith("bank:") && c.detail.includes("belum diimpor"));
   const q = { period: period.key, entity: scope.value };
   const locked = periodRow?.status === "LOCKED";
+  const hasPpn = tax.ppnKeluaran !== 0n || tax.ppnMasukan !== 0n;
 
   return (
     <div className="space-y-6">
@@ -61,8 +62,8 @@ export default async function ClientOverview({ params, searchParams }: { params:
         </NextStep>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Saldo kas & bank" value={formatRupiahCompact(last.cash)} hint={prev ? `${last.cash >= prev.cash ? "▲" : "▼"} ${formatRupiahCompact(last.cash - prev.cash)} dari bulan lalu` : undefined} />
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        <Stat label="Saldo kas & bank" value={formatRupiahCompact(last.cash)} hint={prev ? `${last.cash >= prev.cash ? "Naik" : "Turun"} ${formatRupiahCompact(last.cash >= prev.cash ? last.cash - prev.cash : prev.cash - last.cash)} dari bulan lalu` : undefined} />
         <Stat label={`Pendapatan ${formatPeriod(period.year, period.month)}`} value={formatRupiahCompact(is.totals.revenue)} hint="Tanpa PPN" />
         <Stat label="Laba bersih bulan ini" value={formatRupiahCompact(is.totals.netProfit)} hint={is.totals.revenue ? `Margin ${Math.round((Number(is.totals.netProfit) / Number(is.totals.revenue)) * 100)}%` : undefined} />
         <Stat label="Kontrol tutup buku" value={`${counts.PASS}/${controls.length}`} hint={counts.FAIL ? `${counts.FAIL} gagal` : counts.REVIEW ? `${counts.REVIEW} perlu dicek` : "Semua lolos"} />
@@ -136,24 +137,30 @@ export default async function ClientOverview({ params, searchParams }: { params:
             <CardDescription>Estimasi dari mutasi — bukan SPT</CardDescription>
           </CardHeader>
           <CardContent className="space-y-1.5 text-sm">
-            {[
-              ["PPN Keluaran", tax.ppnKeluaran],
-              ["PPN Masukan", tax.ppnMasukan],
-            ].map(([l, v]) => (
-              <div key={l as string} className="flex justify-between"><span className="text-muted-foreground">{l as string}</span><Money value={v as bigint} /></div>
-            ))}
-            <div className="flex justify-between border-t pt-1.5 font-medium">
-              <span>PPN {tax.ppnNet >= 0n ? "kurang bayar" : "lebih bayar"}</span>
-              <Money value={tax.ppnNet < 0n ? -tax.ppnNet : tax.ppnNet} strong />
-            </div>
-            <div className="flex justify-between pt-2"><span className="text-muted-foreground">PPh 4(2) final atas bunga</span><Money value={tax.pph42} /></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">PPh 21 disetor</span><Money value={tax.pph21} /></div>
+            {!hasPpn && tax.pph42 === 0n && tax.pph21 === 0n ? (
+              <p className="text-muted-foreground">Tidak ada transaksi pajak terdeteksi bulan ini.</p>
+            ) : (
+              <>
+                {hasPpn && (
+                  <>
+                    <Row label="PPN Keluaran" value={tax.ppnKeluaran} />
+                    <Row label="PPN Masukan" value={tax.ppnMasukan} />
+                    <div className="flex justify-between border-t pt-1.5 font-medium">
+                      <span>PPN {tax.ppnNet >= 0n ? "kurang bayar" : "lebih bayar"}</span>
+                      <Money value={tax.ppnNet < 0n ? -tax.ppnNet : tax.ppnNet} strong />
+                    </div>
+                  </>
+                )}
+                {tax.pph42 !== 0n && <Row label="PPh 4(2) final atas bunga" value={tax.pph42} className={hasPpn ? "pt-2" : ""} />}
+                {tax.pph21 !== 0n && <Row label="PPh 21 disetor" value={tax.pph21} />}
+              </>
+            )}
           </CardContent>
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>Makin pintar tiap bulan</CardTitle>
-            <CardDescription>% mutasi dikode tanpa sentuhan manusia</CardDescription>
+            <CardTitle>Dikode otomatis</CardTitle>
+            <CardDescription>% mutasi tanpa review manual, per bulan</CardDescription>
           </CardHeader>
           <CardContent>
             <AutomationChart data={auto.map((a) => ({ label: formatMonthShort(Number(a.ym.slice(0, 4)), Number(a.ym.slice(5))), pct: a.pct }))} />
@@ -163,6 +170,15 @@ export default async function ClientOverview({ params, searchParams }: { params:
       <p className="text-xs text-muted-foreground">
         Laporan disusun dari mutasi bank (basis kas) + jurnal penyesuaian. <Link className="text-primary hover:underline" href={withParams(`${base}/reports`, q)}>Lihat laporan keuangan →</Link>
       </p>
+    </div>
+  );
+}
+
+function Row({ label, value, className }: { label: string; value: bigint; className?: string }) {
+  return (
+    <div className={`flex justify-between ${className ?? ""}`}>
+      <span className="text-muted-foreground">{label}</span>
+      <Money value={value} />
     </div>
   );
 }

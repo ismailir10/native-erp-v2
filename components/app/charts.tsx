@@ -43,7 +43,7 @@ export function RevenueExpenseChart({ data }: { data: Point[] }) {
         <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} />
         <YAxis tickLine={false} axisLine={false} width={70} tickFormatter={rp} />
         <ChartTooltip content={<ChartTooltipContent formatter={(v, n) => `${config[n as "revenue" | "expense"]?.label ?? n}: ${rp(Number(v))}`} />} />
-        <ChartLegend content={<ChartLegendContent />} />
+        <ChartLegend content={<ChartLegendContent />} itemSorter={(item) => (item.dataKey === "revenue" ? 0 : 1)} />
         <Bar isAnimationActive={false} dataKey="revenue" fill="var(--color-revenue)" radius={[4, 4, 0, 0]} maxBarSize={28} />
         <Bar isAnimationActive={false} dataKey="expense" fill="var(--color-expense)" radius={[4, 4, 0, 0]} maxBarSize={28} />
       </BarChart>

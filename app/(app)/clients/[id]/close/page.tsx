@@ -13,11 +13,12 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
   const p = await prisma.period.findUnique({ where: { clientId_year_month: { clientId: client.id, year: period.year, month: period.month } }, include: { signoffs: true } });
   const done = p?.signoffs.map((s) => s.key) ?? [];
   const r = closeReadiness(controls, done);
+  // One line per kind of blocker, not one per control — the list on the left already has the detail.
   const blockers = [
-    ...r.fails.map((c) => `Perbaiki: ${c.title} (${c.scope})`),
-    ...r.unacked.map((c) => `Cek & beri catatan: ${c.title} (${c.scope})`),
-    ...r.missing.map((s) => `Centang: ${s.label}`),
-  ];
+    r.fails.length ? `${r.fails.length} kontrol gagal — perbaiki dulu` : "",
+    r.unacked.length ? `${r.unacked.length} kontrol perlu dicek dan diberi catatan` : "",
+    r.missing.length ? `${r.missing.length} checklist belum dicentang` : "",
+  ].filter(Boolean);
   const label = formatPeriod(period.year, period.month);
   const open = controls.find((c) => c.key === "suspense" && c.status === "REVIEW");
   const missing = controls.find((c) => c.key.startsWith("bank:") && c.detail.includes("belum diimpor"));
@@ -31,9 +32,11 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
       ) : missing ? (
         <NextStep href={`${base}/import`} cta="Impor mutasi">{missing.title.replace("Rekonsiliasi", "Mutasi")} belum diimpor — beberapa kontrol akan lolos otomatis setelah diimpor.</NextStep>
       ) : open ? (
-        <NextStep href={`${base}/review`} cta="Review">{open.detail}.</NextStep>
-      ) : blockers.length ? (
-        <NextStep>{blockers[0]}</NextStep>
+        <NextStep href={`${base}/review`} cta="Mulai review">{open.detail}.</NextStep>
+      ) : r.unacked.length ? (
+        <NextStep>Cek kontrol yang ditandai “Perlu dicek”, lalu beri catatan kenapa wajar.</NextStep>
+      ) : r.missing.length ? (
+        <NextStep>Centang checklist di kanan setelah Anda memeriksanya.</NextStep>
       ) : (
         <NextStep>Semua kontrol lolos dan checklist lengkap. Tutup buku {label}.</NextStep>
       )}
