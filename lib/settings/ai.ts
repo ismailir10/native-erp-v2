@@ -1,5 +1,5 @@
 import type { Db, Tx } from "@/lib/db";
-import { aiConfig } from "@/lib/ai/provider";
+import { aiConfig, OpenAiCompatibleProvider, type AiProvider } from "@/lib/ai/provider";
 import { decryptSecret, encryptSecret } from "@/lib/settings/secret";
 
 /**
@@ -63,4 +63,10 @@ export async function saveAiSettings(db: Db, input: { apiKey?: string; model?: s
 
 export async function clearAiKey(db: Db) {
   await db.appSetting.deleteMany({ where: { key: AI_KEY } });
+}
+
+/** The provider imports use: null (rules-only) unless both a key and a model are configured. */
+export async function resolveProvider(db: Reader): Promise<AiProvider | null> {
+  const cfg = await resolveAiConfig(db);
+  return cfg.apiKey && cfg.model ? new OpenAiCompatibleProvider(cfg) : null;
 }

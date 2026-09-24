@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { getClientForFirm } from "@/lib/tenant";
 import { importStatement, type ImportSummary } from "@/lib/import/pipeline";
-import { defaultProvider } from "@/lib/ai/provider";
+import { resolveProvider } from "@/lib/settings/ai";
 import { acceptSimilar, reviewTransaction } from "@/lib/review";
 import { CloseError, lockPeriod } from "@/lib/controls";
 import { LedgerError, postJournal } from "@/lib/ledger/post";
@@ -36,7 +36,7 @@ export async function importAction(formData: FormData): Promise<Result<{ summary
     if (!client.entities.some((e) => e.bankAccounts.some((b) => b.id === bankAccountId))) return { ok: false, error: "Pilih rekening bank dulu." };
     if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Pilih file mutasi (CSV atau XLSX)." };
     if (file.size > MAX_UPLOAD) return { ok: false, error: "File terlalu besar (maks. 5 MB)." };
-    const summary = await importStatement(prisma, { bankAccountId, fileName: file.name, data: Buffer.from(await file.arrayBuffer()), provider: defaultProvider() });
+    const summary = await importStatement(prisma, { bankAccountId, fileName: file.name, data: Buffer.from(await file.arrayBuffer()), provider: await resolveProvider(prisma) });
     revalidatePath(`/clients/${clientId}`, "layout");
     return { ok: true, summary };
   } catch (e) {
@@ -50,7 +50,7 @@ export async function importSampleAction(clientId: string, bankAccountId: string
     const client = await getClientForFirm(clientId);
     if (!client.entities.some((e) => e.bankAccounts.some((b) => b.id === bankAccountId))) return { ok: false, error: "Rekening tidak ditemukan." };
     const f = await liveUploadFile();
-    const summary = await importStatement(prisma, { bankAccountId, fileName: f.fileName, data: f.data, provider: defaultProvider() });
+    const summary = await importStatement(prisma, { bankAccountId, fileName: f.fileName, data: f.data, provider: await resolveProvider(prisma) });
     revalidatePath(`/clients/${clientId}`, "layout");
     return { ok: true, summary };
   } catch (e) {

@@ -1,7 +1,8 @@
+import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { loadClientPage } from "@/lib/client-page";
 import type { SearchParams } from "@/lib/scope";
-import { aiConfig } from "@/lib/ai/provider";
+import { resolveAiConfig } from "@/lib/settings/ai";
 import { automationByMonth } from "@/lib/queries";
 import { TAX_TAG_LABEL } from "@/lib/coa/template";
 import { formatMonthShort } from "@/lib/format";
@@ -14,17 +15,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 export default async function SettingsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client } = await loadClientPage(params, searchParams);
-  const [rules, memories, auto, usage, cacheSize] = await Promise.all([
+  const [rules, memories, auto, usage, cacheSize, cfg] = await Promise.all([
     prisma.rule.findMany({ where: { firmId: client.firmId, OR: [{ clientId: client.id }, { clientId: null }] }, orderBy: [{ clientId: "asc" }, { priority: "asc" }] }),
     prisma.memory.findMany({ where: { clientId: client.id }, orderBy: { hits: "desc" }, take: 15 }),
     automationByMonth([client.id]),
     prisma.aiUsage.aggregate({ where: { firmId: client.firmId }, _sum: { calls: true, promptTokens: true, completionTokens: true, keysRequested: true } }),
     prisma.aiSuggestion.count(),
+    resolveAiConfig(prisma),
   ]);
   const accounts = new Map((await prisma.account.findMany({ where: { clientId: client.id } })).map((a) => [a.code, a.name]));
   const clientRules = rules.filter((r) => r.clientId);
   const firmRules = rules.filter((r) => !r.clientId);
-  const cfg = aiConfig();
   const live = Boolean(cfg.apiKey && cfg.model);
   const lastMonth = auto[auto.length - 1];
   const aiLines = auto.reduce((s, a) => s + a.ai, 0);
@@ -34,7 +35,7 @@ export default async function SettingsPage({ params, searchParams }: { params: P
     <div className="space-y-6">
       <PageHeader title="Aturan & AI" description="Urutan klasifikasi: transfer → aturan → memori → AI. AI hanya dipakai untuk yang belum pernah dilihat." />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Status AI" value={<StatusPill status={live ? "PASS" : "REVIEW"} label={live ? "Aktif" : "Mode aturan saja"} />} hint={live ? `${cfg.model} via ${new URL(cfg.baseUrl).host}` : "Isi AI_API_KEY & AI_MODEL untuk mengaktifkan"} />
+        <Stat label="Status AI" value={<StatusPill status={live ? "PASS" : "REVIEW"} label={live ? "Aktif" : "Mode aturan saja"} />} hint={live ? `${cfg.model} via ${new URL(cfg.baseUrl).host}` : <>Atur kunci & model di <Link href="/settings" className="text-primary hover:underline">Pengaturan</Link></>} />
         <Stat label="Dikode tanpa AI" value={`${total ? Math.round(((total - aiLines) / total) * 100) : 0}%`} hint={`${total} baris sejak awal`} />
         <Stat label="Panggilan AI (total)" value={usage._sum.calls ?? 0} hint={`${((usage._sum.promptTokens ?? 0) + (usage._sum.completionTokens ?? 0)).toLocaleString("id-ID")} token`} />
         <Stat label="Jawaban AI tersimpan" value={cacheSize} hint="Tidak pernah dibayar dua kali" />

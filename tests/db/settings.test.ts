@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db, resetDb } from "../helpers";
 import { decryptSecret, encryptSecret, passcodeMatches } from "@/lib/settings/secret";
-import { AI_KEY, clearAiKey, resolveAiConfig, saveAiSettings } from "@/lib/settings/ai";
+import { AI_KEY, clearAiKey, resolveAiConfig, resolveProvider, saveAiSettings } from "@/lib/settings/ai";
 import { truncateAll } from "@/lib/demo/seed";
 
 const SECRET = "test-secret-0123456789abcdefghijklmnop";
@@ -79,5 +79,12 @@ describe("AI settings resolution", () => {
     await saveAiSettings(db, { apiKey: "db-key-1234", model: "db-model" });
     await truncateAll(db);
     expect((await resolveAiConfig(db)).apiKey).toBe("db-key-1234");
+  });
+
+  it("builds the import provider only when key and model are both set", async () => {
+    await saveAiSettings(db, { apiKey: "db-key-1234" });
+    expect(await resolveProvider(db)).toBeNull();
+    await saveAiSettings(db, { model: "db-model" });
+    expect((await resolveProvider(db))?.model).toBe("db-model");
   });
 });

@@ -17,6 +17,7 @@ export interface AiProvider {
 export const AI_BATCH_SIZE = 40;
 const TAX_TAGS = ["PPN_KELUARAN", "PPN_MASUKAN", "PPH_21", "PPH_23", "PPH_4_2", "PPH_25"] as const;
 
+/** Env-only config (caps, base URL, env key/model). Use `resolveAiConfig()` for the effective key + model. */
 export function aiConfig() {
   return {
     baseUrl: (process.env.AI_BASE_URL || "https://opencode.ai/zen/v1").replace(/\/$/, ""),
@@ -120,10 +121,4 @@ export class MockProvider implements AiProvider {
     const answers = items.flatMap((i) => (this.table[i.key] ? [{ key: i.key, ...this.table[i.key] }] : []));
     return { answers, promptTokens: 20 * items.length, completionTokens: 15 * answers.length, model: this.model };
   }
-}
-
-export function defaultProvider(): AiProvider | null {
-  const cfg = aiConfig();
-  if (!cfg.apiKey || !cfg.model) return null;
-  return new OpenAiCompatibleProvider(cfg);
 }
