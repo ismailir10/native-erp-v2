@@ -28,6 +28,25 @@ export const AI_BATCH_SIZE = 40;
  */
 export const maxTokensFor = (items: number) => Math.min(8000, 1500 + 60 * items);
 
+/**
+ * OpenCode Zen serves some model families on other endpoints (GPT/Grok/Muse → /responses, Claude/Qwen → /messages,
+ * Gemini/Jev → their own paths; opencode.ai/docs/zen). Buku speaks /chat/completions only, so those can't be used.
+ */
+const ZEN_OTHER_ENDPOINT = /^(gpt-|grok-|muse-|claude-|qwen|gemini-|jev-)/i;
+export const CHAT_MODEL_HINT = "Pilih mis. glm-5.3, kimi-k3 atau deepseek-v4-pro.";
+const isZen = (baseUrl: string) => {
+  try {
+    return new URL(baseUrl).host === "opencode.ai";
+  } catch {
+    return false;
+  }
+};
+
+/** Why `model` can't be called through `baseUrl`'s /chat/completions, or null when it can (or we can't tell). */
+export function chatIncompatibility(baseUrl: string, model: string): string | null {
+  return isZen(baseUrl) && ZEN_OTHER_ENDPOINT.test(model) ? `Model ${model} tidak dilayani lewat /chat/completions di OpenCode Zen. ${CHAT_MODEL_HINT}` : null;
+}
+
 /** The call was billed but produced no usable answer (truncated or not JSON). Callers record it as a failed call. */
 export class AiAnswerError extends Error {
   constructor(
@@ -152,7 +171,12 @@ export class OpenAiCompatibleProvider implements AiProvider {
       }),
       signal: AbortSignal.timeout(30_000),
     });
-    if (!res.ok) throw new Error(`AI ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    if (!res.ok) {
+      const text = (await res.text()).slice(0, 300);
+      // Zen answers 503 "Endpoint is unavailable" for a model served on another endpoint: say so first (notes are cut at 120).
+      if (res.status === 503 && /endpoint is unavailable/i.test(text)) throw new Error(`Model ${this.cfg.model} tidak tersedia lewat /chat/completions (AI 503). ${CHAT_MODEL_HINT}`);
+      throw new Error(`AI ${res.status}: ${text}`);
+    }
     const body = (await res.json()) as {
       choices?: { message?: { content?: string | null }; finish_reason?: string }[];
       usage?: { prompt_tokens?: number; completion_tokens?: number };

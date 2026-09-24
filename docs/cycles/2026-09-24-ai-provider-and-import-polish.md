@@ -73,7 +73,7 @@ real-data preview (owner already approved sending account names to the gateway).
 ## Tasks
 - [x] T1 AI budget + truncation/unreadable errors in `lib/ai/provider.ts`, surfaced by `lib/ledger-import/mapping.ts`
       and `lib/ai/classify.ts` — accept: unit tests with fake fetch (`finish_reason: length`, prose-only answer, good answer)
-- [ ] T2 Zen model compatibility: filter in `fetchModels`, refuse on save, 503 hint (`lib/settings/ai.ts`, provider) —
+- [x] T2 Zen model compatibility: filter in `fetchModels`, refuse on save, 503 hint (`lib/settings/ai.ts`, provider) —
       accept: unit tests for filter/refusal; non-Zen base URL unaffected
 - [ ] T3 Keyword rule fixes in `lib/ledger-import/mapping.ts` — accept: unit tests for the 4 names above + existing
       mapping tests green; `npm run verify:real -- chickin goers` unchanged
@@ -94,6 +94,9 @@ real-data preview (owner already approved sending account names to the gateway).
 - T1: `lib/ai/provider.ts` (`maxTokensFor` = 1500 + 60/item cap 8000, `AiAnswerError` on `finish_reason: length` or no
   `{"items":[…]}` JSON, `readItems`), `lib/ledger-import/mapping.ts` + `lib/ai/classify.ts` record the billed tokens of
   failed answers, `mapping-panel.tsx` shows "AI gagal…" as an error toast.
+- T2: `lib/ai/provider.ts` `chatIncompatibility()` (Zen prefixes gpt/grok/muse/claude/qwen/gemini/jev) + 503 "Endpoint is
+  unavailable" rewritten to lead with the fix; `lib/settings/ai.ts` filters the model list and refuses such a model on save.
 ## Verification
 - T1 gate: lint ✔ · typecheck ✔ · `Test Files 23 passed (23) · Tests 122 passed (122)`
+- T2 gate: lint ✔ · typecheck ✔ · `Test Files 23 passed (23) · Tests 125 passed (125)`
 ## Ship Notes

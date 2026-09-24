@@ -84,3 +84,10 @@ describe("OpenAiCompatibleProvider — answers that can't be used", () => {
     expect(res.answers).toEqual([]);
   });
 });
+
+it("a Zen 503 'Endpoint is unavailable' leads with the fix (notes are cut at 120 chars)", async () => {
+  const f = (async () => new Response('{"error":{"type":"server_error","message":"Upstream request failed: Endpoint is unavailable."}}', { status: 503 })) as unknown as typeof fetch;
+  const p = new OpenAiCompatibleProvider({ baseUrl: "https://opencode.ai/zen/v1", apiKey: "k", model: "gpt-5.6-luna", maxCallsPerImport: 3, monthlyTokenBudget: 1000 }, f);
+  const err = await p.mapAccounts([{ key: "a0", code: "1", name: "Kas", typeHint: null }], [], "x").catch((e) => e);
+  expect(`AI gagal: ${err.message}`.slice(0, 120)).toMatch(/gpt-5\.6-luna tidak tersedia lewat \/chat\/completions \(AI 503\)\. Pilih mis\. glm-5\.3/);
+});
