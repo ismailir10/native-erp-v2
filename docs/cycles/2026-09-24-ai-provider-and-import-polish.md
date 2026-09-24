@@ -75,7 +75,7 @@ real-data preview (owner already approved sending account names to the gateway).
       and `lib/ai/classify.ts` — accept: unit tests with fake fetch (`finish_reason: length`, prose-only answer, good answer)
 - [x] T2 Zen model compatibility: filter in `fetchModels`, refuse on save, 503 hint (`lib/settings/ai.ts`, provider) —
       accept: unit tests for filter/refusal; non-Zen base URL unaffected
-- [ ] T3 Keyword rule fixes in `lib/ledger-import/mapping.ts` — accept: unit tests for the 4 names above + existing
+- [x] T3 Keyword rule fixes in `lib/ledger-import/mapping.ts` — accept: unit tests for the 4 names above + existing
       mapping tests green; `npm run verify:real -- chickin goers` unchanged
 - [ ] T4 Honest journal count at staging (`lib/ledger-import/post.ts`) — accept: DB test with an all-zero group: staged
       count = posted count
@@ -96,7 +96,11 @@ real-data preview (owner already approved sending account names to the gateway).
   failed answers, `mapping-panel.tsx` shows "AI gagal…" as an error toast.
 - T2: `lib/ai/provider.ts` `chatIncompatibility()` (Zen prefixes gpt/grok/muse/claude/qwen/gemini/jev) + 503 "Endpoint is
   unavailable" rewritten to lead with the fix; `lib/settings/ai.ts` filters the model list and refuses such a model on save.
+- T3: `lib/ledger-import/mapping.ts` — `inferType` reads rent/pay names as BEBAN (guarded for prepaid/payable/lease/ROU);
+  the 1130 rule skips staff/related-party/loan receivables so they fall to 1140.
 ## Verification
 - T1 gate: lint ✔ · typecheck ✔ · `Test Files 23 passed (23) · Tests 122 passed (122)`
 - T2 gate: lint ✔ · typecheck ✔ · `Test Files 23 passed (23) · Tests 125 passed (125)`
+- T3: `npm run verify:real -- all` before/after the rule change: output identical (diff empty), ending
+  "✓ Semua pemeriksaan lolos". Gate: `Test Files 23 passed (23) · Tests 125 passed (125)`.
 ## Ship Notes

@@ -26,6 +26,14 @@ describe("deterministic mapping", () => {
     expect(sug("Foreign Exchange Loss/Gain", "35000")).toBe("7200");
     expect(sug("Kas")).toBe("1110");
     expect(sug("Platform Fee - Gofood")).toBeNull();
+    // Found in the Goers/Chickin walk: staff loans are other receivables; rent is an expense whatever was rented.
+    expect(sug("Account Receivable - Employee Loan", "1-1303")).toBe("1140");
+    expect(sug("Piutang Karyawan")).toBe("1140");
+    expect(sug("Account Receivable", "1-1200")).toBe("1130");
+    expect(sug("Sewa Peralatan Tata Suara", "9106")).toBe("6120");
+    expect(sug("Sewa Dibayar Dimuka")).toBe("1170");
+    expect(sug("Pendapatan Sewa")).not.toBe("6120");
+    expect(sug("Utang Gaji")).not.toBe("6100");
   });
 
   it("infers type from the name before the code", () => {
