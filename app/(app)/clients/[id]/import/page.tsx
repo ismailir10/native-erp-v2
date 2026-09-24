@@ -48,6 +48,11 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
               </TableRow>
             </TableHeader>
             <TableBody>
+              {imports.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="pl-6 text-muted-foreground">Belum ada rekening koran yang diimpor untuk klien ini.</TableCell>
+                </TableRow>
+              )}
               {imports.map((i) => (
                 <TableRow key={i.id}>
                   <TableCell className="pl-6 font-mono text-xs">{i.fileName}</TableCell>

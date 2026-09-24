@@ -15,7 +15,7 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
   const r = closeReadiness(controls, done);
   // One line per kind of blocker, not one per control — the list on the left already has the detail.
   const blockers = [
-    r.fails.length ? `${r.fails.length} kontrol gagal — perbaiki dulu` : "",
+    r.fails.length ? `${r.fails.length} kontrol gagal, perbaiki dulu` : "",
     r.unacked.length ? `${r.unacked.length} kontrol perlu dicek dan diberi catatan` : "",
     r.missing.length ? `${r.missing.length} checklist belum dicentang` : "",
   ].filter(Boolean);
@@ -30,7 +30,7 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
       {locked ? (
         <NextStep tone="done">Buku {label} sudah ditutup. Laporan siap dikirim ke klien.</NextStep>
       ) : missing ? (
-        <NextStep href={`${base}/import`} cta="Impor mutasi">{missing.title.replace("Rekonsiliasi", "Mutasi")} belum diimpor — beberapa kontrol akan lolos otomatis setelah diimpor.</NextStep>
+        <NextStep href={`${base}/import`} cta="Impor mutasi">{missing.title.replace("Rekonsiliasi", "Mutasi")} belum diimpor. Beberapa kontrol baru bisa lolos setelah mutasinya masuk.</NextStep>
       ) : open ? (
         <NextStep href={`${base}/review`} cta="Mulai review">{open.detail}.</NextStep>
       ) : r.unacked.length ? (

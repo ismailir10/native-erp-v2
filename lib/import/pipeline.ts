@@ -31,7 +31,7 @@ const HEURISTIC: Record<Direction, Classification> = {
 
 export async function importStatement(
   db: Db,
-  args: { bankAccountId: string; fileName: string; data: Buffer; provider: AiProvider | null },
+  args: { bankAccountId: string; fileName: string; data: Buffer; provider: AiProvider | null; password?: string },
 ): Promise<ImportSummary> {
   const bankAccount = await db.bankAccount.findUniqueOrThrow({
     where: { id: args.bankAccountId },
@@ -40,7 +40,7 @@ export async function importStatement(
   const entity = bankAccount.entity;
   const client = entity.client;
 
-  const st = await parseStatement(args.fileName, args.data);
+  const st = await parseStatement(args.fileName, args.data, { password: args.password });
   if (st.accountNumber && st.accountNumber !== bankAccount.number) {
     throw new ParseError(`Nomor rekening di file (${st.accountNumber}) berbeda dengan rekening terpilih (${bankAccount.number}).`);
   }

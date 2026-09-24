@@ -8,6 +8,14 @@ export function formatDate(d: Date): string {
   return `${d.getUTCDate()} ${MONTHS_SHORT[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
+/** Timestamps (not date-only) shown in WIB, e.g. "24 Sep 2026 13.10". */
+export function formatDateTime(d: Date): string {
+  const wib = new Date(d.getTime() + 7 * 3600_000);
+  const hh = String(wib.getUTCHours()).padStart(2, "0");
+  const mm = String(wib.getUTCMinutes()).padStart(2, "0");
+  return `${formatDate(wib)} ${hh}.${mm}`;
+}
+
 export function formatPeriod(year: number, month: number): string {
   return `${MONTHS[month - 1]} ${year}`;
 }

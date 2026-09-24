@@ -2,25 +2,30 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { getClientForFirm } from "@/lib/tenant";
+import { getClientForFirm, getCurrentFirm } from "@/lib/tenant";
 import { importStatement, type ImportSummary } from "@/lib/import/pipeline";
-import { defaultProvider } from "@/lib/ai/provider";
+import { resolveProvider } from "@/lib/settings/ai";
 import { acceptSimilar, reviewTransaction } from "@/lib/review";
 import { CloseError, lockPeriod } from "@/lib/controls";
 import { LedgerError, postJournal } from "@/lib/ledger/post";
 import { ParseError } from "@/lib/import/types";
+import { PdfPasswordError } from "@/lib/import/parsers/pdf";
 import { parseRupiah } from "@/lib/money";
+import { dateOnly } from "@/lib/format";
 import { liveUploadFile, seedDemo } from "@/lib/demo/seed";
+import { addClient, OnboardingError, type NewClientInput } from "@/lib/onboarding";
+import { OpeningError, postOpening, type OpeningLineInput } from "@/lib/opening";
 import type { TaxTag } from "@/lib/generated/prisma/enums";
 
 /**
  * Server actions — the only write path from the UI. Each returns {ok, …} or {ok:false, error}
  * with a Bahasa message the UI shows verbatim. Domain errors are expected; others are bugs.
  */
-type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
+type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string; needsPassword?: boolean };
 
-function fail(e: unknown): { ok: false; error: string } {
-  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError) return { ok: false, error: e.message };
+function fail(e: unknown): { ok: false; error: string; needsPassword?: boolean } {
+  if (e instanceof PdfPasswordError) return { ok: false, error: e.message, needsPassword: true };
+  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OnboardingError || e instanceof OpeningError) return { ok: false, error: e.message };
   console.error(e);
   return { ok: false, error: "Terjadi kesalahan tak terduga. Coba lagi." };
 }
@@ -32,11 +37,12 @@ export async function importAction(formData: FormData): Promise<Result<{ summary
     const clientId = String(formData.get("clientId"));
     const bankAccountId = String(formData.get("bankAccountId"));
     const file = formData.get("file");
+    const password = String(formData.get("password") ?? "") || undefined; // used once to open the PDF, never stored
     const client = await getClientForFirm(clientId);
     if (!client.entities.some((e) => e.bankAccounts.some((b) => b.id === bankAccountId))) return { ok: false, error: "Pilih rekening bank dulu." };
-    if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Pilih file mutasi (CSV atau XLSX)." };
+    if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Pilih file rekening koran (PDF, CSV, atau XLSX)." };
     if (file.size > MAX_UPLOAD) return { ok: false, error: "File terlalu besar (maks. 5 MB)." };
-    const summary = await importStatement(prisma, { bankAccountId, fileName: file.name, data: Buffer.from(await file.arrayBuffer()), provider: defaultProvider() });
+    const summary = await importStatement(prisma, { bankAccountId, fileName: file.name, data: Buffer.from(await file.arrayBuffer()), provider: await resolveProvider(prisma), password });
     revalidatePath(`/clients/${clientId}`, "layout");
     return { ok: true, summary };
   } catch (e) {
@@ -50,7 +56,7 @@ export async function importSampleAction(clientId: string, bankAccountId: string
     const client = await getClientForFirm(clientId);
     if (!client.entities.some((e) => e.bankAccounts.some((b) => b.id === bankAccountId))) return { ok: false, error: "Rekening tidak ditemukan." };
     const f = await liveUploadFile();
-    const summary = await importStatement(prisma, { bankAccountId, fileName: f.fileName, data: f.data, provider: defaultProvider() });
+    const summary = await importStatement(prisma, { bankAccountId, fileName: f.fileName, data: f.data, provider: await resolveProvider(prisma) });
     revalidatePath(`/clients/${clientId}`, "layout");
     return { ok: true, summary };
   } catch (e) {
@@ -167,6 +173,30 @@ export async function adjustmentAction(input: {
     );
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true, entryId: entry.id };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function addClientAction(input: NewClientInput): Promise<Result<{ clientId: string }>> {
+  try {
+    const firm = await getCurrentFirm();
+    const client = await addClient(prisma, firm.id, input);
+    revalidatePath("/", "layout");
+    return { ok: true, clientId: client.id };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function openingAction(input: { clientId: string; entityId: string; date: string; lines: OpeningLineInput[] }): Promise<Result> {
+  try {
+    const client = await getClientForFirm(input.clientId);
+    const m = input.date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return { ok: false, error: "Isi tanggal saldo awal." };
+    await postOpening(prisma, { clientId: client.id, entityId: input.entityId, date: dateOnly(Number(m[1]), Number(m[2]), Number(m[3])), lines: input.lines });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
   } catch (e) {
     return fail(e);
   }
