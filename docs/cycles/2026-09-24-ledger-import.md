@@ -35,44 +35,44 @@ Findings from exploring the files (drive the design):
 
 ## Spec
 **A. Accounts: entity source accounts mapped to the client chart**
-- [ ] New `SourceAccount` per entity: its own code + name as in the client's files, a type hint, a currency (for monetary
+- [x] New `SourceAccount` per entity: its own code + name as in the client's files, a type hint, a currency (for monetary
       foreign-currency accounts) and a mapping to one client `Account`. The client chart stays shared across entities, so the
       combined view keeps lining up (rules §9–11).
-- [ ] Imported journal lines keep `sourceAccountId`. **Neraca Saldo** gets a view *Akun sumber*: each entity's TB in its own accounts
+- [x] Imported journal lines keep `sourceAccountId`. **Neraca Saldo** gets a view *Akun sumber*: each entity's TB in its own accounts
       and functional currency. That's the view that must match Chickin's TB tab and Goers' Neraca.
-- [ ] Mapping target is an existing client account **or** *Buat akun baru*: a new client account under a chosen FS line with the next
+- [x] Mapping target is an existing client account **or** *Buat akun baru*: a new client account under a chosen FS line with the next
       free code in that range. Special codes (1190/1199/1999/3200/1101–1109) are never created this way.
 
 **B. Ledger / Neraca import (XLSX, CSV)**
-- [ ] Reader detects the table by header names from content (tanggal/date · kode akun/account code · nama akun · debit/debet ·
+- [x] Reader detects the table by header names from content (tanggal/date · kode akun/account code · nama akun · debit/debet ·
       kredit/credit · keterangan/description · no bukti/voucher/ref · entitas/entity · mata uang/currency · kurs/rate), across all
       sheets. The user picks the sheet if more than one matches. Two modes: **Buku besar** (dated lines → journal entries) and
       **Neraca / Neraca Saldo** (one date, balances → the entity's `OPENING` entry).
-- [ ] Rows group into entries by voucher/ref when present, else by **(entity, date)**. Each posted entry keeps `ledgerImportId` +
+- [x] Rows group into entries by voucher/ref when present, else by **(entity, date)**. Each posted entry keeps `ledgerImportId` +
       `sourceRef` (`sheet!row` range), and each line keeps its row reference.
-- [ ] Entity column values are mapped to the client's entities once per import (or one entity chosen for the whole file).
-- [ ] Neraca mode: rows with code + amount are imported. Rows without a code are imported only if they aren't totals (Jurnal's
+- [x] Entity column values are mapped to the client's entities once per import (or one entity chosen for the whole file).
+- [x] Neraca mode: rows with code + amount are imported. Rows without a code are imported only if they aren't totals (Jurnal's
       "Current Period Earnings" → 3200). The file's own totals are checks, not postings.
-- [ ] All-or-nothing in one transaction. The same file (content hash) can't be imported twice for the same entity. Locked periods refuse.
+- [x] All-or-nothing in one transaction. The same file (content hash) can't be imported twice for the same entity. Locked periods refuse.
 
 **C. Multi-currency**
-- [ ] **Currency registry** (IDR, USD, SGD, JPY, EUR, AUD, CNY, HKD, MYR…) with minor-unit exponent (IDR 0, JPY 0, others 2).
-- [ ] **Entity functional currency** (default IDR; chosen in Tambah klien, fixed once the entity has entries). Every journal line's
+- [x] **Currency registry** (IDR, USD, SGD, JPY, EUR, AUD, CNY, HKD, MYR…) with minor-unit exponent (IDR 0, JPY 0, others 2).
+- [x] **Entity functional currency** (default IDR; chosen in Tambah klien, fixed once the entity has entries). Every journal line's
       `debit`/`credit` is **bigint minor units of the entity's functional currency**. For IDR entities that is whole Rupiah exactly as
       today, so existing data and the demo are unchanged.
-- [ ] **Foreign-currency lines** keep `currency`, `fxAmount` (bigint minor units) and `fxRate` (decimal string, functional per 1 unit).
+- [x] **Foreign-currency lines** keep `currency`, `fxAmount` (bigint minor units) and `fxRate` (decimal string, functional per 1 unit).
       `postJournal` checks `round(fxAmount × fxRate) = functional amount` (±1 minor unit).
-- [ ] **Kurs page** (`/clients/[id]/rates`, firm-scoped `ExchangeRate`: currency, quote currency, date, rate, kind SPOT/AVERAGE, source
+- [x] **Kurs page** (`/clients/[id]/rates`, firm-scoped `ExchangeRate`: currency, quote currency, date, rate, kind SPOT/AVERAGE, source
       MANUAL/FILE). Rates are entered by hand or picked up from the imported file (rate column or `Rate: 1.31`-style notes). No
       external rate feed.
-- [ ] Ledger import currency handling, chosen per import: **"Jumlah sudah dalam mata uang fungsional"** (default: the amount
+- [x] Ledger import currency handling, chosen per import: **"Jumlah sudah dalam mata uang fungsional"** (default: the amount
       column is posted as-is, the currency column is kept as information) or **"Jumlah dalam mata uang baris"** (converted with the
       row's rate, else the Kurs table for that date; missing rate = BLOCK naming currency + date).
-- [ ] **Revaluation (month-end, deterministic):** for monetary foreign-currency accounts (flagged source accounts, foreign-currency bank
+- [x] **Revaluation (month-end, deterministic):** for monetary foreign-currency accounts (flagged source accounts, foreign-currency bank
       accounts), Buku computes `fxBalance × closing rate − functional balance` and proposes one ADJUSTMENT entry to **7200 Laba/Rugi
       Selisih Kurs**. The accountant posts it with one click. New close control *Revaluasi kurs*: REVIEW if a foreign-currency balance
       exists and no revaluation was posted for the period.
-- [ ] **Reports:** single-entity reports (TB, Laba Rugi, Neraca, ledger, drill-down) are in the entity's functional currency, with the
+- [x] **Reports:** single-entity reports (TB, Laba Rugi, Neraca, ledger, drill-down) are in the entity's functional currency, with the
       currency shown in the header and `Money` formatting by currency. **Gabungan / combined worksheet and Beranda totals are in IDR**:
       non-IDR entities are translated with assets & liabilities at the closing rate, income & expenses at the period's average rate, and
       equity at the historical rate (rate on the entity's opening/first entry). The difference shows as a separate equity line
@@ -80,49 +80,49 @@ Findings from exploring the files (drive the design):
       shows the entity as *belum dijabarkan*, with a link to Kurs, instead of a wrong number.
 
 **D. Source checks (deterministic, shown before posting, stored with the import)**
-- [ ] BLOCK (can't post until fixed or explicitly accepted): an amount cell that isn't a number (`#VALUE!`, `#REF!`, `#NAME?`, `#ERROR!`,
+- [x] BLOCK (can't post until fixed or explicitly accepted): an amount cell that isn't a number (`#VALUE!`, `#REF!`, `#NAME?`, `#ERROR!`,
       `#N/A`, text), a row without date/account, a group that doesn't balance at minor-unit precision, a currency not in the registry,
       a missing rate in convert mode. Accepting an unbalanced group posts the difference to **1999 Belum Terklasifikasi** with memo
       "Selisih dari file sumber", so *1999 kosong* stays REVIEW until someone fixes it with a Jurnal Penyesuaian.
-- [ ] REVIEW: the same code with different names (code reused / chart migrated); a balance-sheet account whose closing sign is against
+- [x] REVIEW: the same code with different names (code reused / chart migrated); a balance-sheet account whose closing sign is against
       its type hint; rows outside the chosen period; **line currency ≠ functional currency posted without a rate**; **a group that
       balances only in raw numbers across different currencies** ("kurs belum diterapkan"); **a line in a third currency** (e.g. IDR
       inside an SGD ledger).
-- [ ] INFO: rows, groups, Σdebit/Σcredit per entity and currency, total rounding.
-- [ ] Every check names the exact rows (`sheet!row`). The import summary lists them all, and the new close control *Impor buku besar*
+- [x] INFO: rows, groups, Σdebit/Σcredit per entity and currency, total rounding.
+- [x] Every check names the exact rows (`sheet!row`). The import summary lists them all, and the new close control *Impor buku besar*
       shows accepted BLOCK items as FAIL and REVIEW items as REVIEW for the affected period.
 
 **E. Money with sen (IDR)**
-- [ ] Amounts parse at 2-decimal precision (float noise rounded half-up first). For IDR entities each line rounds half-up to whole Rupiah.
+- [x] Amounts parse at 2-decimal precision (float noise rounded half-up first). For IDR entities each line rounds half-up to whole Rupiah.
       If the entry no longer balances, one line goes to new template account **7190 Selisih Pembulatan** (BEBAN_LAIN). The import
       summary shows total rounding. 2-decimal currencies (SGD, USD) need no rounding.
 
 **F. AI in account mapping (input side)**
-- [ ] Order: **same code+name already mapped in this client → exact/normalised name match → keyword rules (small table) → AI → none**.
-- [ ] AI gets only account code, name, type hint and the client chart (no amounts, no descriptions). Batched ≤ 40 per call, cached forever in
+- [x] Order: **same code+name already mapped in this client → exact/normalised name match → keyword rules (small table) → AI → none**.
+- [x] AI gets only account code, name, type hint and the client chart (no amounts, no descriptions). Batched ≤ 40 per call, cached forever in
       `AiSuggestion` (normalised name + type hint + coaVersion), whitelisted against the client chart, counted in the existing caps and `AiUsage`.
-- [ ] **Nothing is applied without the accountant.** The mapping page shows suggestion + method + reason. *Terima semua saran* is an
+- [x] **Nothing is applied without the accountant.** The mapping page shows suggestion + method + reason. *Terima semua saran* is an
       explicit click per method. Import can't post while any account is unmapped.
 
 **G. SMBC combined statements + overdraft accounts**
-- [ ] The PDF parser splits a statement into **account sections** by the section header ("Aktivitas Rekening … (<currency>) <number>"),
+- [x] The PDF parser splits a statement into **account sections** by the section header ("Aktivitas Rekening … (<currency>) <number>"),
       each with its own opening/closing and continuity. `inspect:statement` prints one block per section.
-- [ ] Import posts only IDR sections whose number matches a registered bank account of the entity. Others are listed as skipped with
+- [x] Import posts only IDR sections whose number matches a registered bank account of the entity. Others are listed as skipped with
       the reason (not registered / foreign currency / no activity).
-- [ ] `BankCode` gains `SMBC` (detected from content). A bank account can be marked **Pinjaman rekening koran (PRK)**: its GL account is
+- [x] `BankCode` gains `SMBC` (detected from content). A bank account can be marked **Pinjaman rekening koran (PRK)**: its GL account is
       created in 2201–2209 (FS line *Utang bank*) and bank reconciliation works with negative balances.
 
 **H. Onboarding**
-- [ ] Tambah klien allows an entity without bank accounts and asks for the entity's functional currency (default IDR).
+- [x] Tambah klien allows an entity without bank accounts and asks for the entity's functional currency (default IDR).
 
 **I. Real-data verification + Chickin demo (local / `real-data` preview only, never in CI or the public demo)**
-- [ ] `npm run verify:real -- chickin|goers|smbc` reads `data/private/`, imports into a fresh local client, and prints a PASS/diff table:
+- [x] `npm run verify:real -- chickin|goers|smbc` reads `data/private/`, imports into a fresh local client, and prints a PASS/diff table:
       Chickin Indonesian companies: per entity × year × source account, Buku closing vs the TB tab (cached values), plus BS/IS totals vs
       FS tabs. HoldCo: Buku SGD TB vs an independent recompute from its ledger, plus FS tab totals where cached. For both: which
       register problems the checks caught (target: CSP −5,000,000, SKP 2025 `#VALUE!`/APIC, IDR row in the SGD ledger, code reuse,
       CAH receivable with credit balance). Goers: Buku Neraca = file totals. SMBC: each section's continuity. Output goes to
       `data/private/reports/`.
-- [ ] `docs/demo/chickin-demo.md`: a short private walk (import → checks → mapping → Akun sumber TB → HoldCo in SGD → Gabungan in
+- [x] `docs/demo/chickin-demo.md`: a short private walk (import → checks → mapping → Akun sumber TB → HoldCo in SGD → Gabungan in
       IDR with translation difference → findings). Real numbers stay out of the repo; the doc references screens, not figures.
 
 **Gate-reopeners (flagged):**
