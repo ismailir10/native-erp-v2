@@ -71,9 +71,9 @@ In the Claude cloud sandbox set `PW_CHROMIUM=/opt/pw-browsers/chromium` (never `
 Top five invariants (full list in `accounting-rules`):
 1. **GL is the single source of truth.** No stored balances; TB/FS are derived from `JournalLine`.
 2. **`postJournal()` is the only writer** of journals. Balanced, open period, client COA — plus DB CHECKs.
-3. **Money is `bigint` Rupiah.** Never `Number`/`parseFloat` an amount. Use `lib/money.ts`.
+3. **Money is `bigint` minor units of the entity's currency** (IDR = whole Rupiah). Never `Number`/`parseFloat` an amount. Use `lib/money.ts`.
 4. **AI never auto-posts.** LLM suggestions go to review; only deterministic methods post directly.
-5. **Every bank-derived entry keeps `bankTransactionId`** so any report number drills to its source row.
+5. **Every entry keeps its source** (`bankTransactionId`, or `ledgerImportId` + `sheet!row`) so any report number drills to its source row.
 
 ## 5. Repo map
 
