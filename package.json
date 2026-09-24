@@ -16,7 +16,8 @@
     "verify:books": "tsx scripts/verify-books.ts",
     "ai:smoke": "tsx scripts/ai-smoke.ts",
     "inspect:statement": "tsx scripts/inspect-statement.ts",
-    "vercel-build": "bash scripts/vercel-build.sh"
+    "vercel-build": "bash scripts/vercel-build.sh",
+    "verify:real": "tsx scripts/verify-real.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
