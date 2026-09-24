@@ -14,7 +14,8 @@
     "db:migrate:dev": "prisma migrate dev",
     "demo:reset": "tsx scripts/seed.ts",
     "verify:books": "tsx scripts/verify-books.ts",
-    "ai:smoke": "tsx scripts/ai-smoke.ts"
+    "ai:smoke": "tsx scripts/ai-smoke.ts",
+    "vercel-build": "bash scripts/vercel-build.sh"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

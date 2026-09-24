@@ -49,6 +49,18 @@ Next.js 16 (App Router, server actions) · TypeScript · Tailwind v4 · shadcn (
 | `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` | LLM gateway. Empty key = rules + memory only (fully functional) |
 | `AI_MAX_CALLS_PER_IMPORT` / `AI_MONTHLY_TOKEN_BUDGET` | Credit guards (defaults 3 / 200 000) |
 
+## Deploy (Vercel + Neon)
+1. **Connect Neon to the Vercel project**: Vercel → project → *Storage* → *Connect Database* → Neon → the existing project
+   (branch `production`), environments Production + Preview. This injects `DATABASE_URL` (pooled) and `DATABASE_URL_UNPOOLED`.
+2. **Env vars** (Settings → Environment Variables): `DEMO_MODE=true`, and optionally `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`.
+3. **Connect Git** (Settings → Git): `ismailir10/native-erp-v2`; production branch `main`.
+4. **Deployment Protection**: Vercel Authentication blocks anyone without a Vercel login — turn it off for Production
+   (or use a password / shareable link) before sending the URL to investors.
+5. Put Functions in the same region as the Neon database (Settings → Functions) — every page runs many queries.
+
+`vercel-build` (`scripts/vercel-build.sh`) then runs `prisma migrate deploy` on the unpooled URL, seeds the demo **only if the
+database is empty**, and builds. Reset the demo any time from the sidebar. Neon Auth / Functions / buckets are not used.
+
 ## For contributors (humans and agents)
 Read [CLAUDE.md](CLAUDE.md) (= `AGENTS.md`): the spec → build → ship loop, gates, and which skill governs which folder.
 Decisions live in [docs/adrs](docs/adrs/README.md). Demo data is synthetic — never commit real client statements.

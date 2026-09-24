@@ -69,7 +69,10 @@ approximations to validate with real files.
 ## Ship Notes
 - Branch `claude/vibrant-maxwell-23iy5o`; repo had no `main` — PR base needs a `main` branch (ask the owner).
 - Env: `DATABASE_URL`, `DEMO_MODE=true`, `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`, optional `AI_MAX_CALLS_PER_IMPORT`, `AI_MONTHLY_TOKEN_BUDGET`.
-- Deploy (later, user): Neon via Vercel Marketplace → `npx prisma migrate deploy` → `npm run demo:reset` once → Vercel build `prisma generate && next build`.
+- Deploy: `vercel-build` migrates Neon (unpooled URL) and seeds only if empty — no manual migrate/seed step.
+  User actions (agent token lacks env/Git permissions, sandbox can't reach Neon): connect Neon to the Vercel project,
+  set `DEMO_MODE`/AI vars, connect the GitHub repo, relax Deployment Protection for Production. See README → Deploy.
+- Neon's starter steps (`neon.ts` with Auth/buckets/functions, `neon deploy`) deliberately not applied: unused by Buku.
 - Rollback: stateless app; demo DB is disposable (`demo:reset`).
 
 ### Next cycles (recommended order)

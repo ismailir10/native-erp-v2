@@ -4,6 +4,8 @@ import { getCurrentFirm } from "@/lib/tenant";
 import { prisma } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
+// Import and "Reset data demo" run many sequential queries against Neon; give them room (capped by plan).
+export const maxDuration = 300;
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const firm = await getCurrentFirm();

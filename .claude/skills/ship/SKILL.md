@@ -17,6 +17,10 @@ description: Ship a completed Buku cycle — preflight the cycle doc, push the f
 4. When green, say so and leave merge to the user unless they said otherwise.
 
 ## Deploy (when the user asks)
-Vercel + Neon. Required env: `DATABASE_URL` (Neon pooled), `DEMO_MODE`, `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`.
-Build runs `prisma generate && next build`; run `npx prisma migrate deploy` against Neon before the first deploy,
-then `npm run demo:reset` once to seed the demo firm.
+Vercel project `native-erp-v2` (team "Ismail's projects") + Neon project `long-voice-58936160` (branch `production`).
+- Vercel runs `npm run vercel-build` → `scripts/vercel-build.sh`: `prisma generate`, `prisma migrate deploy` on
+  `DATABASE_URL_UNPOOLED`, seed-if-empty when `DEMO_MODE=true`, `next build`. Schema changes ship by committing a migration.
+- Env (set in the Vercel dashboard — the agent token cannot read/write env vars): `DATABASE_URL`, `DATABASE_URL_UNPOOLED`
+  (both from the Neon integration), `DEMO_MODE`, `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`.
+- The Claude cloud sandbox cannot reach Neon (proxy blocks it) — never try to migrate/seed Neon from the sandbox; let the build do it.
+- Verify a deployment: open `/`, run the investor walk (docs/demo/investor-demo.md), check build logs for "Demo data seeded/present".
