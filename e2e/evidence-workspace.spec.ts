@@ -21,6 +21,28 @@ test.describe("document evidence workspace", () => {
   });
   test.afterAll(async () => { await db?.end(); });
 
+  test("large inventories keep questions visible and bound document rendering", async ({ page }) => {
+    await page.goto("/documents");
+    await page.getByRole("button", { name: "Tambahkan dokumen" }).click();
+    await expect(page).toHaveURL(/\/documents\/[^/?]+$/);
+    const intakeId = new URL(page.url()).pathname.split("/").at(-1)!;
+    await db.query(`INSERT INTO "EvidenceDocument" (id, "firmId", "intakeId", "sourceKey", name, path, "mimeType", status)
+      SELECT $1 || '-' || n, i."firmId", i.id, 'synthetic-' || n, 'Contoh ' || lpad(n::text, 3, '0') || '.txt', 'Contoh', 'text/plain', 'READY'
+      FROM "EvidenceIntake" i CROSS JOIN generate_series(1, 250) n WHERE i.id = $1`, [intakeId]);
+    await page.reload();
+    await expect(page.getByTestId("evidence-progress")).toContainText("250 file siap");
+    await expect(page.locator("details").filter({ has: page.locator("summary").filter({ hasText: "Contoh" }) })).toHaveCount(20);
+    const questionBox = await page.getByLabel("Pertanyaan", { exact: true }).boundingBox();
+    const fileSearchBox = await page.getByLabel("Cari file", { exact: true }).boundingBox();
+    expect(questionBox!.y).toBeLessThan(fileSearchBox!.y);
+    await page.getByLabel("Cari file", { exact: true }).fill("Contoh 250");
+    await expect(page.locator("summary").filter({ hasText: "Contoh 250.txt" })).toBeVisible();
+    await expect(page.locator("details").filter({ has: page.locator("summary").filter({ hasText: "Contoh" }) })).toHaveCount(1);
+    await page.getByLabel("Cari file", { exact: true }).fill("");
+    await page.getByRole("button", { name: "Berikutnya", exact: true }).click();
+    await expect(page.getByText("Halaman 2 dari 13 · 250 item", { exact: true })).toBeVisible();
+  });
+
   test("uploads, pauses and resumes, answers before onboarding, preserves sources and books on desktop/mobile", async ({ page }, testInfo) => {
     const firm = (await db.query<{ id: string }>(`SELECT id FROM "Firm" ORDER BY "createdAt" ASC LIMIT 1`)).rows[0];
     expect(firm, "Global setup must seed the same disposable database used by the server").toBeTruthy();
@@ -95,6 +117,9 @@ test.describe("document evidence workspace", () => {
     await expect(scan.getByRole("button", { name: "Coba kembali" })).toBeVisible();
     const office = page.locator("details").filter({ has: page.locator("summary").filter({ hasText: "evidence-legacy.docx" }) });
     await expect(office.getByRole("alert")).toContainText("Ekspor sebagai PDF");
+    await office.getByRole("button", { name: "Coba kembali", exact: true }).click();
+    await expect(office.getByRole("button", { name: "Coba kembali", exact: true })).toBeEnabled();
+    expect(await documentCount(intakeId, ["PENDING"])).toBe(0);
 
     await page.locator("summary").filter({ hasText: "evidence-report-2024.txt" }).click();
     await expect(page.getByLabel("Mata uang evidence-report-2024.txt", { exact: true })).toHaveValue("USD");

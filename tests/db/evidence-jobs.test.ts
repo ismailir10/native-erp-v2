@@ -50,6 +50,14 @@ async function document(ids: Awaited<ReturnType<typeof setup>>, sourceKey: strin
 }
 
 describe("Drive intake jobs", () => {
+  it("ignores loose code and tooling files without downloading them", async () => {
+    const codeNames = ["build.cjs", "task.py", "package-lock.json", ".gitignore", "AGENTS.md"];
+    vi.mocked(listDriveChildren).mockResolvedValue({ files: codeNames.map((name, i) => textFile(`code-${i}`, "1", name)) });
+    const ids = await setup();
+    await finish(ids);
+    expect(vi.mocked(downloadDriveFile)).not.toHaveBeenCalled();
+    for (let i = 0; i < codeNames.length; i++) expect(await document(ids, `code-${i}`)).toMatchObject({ status: "IGNORED", excluded: true });
+  });
   it("resumes paginated nested folders while ignoring code and excluding backups/shortcuts", async () => {
     vi.mocked(listDriveChildren).mockImplementation(async (_token, id, page) => {
       if (id === "root" && !page) return { files: [folder("nested"), folder("system", "node_modules"), textFile("backup", "1", "report backup.txt"), { id: "shortcut", name: "External folder", mimeType: DRIVE_SHORTCUT_MIME, shortcutDetails: { targetId: "external", targetMimeType: DRIVE_FOLDER_MIME } }], nextPageToken: "page2" };
