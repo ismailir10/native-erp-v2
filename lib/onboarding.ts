@@ -16,13 +16,13 @@ export class OnboardingError extends Error {
 }
 
 const KINDS = ["PT", "CV", "PERORANGAN"] as const;
-const BANKS = ["BCA", "MANDIRI", "BRI", "GENERIC"] as const;
-const BANK_NAME: Record<(typeof BANKS)[number], string> = { BCA: "BCA", MANDIRI: "Mandiri", BRI: "BRI", GENERIC: "Bank" };
+const BANKS = ["BCA", "MANDIRI", "BRI", "SMBC", "GENERIC"] as const;
+const BANK_NAME: Record<(typeof BANKS)[number], string> = { BCA: "BCA", MANDIRI: "Mandiri", BRI: "BRI", SMBC: "SMBC", GENERIC: "Bank" };
 
 export type NewClientInput = {
   name: string;
   industry: string;
-  entities: { name: string; shortName: string; kind: (typeof KINDS)[number]; npwp: string; currency?: string; banks: { bank: (typeof BANKS)[number]; number: string; label: string }[] }[];
+  entities: { name: string; shortName: string; kind: (typeof KINDS)[number]; npwp: string; currency?: string; banks: { bank: (typeof BANKS)[number]; number: string; label: string; isOverdraft?: boolean }[] }[];
 };
 
 /** Every problem at once, keyed by field. Optional: industry, short name, NPWP, bank accounts, account label (defaults to "BCA ••5566"). */
@@ -50,8 +50,8 @@ export function validateNewClient(input: NewClientInput): ClientSpec {
       else if (!/^\d{6,20}$/.test(number)) fields[`${bt}.number`] = "Nomor rekening berisi 6–20 angka.";
       else if (seen.has(number)) fields[`${bt}.number`] = "Nomor ini sudah dimasukkan di atas.";
       else seen.set(number, bt);
-      const label = b.label.trim() || `${BANK_NAME[b.bank] ?? "Bank"} ••${number.slice(-4)}`;
-      return { bank: b.bank, number, label: label.slice(0, 60) };
+      const label = b.label.trim() || `${BANK_NAME[b.bank] ?? "Bank"}${b.isOverdraft ? " PRK" : ""} ••${number.slice(-4)}`;
+      return { bank: b.bank, number, label: label.slice(0, 60), isOverdraft: Boolean(b.isOverdraft) };
     });
     return { name: eName, shortName: e.shortName.trim() || eName, kind: e.kind, npwp: e.npwp.trim() || undefined, functionalCurrency: currency, banks };
   });

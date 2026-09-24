@@ -78,3 +78,36 @@ export function makePdf(pages: PdfText[][], opts: { userPassword?: string } = {}
 export function table(startY: number, rows: [number, string][][], lead = 12): PdfText[] {
   return rows.flatMap((cells, i) => cells.map(([x, text]) => ({ x, y: startY - i * lead, text })));
 }
+
+/** SMBC "Laporan Konsolidasi Rekening": several accounts in one PDF, each under its own section header. */
+export function smbcCombinedPdf() {
+  const header: [number, string][] = [[37, "Tanggal Transaksi"], [119, "Tanggal Pembukuan"], [246, "Keterangan"], [353, "Mutasi Debet"], [437, "Mutasi Kredit"], [531, "Saldo"]];
+  return makePdf([
+    [
+      ...table(800, [[[32, "Kepada Yth:"], [318, "Periode Laporan"], [398, ": 01 MEI 2026 - 31 MEI 2026"]], [[32, "PT Bank SMBC Indonesia Tbk"]]]),
+      ...table(740, [
+        [[25, "Aktivitas Rekening / Account Activities – Jenius Main Account (IDR) 90022152088"]],
+        header,
+        [[45, "01-05-2026"], [132, "01-05-2026"], [199, "Saldo Awal - Beginning Balance"], [531, "5,646,633.00"]],
+        [[45, "18-05-2026"], [132, "18-05-2026"], [199, "Cr BI fast Incoming"], [436, "250,000,000.00"], [523, "255,646,633.00"]],
+        [[45, "20-05-2026"], [132, "20-05-2026"], [199, "Transfer Keluar - Outgoing Transfer"], [359, "35,000,000.00"], [523, "220,646,633.00"]],
+        [[45, "Total"], [235, "1 DEBIT 1 KREDIT"], [354, "35,000,000.00"], [436, "250,000,000.00"]],
+      ]),
+      ...table(560, [
+        [[24, "Aktivitas Rekening / Account Activities - Pinjaman Rekening Koran BTB (IDR) 05243002879"]],
+        header,
+        [[45, "01-05-2026"], [131, "01-05-2026"], [195, "Saldo Awal - Beginning Balance"], [517, "-3,598,843,911.00"]],
+        [[44, "20-05-2026"], [130, "20-05-2026"], [195, "Transfer Masuk - Incoming Transfer"], [439, "35,000,000.00"], [517, "-3,563,843,911.00"]],
+        [[45, "25-05-2026"], [131, "25-05-2026"], [195, "Bunga - Interest"], [362, "17,222,773.00"], [516, "-3,581,066,684.00"]],
+      ]),
+    ],
+    [
+      ...table(800, [
+        [[24, "Aktivitas Rekening / Account Activities – JENIUS JPY ACCOUNT (JPY) 90022164251"]],
+        header,
+        [[45, "01-05-2026"], [132, "01-05-2026"], [199, "Saldo Awal - Beginning Balance"], [531, "12,750.00"]],
+      ]),
+      { x: 180, y: 400, text: "Ini adalah akhir dari Laporan Konsolidasi Rekening Anda" },
+    ],
+  ]);
+}

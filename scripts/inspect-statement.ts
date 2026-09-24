@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
-import { parseStatement } from "@/lib/import/parsers";
+import { parseStatementSections } from "@/lib/import/parsers";
 import { readLines } from "@/lib/import/parsers/pdf";
 import { checkContinuity } from "@/lib/import/normalize";
 import { formatRupiah } from "@/lib/money";
@@ -28,25 +28,30 @@ async function main() {
     return;
   }
 
-  const st = await parseStatement(basename(file), data, { password });
-  const c = checkContinuity(st);
+  const sections = await parseStatementSections(basename(file), data, { password });
   const iso = (d: Date) => d.toISOString().slice(0, 10);
-  const sum = st.rows.reduce((s, r) => s + r.amount, 0n);
-  console.log(`File        ${basename(file)}`);
-  console.log(`Format      ${st.format}`);
-  console.log(`Rekening    ${st.accountNumber ?? "(tidak tertulis di file)"}`);
-  console.log(`Periode     ${iso(st.periodStart)} s.d. ${iso(st.periodEnd)}`);
-  console.log(`Saldo awal  ${formatRupiah(st.openingBalance)}`);
-  console.log(`Mutasi      ${st.rows.length} baris, bersih ${formatRupiah(sum)}`);
-  console.log(`Saldo akhir ${formatRupiah(st.closingBalance)}`);
-  console.log(`Kesinambungan ${c.ok ? "NYAMBUNG ✓" : `ADA CELAH ✗ — ${c.note}`}`);
-  const show = st.rows.length > 10 ? [...st.rows.slice(0, 5), null, ...st.rows.slice(-5)] : st.rows;
-  console.log("");
-  for (const r of show) {
-    if (!r) console.log("  …");
-    else console.log(`  ${String(r.rowNumber).padStart(4)}  ${iso(r.date)}  ${formatRupiah(r.amount).padStart(18)}  ${(r.balance === null ? "" : formatRupiah(r.balance)).padStart(18)}  ${r.description.slice(0, 60)}`);
+  console.log(`File        ${basename(file)}${sections.length > 1 ? ` · ${sections.length} rekening dalam satu file` : ""}`);
+  let broken = false;
+  for (const st of sections) {
+    const c = checkContinuity(st);
+    broken ||= !c.ok;
+    const sum = st.rows.reduce((s, r) => s + r.amount, 0n);
+    console.log("");
+    if (st.section) console.log(`── ${st.section.label} (${st.section.currency})`);
+    console.log(`Format      ${st.format}`);
+    console.log(`Rekening    ${st.accountNumber ?? "(tidak tertulis di file)"}`);
+    console.log(`Periode     ${iso(st.periodStart)} s.d. ${iso(st.periodEnd)}`);
+    console.log(`Saldo awal  ${formatRupiah(st.openingBalance)}`);
+    console.log(`Mutasi      ${st.rows.length} baris, bersih ${formatRupiah(sum)}`);
+    console.log(`Saldo akhir ${formatRupiah(st.closingBalance)}`);
+    console.log(`Kesinambungan ${c.ok ? "NYAMBUNG ✓" : `ADA CELAH ✗ — ${c.note}`}`);
+    const show = st.rows.length > 10 ? [...st.rows.slice(0, 5), null, ...st.rows.slice(-5)] : st.rows;
+    for (const r of show) {
+      if (!r) console.log("  …");
+      else console.log(`  ${String(r.rowNumber).padStart(4)}  ${iso(r.date)}  ${formatRupiah(r.amount).padStart(18)}  ${(r.balance === null ? "" : formatRupiah(r.balance)).padStart(18)}  ${r.description.slice(0, 60)}`);
+    }
   }
-  if (!c.ok) process.exitCode = 2;
+  if (broken) process.exitCode = 2;
 }
 main().catch((e) => {
   console.error((e as Error).message);

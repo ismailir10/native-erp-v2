@@ -38,6 +38,8 @@ const HEADER: Record<ColKind, RegExp> = {
 const NUMBER = /^\(?-?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?\)?(?:\s*(DB|CR|DR|D|K|C))?$/i;
 const DATE = /^(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2,4}))?$/;
 const DATE_LONG = /^(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{4})$/;
+/** "Aktivitas Rekening / Account Activities – <name> (<CCY>) <number>" — any separator after the last title word. */
+const SECTION = /.*(?:account activities|aktivitas rekening)[^\p{L}\p{N}]+(.+?)\s*\(([A-Za-z]{3})\)\s*([0-9A-Za-z]{6,})\s*$/iu;
 const OPENING = /saldo\s*awal|opening\s*balance|beginning\s*balance|saldo\s*sebelumnya/i;
 const CLOSING = /saldo\s*akhir|closing\s*balance|ending\s*balance/i;
 const FOOTER = /^(saldo\s*awal|saldo\s*akhir|mutasi\s*(cr|db|kredit|debet)|total|jumlah|bersambung|halaman|page|opening|closing|ending)\b/i;
@@ -49,11 +51,33 @@ const MONTHS: Record<string, number> = {
 };
 
 export async function parsePdf(data: Buffer, opts: { password?: string } = {}): Promise<ParsedStatement> {
+  return (await parsePdfSections(data, opts))[0];
+}
+
+/**
+ * Combined statements (e.g. SMBC "Laporan Konsolidasi Rekening") hold several accounts, each under a header like
+ * "Aktivitas Rekening / Account Activities – Jenius Main Account (IDR) 90022152088". Each section is parsed and
+ * continuity-checked on its own; single-account PDFs return one statement.
+ */
+export async function parsePdfSections(data: Buffer, opts: { password?: string } = {}): Promise<ParsedStatement[]> {
   const lines = await readLines(data, opts.password);
   if (lines.reduce((n, l) => n + l.cells.reduce((m, c) => m + c.text.replace(/\s/g, "").length, 0), 0) < 20) {
     throw new ParseError("PDF ini hasil scan (tanpa teks). Minta rekening koran versi e-statement, atau ekspor CSV/Excel dari internet banking.");
   }
-  return parseLines(lines);
+  const starts = lines.map((l, i) => ({ i, m: lineText(l).match(SECTION) })).filter((x) => x.m);
+  if (starts.length === 0) return [parseLines(lines)];
+  const docText = lines.map(lineText).join("\n");
+  const format = detectFormat(docText);
+  const period = periodOf(docText);
+  const out: ParsedStatement[] = [];
+  starts.forEach(({ i, m }, k) => {
+    const segment = lines.slice(i + 1, k + 1 < starts.length ? starts[k + 1].i : lines.length);
+    if (!segment.some((l) => headerColumns(l))) return; // a section title without a transaction table
+    const st = parseLines(segment, { period, format, allowEmpty: true });
+    out.push({ ...st, accountNumber: m![3], section: { label: m![1].trim(), currency: m![2].toUpperCase() } });
+  });
+  if (!out.length) return [parseLines(lines)];
+  return out;
 }
 
 /** Positioned text lines. Exported for `npm run inspect:statement -- --lines` when tuning a new layout. */
@@ -121,6 +145,7 @@ function nearest(cols: Column[], cell: Cell, kinds: ColKind[]): Column | null {
 }
 
 function detectFormat(headerText: string): BankCode {
+  if (/\bSMBC\b|bank smbc indonesia|jenius|\bBTPN\b/i.test(headerText)) return "SMBC";
   if (/mandiri/i.test(headerText)) return "MANDIRI";
   if (/\bBRI\b|bank rakyat/i.test(headerText)) return "BRI";
   if (/\bBCA\b|bank central asia|klikbca/i.test(headerText)) return "BCA";
@@ -130,6 +155,13 @@ function detectFormat(headerText: string): BankCode {
 function periodOf(text: string): { start: Date; end: Date } | null {
   const range = periodFromText(text);
   if (range) return range;
+  // "01 MEI 2026 - 31 MEI 2026" (SMBC and others print month names)
+  const long = text.match(/(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})\s*[-–]\s*(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})/);
+  if (long) {
+    const a = parseDate(long[1], null);
+    const b = parseDate(long[2], null);
+    if (a && b) return { start: a, end: b };
+  }
   const m = text.match(/periode\s*:?\s*([A-Za-z]+)\s+(\d{4})/i);
   const month = m && MONTHS[m[1].toLowerCase()];
   if (!m || !month) return null;
@@ -163,14 +195,14 @@ function money(text: string): { value: bigint; flag: "DB" | "CR" | null } {
   return { value: parseRupiah(text.replace(/\s*(DB|CR|DR|D|K|C)$/i, "")), flag };
 }
 
-function parseLines(lines: Line[]): ParsedStatement {
+function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | null; format?: BankCode; allowEmpty?: boolean } = {}): ParsedStatement {
   const firstHeader = lines.findIndex((l) => headerColumns(l));
   if (firstHeader < 0) {
     throw new ParseError("Tabel transaksi di PDF tidak dikenali (kolom tanggal, keterangan, mutasi/debet-kredit tidak ditemukan). Kirim contoh baris judulnya agar formatnya bisa ditambahkan.");
   }
   const preamble = lines.slice(0, firstHeader).map(lineText).join("\n");
   const allText = lines.map(lineText).join("\n");
-  const period = periodOf(preamble) ?? periodOf(allText);
+  const period = ctx.period ?? periodOf(preamble) ?? periodOf(allText);
   const accountNumber =
     preamble
       .split("\n")
@@ -243,6 +275,8 @@ function parseLines(lines: Line[]): ParsedStatement {
     }
 
     if (date) {
+      // A second date column (posting date, "Tanggal Pembukuan") isn't part of the description.
+      if (descParts.length && parseDate(descParts[0], period)) descParts.shift();
       const desc = descParts.join(" ").replace(/\s+/g, " ").trim();
       const bal = nums.find((n) => n.kind === "balance");
       if (OPENING.test(desc) && nums.every((n) => n.kind === "balance")) {
@@ -285,7 +319,7 @@ function parseLines(lines: Line[]): ParsedStatement {
     } else current = null;
   }
 
-  if (drafts.length === 0) throw new ParseError("Tidak ada baris transaksi yang terbaca dari PDF ini.");
+  if (drafts.length === 0 && !(ctx.allowEmpty && opening !== null)) throw new ParseError("Tidak ada baris transaksi yang terbaca dari PDF ini.");
 
   // Single amount column: sign from the DB/CR marker, else from the balance movement.
   let prevBalance = opening;
@@ -300,12 +334,13 @@ function parseLines(lines: Line[]): ParsedStatement {
   const rows: ParsedRow[] = drafts.map(({ date, description, amount, balance, rowNumber, rawRow }) => ({ date, description, amount, balance, rowNumber, rawRow }));
   if (opening === null) {
     const f = rows[0];
+    if (!f) throw new ParseError("Tidak ada baris transaksi yang terbaca dari PDF ini.");
     if (f.balance === null) throw new ParseError("Saldo awal tidak ditemukan di PDF (tidak ada SALDO AWAL dan kolom saldo kosong).");
     opening = f.balance - f.amount;
   }
   const bounds = period ?? monthBoundsOf(rows);
   return {
-    format: detectFormat(preamble),
+    format: ctx.format ?? detectFormat(preamble),
     accountNumber,
     periodStart: bounds.start,
     periodEnd: bounds.end,

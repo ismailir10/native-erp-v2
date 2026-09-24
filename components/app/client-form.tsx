@@ -9,17 +9,18 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { addClientAction } from "@/app/actions";
 import { CURRENCIES, CURRENCY_CODES } from "@/lib/fx/currency";
 
 type Kind = "PT" | "CV" | "PERORANGAN";
-type Bank = "BCA" | "MANDIRI" | "BRI" | "GENERIC";
-type BankRow = { bank: Bank; number: string; label: string };
+type Bank = "BCA" | "MANDIRI" | "BRI" | "SMBC" | "GENERIC";
+type BankRow = { bank: Bank; number: string; label: string; isOverdraft: boolean };
 type EntityRow = { name: string; shortName: string; kind: Kind; npwp: string; currency: string; banks: BankRow[] };
 
 const KIND_LABEL: Record<Kind, string> = { PT: "PT", CV: "CV", PERORANGAN: "Perorangan (pemilik)" };
-const BANK_LABEL: Record<Bank, string> = { BCA: "BCA", MANDIRI: "Mandiri", BRI: "BRI", GENERIC: "Bank lain" };
-const newBank = (): BankRow => ({ bank: "BCA", number: "", label: "" });
+const BANK_LABEL: Record<Bank, string> = { BCA: "BCA", MANDIRI: "Mandiri", BRI: "BRI", SMBC: "SMBC / Jenius", GENERIC: "Bank lain" };
+const newBank = (): BankRow => ({ bank: "BCA", number: "", label: "", isOverdraft: false });
 const newEntity = (kind: Kind): EntityRow => ({ name: "", shortName: "", kind, npwp: "", currency: "IDR", banks: [newBank()] });
 
 export function ClientForm() {
@@ -173,7 +174,13 @@ export function ClientForm() {
                     />
                     <FieldError>{err(`entities.${i}.banks.${k}.number`)}</FieldError>
                   </div>
-                  <Input aria-label="Nama rekening" value={b.label} onChange={(ev) => setBank(i, k, { label: ev.target.value })} placeholder={`Nama (opsional), mis. ${BANK_LABEL[b.bank]} Giro`} />
+                  <div className="space-y-1.5">
+                    <Input aria-label="Nama rekening" value={b.label} onChange={(ev) => setBank(i, k, { label: ev.target.value })} placeholder={`Nama (opsional), mis. ${BANK_LABEL[b.bank]} Giro`} />
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Checkbox id={`prk-${i}-${k}`} checked={b.isOverdraft} onCheckedChange={(v) => setBank(i, k, { isOverdraft: v === true })} />
+                      <label htmlFor={`prk-${i}-${k}`}>Pinjaman rekening koran (PRK), saldonya utang ke bank</label>
+                    </div>
+                  </div>
                   <Button variant="ghost" size="icon" aria-label="Hapus rekening" onClick={() => { setErrors({}); setEntity(i, { banks: e.banks.filter((_, j) => j !== k) }); }}>
                     <Trash2 />
                   </Button>

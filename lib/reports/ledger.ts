@@ -285,8 +285,8 @@ export async function monthlySeries(db: Db, scope: Scope, asOf: Date, months = 6
     for (const l of lines) {
       const a = byId.get(l.accountId)!;
       const net = l.debit - l.credit;
-      // Cash & equivalents: bank GL accounts and cash accounts from ledger imports (1110, 1120 …).
-      if ((a.isBank || a.fsLine === "KAS_SETARA_KAS") && l.date <= end) cash += net;
+      // Cash & equivalents: bank GL accounts and cash accounts from ledger imports (1110, 1120 …); PRK loans are liabilities.
+      if (a.fsLine === "KAS_SETARA_KAS" && l.date <= end) cash += net;
       if (l.date.getUTCFullYear() === y && l.date.getUTCMonth() + 1 === m) {
         if (a.type === "PENDAPATAN") revenue -= net;
         if (a.type === "BEBAN") expense += net;
