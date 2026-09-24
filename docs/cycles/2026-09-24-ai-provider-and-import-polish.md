@@ -81,7 +81,7 @@ real-data preview (owner already approved sending account names to the gateway).
       count = posted count
 - [x] T5 Average-rate need + translation skip for years without P&L (`lib/fx/rates.ts`, `lib/reports/fx.ts`) — accept:
       DB test: SGD entity with only an opening Neraca in year 1 → no average need for year 1, Gabungan translates
-- [ ] T6 Searchable mapping combobox (`components/app/mapping-panel.tsx`, reuse `components/ui/combobox.tsx`) — accept:
+- [x] T6 Searchable mapping combobox (`components/app/mapping-panel.tsx`, reuse `components/ui/combobox.tsx`) — accept:
       e2e ledger walk updated to type-to-filter; browser check
 - [ ] T7 Kurs list grouped by pair + file (`app/(app)/clients/[id]/rates/page.tsx`, reuse `components/ui/collapsible.tsx`)
       — accept: browser check on the real-data preview's Chickin (≈130 file rates → 2–3 rows)
@@ -102,6 +102,7 @@ real-data preview (owner already approved sending account names to the gateway).
   still reports "N jurnal bernilai nol dilewati".
 - T5: `lib/fx/rates.ts` `hasYearPl()`; `rateNeeds` lists a year's average only when that year has PENDAPATAN/BEBAN lines;
   `lib/reports/fx.ts` `entityRates` doesn't demand the average then (it translates only zeros; falls back to closing).
+- T6: `AccountPicker` uses the vendored grouped combobox, filters by code/name, keeps create-account first, and preserves keyboard selection. Ledger e2e covers code/name search, keyboard choice and creation; waits for each rate refresh before selecting the next missing rate.
 ## Verification
 - T1 gate: lint ✔ · typecheck ✔ · `Test Files 23 passed (23) · Tests 122 passed (122)`
 - T2 gate: lint ✔ · typecheck ✔ · `Test Files 23 passed (23) · Tests 125 passed (125)`
@@ -110,4 +111,5 @@ real-data preview (owner already approved sending account names to the gateway).
 - T4 gate: lint ✔ · typecheck ✔ · `Test Files 23 passed (23) · Tests 126 passed (126)`
 - T5 gate: lint ✔ · typecheck ✔ · `Test Files 23 passed (23) · Tests 127 passed (127)` · `verify:books` (after demo:reset)
   "ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth." · `verify:real -- all` identical to baseline.
+- T6 gate: lint ✔ · typecheck ✔ · `Test Files 23 passed (23) · Tests 127 passed (127)`; ledger browser walk `1 passed (21.9s)`.
 ## Ship Notes

@@ -58,7 +58,21 @@ test("ledger import: checks, mapping, post, Kurs, Gabungan in IDR, Akun sumber",
 
   await page.getByRole("button", { name: /^Terima \d+ saran aturan$/ }).click();
   await expect(page.getByText("1 dari 7 akun belum dipetakan")).toBeVisible();
-  await page.getByRole("combobox", { name: "Akun Buku untuk 63005" }).click();
+  await page.getByRole("combobox", { name: "Akun Buku untuk 63005", exact: true }).click();
+  const accountSearch = page.getByRole("combobox", { name: "Cari akun Buku untuk 63005" });
+  await accountSearch.fill("6150");
+  await expect(page.getByRole("option", { name: /^6150 / })).toBeVisible();
+  await expect(page.getByRole("option", { name: /^1210 / })).toHaveCount(0);
+  await expect(page.getByRole("option").first()).toHaveText("+ Buat akun baru");
+  await accountSearch.fill("pemasaran");
+  await expect(page.getByRole("option", { name: /^6150 / })).toBeVisible();
+  await accountSearch.press("ArrowDown");
+  await accountSearch.press("End");
+  await accountSearch.press("Enter");
+  await expect(page.getByRole("combobox", { name: "Akun Buku untuk 63005", exact: true })).toContainText("6150");
+  await page.getByRole("combobox", { name: "Akun Buku untuk 63005", exact: true }).click();
+  await accountSearch.fill("akun belum tersedia");
+  await expect(page.getByRole("option")).toHaveCount(1);
   await page.getByRole("option", { name: "+ Buat akun baru" }).click();
   await expect(page.getByRole("combobox", { name: "Pos laporan" })).toContainText("Beban umum & administrasi");
   await page.getByRole("button", { name: "Terima", exact: true }).click();
@@ -72,10 +86,13 @@ test("ledger import: checks, mapping, post, Kurs, Gabungan in IDR, Akun sumber",
   await expect(page.getByRole("heading", { name: "Kurs" })).toBeVisible();
   const rates = ["12000", "12500", "12300"];
   for (const rate of rates) {
-    await page.getByText("Isi yang belum ada:").locator("..").getByRole("button").first().click();
+    const missingRate = page.getByText("Isi yang belum ada:").locator("..").getByRole("button").first();
+    const missingLabel = await missingRate.innerText();
+    await missingRate.click();
     await page.getByLabel(/^Kurs \(1 SGD/).fill(rate);
     await page.getByRole("button", { name: "Simpan kurs" }).click();
     await expect(page.getByLabel(/^Kurs \(1 SGD/)).toHaveValue("");
+    await expect(page.getByRole("button", { name: missingLabel, exact: true })).toHaveCount(0);
   }
   await expect(page.getByTestId("next-step")).toContainText("sudah lengkap");
 
