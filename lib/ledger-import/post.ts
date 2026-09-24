@@ -4,7 +4,8 @@ import type { Prisma } from "@/lib/generated/prisma/client";
 import { postJournal, type PostLine } from "@/lib/ledger/post";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { formatDate } from "@/lib/format";
-import { loadRates, lookupRate } from "@/lib/fx/rates";
+import { loadRates, lookupRate, upsertFileRate } from "@/lib/fx/rates";
+import { formatRate, isCurrency, parseRate } from "@/lib/fx/currency";
 import { ParseError } from "@/lib/import/types";
 import { detectTables, readSheets, readTable } from "@/lib/ledger-import/read";
 import { accountKey, planLedger, planNeraca, type Check, type CurrencyMode, type EntityInfo, type Plan, type PlanEntry } from "@/lib/ledger-import/check";
@@ -38,7 +39,8 @@ export type StageResult =
   | { status: "CHOOSE_SHEET"; candidates: TableCandidate[] }
   | { status: "STAGED"; importId: string; mode: "LEDGER" | "NERACA"; checks: Check[]; entries: number; sourceAccounts: number; unmapped: number };
 
-type SavedPlan = { entries: (Omit<PlanEntry, "date" | "imbalance" | "rounding" | "lines"> & { date: string; imbalance: string; rounding: string; lines: (Omit<PlanEntry["lines"][number], "amount" | "fx"> & { amount: string; fx: { currency: string; amount: string; rate: string } | null })[] })[]; entities: Record<string, string> };
+type FileRate = { currency: string; quote: string; date: string; rate: string; ref: string };
+type SavedPlan = { rates?: FileRate[]; entries: (Omit<PlanEntry, "date" | "imbalance" | "rounding" | "lines"> & { date: string; imbalance: string; rounding: string; lines: (Omit<PlanEntry["lines"][number], "amount" | "fx"> & { amount: string; fx: { currency: string; amount: string; rate: string } | null })[] })[]; entities: Record<string, string> };
 
 const toSaved = (entries: PlanEntry[], entities: Map<string, EntityInfo>): SavedPlan => ({
   entities: Object.fromEntries([...entities].map(([k, v]) => [k, v.entityId])),
@@ -104,6 +106,21 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
     periodStart = periodEnd = date;
   }
 
+  // Rates written in the file (rate column or "Rate: 1.31" notes) are kept and saved to the Kurs table on post.
+  const fileRates = new Map<string, FileRate>();
+  if (read.mode === "LEDGER") {
+    for (const r of read.rows) {
+      const ei = entityInfos.get(r.entity ?? "");
+      if (!ei || !r.rate || !r.date || !r.currency || !isCurrency(r.currency) || r.currency === ei.currency) continue;
+      try {
+        const rate = formatRate(parseRate(r.rate));
+        const date = r.date.toISOString().slice(0, 10);
+        fileRates.set(`${r.currency}|${ei.currency}|${date}`, { currency: r.currency, quote: ei.currency, date, rate, ref: r.ref });
+      } catch {
+        // an unreadable rate note is just not a rate
+      }
+    }
+  }
   const neracaHints = read.mode === "NERACA" ? new Map(read.rows.map((r) => [r.code, r.typeHint])) : new Map();
   const imp = await db.$transaction(
     async (tx) => {
@@ -133,7 +150,7 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
           rowCount: read.rows.length,
           groupCount: plan.entries.length,
           roundingTotal: plan.entries.reduce((s, e) => s + (e.rounding < 0n ? -e.rounding : e.rounding), 0n),
-          data: toSaved(plan.entries, entityInfos) as unknown as Prisma.InputJsonValue,
+          data: { ...toSaved(plan.entries, entityInfos), rates: [...fileRates.values()] } as unknown as Prisma.InputJsonValue,
           checks: {
             create: plan.checks.map((c) => ({
               severity: c.severity,
@@ -238,6 +255,9 @@ export async function postImport(db: Db, clientId: string, importId: string) {
           lines,
         });
         posted++;
+      }
+      for (const r of saved.rates ?? []) {
+        await upsertFileRate(tx, imp.firmId, { currency: r.currency, quote: r.quote, date: new Date(`${r.date}T00:00:00.000Z`), kind: "SPOT", rate: r.rate, note: `${imp.fileName} ${r.ref}` });
       }
       await tx.ledgerImport.update({ where: { id: imp.id }, data: { status: "POSTED", postedAt: new Date(), groupCount: posted } });
       return { entries: posted };

@@ -86,3 +86,30 @@ export function invertRate(rate: string, digits = 10): string {
   const q = divRound(10n ** BigInt(r.scale + digits), r.num);
   return formatRate({ num: q, scale: digits });
 }
+
+/** Display a rate id-ID style without floats: "12250.5" → "12.250,5", "1.31" → "1,31". */
+export function formatRateId(rate: string): string {
+  const canonical = formatRate(rate);
+  const [int, frac] = canonical.split(".");
+  const grouped = new Intl.NumberFormat("id-ID").format(BigInt(int));
+  return frac ? `${grouped},${frac}` : grouped;
+}
+
+/**
+ * Typed-in rate → canonical decimal ("12.250,50" → "12250.50", "12.250" → "12250", "1,31" → "1.31", "1.31" → "1.31").
+ * Both separators: the last one is the decimal. One kind only: 3-digit groups mean thousands, anything else is the decimal.
+ */
+export function normalizeRateInput(input: string): string {
+  const s = input.trim().replace(/\s/g, "");
+  const dot = s.lastIndexOf(".");
+  const comma = s.lastIndexOf(",");
+  if (dot >= 0 && comma >= 0) {
+    const dec = dot > comma ? "." : ",";
+    const thou = dec === "." ? "," : ".";
+    return s.split(thou).join("").replace(dec, ".");
+  }
+  const sep = dot >= 0 ? "." : comma >= 0 ? "," : null;
+  if (!sep) return s;
+  const thousands = new RegExp(`^\\d{1,3}(\\${sep}\\d{3})+$`).test(s);
+  return thousands ? s.split(sep).join("") : s.replace(sep, ".");
+}

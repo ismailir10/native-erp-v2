@@ -16,6 +16,7 @@ import { liveUploadFile, seedDemo } from "@/lib/demo/seed";
 import { addClient, OnboardingError, type NewClientInput } from "@/lib/onboarding";
 import { OpeningError, postOpening, type OpeningLineInput } from "@/lib/opening";
 import type { TaxTag } from "@/lib/generated/prisma/enums";
+import { RateError, upsertRate, validateRateInput } from "@/lib/fx/rates";
 
 /**
  * Server actions — the only write path from the UI. Each returns {ok, …} or {ok:false, error}
@@ -25,7 +26,7 @@ type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string; needs
 
 function fail(e: unknown): { ok: false; error: string; needsPassword?: boolean } {
   if (e instanceof PdfPasswordError) return { ok: false, error: e.message, needsPassword: true };
-  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError) return { ok: false, error: e.message };
+  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError || e instanceof RateError) return { ok: false, error: e.message };
   console.error(e);
   return { ok: false, error: "Terjadi kesalahan tak terduga. Coba lagi." };
 }
@@ -208,6 +209,31 @@ export async function resetDemoAction(): Promise<Result> {
   try {
     await seedDemo(prisma);
     revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Kurs page: typed-in rates are firm data (source MANUAL) and win over rates taken from files. */
+export async function saveRateAction(input: { clientId: string; currency: string; quote: string; date: string; kind: string; rate: string; note?: string }): Promise<Result> {
+  try {
+    const client = await getClientForFirm(input.clientId);
+    const row = validateRateInput(input);
+    await upsertRate(prisma, client.firmId, { ...row, source: "MANUAL", note: input.note?.trim().slice(0, 200) || null });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function deleteRateAction(clientId: string, rateId: string): Promise<Result> {
+  try {
+    const client = await getClientForFirm(clientId);
+    const { count } = await prisma.exchangeRate.deleteMany({ where: { id: rateId, firmId: client.firmId } });
+    if (!count) return { ok: false, error: "Kurs tidak ditemukan." };
+    revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
   } catch (e) {
     return fail(e);
