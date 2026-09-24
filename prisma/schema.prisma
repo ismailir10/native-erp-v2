@@ -14,6 +14,7 @@ enum EntityKind {
   PT
   CV
   PERORANGAN
+  BADAN_USAHA_ASING
 }
 
 enum AccountType {
@@ -226,6 +227,9 @@ model Period {
 }
 
 model StatementImport {
+  @@unique([evidenceVersionId, evidenceUnitKey])
+  evidenceVersionId String?
+  evidenceUnitKey   String?
   id             String            @id @default(cuid())
   firmId         String
   bankAccountId  String
@@ -449,6 +453,9 @@ model SourceAccount {
 
 /// A ledger or Neraca file: staged as DRAFT (rows + checks + mapping), then POSTED all-or-nothing.
 model LedgerImport {
+  @@unique([evidenceVersionId, evidenceUnitKey])
+  evidenceVersionId String?
+  evidenceUnitKey   String?
   id            String             @id @default(cuid())
   firmId        String
   clientId      String
@@ -520,4 +527,181 @@ model AiAccountMap {
   reason      String
   model       String
   createdAt   DateTime @default(now())
+}
+
+model AiReservation {
+  id String @id @default(cuid())
+  firmId String
+  scope String
+  tokens Int
+  at DateTime @default(now())
+  settled Boolean @default(false)
+  @@index([firmId, at])
+}
+
+model DriveConnection {
+  id String @id @default(cuid())
+  firmId String @unique
+  refreshToken String
+  createdAt DateTime @default(now())
+}
+
+model DriveOAuthState {
+  id String @id
+  firmId String
+  browserHash String
+  expiresAt DateTime
+}
+
+model EvidenceIntake {
+  id String @id @default(cuid())
+  firmId String
+  clientId String?
+  name String
+  sourceUrl String?
+  status String @default("READY")
+  cursor Json @default("{}")
+  issue String?
+  leaseToken String?
+  leaseUntil DateTime?
+  contextVersion Int @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  documents EvidenceDocument[]
+  facts EvidenceFact[]
+  conflicts EvidenceConflict[]
+  messages EvidenceMessage[]
+  @@index([firmId, clientId])
+}
+
+model EvidenceDocument {
+  approvedShortcutTarget String?
+  id String @id @default(cuid())
+  firmId String
+  intakeId String
+  intake EvidenceIntake @relation(fields:[intakeId], references:[id], onDelete:Cascade)
+  sourceKey String
+  name String
+  path String
+  mimeType String
+  sourceUrl String?
+  remote Json @default("{}")
+  fingerprint String?
+  currentVersionId String?
+  excluded Boolean @default(false)
+  status String @default("PENDING")
+  issue String?
+  seenRun String?
+  versions EvidenceVersion[]
+  @@unique([intakeId, sourceKey])
+  @@index([firmId, intakeId])
+}
+
+model EvidenceVersion {
+  id String @id @default(cuid())
+  firmId String
+  documentId String
+  document EvidenceDocument @relation(fields:[documentId], references:[id], onDelete:Cascade)
+  hash String
+  data Bytes
+  name String
+  size Int
+  units Json @default("[]")
+  issues Json @default("[]")
+  extracted Boolean @default(false)
+  analyzed Boolean @default(false)
+  createdAt DateTime @default(now())
+  passages EvidencePassage[]
+  @@unique([documentId, hash])
+  @@index([firmId])
+}
+
+model EvidencePassage {
+  id String @id @default(cuid())
+  firmId String
+  versionId String
+  version EvidenceVersion @relation(fields:[versionId], references:[id], onDelete:Cascade)
+  unitKey String
+  locator String
+  text String
+  @@index([firmId, versionId])
+}
+
+model EvidenceFact {
+  id String @id @default(cuid())
+  firmId String
+  intakeId String
+  intake EvidenceIntake @relation(fields:[intakeId], references:[id], onDelete:Cascade)
+  versionId String
+  unitKey String
+  locator String
+  key String
+  value String
+  effectiveDate String?
+  status String @default("PROPOSED")
+  @@unique([intakeId, versionId, unitKey, key, value])
+}
+
+model EvidenceConflict {
+  id String @id @default(cuid())
+  firmId String
+  intakeId String
+  intake EvidenceIntake @relation(fields:[intakeId], references:[id], onDelete:Cascade)
+  key String
+  kind String
+  message String
+  versionIds Json
+  resolved Boolean @default(false)
+  note String?
+  @@unique([intakeId, key])
+}
+
+model EvidenceSelection {
+  bankAccountId String?
+  id String @id @default(cuid())
+  firmId String
+  intakeId String
+  versionId String
+  unitKey String
+  role String
+  entityId String?
+  periodStart String?
+  periodEnd String?
+  currency String?
+  confirmed Boolean @default(false)
+  importId String?
+  @@unique([versionId, unitKey])
+  @@index([firmId, intakeId])
+}
+
+model EvidenceUpload {
+  id String @id @default(cuid())
+  firmId String
+  intakeId String
+  name String
+  totalBytes Int
+  receivedBytes Int @default(0)
+  data Bytes
+  createdAt DateTime @default(now())
+  @@index([firmId, intakeId])
+}
+
+model EvidenceMessage {
+  id String @id @default(cuid())
+  firmId String
+  intakeId String
+  intake EvidenceIntake @relation(fields:[intakeId], references:[id], onDelete:Cascade)
+  question String
+  answer Json
+  scope Json
+  createdAt DateTime @default(now())
+}
+
+model EvidenceAiCache {
+  key String @id
+  firmId String
+  scope String
+  payload Json
+  createdAt DateTime @default(now())
+  @@index([firmId, scope])
 }
