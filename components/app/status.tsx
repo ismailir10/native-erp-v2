@@ -28,6 +28,11 @@ export function MethodBadge({ method }: { method: string }) {
     AI: ["AI", "bg-primary-subtle text-primary"],
     HEURISTIC: ["Tebakan", "bg-review-subtle text-review"],
     MANUAL: ["Manual", "bg-muted text-muted-foreground"],
+    // Account mapping (ledger import)
+    PRIOR: ["Sebelumnya", "bg-secondary text-secondary-foreground"],
+    NAME: ["Nama sama", "bg-secondary text-secondary-foreground"],
+    KEYWORD: ["Aturan", "bg-secondary text-secondary-foreground"],
+    NEW: ["Akun baru", "bg-muted text-muted-foreground"],
   };
   const [label, cls] = labels[method] ?? [method, "bg-muted"];
   return <span className={cn("inline-flex rounded px-1.5 py-0.5 text-[11px] font-medium", cls)}>{label}</span>;

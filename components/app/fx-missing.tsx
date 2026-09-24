@@ -1,8 +1,21 @@
+import Link from "next/link";
 import { NextStep } from "@/components/app/page-header";
 import { FxMissingError } from "@/lib/reports/fx";
 
 /** Shown instead of a report when a non-IDR entity can't be translated yet (rule 11: never a guessed number). */
-export function FxMissing({ error, base }: { error: FxMissingError; base: string }) {
+export function FxMissing({ error, base, compact }: { error: FxMissingError; base: string; compact?: boolean }) {
+  if (compact) {
+    // Pages that already show a NextStep: a quiet card, so there's still only one instruction on screen.
+    return (
+      <div className="rounded-lg border bg-card p-4 text-sm shadow-xs">
+        <div className="font-medium">Angka Gabungan Grup belum bisa dijabarkan ke Rupiah</div>
+        <p className="mt-1 text-muted-foreground">
+          Kurs belum lengkap: {error.missing.map((m) => `${m.entity} — ${m.need}`).join("; ")}.{" "}
+          <Link className="text-primary hover:underline" href={`${base}/rates`}>Isi di halaman Kurs</Link>, atau pilih satu entitas di atas.
+        </p>
+      </div>
+    );
+  }
   return (
     <div className="space-y-3">
       <NextStep href={`${base}/rates`} cta="Isi kurs">

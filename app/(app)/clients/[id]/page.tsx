@@ -21,8 +21,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 export default async function ClientOverview({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, period, scope, periodOptions, entityOptions, base, scopeLabel, currency } = await loadClientPage(params, searchParams);
   const s = { clientId: client.id, entityIds: scope.entityIds };
+  // A ledger import brings its own opening rows, so those entities don't need a separate Saldo Awal.
   const withOpening = new Set(
-    (await prisma.journalEntry.findMany({ where: { entityId: { in: client.entities.map((e) => e.id) }, kind: "OPENING" }, select: { entityId: true } })).map((j) => j.entityId),
+    (await prisma.journalEntry.findMany({ where: { entityId: { in: client.entities.map((e) => e.id) }, kind: { in: ["OPENING", "IMPORTED"] } }, select: { entityId: true }, distinct: ["entityId"] })).map((j) => j.entityId),
   );
   const noOpening = client.entities.filter((e) => !withOpening.has(e.id));
   // Indonesian tax estimates only make sense for Rupiah entities.
@@ -78,7 +79,7 @@ export default async function ClientOverview({ params, searchParams }: { params:
       )}
 
       {fxMissing || !is ? (
-        <FxMissing error={fxMissing!} base={base} />
+        <FxMissing error={fxMissing!} base={base} compact />
       ) : (
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <Stat label="Saldo kas & bank" value={money(last.cash)} hint={prev ? `${last.cash >= prev.cash ? "Naik" : "Turun"} ${money(last.cash >= prev.cash ? last.cash - prev.cash : prev.cash - last.cash)} dari bulan lalu` : undefined} />
@@ -88,7 +89,7 @@ export default async function ClientOverview({ params, searchParams }: { params:
       </div>
       )}
 
-      {fxMissing ? null : auto.length === 0 ? (
+      {fxMissing ? null : auto.length === 0 && series.every((p) => p.cash === 0n && p.revenue === 0n && p.expense === 0n) ? (
         <Card>
           <CardHeader>
             <CardTitle>Belum ada mutasi</CardTitle>

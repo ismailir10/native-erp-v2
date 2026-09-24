@@ -267,6 +267,9 @@ const RANGES: Partial<Record<FsLine, [number, number]>> = {
   BEBAN_LAIN: [7101, 7189],
   BEBAN_PAJAK: [8101, 8199],
 };
+/** FS lines under which "Buat akun baru" can create a client account, in template order. */
+export const NEW_ACCOUNT_FS_LINES = (Object.keys(FS_LINES) as FsLine[]).filter((k) => RANGES[k]).map((k) => ({ key: k, label: FS_LINES[k].label }));
+
 const SPECIAL = new Set(["1190", "1199", "1999", "3200", "3900", "7190", "7200", ...Array.from({ length: 9 }, (_, i) => `110${i + 1}`), ...Array.from({ length: 9 }, (_, i) => `220${i + 1}`)]);
 const SECTION_TYPE: Record<string, AccountType> = { ASET_LANCAR: "ASET", ASET_TIDAK_LANCAR: "ASET", LIABILITAS: "LIABILITAS", EKUITAS: "EKUITAS" };
 
