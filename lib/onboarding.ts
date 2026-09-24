@@ -1,4 +1,3 @@
-import { z } from "zod";
 import type { Db } from "@/lib/db";
 import { createClient, type ClientSpec } from "@/lib/setup";
 
@@ -6,57 +5,59 @@ import { createClient, type ClientSpec } from "@/lib/setup";
  * "Tambah klien": a real client with its entities (PT/CV/owner) and bank accounts. Reuses createClient(),
  * so the client gets the template COA and one GL bank account (1101–1109) per bank account.
  */
-export class OnboardingError extends Error {}
-
-const text = (max: number) => z.string().trim().min(1).max(max);
-const schema = z.object({
-  name: text(120),
-  industry: z.string().trim().max(120),
-  entities: z
-    .array(
-      z.object({
-        name: text(160),
-        shortName: z.string().trim().max(40),
-        kind: z.enum(["PT", "CV", "PERORANGAN"]),
-        npwp: z.string().trim().max(30),
-        banks: z.array(z.object({ bank: z.enum(["BCA", "MANDIRI", "BRI", "GENERIC"]), number: z.string().trim(), label: text(60) })).min(1),
-      }),
-    )
-    .min(1),
-});
-export type NewClientInput = z.input<typeof schema>;
-
-export function validateNewClient(input: NewClientInput): ClientSpec {
-  const r = schema.safeParse(input);
-  if (!r.success) {
-    const path = r.error.issues[0]?.path ?? [];
-    if (path[0] === "name") throw new OnboardingError("Isi nama klien.");
-    if (path.includes("banks") && path.length <= 3) throw new OnboardingError("Setiap entitas butuh minimal satu rekening bank.");
-    if (path.includes("label")) throw new OnboardingError("Isi nama rekening, misalnya “BCA Giro”.");
-    if (path.includes("name")) throw new OnboardingError("Isi nama setiap entitas.");
-    throw new OnboardingError("Data klien belum lengkap. Periksa isian yang kosong.");
+/** `fields` maps a form path ("name", "entities.0.banks.1.number") to what to fix, so the form can mark every field at once. */
+export class OnboardingError extends Error {
+  constructor(readonly fields: Record<string, string>) {
+    const n = Object.keys(fields).length;
+    super(n === 1 ? Object.values(fields)[0] : `Periksa ${n} isian yang ditandai.`);
   }
-  const v = r.data;
-  const numbers = v.entities.flatMap((e) => e.banks.map((b) => b.number.replace(/[\s.-]/g, "")));
-  const bad = numbers.find((n) => !/^\d{6,20}$/.test(n));
-  if (bad !== undefined) throw new OnboardingError(`Nomor rekening “${bad || "(kosong)"}” tidak valid. Isi 6–20 angka.`);
-  if (new Set(numbers).size !== numbers.length) throw new OnboardingError("Ada nomor rekening yang dimasukkan dua kali.");
-  if (numbers.length > 9) throw new OnboardingError("Maksimal 9 rekening bank per klien.");
+}
+
+const KINDS = ["PT", "CV", "PERORANGAN"] as const;
+const BANKS = ["BCA", "MANDIRI", "BRI", "GENERIC"] as const;
+const BANK_NAME: Record<(typeof BANKS)[number], string> = { BCA: "BCA", MANDIRI: "Mandiri", BRI: "BRI", GENERIC: "Bank" };
+
+export type NewClientInput = {
+  name: string;
+  industry: string;
+  entities: { name: string; shortName: string; kind: (typeof KINDS)[number]; npwp: string; banks: { bank: (typeof BANKS)[number]; number: string; label: string }[] }[];
+};
+
+/** Every problem at once, keyed by field. Optional: industry, short name, NPWP, account label (defaults to "BCA ••5566"). */
+export function validateNewClient(input: NewClientInput): ClientSpec {
+  const fields: Record<string, string> = {};
+  const name = input.name.trim();
+  if (!name) fields.name = "Isi nama klien.";
+  else if (name.length > 120) fields.name = "Nama klien maksimal 120 karakter.";
+  if (input.entities.length === 0) fields.entities = "Tambahkan minimal satu entitas.";
+
+  const seen = new Map<string, string>();
+  const entities = input.entities.map((e, i) => {
+    const at = `entities.${i}`;
+    const eName = e.name.trim();
+    if (!eName) fields[`${at}.name`] = e.kind === "PERORANGAN" ? "Isi nama pemilik." : "Isi nama badan usaha.";
+    if (!KINDS.includes(e.kind)) fields[`${at}.kind`] = "Pilih jenis entitas.";
+    if (e.npwp.trim() && !/^[\d.\-\s]{15,25}$/.test(e.npwp.trim())) fields[`${at}.npwp`] = "NPWP berisi 15 atau 16 angka, boleh dengan titik dan strip.";
+    if (e.banks.length === 0) fields[`${at}.banks`] = "Tambahkan minimal satu rekening bank.";
+    const banks = e.banks.map((b, k) => {
+      const bt = `${at}.banks.${k}`;
+      if (!BANKS.includes(b.bank)) fields[`${bt}.bank`] = "Pilih bank.";
+      const number = b.number.replace(/[\s.\-]/g, "");
+      if (!number) fields[`${bt}.number`] = "Isi nomor rekening.";
+      else if (!/^\d{6,20}$/.test(number)) fields[`${bt}.number`] = "Nomor rekening berisi 6–20 angka.";
+      else if (seen.has(number)) fields[`${bt}.number`] = "Nomor ini sudah dimasukkan di atas.";
+      else seen.set(number, bt);
+      const label = b.label.trim() || `${BANK_NAME[b.bank] ?? "Bank"} ••${number.slice(-4)}`;
+      return { bank: b.bank, number, label: label.slice(0, 60) };
+    });
+    return { name: eName, shortName: e.shortName.trim() || eName, kind: e.kind, npwp: e.npwp.trim() || undefined, banks };
+  });
+  if (seen.size > 9) fields.entities = "Maksimal 9 rekening bank per klien.";
+  if (Object.keys(fields).length) throw new OnboardingError(fields);
+
   // Companies first, then owners — the order every list in the app uses.
   const rank = { PT: 0, CV: 1, PERORANGAN: 2 } as const;
-  return {
-    name: v.name,
-    industry: v.industry,
-    entities: [...v.entities]
-      .sort((a, b) => rank[a.kind] - rank[b.kind])
-      .map((e) => ({
-        name: e.name,
-        shortName: e.shortName || e.name,
-        kind: e.kind,
-        npwp: e.npwp || undefined,
-        banks: e.banks.map((b) => ({ bank: b.bank, number: b.number.replace(/[\s.-]/g, ""), label: b.label })),
-      })),
-  };
+  return { name, industry: input.industry.trim(), entities: [...entities].sort((a, b) => rank[a.kind] - rank[b.kind]) };
 }
 
 export async function addClient(db: Db, firmId: string, input: NewClientInput) {

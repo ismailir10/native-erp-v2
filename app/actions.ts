@@ -21,11 +21,11 @@ import type { TaxTag } from "@/lib/generated/prisma/enums";
  * Server actions — the only write path from the UI. Each returns {ok, …} or {ok:false, error}
  * with a Bahasa message the UI shows verbatim. Domain errors are expected; others are bugs.
  */
-type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string; needsPassword?: boolean };
+type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string; needsPassword?: boolean; fields?: Record<string, string> };
 
 function fail(e: unknown): { ok: false; error: string; needsPassword?: boolean } {
   if (e instanceof PdfPasswordError) return { ok: false, error: e.message, needsPassword: true };
-  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OnboardingError || e instanceof OpeningError) return { ok: false, error: e.message };
+  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError) return { ok: false, error: e.message };
   console.error(e);
   return { ok: false, error: "Terjadi kesalahan tak terduga. Coba lagi." };
 }
@@ -185,6 +185,7 @@ export async function addClientAction(input: NewClientInput): Promise<Result<{ c
     revalidatePath("/", "layout");
     return { ok: true, clientId: client.id };
   } catch (e) {
+    if (e instanceof OnboardingError) return { ok: false, error: e.message, fields: e.fields };
     return fail(e);
   }
 }
