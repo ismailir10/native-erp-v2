@@ -13,3 +13,5 @@ next-env.d.ts
 data/private/
 .DS_Store
 scripts/_*
+.neon
+.vercel

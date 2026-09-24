@@ -14,7 +14,7 @@ number traces back to the bank row it came from**. The accountant reviews what t
 | **Classify** | transfer matcher (own accounts → 1199, group entities → 1190) → rules → learned memory → LLM (cached, capped) → review |
 | **Ledger** | double entry, BigInt Rupiah, immutable entries, reclass-by-difference, period locks, PPN 11% split |
 | **Reports** | Neraca Saldo, Laba Rugi (month + YTD), Neraca (comparative), Kertas Kerja Gabungan with intercompany elimination, drill-down to source |
-| **Close** | 15 controls (TB, A=L+E, bank recon per account, continuity, clearing, suspense, intercompany), notes, sign-offs, lock |
+| **Close** | Automatic controls per entity + group (TB, A=L+E, bank recon per account, continuity, clearing, suspense, intercompany), notes, sign-offs, lock |
 | **Demo** | 3 synthetic clients × 6 months seeded through the real pipeline; [5-minute investor script](docs/demo/investor-demo.md) |
 
 ## Quick start
@@ -57,6 +57,7 @@ Next.js 16 (App Router, server actions) · TypeScript · Tailwind v4 · shadcn (
 4. **Deployment Protection**: Vercel Authentication blocks anyone without a Vercel login — turn it off for Production
    (or use a password / shareable link) before sending the URL to investors.
 5. Put Functions in the same region as the Neon database (Settings → Functions) — every page runs many queries.
+   Neon `long-voice-58936160` is in `aws-ap-southeast-1`, so Functions run in `sin1`.
 
 `vercel-build` (`scripts/vercel-build.sh`) then runs `prisma migrate deploy` on the unpooled URL, seeds the demo **only if the
 database is empty**, and builds. Reset the demo any time from the sidebar. Neon Auth / Functions / buckets are not used.

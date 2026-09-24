@@ -45,7 +45,7 @@ isn't needed (auth is out of scope). No internet or AI credit required; everythi
 > Talking point: *bank data gives cash basis; adjusting entries make it accrual-ready.*
 
 ### 6. Tutup Buku — the controlled close (45 s)
-- **15 controls, all Lolos**: TB balanced, A = L + E, each bank reconciled to the statement, continuity,
+- **16 controls, all Lolos**: TB balanced, A = L + E, each bank reconciled to the statement, continuity,
   clearing 1199 = 0, nothing in suspense, intercompany eliminated.
 - Tick the three accountant sign-offs → **Tutup buku Agustus 2026**. Period locked; imports into it are now rejected.
 
@@ -61,5 +61,5 @@ isn't needed (auth is out of scope). No internet or AI credit required; everythi
 - Demo data is synthetic, modelled on real engagements — no client data is shown.
 
 ## If something goes wrong
-- Anything odd → sidebar **Reset data demo** (±5 s) and restart from step 1.
+- Anything odd → sidebar **Reset data demo** (±5 s locally, ~20 s on Vercel) and restart from step 1.
 - Live AI instead of cache: set `AI_API_KEY`/`AI_MODEL`, run `DEMO_LIVE_AI=1 npm run demo:reset`; step 2 then makes exactly one real call.
