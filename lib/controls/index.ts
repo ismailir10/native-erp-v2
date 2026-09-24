@@ -104,6 +104,39 @@ export async function runControls(db: Db, clientId: string, year: number, month:
     });
   }
 
+  // Ledger / Neraca imports (rule 15a): accepted source differences stay FAIL until 1999 is cleared; REVIEW checks need a note.
+  const imports = await db.ledgerImport.findMany({
+    where: { clientId, status: "POSTED", periodStart: { lte: end }, periodEnd: { gte: start } },
+    include: { checks: true },
+    orderBy: { createdAt: "asc" },
+  });
+  for (const imp of imports) {
+    const inPeriod = (d: Date | null) => (d ? +d >= +start && +d <= +end : +imp.periodEnd >= +start && +imp.periodEnd <= +end);
+    const checks = imp.checks.filter((c) => c.severity !== "INFO" && inPeriod(c.date));
+    const accepted = checks.filter((c) => c.severity === "BLOCK" && c.accepted);
+    const reviews = checks.filter((c) => c.severity === "REVIEW");
+    let open = 0;
+    for (const c of accepted) {
+      const suspense = await db.journalLine.aggregate({ where: { entityId: c.entityId ?? undefined, account: { clientId, code: ACCOUNT_CODES.SUSPENSE }, date: { lte: end } }, _sum: { debit: true, credit: true } });
+      if ((suspense._sum.debit ?? 0n) !== (suspense._sum.credit ?? 0n)) open++;
+    }
+    const key = `ledger:${imp.id}`;
+    const parts = [
+      open ? `${open} selisih dari file sumber masih di 1999, koreksi dengan Jurnal Penyesuaian` : accepted.length ? `${accepted.length} selisih sumber sudah dikoreksi` : "",
+      reviews.length ? `${reviews.length} temuan perlu dicek` : "",
+      imp.roundingTotal ? `pembulatan sen ke 7190 total ${formatMoney(imp.roundingTotal, "IDR")}` : "",
+    ].filter(Boolean);
+    controls.push({
+      key,
+      title: `Impor ${imp.mode === "NERACA" ? "neraca" : "buku besar"} ${imp.sheetName}`,
+      scope: clientScope,
+      status: open ? "FAIL" : reviews.length ? "REVIEW" : "PASS",
+      detail: parts.join(" · ") || "Tidak ada temuan untuk periode ini",
+      href: `${base}/import/ledger/${imp.id}`,
+      ack: acks.get(key),
+    });
+  }
+
   // FX revaluation (rule 6b): REVIEW until the month-end difference is posted or rates are filled in.
   for (const p of await revaluationProposals(db, clientId, year, month)) {
     const key = `reval:${p.entityId}`;
