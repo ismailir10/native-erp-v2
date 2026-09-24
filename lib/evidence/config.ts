@@ -3,6 +3,10 @@ export function evidenceEnabled() {
   return process.env.EVIDENCE_ENABLED === "true" && process.env.DEMO_MODE !== "true" &&
     (!process.env.VERCEL || (process.env.VERCEL_ENV === "preview" && process.env.EVIDENCE_PRIVATE_DEPLOYMENT === "true"));
 }
+/** Public demo reads bundled synthetic examples only; never enables private actions. */
+export function publicEvidenceDemoEnabled() {
+  return process.env.DEMO_MODE === "true";
+}
 export function requireEvidenceEnabled() {
   if (!evidenceEnabled()) throw new Error("Dokumen belum diaktifkan di lingkungan ini.");
 }

@@ -81,6 +81,6 @@ database is empty**, and builds. Reset the demo any time from the sidebar. Neon 
 Read [CLAUDE.md](CLAUDE.md) (= `AGENTS.md`): the spec → build → ship loop, gates, and which skill governs which folder.
 Decisions live in [docs/adrs](docs/adrs/README.md). Demo data is synthetic — never commit real client statements.
 
-## Document evidence workspace (private pilot)
+## Document evidence workspace
 
-`/documents` and `/clients/[id]/documents` accept mixed uploads or read-only Drive folders, retain versioned evidence, prepare imports and company context, and answer cited questions before posting. Setup, limits, approved rollout, and examples: [docs/evidence-workspace.md](docs/evidence-workspace.md). Architecture: [ADR 0007](docs/adrs/0007-evidence-workspace.md). Core implementation lives in `lib/evidence/`; the public demo keeps this feature disabled.
+On the protected pilot, `/documents` and `/clients/[id]/documents` accept mixed uploads or read-only Drive folders, retain versioned evidence, prepare imports and company context, and answer cited questions before posting. The public `/documents` page demonstrates search, report comparisons and source citations using bundled synthetic examples only; personal uploads and Drive connections remain in the protected workspace. Setup and limits: [docs/evidence-workspace.md](docs/evidence-workspace.md). Architecture: [ADR 0007](docs/adrs/0007-evidence-workspace.md). Core implementation lives in `lib/evidence/`.
