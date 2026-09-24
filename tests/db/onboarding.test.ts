@@ -30,17 +30,40 @@ describe("Tambah klien", () => {
     expect(await db.account.count({ where: { clientId: client.id, code: { in: ["1190", "1199", "1999", "3200"] } } })).toBe(4);
   });
 
-  it("rejects missing names, bad or duplicate account numbers", () => {
-    expect(() => validateNewClient({ ...input(), name: " " })).toThrow("Isi nama klien.");
-    const dup = input();
-    dup.entities[1].banks[1].number = "8720145566";
-    expect(() => validateNewClient(dup)).toThrow(/dua kali/);
+  it("reports every problem at once, keyed by field", () => {
     const bad = input();
+    bad.name = " ";
+    bad.entities[0].name = "";
     bad.entities[0].banks[0].number = "12ab";
-    expect(() => validateNewClient(bad)).toThrow(OnboardingError);
+    bad.entities[1].banks[1].number = "8720145566"; // duplicate of the row above
+    bad.entities[1].npwp = "123";
+    let err: OnboardingError | null = null;
+    try {
+      validateNewClient(bad);
+    } catch (e) {
+      err = e as OnboardingError;
+    }
+    expect(err).toBeInstanceOf(OnboardingError);
+    expect(err!.fields).toEqual({
+      name: "Isi nama klien.",
+      "entities.0.name": "Isi nama pemilik.",
+      "entities.0.banks.0.number": "Nomor rekening berisi 6–20 angka.",
+      "entities.1.npwp": "NPWP berisi 15 atau 16 angka, boleh dengan titik dan strip.",
+      "entities.1.banks.1.number": "Nomor ini sudah dimasukkan di atas.",
+    });
+    expect(err!.message).toBe("Periksa 5 isian yang ditandai.");
     const noBank = input();
     noBank.entities[0].banks = [];
-    expect(() => validateNewClient(noBank)).toThrow(/minimal satu rekening/);
+    expect(() => validateNewClient(noBank)).toThrow("Tambahkan minimal satu rekening bank.");
+  });
+
+  it("only needs client name, entity name and account number", () => {
+    const spec = validateNewClient({
+      name: "Toko Maju",
+      industry: "",
+      entities: [{ name: "PT Toko Maju", shortName: "", kind: "PT", npwp: "", banks: [{ bank: "BCA", number: "872 014 5566", label: "" }] }],
+    });
+    expect(spec.entities[0]).toMatchObject({ shortName: "PT Toko Maju", npwp: undefined, banks: [{ bank: "BCA", number: "8720145566", label: "BCA ••5566" }] });
   });
 });
 
