@@ -1,6 +1,8 @@
+import { CURRENCIES, divRound, exponentOf } from "@/lib/fx/currency";
+
 /**
- * Money = integer Rupiah as bigint. Never route amounts through Number.
- * See .claude/skills/accounting-rules/SKILL.md §Money.
+ * Money = bigint minor units of a currency (IDR: whole Rupiah). Never route amounts through Number.
+ * See .claude/skills/accounting-rules/SKILL.md §Money (rules 6, 6a, 6b).
  */
 
 /** Effective PPN rate since 2025: 12% × DPP 11/12 = 11% of the gross-up base. */
@@ -59,6 +61,70 @@ function detectDecimalSeparator(s: string, lastDot: number, lastComma: number): 
   return digitsAfter === 3 ? null : sep;
 }
 
+/**
+ * Parse an amount to **sen** (2 decimals, bigint), whatever its currency: "1.234.567,89", "1,234,567.89", "(2.500)",
+ * or a spreadsheet float such as 93375132.07000001 (float noise beyond 2 decimals is rounded half-up to sen first).
+ * Throws on anything that isn't a number — callers turn that into a BLOCK check.
+ */
+export function parseCents(input: string | number | bigint | null | undefined): bigint {
+  if (input === null || input === undefined) return 0n;
+  if (typeof input === "bigint") return input * 100n;
+  if (typeof input === "number") {
+    if (!Number.isFinite(input)) throw new Error(`Nominal tidak valid: ${input}`);
+    return parseCents(input.toFixed(6));
+  }
+  let s = input.trim().replace(/\s|Rp\.?|IDR|SGD|USD/gi, "");
+  if (s === "" || s === "-") return 0n;
+  let negative = false;
+  if (/^\(.*\)$/.test(s)) {
+    negative = true;
+    s = s.slice(1, -1);
+  }
+  if (s.startsWith("-")) {
+    negative = !negative;
+    s = s.slice(1);
+  }
+  if (s.startsWith("+")) s = s.slice(1);
+  const decimalSep = detectDecimalSeparator(s, s.lastIndexOf("."), s.lastIndexOf(","));
+  let intPart = s;
+  let frac = "";
+  if (decimalSep) {
+    const idx = s.lastIndexOf(decimalSep);
+    intPart = s.slice(0, idx);
+    frac = s.slice(idx + 1);
+  }
+  intPart = intPart.replace(/[.,]/g, "");
+  if (!/^\d*$/.test(intPart) || !/^\d*$/.test(frac) || (intPart === "" && frac === "")) throw new Error(`Nominal tidak valid: "${input}"`);
+  const scaled = BigInt((intPart || "0") + frac.padEnd(Math.max(frac.length, 2), "0"));
+  const value = frac.length > 2 ? divRound(scaled, 10n ** BigInt(frac.length - 2)) : scaled;
+  return negative ? -value : value;
+}
+
+/** Sen → minor units of `currency` (IDR/JPY: whole units, rounded half away from zero). */
+export function centsToMinor(cents: bigint, currency: string): bigint {
+  const e = exponentOf(currency);
+  if (e === 2) return cents;
+  if (e > 2) return cents * 10n ** BigInt(e - 2);
+  return divRound(cents, 10n ** BigInt(2 - e));
+}
+
+/** Parse straight to minor units of `currency`. */
+export function parseMinor(input: string | number | bigint | null | undefined, currency: string): bigint {
+  return centsToMinor(parseCents(input), currency);
+}
+
+/**
+ * Rule 6a: round each signed sen amount to the currency's minor unit and report the residue that one line on
+ * 7190 Selisih Pembulatan must carry so the rounded entry sums to the rounded total. Nothing is spread silently.
+ * Returns `rounded[i]` (signed minor units) and `rounding` (signed, debit-positive) with Σrounded + rounding = round(Σcents).
+ */
+export function roundEntry(cents: bigint[], currency: string): { rounded: bigint[]; rounding: bigint; total: bigint } {
+  const rounded = cents.map((c) => centsToMinor(c, currency));
+  const total = centsToMinor(cents.reduce((s, c) => s + c, 0n), currency);
+  const rounding = total - rounded.reduce((s, r) => s + r, 0n);
+  return { rounded, rounding, total };
+}
+
 const nf = new Intl.NumberFormat("id-ID");
 
 /** "Rp 1.234.567" ; negatives as "(Rp 1.234.567)" accounting style when `accounting`. */
@@ -67,6 +133,24 @@ export function formatRupiah(value: bigint, opts: { accounting?: boolean; bare?:
   const abs = neg ? -value : value;
   const body = nf.format(abs);
   const withSymbol = opts.bare ? body : `Rp ${body}`;
+  if (!neg) return withSymbol;
+  return opts.accounting ? `(${withSymbol})` : `-${withSymbol}`;
+}
+
+/**
+ * Format minor units of any currency, id-ID style: "Rp 1.234.567", "S$ 196.500,00", "(US$ 44,97)" with `accounting`.
+ * IDR goes through formatRupiah so existing output is unchanged.
+ */
+export function formatMoney(value: bigint, currency: string, opts: { accounting?: boolean; bare?: boolean } = {}): string {
+  if (currency === "IDR") return formatRupiah(value, opts);
+  const e = exponentOf(currency);
+  const neg = value < 0n;
+  const abs = neg ? -value : value;
+  const unit = 10n ** BigInt(e);
+  const int = nf.format(abs / unit);
+  const body = e ? `${int},${(abs % unit).toString().padStart(e, "0")}` : int;
+  const symbol = CURRENCIES[currency as keyof typeof CURRENCIES].symbol;
+  const withSymbol = opts.bare ? body : `${symbol} ${body}`;
   if (!neg) return withSymbol;
   return opts.accounting ? `(${withSymbol})` : `-${withSymbol}`;
 }
