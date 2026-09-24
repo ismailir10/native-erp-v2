@@ -17,6 +17,7 @@ import {
   RotateCcw,
   Scale,
   Settings2,
+  SlidersHorizontal,
   Upload,
 } from "lucide-react";
 import {
@@ -138,8 +139,16 @@ export function AppSidebar({
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>
-      {demoMode && (
-        <SidebarFooter className="border-t">
+      <SidebarFooter className="border-t">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton isActive={pathname === "/settings"} render={<Link href="/settings" />}>
+              <SlidersHorizontal />
+              <span>Pengaturan</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+        {demoMode && (
           <AlertDialog>
             <AlertDialogTrigger render={<SidebarMenuButton disabled={pending} className="text-muted-foreground" />}>
               <RotateCcw className={pending ? "animate-spin" : ""} />
@@ -171,8 +180,8 @@ export function AppSidebar({
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
-        </SidebarFooter>
-      )}
+        )}
+      </SidebarFooter>
     </Sidebar>
   );
 }

@@ -70,3 +70,32 @@ export async function resolveProvider(db: Reader): Promise<AiProvider | null> {
   const cfg = await resolveAiConfig(db);
   return cfg.apiKey && cfg.model ? new OpenAiCompatibleProvider(cfg) : null;
 }
+
+/** GET {baseUrl}/models — lists model ids, costs no tokens. Errors are Bahasa, shown verbatim. */
+export async function fetchModels(baseUrl: string, apiKey: string, fetchImpl: typeof fetch = fetch): Promise<string[]> {
+  let res: Response;
+  try {
+    const headers: Record<string, string> = apiKey ? { authorization: `Bearer ${apiKey}` } : {};
+    res = await fetchImpl(`${baseUrl}/models`, { headers, signal: AbortSignal.timeout(10_000) });
+  } catch {
+    throw new SettingsError(`Tidak bisa menghubungi ${new URL(baseUrl).host}. Coba lagi sebentar.`);
+  }
+  if (res.status === 401 || res.status === 403) throw new SettingsError("Kunci ditolak oleh gateway. Periksa kuncinya.");
+  if (!res.ok) throw new SettingsError(`Gateway membalas ${res.status}. Coba lagi sebentar.`);
+  const body = (await res.json().catch(() => ({}))) as { data?: { id?: unknown }[] };
+  return (body.data ?? []).map((m) => String(m.id ?? "")).filter(Boolean).sort();
+}
+
+export class SettingsError extends Error {}
+
+const KEY_RE = /^\S{8,300}$/;
+const MODEL_RE = /^[\w.:/-]{1,100}$/;
+
+/** Validates input for Pengaturan → AI. Returns the fields to write (key only when a new one was typed). */
+export function validateAiInput(input: { apiKey: string; model: string }) {
+  const apiKey = input.apiKey.trim();
+  const model = input.model.trim();
+  if (apiKey && !KEY_RE.test(apiKey)) throw new SettingsError("Kunci API tidak valid. Tempel kunci lengkap tanpa spasi.");
+  if (!MODEL_RE.test(model)) throw new SettingsError("Isi nama model. Klik Muat daftar model untuk memilih.");
+  return { apiKey: apiKey || undefined, model };
+}
