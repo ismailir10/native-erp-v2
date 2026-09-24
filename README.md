@@ -4,23 +4,24 @@
 posts a double-entry ledger, reconciles, and produces Laba Rugi, Neraca and a PT + owner combined view — where **every
 number traces back to the bank row it came from**. The accountant reviews what the AI proposes and closes the month.
 
-> Status: investor MVP (cycle 0). Auth, PDF statements, tax filing and deployment are next — see
-> [docs/cycles/2026-09-24-mvp-foundation.md](docs/cycles/2026-09-24-mvp-foundation.md).
+> Status: investor demo live, ready for first real-client tests (cycle 1). Auth and tax filing are next. See
+> [docs/cycles](docs/cycles/) and [docs/real-data.md](docs/real-data.md).
 
 ## What it does
 | Area | |
 |---|---|
-| **Import** | KlikBCA CSV, Mandiri XLSX, BRI CSV, generic column detection · running-balance continuity check · dedupe on re-upload |
+| **Import** | PDF e-statements (text, password-protected), KlikBCA CSV, Mandiri XLSX, BRI CSV, generic column detection · running-balance continuity check · dedupe on re-upload |
+| **Onboarding** | Tambah klien (entities + bank accounts, template COA) · Saldo Awal per entity (plug to 3200) |
 | **Classify** | transfer matcher (own accounts → 1199, group entities → 1190) → rules → learned memory → LLM (cached, capped) → review |
 | **Ledger** | double entry, BigInt Rupiah, immutable entries, reclass-by-difference, period locks, PPN 11% split |
 | **Reports** | Neraca Saldo, Laba Rugi (month + YTD), Neraca (comparative), Kertas Kerja Gabungan with intercompany elimination, drill-down to source |
-| **Close** | 15 controls (TB, A=L+E, bank recon per account, continuity, clearing, suspense, intercompany), notes, sign-offs, lock |
+| **Close** | Automatic controls per entity + group (TB, A=L+E, bank recon per account, continuity, clearing, suspense, intercompany), notes, sign-offs, lock |
 | **Demo** | 3 synthetic clients × 6 months seeded through the real pipeline; [5-minute investor script](docs/demo/investor-demo.md) |
 
 ## Quick start
 ```bash
 cp .env.example .env
-docker compose up -d            # Postgres 16 (or use your own; see DATABASE_URL)
+docker compose up -d            # Postgres 16 (or `brew install postgresql@16` + create role/db `buku`, and `buku_test` for tests)
 npm ci
 npx prisma migrate deploy
 npm run demo:reset              # seed "KJA Demo & Rekan" (≈5 s, no AI credit used)
@@ -34,7 +35,8 @@ Claude Code sessions run `scripts/session-start.sh` automatically (Postgres, dep
 | `npm test` | Vitest: unit + Postgres + demo-vs-ground-truth (uses `buku_test`) |
 | `npm run verify:books` | Recompute ~1,000 balances from generator truth and compare with the app → `ALL PASS` |
 | `npm run build && npm run test:e2e` | Playwright investor walk against `next start` |
-| `npm run ai:smoke` | One real, capped LLM call to check `AI_API_KEY` / `AI_MODEL` |
+| `npm run ai:smoke` | One real, capped LLM call to check the AI key + model (Pengaturan, else `.env`) |
+| `npm run inspect:statement -- <file>` | Parse a statement without the DB: format, balances, continuity. `--lines` dumps PDF text positions; `PDF_PASSWORD=…` for locked PDFs |
 | `npm run lint` · `npm run typecheck` | |
 
 ## Stack
@@ -46,17 +48,28 @@ Next.js 16 (App Router, server actions) · TypeScript · Tailwind v4 · shadcn (
 |---|---|
 | `DATABASE_URL` | Postgres URL (Neon pooled URL in production) |
 | `DEMO_MODE` | `true` enables the demo firm + *Reset data demo* |
-| `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` | LLM gateway. Empty key = rules + memory only (fully functional) |
+| `AI_BASE_URL` | LLM gateway (default OpenCode Zen). Env-only on purpose, so a stored key can't be redirected |
+| `AI_API_KEY` / `AI_MODEL` | Fallback when nothing is saved in **Pengaturan**. Empty = rules + memory only (fully functional) |
+| `SETTINGS_SECRET` | ≥ 32 chars. Encrypts the AI key saved in Pengaturan. Changing it means re-saving the key |
+| `ADMIN_PASSCODE` | Required to save or clear the AI key in Pengaturan (the app has no login yet) |
 | `AI_MAX_CALLS_PER_IMPORT` / `AI_MONTHLY_TOKEN_BUDGET` | Credit guards (defaults 3 / 200 000) |
 
 ## Deploy (Vercel + Neon)
 1. **Connect Neon to the Vercel project**: Vercel → project → *Storage* → *Connect Database* → Neon → the existing project
    (branch `production`), environments Production + Preview. This injects `DATABASE_URL` (pooled) and `DATABASE_URL_UNPOOLED`.
-2. **Env vars** (Settings → Environment Variables): `DEMO_MODE=true`, and optionally `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`.
+2. **Env vars** (Settings → Environment Variables): `DEMO_MODE=true`, `SETTINGS_SECRET`, `ADMIN_PASSCODE`, and optionally `AI_BASE_URL`.
+   The AI key + model are set in the app under **Pengaturan**.
 3. **Connect Git** (Settings → Git): `ismailir10/native-erp-v2`; production branch `main`.
 4. **Deployment Protection**: Vercel Authentication blocks anyone without a Vercel login — turn it off for Production
    (or use a password / shareable link) before sending the URL to investors.
 5. Put Functions in the same region as the Neon database (Settings → Functions) — every page runs many queries.
+   Neon `long-voice-58936160` is in `aws-ap-southeast-1`, so Functions run in `sin1`.
+
+| Vercel environment | Neon branch | `DEMO_MODE` | Who sees it |
+|---|---|---|---|
+| Production (`main`) | `production` | `true` | Public investor demo, synthetic data |
+| Preview (PR branches) | `preview` | `true` | Behind Vercel login |
+| Preview, git branch `real-data` | `real-data` | `false` | Behind Vercel login. **Real client files only here**, see [docs/real-data.md](docs/real-data.md) |
 
 `vercel-build` (`scripts/vercel-build.sh`) then runs `prisma migrate deploy` on the unpooled URL, seeds the demo **only if the
 database is empty**, and builds. Reset the demo any time from the sidebar. Neon Auth / Functions / buckets are not used.
