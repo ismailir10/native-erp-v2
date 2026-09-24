@@ -39,3 +39,58 @@ describe("formatRupiah", () => {
     expect(formatRupiah(-5000n, { accounting: true })).toBe("(Rp 5.000)");
   });
 });
+
+import { centsToMinor, formatMoney, parseCents, parseMinor, roundEntry } from "@/lib/money";
+
+describe("parseCents / parseMinor", () => {
+  it("parses strings and spreadsheet floats to sen", () => {
+    expect(parseCents("93,375,132.07")).toBe(9_337_513_207n);
+    expect(parseCents("1.234.567,89")).toBe(123_456_789n);
+    expect(parseCents("(2.500)")).toBe(-250_000n);
+    expect(parseCents(93375132.07000001)).toBe(9_337_513_207n);
+    expect(parseCents(-0.000004216837158203)).toBe(0n);
+    expect(parseCents(0.0049)).toBe(0n);
+    expect(parseCents(0.004999999)).toBe(1n); // float noise for 0.005
+    expect(parseCents(0.0050000001)).toBe(1n);
+    expect(parseCents("1500000")).toBe(150_000_000n);
+  });
+  it("rejects spreadsheet error cells and text", () => {
+    for (const bad of ["#VALUE!", "#REF!", "#NAME?", "abc", "."]) expect(() => parseCents(bad)).toThrow(/tidak valid/);
+  });
+  it("converts sen to minor units by exponent", () => {
+    expect(centsToMinor(150n, "IDR")).toBe(2n);
+    expect(centsToMinor(149n, "IDR")).toBe(1n);
+    expect(centsToMinor(-150n, "IDR")).toBe(-2n);
+    expect(centsToMinor(4497n, "USD")).toBe(4497n);
+    expect(parseMinor("12,750.00", "JPY")).toBe(12_750n);
+  });
+});
+
+describe("roundEntry (rule 6a)", () => {
+  it("keeps Σ exact via one rounding residue", () => {
+    // 3 lines of Rp 0.50 debit vs one Rp 1.50 credit: each rounds up, residue −1 on 7190
+    const { rounded, rounding, total } = roundEntry([50n, 50n, 50n, -150n], "IDR");
+    expect(rounded).toEqual([1n, 1n, 1n, -2n]);
+    expect(total).toBe(0n);
+    expect(rounded.reduce((s, r) => s + r, 0n) + rounding).toBe(total);
+    expect(rounding).toBe(-1n);
+  });
+  it("no residue for 2-decimal currencies", () => {
+    expect(roundEntry([4497n, -4497n], "SGD").rounding).toBe(0n);
+  });
+  it("reports an unbalanced total separately from rounding", () => {
+    const r = roundEntry([500_000_000n, -1_000_000_000n], "IDR");
+    expect(r.total).toBe(-5_000_000n);
+    expect(r.rounding).toBe(0n);
+  });
+});
+
+describe("formatMoney", () => {
+  it("formats by currency, IDR unchanged", () => {
+    expect(formatMoney(1_234_567n, "IDR")).toBe("Rp 1.234.567");
+    expect(formatMoney(19_650_000n, "SGD")).toBe("S$ 196.500,00");
+    expect(formatMoney(-4_497n, "USD", { accounting: true })).toBe("(US$ 44,97)");
+    expect(formatMoney(5n, "SGD", { bare: true })).toBe("0,05");
+    expect(formatMoney(12_750n, "JPY")).toBe("¥ 12.750");
+  });
+});

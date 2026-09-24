@@ -2,7 +2,9 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getClientForFirm } from "@/lib/tenant";
 import { openingContext } from "@/lib/opening";
+import Link from "next/link";
 import { formatDate, formatRupiah, toIsoDate } from "@/lib/format";
+import { formatMoney } from "@/lib/money";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { NextStep, PageHeader } from "@/components/app/page-header";
 import { OpeningForm } from "@/components/app/opening-form";
@@ -16,7 +18,12 @@ export default async function OpeningPage({ params }: { params: Promise<{ id: st
     openingContext(prisma, client.id),
     prisma.account.findMany({ where: { clientId: client.id, isBank: false, code: { notIn: [ACCOUNT_CODES.SUSPENSE, ACCOUNT_CODES.RETAINED, ACCOUNT_CODES.CLEARING] } }, orderBy: { code: "asc" } }),
   ]);
-  const missing = ctx.filter((c) => !c.existing);
+  // Entities whose ledger import brought its own opening rows don't need a separate Saldo Awal.
+  const imported = new Set(
+    (await prisma.journalEntry.findMany({ where: { entityId: { in: ctx.map((c) => c.entity.id) }, kind: "IMPORTED" }, select: { entityId: true }, distinct: ["entityId"] })).map((e) => e.entityId),
+  );
+  const missing = ctx.filter((c) => !c.existing && !imported.has(c.entity.id));
+  const currencyOf = (entityId: string) => client.entities.find((e) => e.id === entityId)?.functionalCurrency ?? "IDR";
 
   return (
     <div className="space-y-6">
@@ -33,7 +40,11 @@ export default async function OpeningPage({ params }: { params: Promise<{ id: st
           <CardHeader>
             <CardTitle>{c.entity.name}</CardTitle>
             <CardDescription>
-              {c.existing ? `Dicatat per ${formatDate(c.existing.date)}. Koreksi lewat Jurnal Penyesuaian.` : "Selisih debit dan kredit otomatis masuk ke 3200 Saldo Laba."}
+              {c.existing
+                ? `Dicatat per ${formatDate(c.existing.date)}. Koreksi lewat Jurnal Penyesuaian.`
+                : imported.has(c.entity.id)
+                  ? "Buku entitas ini berasal dari impor buku besar, termasuk saldo awalnya."
+                  : "Selisih debit dan kredit otomatis masuk ke 3200 Saldo Laba."}
             </CardDescription>
           </CardHeader>
           <CardContent className={c.existing ? "px-0" : undefined}>
@@ -46,13 +57,18 @@ export default async function OpeningPage({ params }: { params: Promise<{ id: st
                   {c.existing.lines.map((l, i) => (
                     <TableRow key={i}>
                       <TableCell className="pl-6">{l.code} {l.name}</TableCell>
-                      <TableCell className="num text-right">{l.debit ? formatRupiah(l.debit, { bare: true }) : "–"}</TableCell>
-                      <TableCell className="num pr-6 text-right">{l.credit ? formatRupiah(l.credit, { bare: true }) : "–"}</TableCell>
+                      <TableCell className="num text-right">{l.debit ? formatMoney(l.debit, currencyOf(c.entity.id), { bare: true }) : "–"}</TableCell>
+                      <TableCell className="num pr-6 text-right">{l.credit ? formatMoney(l.credit, currencyOf(c.entity.id), { bare: true }) : "–"}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
-            ) : (
+            ) : imported.has(c.entity.id) ? null : (
+              <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Punya neraca dari sistem lama (mis. Jurnal atau Accurate)?{" "}
+                <Link className="font-medium text-primary hover:underline" href={`/clients/${client.id}/import?tab=ledger`}>Impor dari file neraca</Link>, lalu petakan akunnya.
+              </p>
               <OpeningForm
                 clientId={client.id}
                 entityId={c.entity.id}
@@ -60,6 +76,7 @@ export default async function OpeningPage({ params }: { params: Promise<{ id: st
                 banks={c.banks.map((b) => ({ accountCode: b.accountCode, label: b.label, prefill: b.statementOpening === null ? "" : formatRupiah(b.statementOpening, { bare: true }), source: b.source }))}
                 accounts={accounts.map((a) => ({ code: a.code, name: a.name }))}
               />
+              </div>
             )}
           </CardContent>
         </Card>

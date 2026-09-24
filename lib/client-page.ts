@@ -4,6 +4,7 @@ import { getClientForFirm } from "@/lib/tenant";
 import { formatPeriod } from "@/lib/format";
 import { parsePeriod, resolveEntityScope, type SearchParams } from "@/lib/scope";
 import { dataMonths } from "@/lib/periods";
+import { scopeCurrency, isMixed } from "@/lib/reports/fx";
 
 /** Everything a client page needs from URL params, resolved + tenant-checked once. */
 export async function loadClientPage(params: Promise<{ id: string }>, searchParams: SearchParams, opts: { defaultCombined?: boolean } = {}) {
@@ -26,5 +27,9 @@ export async function loadClientPage(params: Promise<{ id: string }>, searchPara
   const entityOptions = client.entities.map((e) => ({ value: e.id, label: e.name }));
   const scopeLabel = scope.mode === "combined" ? "Gabungan Grup" : client.entities.find((e) => e.id === scope.value)!.name;
   const base = `/clients/${id}`;
-  return { client, period, scope, periodOptions, entityOptions, scopeLabel, base, sp };
+  // Amounts are in the scope's currency: the entities' shared functional currency, or IDR (translated) when they differ.
+  const scoped = client.entities.filter((e) => scope.entityIds.includes(e.id));
+  const currency = scopeCurrency(scoped);
+  const mixed = isMixed(scoped);
+  return { client, period, scope, periodOptions, entityOptions, scopeLabel, base, sp, currency, mixed };
 }

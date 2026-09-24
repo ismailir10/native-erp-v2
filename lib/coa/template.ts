@@ -28,6 +28,9 @@ export const ACCOUNT_CODES = {
   PPN_MASUKAN: "1150",
   PPN_KELUARAN: "2130",
   OPENING_EQUITY: "3100",
+  TRANSLATION: "3900",
+  ROUNDING: "7190",
+  FX_GAIN_LOSS: "7200",
 } as const;
 
 export const FS_LINES = {
@@ -40,13 +43,16 @@ export const FS_LINES = {
   SUSPENSE: { label: "Pos belum terklasifikasi", section: "ASET_LANCAR" },
   ASET_TETAP: { label: "Aset tetap", section: "ASET_TIDAK_LANCAR" },
   AKUM_PENYUSUTAN: { label: "Akumulasi penyusutan", section: "ASET_TIDAK_LANCAR" },
+  ASET_TIDAK_LANCAR_LAIN: { label: "Aset tidak lancar lainnya", section: "ASET_TIDAK_LANCAR" },
   UTANG_USAHA: { label: "Utang usaha", section: "LIABILITAS" },
   UTANG_PAJAK: { label: "Utang pajak", section: "LIABILITAS" },
   UTANG_LAIN: { label: "Utang lain-lain", section: "LIABILITAS" },
   UTANG_BANK: { label: "Utang bank", section: "LIABILITAS" },
+  UTANG_JANGKA_PANJANG: { label: "Liabilitas jangka panjang", section: "LIABILITAS" },
   MODAL: { label: "Modal", section: "EKUITAS" },
   SALDO_LABA: { label: "Saldo laba", section: "EKUITAS" },
   PRIVE: { label: "Prive / penarikan pemilik", section: "EKUITAS" },
+  SELISIH_PENJABARAN: { label: "Selisih penjabaran mata uang asing", section: "EKUITAS" },
   PENDAPATAN_USAHA: { label: "Pendapatan usaha", section: "LABA_RUGI" },
   HPP: { label: "Beban pokok pendapatan", section: "LABA_RUGI" },
   BEBAN_PENJUALAN: { label: "Beban penjualan", section: "LABA_RUGI" },
@@ -74,24 +80,36 @@ const a = (
 
 export const COA_TEMPLATE: AccountSeed[] = [
   a("1110", "Kas Kecil", "ASET", "KAS_SETARA_KAS"),
+  a("1120", "Kas di Bank (Buku Besar)", "ASET", "KAS_SETARA_KAS"),
   a("1130", "Piutang Usaha", "ASET", "PIUTANG_USAHA"),
+  a("1140", "Piutang Lain-lain", "ASET", "PIUTANG_LAIN"),
   a("1150", "PPN Masukan", "ASET", "PAJAK_DIBAYAR_DIMUKA", { taxTag: "PPN_MASUKAN" }),
   a("1160", "Persediaan", "ASET", "PERSEDIAAN"),
   a("1170", "Uang Muka & Biaya Dibayar di Muka", "ASET", "BIAYA_DIBAYAR_DIMUKA"),
+  a("1180", "Pajak Dibayar di Muka", "ASET", "PAJAK_DIBAYAR_DIMUKA"),
   a("1190", "Piutang/Utang Antar Entitas", "ASET", "PIUTANG_LAIN", { isIntercompany: true }),
   a("1199", "Kliring Transfer Antar Rekening", "ASET", "PIUTANG_LAIN", { isClearing: true }),
   a("1210", "Aset Tetap", "ASET", "ASET_TETAP"),
   a("1219", "Akumulasi Penyusutan", "ASET", "AKUM_PENYUSUTAN", { normalBalance: "CREDIT" }),
+  a("1250", "Aset Tak Berwujud & Hak Guna", "ASET", "ASET_TIDAK_LANCAR_LAIN"),
+  a("1260", "Investasi & Aset Tidak Lancar Lain", "ASET", "ASET_TIDAK_LANCAR_LAIN"),
   a("1999", "Belum Terklasifikasi", "ASET", "SUSPENSE", { isSuspense: true }),
   a("2110", "Utang Usaha", "LIABILITAS", "UTANG_USAHA"),
+  a("2120", "Utang Lain-lain", "LIABILITAS", "UTANG_LAIN"),
   a("2130", "PPN Keluaran", "LIABILITAS", "UTANG_PAJAK", { taxTag: "PPN_KELUARAN" }),
   a("2140", "Utang PPh 21", "LIABILITAS", "UTANG_PAJAK", { taxTag: "PPH_21" }),
   a("2141", "Utang PPh 23", "LIABILITAS", "UTANG_PAJAK", { taxTag: "PPH_23" }),
+  a("2145", "Utang Pajak Lainnya", "LIABILITAS", "UTANG_PAJAK"),
   a("2150", "Beban Masih Harus Dibayar", "LIABILITAS", "UTANG_LAIN"),
+  a("2160", "Pendapatan Diterima di Muka", "LIABILITAS", "UTANG_LAIN"),
   a("2210", "Utang Bank", "LIABILITAS", "UTANG_BANK"),
+  a("2300", "Utang Jangka Panjang", "LIABILITAS", "UTANG_JANGKA_PANJANG"),
+  a("2310", "Liabilitas Imbalan Kerja", "LIABILITAS", "UTANG_JANGKA_PANJANG"),
   a("3100", "Modal Disetor", "EKUITAS", "MODAL"),
+  a("3110", "Tambahan Modal Disetor", "EKUITAS", "MODAL"),
   a("3200", "Saldo Laba", "EKUITAS", "SALDO_LABA", { isRetained: true }),
   a("3300", "Prive / Penarikan Pemilik", "EKUITAS", "PRIVE", { normalBalance: "DEBIT" }),
+  a("3900", "Selisih Penjabaran Mata Uang Asing", "EKUITAS", "SELISIH_PENJABARAN"),
   a("4100", "Penjualan", "PENDAPATAN", "PENDAPATAN_USAHA"),
   a("4110", "Pendapatan Jasa", "PENDAPATAN", "PENDAPATAN_USAHA"),
   a("4900", "Pendapatan Bunga & Jasa Giro", "PENDAPATAN", "PENDAPATAN_LAIN"),
@@ -110,6 +128,8 @@ export const COA_TEMPLATE: AccountSeed[] = [
   a("6190", "Beban Umum Lain-lain", "BEBAN", "BEBAN_UMUM_ADM"),
   a("7100", "Beban Administrasi Bank", "BEBAN", "BEBAN_LAIN"),
   a("7110", "Beban Bunga Pinjaman", "BEBAN", "BEBAN_LAIN"),
+  a("7190", "Selisih Pembulatan", "BEBAN", "BEBAN_LAIN"),
+  a("7200", "Laba/Rugi Selisih Kurs", "BEBAN", "BEBAN_LAIN"),
   a("8100", "Beban Pajak Penghasilan", "BEBAN", "BEBAN_PAJAK", { taxTag: "PPH_25" }),
   a("8200", "Beban Pajak Final PPh 4(2)", "BEBAN", "BEBAN_PAJAK", { taxTag: "PPH_4_2" }),
 ];
@@ -118,6 +138,12 @@ export const COA_TEMPLATE: AccountSeed[] = [
 export function bankAccountCode(index: number): string {
   if (index < 0 || index > 8) throw new Error("Maksimal 9 rekening bank per klien");
   return `110${index + 1}`;
+}
+
+/** Overdraft (PRK) bank GL accounts live at 2201–2209: liabilities, FS line Utang bank. */
+export function overdraftAccountCode(index: number): string {
+  if (index < 0 || index > 8) throw new Error("Maksimal 9 rekening PRK per klien");
+  return `220${index + 1}`;
 }
 
 export const TAX_TAG_LABEL: Record<TaxTag, string> = {

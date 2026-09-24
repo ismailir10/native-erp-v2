@@ -168,6 +168,12 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
               </div>
               {result.ai.note && <p className="text-xs text-muted-foreground">{result.ai.note}</p>}
               {result.duplicates > 0 && <p className="text-xs text-muted-foreground">{result.duplicates} baris dilewati karena sudah pernah diimpor.</p>}
+              {result.otherSections.length > 0 && (
+                <div className="text-xs text-muted-foreground">
+                  File ini juga berisi rekening lain:
+                  <ul className="list-disc pl-4">{result.otherSections.map((o) => <li key={o}>{o}</li>)}</ul>
+                </div>
+              )}
               {result.needsReview > 0 ? (
                 <Link href={`/clients/${clientId}/review`} className={buttonVariants({ className: "w-full" })}>
                   Review {result.needsReview} transaksi

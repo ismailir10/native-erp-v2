@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import {
   BookOpen,
   Building2,
+  Coins,
   ChevronRight,
   ClipboardCheck,
   FileSpreadsheet,
@@ -61,6 +62,7 @@ const CLIENT_NAV = [
   { href: "/reports", label: "Laporan Keuangan", icon: FileSpreadsheet },
   { href: "/journals/new", label: "Jurnal Penyesuaian", icon: NotebookPen },
   { href: "/close", label: "Tutup Buku", icon: ClipboardCheck },
+  { href: "/rates", label: "Kurs", icon: Coins },
   { href: "/settings", label: "Aturan & AI", icon: Settings2 },
 ];
 

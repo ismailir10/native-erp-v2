@@ -52,9 +52,9 @@ describe("Tambah klien", () => {
       "entities.1.banks.1.number": "Nomor ini sudah dimasukkan di atas.",
     });
     expect(err!.message).toBe("Periksa 5 isian yang ditandai.");
-    const noBank = input();
-    noBank.entities[0].banks = [];
-    expect(() => validateNewClient(noBank)).toThrow("Tambahkan minimal satu rekening bank.");
+    const badCurrency = input();
+    badCurrency.entities[0].currency = "XYZ";
+    expect(() => validateNewClient(badCurrency)).toThrow("Pilih mata uang dari daftar.");
   });
 
   it("only needs client name, entity name and account number", () => {
@@ -63,7 +63,22 @@ describe("Tambah klien", () => {
       industry: "",
       entities: [{ name: "PT Toko Maju", shortName: "", kind: "PT", npwp: "", banks: [{ bank: "BCA", number: "872 014 5566", label: "" }] }],
     });
-    expect(spec.entities[0]).toMatchObject({ shortName: "PT Toko Maju", npwp: undefined, banks: [{ bank: "BCA", number: "8720145566", label: "BCA ••5566" }] });
+    expect(spec.entities[0]).toMatchObject({ shortName: "PT Toko Maju", npwp: undefined, functionalCurrency: "IDR", banks: [{ bank: "BCA", number: "8720145566", label: "BCA ••5566" }] });
+  });
+
+  it("allows an entity without bank accounts, in its own currency (ledger clients, foreign HoldCo)", async () => {
+    const firm = await db.$transaction((tx) => createFirm(tx, "KJA"));
+    const client = await addClient(db, firm.id, {
+      name: "Grup Chickin",
+      industry: "agritech",
+      entities: [
+        { name: "PT Sinergi", shortName: "SKP", kind: "PT", npwp: "", banks: [] },
+        { name: "Chickin Pte Ltd", shortName: "HOLDCO", kind: "PT", npwp: "", currency: "SGD", banks: [] },
+      ],
+    });
+    const entities = await db.entity.findMany({ where: { clientId: client.id }, orderBy: { shortName: "asc" } });
+    expect(entities.map((e) => [e.shortName, e.functionalCurrency])).toEqual([["HOLDCO", "SGD"], ["SKP", "IDR"]]);
+    expect(await db.bankAccount.count()).toBe(0);
   });
 });
 

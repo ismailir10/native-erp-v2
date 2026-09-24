@@ -16,6 +16,12 @@ import { liveUploadFile, seedDemo } from "@/lib/demo/seed";
 import { addClient, OnboardingError, type NewClientInput } from "@/lib/onboarding";
 import { OpeningError, postOpening, type OpeningLineInput } from "@/lib/opening";
 import type { TaxTag } from "@/lib/generated/prisma/enums";
+import { RateError, upsertRate, validateRateInput } from "@/lib/fx/rates";
+import { postRevaluation, RevaluationError } from "@/lib/fx/revalue";
+import { acceptCheck, LedgerImportError, postImport, stageImport } from "@/lib/ledger-import/post";
+import { acceptMappings, MappingError, suggestMappings } from "@/lib/ledger-import/mapping";
+import type { FsLine } from "@/lib/coa/template";
+import type { MapMethod } from "@/lib/generated/prisma/enums";
 
 /**
  * Server actions — the only write path from the UI. Each returns {ok, …} or {ok:false, error}
@@ -25,7 +31,7 @@ type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string; needs
 
 function fail(e: unknown): { ok: false; error: string; needsPassword?: boolean } {
   if (e instanceof PdfPasswordError) return { ok: false, error: e.message, needsPassword: true };
-  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError) return { ok: false, error: e.message };
+  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError || e instanceof RateError || e instanceof RevaluationError || e instanceof LedgerImportError || e instanceof MappingError) return { ok: false, error: e.message };
   console.error(e);
   return { ok: false, error: "Terjadi kesalahan tak terduga. Coba lagi." };
 }
@@ -208,6 +214,144 @@ export async function resetDemoAction(): Promise<Result> {
   try {
     await seedDemo(prisma);
     revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Kurs page: typed-in rates are firm data (source MANUAL) and win over rates taken from files. */
+export async function saveRateAction(input: { clientId: string; currency: string; quote: string; date: string; kind: string; rate: string; note?: string }): Promise<Result> {
+  try {
+    const client = await getClientForFirm(input.clientId);
+    const row = validateRateInput(input);
+    await upsertRate(prisma, client.firmId, { ...row, source: "MANUAL", note: input.note?.trim().slice(0, 200) || null });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function deleteRateAction(clientId: string, rateId: string): Promise<Result> {
+  try {
+    const client = await getClientForFirm(clientId);
+    const { count } = await prisma.exchangeRate.deleteMany({ where: { id: rateId, firmId: client.firmId } });
+    if (!count) return { ok: false, error: "Kurs tidak ditemukan." };
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Month-end FX revaluation — posted only on this explicit click (rule 6b). */
+export async function revaluationAction(clientId: string, entityId: string, year: number, month: number): Promise<Result> {
+  try {
+    const client = await getClientForFirm(clientId);
+    if (!client.entities.some((e) => e.id === entityId)) return { ok: false, error: "Entitas tidak ditemukan." };
+    await postRevaluation(prisma, client.id, entityId, year, month);
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+// ─── Ledger / Neraca import (accounting-rules §15a) ───────────────────────────
+
+export async function stageLedgerAction(
+  formData: FormData,
+): Promise<Result<{ importId?: string; candidates?: { sheet: string; mode: "LEDGER" | "NERACA"; dataRows: number }[] }>> {
+  try {
+    const client = await getClientForFirm(String(formData.get("clientId")));
+    const file = formData.get("file");
+    if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Pilih file buku besar atau neraca (XLSX atau CSV)." };
+    if (file.size > MAX_UPLOAD) return { ok: false, error: "File terlalu besar (maks. 5 MB)." };
+    const entityId = String(formData.get("entityId") ?? "") || undefined;
+    if (entityId && !client.entities.some((e) => e.id === entityId)) return { ok: false, error: "Entitas tidak ditemukan." };
+    const date = String(formData.get("date") ?? "");
+    const m = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const res = await stageImport(prisma, {
+      firmId: client.firmId,
+      clientId: client.id,
+      fileName: file.name,
+      data: Buffer.from(await file.arrayBuffer()),
+      sheet: String(formData.get("sheet") ?? "") || undefined,
+      entityId,
+      date: m ? dateOnly(Number(m[1]), Number(m[2]), Number(m[3])) : undefined,
+      currencyMode: formData.get("currencyMode") === "CONVERT" ? "CONVERT" : "FUNCTIONAL",
+    });
+    if (res.status === "CHOOSE_SHEET") return { ok: true, candidates: res.candidates.map((c) => ({ sheet: c.sheet, mode: c.mode, dataRows: c.dataRows })) };
+    // Rule-based suggestions right away (no AI, no credit); AI only when the accountant asks on the mapping step.
+    await suggestMappings(prisma, { firmId: client.firmId, clientId: client.id, provider: null, useAi: false });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, importId: res.importId };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function acceptCheckAction(clientId: string, checkId: string): Promise<Result> {
+  try {
+    const client = await getClientForFirm(clientId);
+    await acceptCheck(prisma, client.id, checkId);
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Fills suggestions only (rules, then AI when asked). Nothing is mapped until acceptMappingsAction. */
+export async function suggestMappingsAction(clientId: string, useAi: boolean): Promise<Result<{ note?: string; aiAnswered: number; calls: number }>> {
+  try {
+    const client = await getClientForFirm(clientId);
+    const r = await suggestMappings(prisma, { firmId: client.firmId, clientId: client.id, provider: useAi ? await resolveProvider(prisma) : null, useAi });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, note: r.note, aiAnswered: r.aiAnswered, calls: r.calls };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function acceptMappingsAction(
+  clientId: string,
+  items: { sourceAccountId: string; accountCode?: string; newAccount?: { fsLine: string; name: string }; method: string }[],
+): Promise<Result<{ mapped: number }>> {
+  try {
+    const client = await getClientForFirm(clientId);
+    const methods = ["PRIOR", "NAME", "KEYWORD", "AI", "MANUAL", "NEW"];
+    if (items.some((i) => !methods.includes(i.method))) return { ok: false, error: "Metode pemetaan tidak dikenal." };
+    const r = await acceptMappings(
+      prisma,
+      client.id,
+      items.map((i) => ({ sourceAccountId: i.sourceAccountId, accountCode: i.accountCode, newAccount: i.newAccount ? { fsLine: i.newAccount.fsLine as FsLine, name: i.newAccount.name } : undefined, method: i.method as MapMethod })),
+    );
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, mapped: r.mapped };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function postLedgerImportAction(clientId: string, importId: string): Promise<Result<{ entries: number }>> {
+  try {
+    const client = await getClientForFirm(clientId);
+    const r = await postImport(prisma, client.id, importId);
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, entries: r.entries };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function discardLedgerDraftAction(clientId: string, importId: string): Promise<Result> {
+  try {
+    const client = await getClientForFirm(clientId);
+    const { count } = await prisma.ledgerImport.deleteMany({ where: { id: importId, clientId: client.id, status: "DRAFT" } });
+    if (!count) return { ok: false, error: "Draf tidak ditemukan atau sudah dicatat." };
+    revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
   } catch (e) {
     return fail(e);

@@ -10,7 +10,9 @@ number traces back to the bank row it came from**. The accountant reviews what t
 ## What it does
 | Area | |
 |---|---|
-| **Import** | PDF e-statements (text, password-protected), KlikBCA CSV, Mandiri XLSX, BRI CSV, generic column detection · running-balance continuity check · dedupe on re-upload |
+| **Import** | PDF e-statements (text, password-protected, combined multi-account e.g. SMBC), KlikBCA CSV, Mandiri XLSX, BRI CSV, generic column detection · running-balance continuity check · dedupe on re-upload |
+| **Ledger / Neraca import** | GL or Neraca from Jurnal/Accurate/Excel (XLSX, CSV) · source checks with row refs (unbalanced groups, broken cells, reused codes, foreign lines without rate) · each entity keeps its own chart, mapped to Buku's by rules → AI (names only) → accountant · all-or-nothing posting · *Akun sumber* TB |
+| **Multi-currency** | functional currency per entity · fx lines with rate · Kurs page (typed-in / from file, never fetched) · month-end revaluation on click · Gabungan translated to IDR (closing / average / historical, CTA line) |
 | **Onboarding** | Tambah klien (entities + bank accounts, template COA) · Saldo Awal per entity (plug to 3200) |
 | **Classify** | transfer matcher (own accounts → 1199, group entities → 1190) → rules → learned memory → LLM (cached, capped) → review |
 | **Ledger** | double entry, BigInt Rupiah, immutable entries, reclass-by-difference, period locks, PPN 11% split |
@@ -36,7 +38,8 @@ Claude Code sessions run `scripts/session-start.sh` automatically (Postgres, dep
 | `npm run verify:books` | Recompute ~1,000 balances from generator truth and compare with the app → `ALL PASS` |
 | `npm run build && npm run test:e2e` | Playwright investor walk against `next start` |
 | `npm run ai:smoke` | One real, capped LLM call to check the AI key + model (Pengaturan, else `.env`) |
-| `npm run inspect:statement -- <file>` | Parse a statement without the DB: format, balances, continuity. `--lines` dumps PDF text positions; `PDF_PASSWORD=…` for locked PDFs |
+| `npm run inspect:statement -- <file>` | Parse a statement without the DB: format, balances, continuity (per account for combined PDFs). `--lines` dumps PDF text positions; `PDF_PASSWORD=…` for locked PDFs |
+| `npm run verify:real -- chickin\|goers\|smbc\|all` | Local only: import real files from `data/private/` and compare Buku with the files ([docs/real-data.md](docs/real-data.md)) |
 | `npm run lint` · `npm run typecheck` | |
 
 ## Stack

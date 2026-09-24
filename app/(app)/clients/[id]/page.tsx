@@ -7,7 +7,9 @@ import { taxSummary } from "@/lib/reports/tax";
 import { runControls } from "@/lib/controls";
 import { automationByMonth } from "@/lib/queries";
 import { formatMonthShort, formatPeriod } from "@/lib/format";
-import { formatRupiahCompact } from "@/lib/money";
+import { formatMoneyCompact } from "@/lib/money";
+import { FxMissing, withFx } from "@/components/app/fx-missing";
+import { FxMissingError } from "@/lib/reports/fx";
 import { NextStep, PageHeader, Stat } from "@/components/app/page-header";
 import { ScopeBar } from "@/components/app/scope-bar";
 import { StatusPill } from "@/components/app/status";
@@ -17,21 +19,27 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export default async function ClientOverview({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
-  const { client, period, scope, periodOptions, entityOptions, base, scopeLabel } = await loadClientPage(params, searchParams);
+  const { client, period, scope, periodOptions, entityOptions, base, scopeLabel, currency } = await loadClientPage(params, searchParams);
   const s = { clientId: client.id, entityIds: scope.entityIds };
+  // A ledger import brings its own opening rows, so those entities don't need a separate Saldo Awal.
   const withOpening = new Set(
-    (await prisma.journalEntry.findMany({ where: { entityId: { in: client.entities.map((e) => e.id) }, kind: "OPENING" }, select: { entityId: true } })).map((j) => j.entityId),
+    (await prisma.journalEntry.findMany({ where: { entityId: { in: client.entities.map((e) => e.id) }, kind: { in: ["OPENING", "IMPORTED"] } }, select: { entityId: true }, distinct: ["entityId"] })).map((j) => j.entityId),
   );
   const noOpening = client.entities.filter((e) => !withOpening.has(e.id));
-  const [series, is, tax, controls, openReview, auto, periodRow] = await Promise.all([
-    monthlySeries(prisma, s, period.end, 6),
-    incomeStatement(prisma, s, period.start, period.end),
-    taxSummary(prisma, s, period.start, period.end),
+  // Indonesian tax estimates only make sense for Rupiah entities.
+  const idrScope = { clientId: client.id, entityIds: client.entities.filter((e) => scope.entityIds.includes(e.id) && e.functionalCurrency === "IDR").map((e) => e.id) };
+  const [figures, tax, controls, openReview, auto, periodRow] = await Promise.all([
+    withFx(async () => ({ series: await monthlySeries(prisma, s, period.end, 6), is: await incomeStatement(prisma, s, period.start, period.end) })),
+    taxSummary(prisma, idrScope, period.start, period.end),
     runControls(prisma, client.id, period.year, period.month),
     prisma.bankTransaction.count({ where: { entityId: { in: scope.entityIds }, status: "NEEDS_REVIEW" } }),
     automationByMonth([client.id]),
     prisma.period.findUnique({ where: { clientId_year_month: { clientId: client.id, year: period.year, month: period.month } } }),
   ]);
+  const fxMissing = figures instanceof FxMissingError ? figures : null;
+  const series = fxMissing ? [] : (figures as Exclude<typeof figures, FxMissingError>).series;
+  const is = fxMissing ? null : (figures as Exclude<typeof figures, FxMissingError>).is;
+  const money = (v: bigint) => formatMoneyCompact(v, currency);
   const last = series[series.length - 1];
   const prev = series[series.length - 2];
   const chartData = series.map((p) => ({ label: formatMonthShort(p.year, p.month), cash: Number(p.cash), revenue: Number(p.revenue), expense: Number(p.expense) }));
@@ -70,14 +78,18 @@ export default async function ClientOverview({ params, searchParams }: { params:
         </NextStep>
       )}
 
+      {fxMissing || !is ? (
+        <FxMissing error={fxMissing!} base={base} compact />
+      ) : (
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        <Stat label="Saldo kas & bank" value={formatRupiahCompact(last.cash)} hint={prev ? `${last.cash >= prev.cash ? "Naik" : "Turun"} ${formatRupiahCompact(last.cash >= prev.cash ? last.cash - prev.cash : prev.cash - last.cash)} dari bulan lalu` : undefined} />
-        <Stat label={`Pendapatan ${formatPeriod(period.year, period.month)}`} value={formatRupiahCompact(is.totals.revenue)} hint="Tanpa PPN" />
-        <Stat label="Laba bersih bulan ini" value={formatRupiahCompact(is.totals.netProfit)} hint={is.totals.revenue ? `Margin ${Math.round((Number(is.totals.netProfit) / Number(is.totals.revenue)) * 100)}%` : undefined} />
+        <Stat label="Saldo kas & bank" value={money(last.cash)} hint={prev ? `${last.cash >= prev.cash ? "Naik" : "Turun"} ${money(last.cash >= prev.cash ? last.cash - prev.cash : prev.cash - last.cash)} dari bulan lalu` : undefined} />
+        <Stat label={`Pendapatan ${formatPeriod(period.year, period.month)}`} value={money(is.totals.revenue)} hint="Tanpa PPN" />
+        <Stat label="Laba bersih bulan ini" value={money(is.totals.netProfit)} hint={is.totals.revenue ? `Margin ${Math.round((Number(is.totals.netProfit) / Number(is.totals.revenue)) * 100)}%` : undefined} />
         <Stat label="Kontrol tutup buku" value={`${counts.PASS}/${controls.length}`} hint={counts.FAIL ? `${counts.FAIL} gagal` : counts.REVIEW ? `${counts.REVIEW} perlu dicek` : "Semua lolos"} />
       </div>
+      )}
 
-      {auto.length === 0 ? (
+      {fxMissing ? null : auto.length === 0 && series.every((p) => p.cash === 0n && p.revenue === 0n && p.expense === 0n) ? (
         <Card>
           <CardHeader>
             <CardTitle>Belum ada mutasi</CardTitle>
@@ -92,7 +104,7 @@ export default async function ClientOverview({ params, searchParams }: { params:
               <CardDescription>Akhir bulan, 6 bulan terakhir</CardDescription>
             </CardHeader>
             <CardContent>
-              <CashChart data={chartData} />
+              <CashChart data={chartData} currency={currency} />
             </CardContent>
           </Card>
           <Card>
@@ -101,7 +113,7 @@ export default async function ClientOverview({ params, searchParams }: { params:
               <CardDescription>Per bulan, dari buku besar</CardDescription>
             </CardHeader>
             <CardContent>
-              <RevenueExpenseChart data={chartData} />
+              <RevenueExpenseChart data={chartData} currency={currency} />
               <Table className="mt-2 text-xs">
                 <TableHeader>
                   <TableRow>
@@ -116,7 +128,7 @@ export default async function ClientOverview({ params, searchParams }: { params:
                     <TableRow key={k}>
                       <TableCell className="py-1 text-muted-foreground">{k === "revenue" ? "Pendapatan" : "Beban"}</TableCell>
                       {series.map((p) => (
-                        <TableCell key={`${p.month}`} className="num py-1 text-right">{formatRupiahCompact(p[k]).replace("Rp ", "")}</TableCell>
+                        <TableCell key={`${p.month}`} className="num py-1 text-right">{money(p[k]).replace(/^\S+ /, "")}</TableCell>
                       ))}
                     </TableRow>
                   ))}

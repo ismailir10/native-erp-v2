@@ -6,6 +6,8 @@ import { formatDate, formatPeriod } from "@/lib/format";
 import { NextStep, PageHeader } from "@/components/app/page-header";
 import { ScopeBar } from "@/components/app/scope-bar";
 import { ClosePanel } from "@/components/app/close-panel";
+import { RevaluationCard } from "@/components/app/revaluation-card";
+import { revaluationProposals } from "@/lib/fx/revalue";
 
 export default async function ClosePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, period, periodOptions, base } = await loadClientPage(params, searchParams);
@@ -23,6 +25,7 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
   const open = controls.find((c) => c.key === "suspense" && c.status === "REVIEW");
   const missing = controls.find((c) => c.key.startsWith("bank:") && c.detail.includes("belum diimpor"));
   const locked = p?.status === "LOCKED";
+  const reval = await revaluationProposals(prisma, client.id, period.year, period.month);
 
   return (
     <div className="space-y-6">
@@ -39,6 +42,22 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
         <NextStep>Centang checklist di kanan setelah Anda memeriksanya.</NextStep>
       ) : (
         <NextStep>Semua kontrol lolos dan checklist lengkap. Tutup buku {label}.</NextStep>
+      )}
+      {reval.length > 0 && (
+        <RevaluationCard
+          clientId={client.id}
+          year={period.year}
+          month={period.month}
+          periodLabel={label}
+          locked={locked}
+          proposals={reval.map((r) => ({
+            entityId: r.entityId,
+            entityName: r.entityName,
+            functional: r.functional,
+            missingRates: r.missingRates,
+            lines: r.lines.map((l) => ({ code: l.code, name: l.name, currency: l.currency, fxBalance: l.fxBalance.toString(), carried: l.carried.toString(), target: l.target.toString(), diff: l.diff.toString(), rate: l.rate })),
+          }))}
+        />
       )}
       <ClosePanel
         clientId={client.id}

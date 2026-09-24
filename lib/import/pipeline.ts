@@ -1,7 +1,7 @@
 import type { Db } from "@/lib/db";
 import type { ClassifyMethod, Direction } from "@/lib/generated/prisma/enums";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
-import { parseStatement } from "@/lib/import/parsers";
+import { parseStatementSections } from "@/lib/import/parsers";
 import { checkContinuity, merchantKey, rowHash } from "@/lib/import/normalize";
 import { ParseError } from "@/lib/import/types";
 import { matchRule, sortRules } from "@/lib/classify/rules";
@@ -22,6 +22,8 @@ export type ImportSummary = {
   ai: { calls: number; cacheHits: number; note?: string };
   continuityOk: boolean;
   continuityNote: string | null;
+  /** Combined statements: the other account sections in the file, not imported into this bank account. */
+  otherSections: string[];
 };
 
 const HEURISTIC: Record<Direction, Classification> = {
@@ -40,10 +42,20 @@ export async function importStatement(
   const entity = bankAccount.entity;
   const client = entity.client;
 
-  const st = await parseStatement(args.fileName, args.data, { password: args.password });
-  if (st.accountNumber && st.accountNumber !== bankAccount.number) {
+  const sections = await parseStatementSections(args.fileName, args.data, { password: args.password });
+  const digits = (s: string | null) => (s ?? "").replace(/\D/g, "");
+  const st = sections.length === 1 ? sections[0] : sections.find((s) => digits(s.accountNumber) === digits(bankAccount.number));
+  if (!st) {
+    const list = sections.map((s) => `${s.accountNumber}${s.section ? ` ${s.section.label} (${s.section.currency})` : ""}`).join(", ");
+    throw new ParseError(`File ini berisi ${sections.length} rekening (${list}), tapi tidak ada nomor ${bankAccount.number}. Pilih rekening yang sesuai atau tambahkan rekeningnya di klien.`);
+  }
+  if (st.accountNumber && digits(st.accountNumber) !== digits(bankAccount.number)) {
     throw new ParseError(`Nomor rekening di file (${st.accountNumber}) berbeda dengan rekening terpilih (${bankAccount.number}).`);
   }
+  if (st.section && st.section.currency !== "IDR") {
+    throw new ParseError(`Rekening ${st.accountNumber} dalam ${st.section.currency}. Rekening koran valas belum didukung; impor lewat buku besar dengan kurs.`);
+  }
+  const otherSections = sections.filter((s) => s !== st).map((s) => `${s.accountNumber} ${s.section?.label ?? ""} (${s.section?.currency ?? "IDR"}): tidak diimpor ke rekening ini`);
   const continuity = checkContinuity(st);
 
   const locked = await db.period.findMany({ where: { clientId: client.id, status: "LOCKED" } });
@@ -212,5 +224,6 @@ export async function importStatement(
     ai: ai.usage,
     continuityOk: continuity.ok,
     continuityNote: continuity.note,
+    otherSections,
   };
 }

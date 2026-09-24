@@ -18,6 +18,8 @@ export type ParsedStatement = {
   openingBalance: bigint;
   closingBalance: bigint;
   rows: ParsedRow[];
+  /** Combined statements (one PDF, several accounts): the section's account name and currency as printed. */
+  section?: { label: string; currency: string };
 };
 
 export class ParseError extends Error {}

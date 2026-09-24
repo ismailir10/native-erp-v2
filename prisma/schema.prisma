@@ -1,5 +1,5 @@
 // Buku data model. Invariants live in .claude/skills/accounting-rules/SKILL.md.
-// Money is integer Rupiah (BigInt). Balances are never stored — always derived from JournalLine.
+// Money is BigInt minor units of the entity's functional currency (IDR = whole Rupiah). Balances are never stored — always derived from JournalLine.
 
 generator client {
   provider = "prisma-client"
@@ -42,6 +42,7 @@ enum BankCode {
   BCA
   MANDIRI
   BRI
+  SMBC
   GENERIC
 }
 
@@ -70,6 +71,47 @@ enum EntryKind {
   BANK
   RECLASS
   ADJUSTMENT
+  IMPORTED
+}
+
+enum MapMethod {
+  PRIOR
+  NAME
+  KEYWORD
+  AI
+  MANUAL
+  NEW
+}
+
+enum LedgerMode {
+  LEDGER
+  NERACA
+}
+
+enum CurrencyMode {
+  FUNCTIONAL
+  CONVERT
+}
+
+enum LedgerImportStatus {
+  DRAFT
+  POSTED
+}
+
+enum CheckSeverity {
+  BLOCK
+  REVIEW
+  INFO
+}
+
+enum RateKind {
+  SPOT
+  AVERAGE
+}
+
+enum RateSource {
+  MANUAL
+  FILE
 }
 
 enum Direction {
@@ -84,6 +126,7 @@ model Firm {
   clients   Client[]
   rules     Rule[]
   aiUsage   AiUsage[]
+  rates     ExchangeRate[]
 }
 
 model Client {
@@ -98,6 +141,7 @@ model Client {
   periods      Period[]
   rules        Rule[]
   memories     Memory[]
+  ledgerImports LedgerImport[]
   coaVersion   Int           @default(1)
 
   @@index([firmId])
@@ -112,8 +156,11 @@ model Entity {
   shortName    String
   kind         EntityKind
   npwp         String?
+  /// ISO 4217 code; journal amounts of this entity are minor units of it (ADR 0006). Registry: lib/fx/currency.ts.
+  functionalCurrency String   @default("IDR")
   bankAccounts BankAccount[]
   entries      JournalEntry[]
+  sourceAccounts SourceAccount[]
 
   @@index([clientId])
 }
@@ -137,6 +184,7 @@ model Account {
   taxTag         TaxTag?
   lines          JournalLine[]
   bankAccounts   BankAccount[]
+  sourceAccounts SourceAccount[]
 
   @@unique([clientId, code])
 }
@@ -151,6 +199,9 @@ model BankAccount {
   bank         BankCode
   number       String
   label        String
+  currency     String            @default("IDR")
+  /// Pinjaman rekening koran (PRK): GL account in 2201–2209, balance may be negative.
+  isOverdraft  Boolean           @default(false)
   imports      StatementImport[]
   transactions BankTransaction[]
 
@@ -239,11 +290,16 @@ model JournalEntry {
   memo              String
   bankTransactionId String?
   bankTransaction   BankTransaction? @relation(fields: [bankTransactionId], references: [id])
+  ledgerImportId    String?
+  ledgerImport      LedgerImport?    @relation(fields: [ledgerImportId], references: [id])
+  /// Source rows of a ledger-derived entry, e.g. "20_OPCO_GL_MASTER!5-87".
+  sourceRef         String?
   createdAt         DateTime         @default(now())
   lines             JournalLine[]
 
   @@index([entityId, date])
   @@index([bankTransactionId])
+  @@index([ledgerImportId])
 }
 
 /// DB CHECK constraints (see migration): debit >= 0, credit >= 0, exactly one side non-zero.
@@ -259,9 +315,17 @@ model JournalLine {
   debit     BigInt       @default(0)
   credit    BigInt       @default(0)
   memo      String?
+  sourceAccountId String?
+  sourceAccount   SourceAccount? @relation(fields: [sourceAccountId], references: [id])
+  sourceRef String?
+  /// Foreign-currency line: original currency, amount in its minor units, rate = functional per 1 unit (decimal string).
+  currency  String?
+  fxAmount  BigInt?
+  fxRate    String?
 
   @@index([entityId, accountId, date])
   @@index([accountId])
+  @@index([sourceAccountId])
 }
 
 model Rule {
@@ -350,4 +414,110 @@ model AppSetting {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+/// An entity's own account as it appears in the client's files, mapped to one client Account (ADR 0006, rule 9a).
+model SourceAccount {
+  id            String        @id @default(cuid())
+  firmId        String
+  clientId      String
+  entityId      String
+  entity        Entity        @relation(fields: [entityId], references: [id])
+  code          String
+  name          String
+  /// Names this code had in earlier files (code reused / chart migrated).
+  previousNames String[]      @default([])
+  typeHint      AccountType?
+  /// Set for monetary foreign-currency accounts (revaluation, rule 6b).
+  currency      String?
+  /// Accepted mapping (set only by the accountant's click, rule 9a).
+  accountId     String?
+  account       Account?      @relation(fields: [accountId], references: [id])
+  mappedBy      MapMethod?
+  /// Pending suggestion (rules or AI) — never used for posting until accepted.
+  suggestedCode String?
+  suggestedBy   MapMethod?
+  mapConfidence Float?
+  mapReason     String?
+  lines         JournalLine[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@unique([entityId, code])
+  @@index([clientId])
+}
+
+/// A ledger or Neraca file: staged as DRAFT (rows + checks + mapping), then POSTED all-or-nothing.
+model LedgerImport {
+  id            String             @id @default(cuid())
+  firmId        String
+  clientId      String
+  client        Client             @relation(fields: [clientId], references: [id])
+  fileName      String
+  fileHash      String
+  sheetName     String
+  mode          LedgerMode
+  currencyMode  CurrencyMode       @default(FUNCTIONAL)
+  status        LedgerImportStatus @default(DRAFT)
+  /// Neraca mode: balance date. Ledger mode: first row date.
+  periodStart   DateTime           @db.Date
+  periodEnd     DateTime           @db.Date
+  rowCount      Int
+  groupCount    Int                @default(0)
+  roundingTotal BigInt             @default(0)
+  /// Staged rows + entity mapping while DRAFT (JSON, bigint as string).
+  data          Json
+  createdAt     DateTime           @default(now())
+  postedAt      DateTime?
+  entries       JournalEntry[]
+  checks        ImportCheck[]
+
+  @@index([clientId, fileHash])
+}
+
+model ImportCheck {
+  id             String        @id @default(cuid())
+  ledgerImportId String
+  ledgerImport   LedgerImport  @relation(fields: [ledgerImportId], references: [id], onDelete: Cascade)
+  severity       CheckSeverity
+  code           String
+  message        String
+  refs           String[]      @default([])
+  entityId       String?
+  date           DateTime?     @db.Date
+  amount         BigInt?
+  /// BLOCK checks that may be accepted (unbalanced group) — accepting posts the difference to 1999.
+  accepted       Boolean       @default(false)
+
+  @@index([ledgerImportId])
+}
+
+/// Rate = units of `quote` per 1 unit of `currency` (decimal string). Typed in or taken from a file — never fetched live.
+model ExchangeRate {
+  id        String     @id @default(cuid())
+  firmId    String
+  firm      Firm       @relation(fields: [firmId], references: [id])
+  currency  String
+  quote     String
+  date      DateTime   @db.Date
+  kind      RateKind   @default(SPOT)
+  rate      String
+  source    RateSource @default(MANUAL)
+  note      String?
+  createdAt DateTime   @default(now())
+
+  @@unique([firmId, currency, quote, date, kind])
+}
+
+/// AI account-mapping answers, cached forever by (normalised name, type hint, coaVersion) — names only, never amounts.
+model AiAccountMap {
+  id          String   @id @default(cuid())
+  cacheKey    String   @unique
+  name        String
+  typeHint    String?
+  accountCode String
+  confidence  Float
+  reason      String
+  model       String
+  createdAt   DateTime @default(now())
 }

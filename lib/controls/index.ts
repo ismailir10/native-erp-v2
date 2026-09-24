@@ -1,6 +1,9 @@
 import type { Db } from "@/lib/db";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
-import { formatRupiah, periodBounds } from "@/lib/format";
+import { periodBounds } from "@/lib/format";
+import { formatMoney } from "@/lib/money";
+import { FxMissingError } from "@/lib/reports/fx";
+import { revaluationProposals } from "@/lib/fx/revalue";
 import { balanceSheet, combinedWorksheet, trialBalance } from "@/lib/reports/ledger";
 
 /**
@@ -31,6 +34,7 @@ export async function runControls(db: Db, clientId: string, year: number, month:
 
   for (const e of entities) {
     const scope = { clientId, entityIds: [e.id] };
+    const fmt = (v: bigint) => formatMoney(v, e.functionalCurrency);
     const tb = await trialBalance(db, scope, end);
     const dr = tb.reduce((s, r) => s + r.debit, 0n);
     const cr = tb.reduce((s, r) => s + r.credit, 0n);
@@ -39,7 +43,7 @@ export async function runControls(db: Db, clientId: string, year: number, month:
       title: "Neraca saldo seimbang",
       scope: e.shortName,
       status: dr === cr ? "PASS" : "FAIL",
-      detail: dr === cr ? `Debit = kredit = ${formatRupiah(dr)}` : `Selisih ${formatRupiah(dr - cr)}`,
+      detail: dr === cr ? `Debit = kredit = ${fmt(dr)}` : `Selisih ${fmt(dr - cr)}`,
       href: `${base}/trial-balance?entity=${e.id}`,
     });
     const bs = await balanceSheet(db, scope, end);
@@ -48,7 +52,7 @@ export async function runControls(db: Db, clientId: string, year: number, month:
       title: "Neraca: aset = liabilitas + ekuitas",
       scope: e.shortName,
       status: bs.totals.difference === 0n ? "PASS" : "FAIL",
-      detail: bs.totals.difference === 0n ? `Total aset ${formatRupiah(bs.totals.assets)}` : `Selisih ${formatRupiah(bs.totals.difference)}`,
+      detail: bs.totals.difference === 0n ? `Total aset ${fmt(bs.totals.assets)}` : `Selisih ${fmt(bs.totals.difference)}`,
       href: `${base}/reports?entity=${e.id}`,
     });
 
@@ -72,7 +76,7 @@ export async function runControls(db: Db, clientId: string, year: number, month:
         title: `Rekonsiliasi ${ba.label}`,
         scope: e.shortName,
         status: ok ? "PASS" : "FAIL",
-        detail: ok ? `Saldo bank = buku besar = ${formatRupiah(gl)}` : `Bank ${formatRupiah(stmt)} vs buku besar ${formatRupiah(gl)}`,
+        detail: ok ? `Saldo bank = buku besar = ${fmt(gl)}` : `Bank ${fmt(stmt)} vs buku besar ${fmt(gl)}`,
         href: `${base}/ledger/${ba.account.code}?entity=${e.id}`,
       });
       const broken = coverage.filter((c) => !c.continuityOk);
@@ -94,9 +98,61 @@ export async function runControls(db: Db, clientId: string, year: number, month:
       title: "Kliring transfer (1199) = 0",
       scope: e.shortName,
       status: clearing === 0n ? "PASS" : "REVIEW",
-      detail: clearing === 0n ? "Semua transfer antar rekening berpasangan" : `Sisa ${formatRupiah(clearing)}. Ada transfer yang pasangannya belum diimpor`,
+      detail: clearing === 0n ? "Semua transfer antar rekening berpasangan" : `Sisa ${fmt(clearing)}. Ada transfer yang pasangannya belum diimpor`,
       href: `${base}/ledger/${ACCOUNT_CODES.CLEARING}?entity=${e.id}`,
       ack: acks.get(clKey),
+    });
+  }
+
+  // Ledger / Neraca imports (rule 15a): accepted source differences stay FAIL until 1999 is cleared; REVIEW checks need a note.
+  const imports = await db.ledgerImport.findMany({
+    where: { clientId, status: "POSTED", periodStart: { lte: end }, periodEnd: { gte: start } },
+    include: { checks: true },
+    orderBy: { createdAt: "asc" },
+  });
+  for (const imp of imports) {
+    const inPeriod = (d: Date | null) => (d ? +d >= +start && +d <= +end : +imp.periodEnd >= +start && +imp.periodEnd <= +end);
+    const checks = imp.checks.filter((c) => c.severity !== "INFO" && inPeriod(c.date));
+    const accepted = checks.filter((c) => c.severity === "BLOCK" && c.accepted);
+    const reviews = checks.filter((c) => c.severity === "REVIEW");
+    let open = 0;
+    for (const c of accepted) {
+      const suspense = await db.journalLine.aggregate({ where: { entityId: c.entityId ?? undefined, account: { clientId, code: ACCOUNT_CODES.SUSPENSE }, date: { lte: end } }, _sum: { debit: true, credit: true } });
+      if ((suspense._sum.debit ?? 0n) !== (suspense._sum.credit ?? 0n)) open++;
+    }
+    const key = `ledger:${imp.id}`;
+    const parts = [
+      open ? `${open} selisih dari file sumber masih di 1999, koreksi dengan Jurnal Penyesuaian` : accepted.length ? `${accepted.length} selisih sumber sudah dikoreksi` : "",
+      reviews.length ? `${reviews.length} temuan perlu dicek` : "",
+      imp.roundingTotal ? `pembulatan sen ke 7190 total ${formatMoney(imp.roundingTotal, "IDR")}` : "",
+    ].filter(Boolean);
+    controls.push({
+      key,
+      title: `Impor ${imp.mode === "NERACA" ? "neraca" : "buku besar"} ${imp.sheetName}`,
+      scope: clientScope,
+      status: open ? "FAIL" : reviews.length ? "REVIEW" : "PASS",
+      detail: parts.join(" · ") || "Tidak ada temuan untuk periode ini",
+      href: `${base}/import/ledger/${imp.id}`,
+      ack: acks.get(key),
+    });
+  }
+
+  // FX revaluation (rule 6b): REVIEW until the month-end difference is posted or rates are filled in.
+  for (const p of await revaluationProposals(db, clientId, year, month)) {
+    const key = `reval:${p.entityId}`;
+    const pending = p.lines.reduce((s, l) => s + l.diff, 0n);
+    controls.push({
+      key,
+      title: "Revaluasi kurs saldo valas",
+      scope: p.entityName,
+      status: p.missingRates.length || p.lines.length ? "REVIEW" : "PASS",
+      detail: p.missingRates.length
+        ? `Isi ${p.missingRates.join(", ")}`
+        : p.lines.length
+          ? `${p.lines.length} saldo valas belum dinilai ulang (selisih bersih ${formatMoney(pending, p.functional)} ke 7200)`
+          : "Saldo valas sudah dinilai dengan kurs penutup",
+      href: p.missingRates.length ? `${base}/rates` : `${base}/close?period=${year}-${String(month).padStart(2, "0")}`,
+      ack: acks.get(key),
     });
   }
 
@@ -112,13 +168,29 @@ export async function runControls(db: Db, clientId: string, year: number, month:
   });
 
   if (entities.length > 1) {
-    const ws = await combinedWorksheet(db, clientId, end);
+    const ws = await combinedWorksheet(db, clientId, end).catch((e) => {
+      if (e instanceof FxMissingError) return e;
+      throw e;
+    });
+    if (ws instanceof FxMissingError) {
+      controls.push({
+        key: "fx-translation",
+        title: "Kurs penjabaran ke Rupiah lengkap",
+        scope: "Grup",
+        status: "REVIEW",
+        detail: ws.missing.map((m) => `${m.entity}: ${m.need}`).join("; "),
+        href: `${base}/rates`,
+        ack: acks.get("fx-translation"),
+      });
+      return controls;
+    }
+    const idr = (v: bigint) => formatMoney(v, ws.translated ? "IDR" : (entities[0]?.functionalCurrency ?? "IDR"));
     controls.push({
       key: "intercompany",
       title: "Antar entitas (1190) tereliminasi",
       scope: "Grup",
       status: ws.residual === 0n ? "PASS" : "REVIEW",
-      detail: ws.residual === 0n ? `Tereliminasi ${formatRupiah(ws.matched)}` : `Selisih ${formatRupiah(ws.residual)} antar entitas belum cocok`,
+      detail: ws.residual === 0n ? `Tereliminasi ${idr(ws.matched)}` : `Selisih ${idr(ws.residual)} antar entitas belum cocok`,
       href: `${base}/reports?entity=combined`,
       ack: acks.get("intercompany"),
     });

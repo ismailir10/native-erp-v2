@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { makePdf, table } from "../pdf-fixture";
+import { makePdf, smbcCombinedPdf, table } from "../pdf-fixture";
 import { parseStatement } from "@/lib/import/parsers";
 import { PdfPasswordError } from "@/lib/import/parsers/pdf";
 import { checkContinuity } from "@/lib/import/normalize";
@@ -102,5 +102,20 @@ describe("PDF e-statements", () => {
 
   it("rejects legacy .xls with a way out", async () => {
     await expect(parseStatement("mutasi.xls", Buffer.from([0xd0, 0xcf, 0x11, 0xe0]))).rejects.toThrow(/simpan sebagai \.xlsx/);
+  });
+});
+
+describe("combined statements (SMBC)", () => {
+  it("splits sections, each with its own account, currency and continuity", async () => {
+    const { parseStatementSections } = await import("@/lib/import/parsers");
+    const sections = await parseStatementSections("Touchbiz_eStatement.pdf", smbcCombinedPdf());
+    expect(sections.map((s) => [s.format, s.accountNumber, s.section?.label, s.section?.currency, s.rows.length, s.openingBalance, s.closingBalance])).toEqual([
+      ["SMBC", "90022152088", "Jenius Main Account", "IDR", 2, 5_646_633n, 220_646_633n],
+      ["SMBC", "05243002879", "Pinjaman Rekening Koran BTB", "IDR", 2, -3_598_843_911n, -3_581_066_684n],
+      ["SMBC", "90022164251", "JENIUS JPY ACCOUNT", "JPY", 0, 12_750n, 12_750n],
+    ]);
+    for (const s of sections) expect(checkContinuity(s).ok).toBe(true);
+    expect(sections[0].rows[0].description).toBe("Cr BI fast Incoming"); // posting-date column not in the description
+    expect(sections[1].rows.map((r) => r.amount)).toEqual([35_000_000n, -17_222_773n]);
   });
 });
