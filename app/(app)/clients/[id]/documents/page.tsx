@@ -1,10 +1,11 @@
-import { notFound } from "next/navigation";
-import { evidenceEnabled } from "@/lib/evidence/config";
+import { notFound, redirect } from "next/navigation";
+import { evidenceEnabled, publicEvidenceDemoEnabled } from "@/lib/evidence/config";
 import { getClientForFirm } from "@/lib/tenant";
 import { prisma } from "@/lib/db";
 import { oauthConfigured } from "@/lib/evidence/drive";
 import { EvidenceHome } from "@/components/app/evidence-workspace";
 export default async function ClientDocumentsPage({ params }: { params: Promise<{ id: string }> }) {
+  if (publicEvidenceDemoEnabled()) redirect("/documents");
   if (!evidenceEnabled()) notFound();
   const { id } = await params;
   const client = await getClientForFirm(id);

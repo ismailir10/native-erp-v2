@@ -230,7 +230,13 @@ function checkWorkbookSize(data: Buffer) {
 
 function valueText(value: ExcelJS.CellValue, locator: string, issues: string[]): string {
   if (value === null || value === undefined) return "";
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (value instanceof Date) {
+    if (!Number.isFinite(value.getTime())) {
+      issues.push(`Tanggal ${locator} tidak valid. Periksa sel sumber, hitung ulang rumus jika ada, lalu simpan ulang di Excel.`);
+      return "[tanggal tidak valid]";
+    }
+    return value.toISOString().slice(0, 10);
+  }
   if (typeof value === "number") {
     if (!Number.isFinite(value) || Math.abs(value) > Number.MAX_SAFE_INTEGER) { issues.push(`Angka ${locator} melebihi presisi Excel; gunakan teks nominal asli.`); return "[angka tidak pasti]"; }
     return String(value);

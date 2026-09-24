@@ -9,7 +9,7 @@ import { downloadDriveFile, DRIVE_FOLDER_MIME, DRIVE_SHORTCUT_MIME, getDriveFile
 
 type Folder = { id: string; path: string; resourceKey?: string; pageToken?: string; depth: number };
 type Cursor = { run: string; queue: Folder[]; visited: string[]; complete: boolean };
-const ignored = /^(\.git|\.next|\.claude|\.opencode|\.vscode|\.idea|\.cache|\.turbo|\.venv|venv|__pycache__|node_modules|src|scripts|dist|build|\.DS_Store)$/i;
+const ignored = /^(\.git|\.next|\.claude|\.opencode|\.vscode|\.idea|\.cache|\.turbo|\.venv|venv|__pycache__|node_modules|src|scripts|dist|build|\.DS_Store|\.gitignore|AGENTS\.md|CLAUDE\.md|package(?:-lock)?\.json)$|\.(?:cjs|mjs|js|jsx|ts|tsx|py|sh)$/i;
 const backup = /(^|[ _.-])(backup[s]?|tmp|checkpoint|intermediate)([ _.-]|$)/i;
 const fingerprintOf = (file: DriveFile) => file.version ?? file.md5Checksum ?? file.modifiedTime ?? "";
 const OBSOLETE = "Otomatis: konflik tidak lagi melibatkan versi sumber aktif.";

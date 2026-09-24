@@ -1,10 +1,13 @@
 import { notFound } from "next/navigation";
-import { evidenceEnabled } from "@/lib/evidence/config";
+import { evidenceEnabled, publicEvidenceDemoEnabled } from "@/lib/evidence/config";
 import { getCurrentFirm } from "@/lib/tenant";
 import { prisma } from "@/lib/db";
 import { oauthConfigured } from "@/lib/evidence/drive";
 import { EvidenceHome } from "@/components/app/evidence-workspace";
+import { PublicEvidenceDemo } from "@/components/app/public-evidence-demo";
+import { loadPublicEvidenceDemo } from "@/lib/demo/evidence-sources";
 export default async function DocumentsPage({ searchParams }: { searchParams: Promise<{ google?: string }> }) {
+  if (publicEvidenceDemoEnabled()) return <PublicEvidenceDemo sources={await loadPublicEvidenceDemo()} />;
   if (!evidenceEnabled()) notFound();
   const firm = await getCurrentFirm();
   const { google } = await searchParams;

@@ -50,6 +50,26 @@ describe("evidence extraction", () => {
     expect(unit.issues.join(" ")).toMatch(/Mata uang.*Periode.*Skala/);
   });
 
+  it("flags invalid Excel dates and cached formula dates without losing usable cells", async () => {
+    const data = await workbook({ FS: [
+      ["PT Citra Ternak"], ["Neraca"], ["IDR"], ["Per tanggal 2024-01-31"],
+      ["Kas", new Date(NaN)],
+      ["Piutang", { formula: "B5", result: new Date(NaN) }],
+      ["Pendapatan", 125],
+      ["Tanggal transaksi", new Date("2024-01-15T00:00:00Z")],
+    ] });
+    const { units: [unit] } = await extractEvidence("invalid-dates.xlsx", data);
+    for (const locator of ["FS!B5", "FS!B6"]) {
+      expect(unit.issues).toContain(`Tanggal ${locator} tidak valid. Periksa sel sumber, hitung ulang rumus jika ada, lalu simpan ulang di Excel.`);
+    }
+    expect(unit.passages).toContainEqual({ locator: "FS!5", text: "Kas | [tanggal tidak valid]" });
+    expect(unit.passages).toContainEqual({ locator: "FS!6", text: "Piutang | [tanggal tidak valid]" });
+    expect(unit.passages).toContainEqual({ locator: "FS!8", text: "Tanggal transaksi | 2024-01-15" });
+    expect(unit.figures).toHaveLength(1);
+    expect(unit.figures[0]).toMatchObject({ label: "Pendapatan", amount: "125", locator: "FS!B7" });
+    expect(unit.periodEnd).toBe("2024-01-31");
+  });
+
   it("does not silently choose one comparative report column", async () => {
     const data = await workbook({ FS: [["Neraca"], ["IDR"], ["Per tanggal 2024-01-31"], ["Akun", "2024", "2023"], ["Kas", 100, 200], ["Piutang", null, 300]] });
     const { units: [unit] } = await extractEvidence("compare.xlsx", data);

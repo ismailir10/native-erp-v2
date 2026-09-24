@@ -2,6 +2,27 @@ import { expect, test, type Page } from "@playwright/test";
 
 /** The 5-minute investor walk (docs/demo/investor-demo.md), end to end. */
 
+test("public Dokumen demo answers from synthetic reports and opens exact citations", async ({ page }) => {
+  test.skip(process.env.DEMO_MODE === "false", "Public synthetic demonstration uses demo mode.");
+  await page.goto("/");
+  await page.getByRole("link", { name: "Dokumen", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Dokumen", exact: true })).toBeVisible();
+  await expect(page.getByText("Demo publik · perusahaan dan angka rekaan")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Hubungkan Google" })).toHaveCount(0);
+  await expect(page.locator('input[type="file"]')).toHaveCount(0);
+  await page.getByRole("button", { name: "Bandingkan pendapatan", exact: true }).click();
+  const answer = page.getByRole("region", { name: "Jawaban dokumen contoh" });
+  await expect(answer).toContainText("US$ 250,00");
+  await answer.getByRole("link", { name: "Laporan keuangan 2024.txt · baris 5", exact: true }).click();
+  await expect(page.locator(':target')).toContainText("Pendapatan: 1250.00");
+  await page.getByRole("button", { name: "Bukti apa yang kurang?", exact: true }).click();
+  await expect(answer).toContainText("tidak dapat disimpulkan");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.goto("/documents/source/private-version");
+  await expect(page.getByRole("heading", { name: "Halaman tidak ditemukan" })).toBeVisible();
+});
+
 async function pickOption(page: Page, trigger: ReturnType<Page["locator"]>, name: RegExp) {
   await trigger.click();
   await page.getByRole("option", { name }).click();
