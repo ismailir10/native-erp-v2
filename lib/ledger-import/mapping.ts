@@ -29,7 +29,7 @@ export function inferType(code: string, name: string): AccountType | null {
   if (/(expense|beban|biaya|cost of|cogs|hpp|harga pokok|\bloss\b|manfaat pajak)/.test(n) && !/(prepaid|dibayar di ?muka|accrued|accured|payable|utang|hutang)/.test(n)) return "BEBAN";
   if (/(revenue|income|pendapatan|penjualan|\bsales\b|\bgain\b)/.test(n) && !/(payable|receivable|tax payable|diterima di muka|unearned|deferred)/.test(n)) return "PENDAPATAN";
   // Rent and pay are expenses even when the name also says what was rented ("Sewa Peralatan Tata Suara").
-  if (/(\bsewa\b|\brent(al)?\b|\bhonor|\bgaji\b|\bupah\b|salar|\bwages\b)/.test(n) && !/(prepaid|dibayar di ?muka|accrued|accured|payable|utang|hutang|pembiayaan|liabilit|hak guna|right of use)/.test(n)) return "BEBAN";
+  if (/(\bsewa\b|\brent(al)?\b|\bhonor|\bgaji\b|\bupah\b|salar|\bwages\b)/.test(n) && !/(prepaid|dibayar di ?muka|advance|uang muka|deposit|guarantee|jaminan|receivable|piutang|accrued|accured|payable|utang|hutang|pembiayaan|liabilit|hak guna|right of use)/.test(n)) return "BEBAN";
   if (/(akumulasi|accumulat|allowance|penyisihan)/.test(n)) return "ASET";
   if (/(receivable|piutang|loan to|placement|penempatan|investment|investasi|tax asset|dibayar di ?muka|prepaid|advance|uang muka)/.test(n)) return "ASET";
   if (/(payable|\butang\b|\bhutang\b|accrued|accured|masih harus|liabilit|kewajiban|long term|jangka panjang|non ?bank|\bloan\b|pinjaman|diterima di muka|unearned)/.test(n)) return "LIABILITAS";

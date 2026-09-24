@@ -174,7 +174,7 @@ export class OpenAiCompatibleProvider implements AiProvider {
     if (!res.ok) {
       const text = (await res.text()).slice(0, 300);
       // Zen answers 503 "Endpoint is unavailable" for a model served on another endpoint: say so first (notes are cut at 120).
-      if (res.status === 503 && /endpoint is unavailable/i.test(text)) throw new Error(`Model ${this.cfg.model} tidak tersedia lewat /chat/completions (AI 503). ${CHAT_MODEL_HINT}`);
+      if (isZen(this.cfg.baseUrl) && res.status === 503 && /endpoint is unavailable/i.test(text)) throw new Error(`Model ${this.cfg.model} tidak tersedia lewat /chat/completions (AI 503). ${CHAT_MODEL_HINT}`);
       throw new Error(`AI ${res.status}: ${text}`);
     }
     const body = (await res.json()) as {

@@ -91,3 +91,9 @@ it("a Zen 503 'Endpoint is unavailable' leads with the fix (notes are cut at 120
   const err = await p.mapAccounts([{ key: "a0", code: "1", name: "Kas", typeHint: null }], [], "x").catch((e) => e);
   expect(`AI gagal: ${err.message}`.slice(0, 120)).toMatch(/gpt-5\.6-luna tidak tersedia lewat \/chat\/completions \(AI 503\)\. Pilih mis\. glm-5\.3/);
 });
+
+it("keeps another gateway's 503 message without recommending Zen models", async () => {
+  const f = (async () => new Response("Endpoint is unavailable", { status: 503 })) as unknown as typeof fetch;
+  const p = new OpenAiCompatibleProvider({ baseUrl: "https://gw.test/v1", apiKey: "k", model: "custom", maxCallsPerImport: 3, monthlyTokenBudget: 1000 }, f);
+  await expect(p.mapAccounts([{ key: "a0", code: "1", name: "Kas", typeHint: null }], [], "x")).rejects.toThrow("AI 503: Endpoint is unavailable");
+});

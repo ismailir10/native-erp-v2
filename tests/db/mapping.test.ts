@@ -32,6 +32,10 @@ describe("deterministic mapping", () => {
     expect(sug("Account Receivable", "1-1200")).toBe("1130");
     expect(sug("Sewa Peralatan Tata Suara", "9106")).toBe("6120");
     expect(sug("Sewa Dibayar Dimuka")).toBe("1170");
+    expect(sug("Jaminan Sewa Gedung Konser", "9102")).toBe("1170");
+    expect(sug("Rental Deposit")).toBe("1170");
+    expect(sug("Salary Advance")).toBe("1170");
+    expect(sug("Piutang Sewa")).toBe("1140");
     expect(sug("Pendapatan Sewa")).not.toBe("6120");
     expect(sug("Utang Gaji")).not.toBe("6100");
   });

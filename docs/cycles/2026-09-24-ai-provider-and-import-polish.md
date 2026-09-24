@@ -105,6 +105,7 @@ real-data preview (owner already approved sending account names to the gateway).
 - T6: `AccountPicker` uses the vendored grouped combobox, filters by code/name, keeps create-account first, and preserves keyboard selection. Ledger e2e covers code/name search, keyboard choice and creation; waits for each rate refresh before selecting the next missing rate.
 - T7: `RateList` groups imported rates by currency pair and source filename, with count/date range and expandable original rows; manual rates remain visible. Synthetic ledger fixture covers collapsed/expanded file rates and their delete controls.
 - T8: `client-form.tsx` selects the untouched auto-filled first entity name on focus. Ledger e2e types a replacement and then confirms later edits append normally; Chrome manually confirmed replacement.
+- Final review (T2/T3): keep Zen-specific 503 advice scoped to Zen; exclude rental deposits, salary advances and rent receivables from the new expense inference. Regression checks cover all four names and non-Zen 503 behavior.
 ## Verification
 - T1 gate: lint ✔ · typecheck ✔ · `Test Files 23 passed (23) · Tests 122 passed (122)`
 - T2 gate: lint ✔ · typecheck ✔ · `Test Files 23 passed (23) · Tests 125 passed (125)`
@@ -116,4 +117,5 @@ real-data preview (owner already approved sending account names to the gateway).
 - T6 gate: lint ✔ · typecheck ✔ · `Test Files 23 passed (23) · Tests 127 passed (127)`; ledger browser walk `1 passed (21.9s)`.
 - T7 gate: lint ✔ · typecheck ✔ · `Test Files 23 passed (23) · Tests 127 passed (127)`; ledger browser walk `1 passed (15.2s)`; Chrome screenshot reviewed for grouped rates. Private Chickin check follows in T9.
 - T8 gate: lint ✔ · typecheck ✔ · `Test Files 23 passed (23) · Tests 127 passed (127)`; ledger browser walk `1 passed (14.3s)`.
+- Final review gate: lint ✔ · typecheck ✔ · `Test Files 23 passed (23) · Tests 128 passed (128)`; production build ✔; `ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.`; full e2e `3 passed (17.8s)`; final `verify:real -- all` → `✓ Semua pemeriksaan lolos`.
 ## Ship Notes
