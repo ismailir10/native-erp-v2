@@ -63,7 +63,7 @@ In the Claude cloud sandbox set `PW_CHROMIUM=/opt/pw-browsers/chromium` (never `
 
 | Touching | Load first |
 |---|---|
-| `lib/ledger/** lib/import/** lib/classify/** lib/ai/** lib/reports/** lib/controls/** prisma/**` | [`accounting-rules`](.claude/skills/accounting-rules/SKILL.md) — **non-negotiable invariants** |
+| `lib/ledger/** lib/import/** lib/ledger-import/** lib/fx/** lib/classify/** lib/ai/** lib/reports/** lib/controls/** prisma/**` | [`accounting-rules`](.claude/skills/accounting-rules/SKILL.md) — **non-negotiable invariants** |
 | `app/** components/**` | [`ui-rules`](.claude/skills/ui-rules/SKILL.md) — Stripe look, shadcn-first, "don't make me think" |
 | `lib/demo/** scripts/seed.ts e2e/**` | [`demo-data`](.claude/skills/demo-data/SKILL.md) |
 | Anything that changes a number on a report | [`verify-books`](.claude/skills/verify-books/SKILL.md) |
@@ -83,7 +83,9 @@ app/actions.ts             server actions — the only UI write path
 components/ui/             shadcn (base-nova on @base-ui/react), vendored — edit sparingly
 components/app/            product components (Money, StatusPill, NextStep, charts, forms)
 lib/ledger/                postJournal, bank posting + reclass
-lib/import/                parsers (BCA/Mandiri/BRI/generic), normalize (merchant key, continuity), pipeline
+lib/import/                parsers (BCA/Mandiri/BRI/SMBC/generic, combined PDFs), normalize (merchant key, continuity), pipeline
+lib/ledger-import/         ledger/Neraca files: read → check → map (source accounts) → post
+lib/fx/                    currency registry + exact rate math, Kurs table, revaluation
 lib/classify/  lib/ai/     transfer matcher, rules, memory; OpenAI-compatible LLM provider + cache + budget
 lib/reports/  lib/controls/ TB, Laba Rugi, Neraca, combined worksheet, tax card; close controls + lock
 lib/demo/                  scenario generator, bank-format writers, seed, ground-truth verifier

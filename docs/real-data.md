@@ -25,7 +25,9 @@ Look for `Kesinambungan NYAMBUNG ✓`. That means opening + every row = every pr
 lost or misread. `ADA CELAH ✗` names the broken rows. Exit code 2 means a gap.
 
 Supported: text PDF e-statements (BCA / Mandiri / BRI-style layouts), KlikBCA CSV, Mandiri XLSX, BRI CSV, and any CSV/XLSX
-with tanggal / keterangan / debet-kredit (or mutasi) / saldo columns.
+with tanggal / keterangan / debet-kredit (or mutasi) / saldo columns. Combined PDFs with several accounts (e.g. SMBC
+"Laporan Konsolidasi Rekening") print one block per account; each is checked on its own and the import takes the section
+whose number matches the selected bank account. Foreign-currency sections are listed but not imported.
 Not supported: scanned PDFs (no text layer) and `.xls` (save as `.xlsx`). Both get a clear message.
 
 **If a format fails**, send only the column header line and one anonymised row from `--lines`, with amounts and names
@@ -33,7 +35,9 @@ changed. That's enough to add the layout.
 
 ## 2. Add the client
 Beranda → **Tambah klien**. Enter the client (group) name and business type, then one entity per company or person
-that holds bank accounts (PT/CV first, then the owner). Add each bank account with its number as printed on the statement.
+with its own books (PT/CV first, then the owner) and its **Mata uang pembukuan** (IDR unless it keeps books in e.g. SGD).
+Add each bank account with its number as printed on the statement; tick **PRK** for an overdraft loan account (its balance
+is a debt to the bank). An entity whose books come from a ledger file needs no bank account: remove the row.
 Imports refuse a file whose account number doesn't match.
 
 ## 3. Saldo awal
@@ -48,6 +52,35 @@ The controls show whether the books match the bank:
 - *Rekonsiliasi* compares the statement's closing balance with the GL. It fails until Saldo Awal is posted.
 - *Kelengkapan mutasi* shows the continuity result.
 - *Kliring 1199* stays open until both sides of a transfer between own accounts are imported.
+
+## 5. Ledger or Neraca from the client's old system (Jurnal, Accurate, Excel)
+**Impor → Buku besar / neraca**. XLSX or CSV. A ledger needs tanggal, kode/nama akun, debit, kredit (optional: entitas,
+no. bukti, mata uang, kurs, notes with `Rate: 1.31`). A Neraca needs kode/nama akun and saldo (Jurnal's export works as is).
+1. **Periksa file.** Nothing is posted yet. Choose the sheet if the file holds several tables.
+2. **Pemeriksaan file.** BLOCK items stop the import: fix the file, or for an unbalanced journal *Terima & catat selisih ke 1999*
+   (the difference stays visible in 1999 and fails Tutup Buku until a Jurnal Penyesuaian moves it). REVIEW items (codes reused
+   with another name, foreign lines without a rate, balances against the account's nature) show up as a close control.
+3. **Pemetaan akun.** Each account in the file keeps its own code and maps to one Buku account. Rule suggestions are filled in
+   after upload; *Minta saran AI* sends only account codes, names and types (never amounts). Nothing counts until you accept it.
+4. **Catat.** All journals post together, or none. Check **Neraca Saldo → Akun sumber** against the client's own TB.
+
+Currency: *Jumlah sudah dalam mata uang entitas* posts the amounts as written (default, faithful to the file).
+*Konversi dengan kurs* converts foreign lines with the rate in the file, else the **Kurs** page on that date.
+
+## 6. Kurs and Gabungan Grup in Rupiah
+Entities in another currency are translated for the Gabungan: assets & liabilities at the month's closing rate, income &
+expense at the year's average rate, equity at the historical rate; the difference is *Selisih penjabaran mata uang asing*.
+The **Kurs** page lists every rate that's still missing; a report without its rates says *belum dijabarkan* instead of
+showing a number. Rates are typed in (or taken from the imported file); Buku never fetches them.
+Foreign balances (lines imported with a rate) are revalued at month end on **Tutup Buku → Catat revaluasi**.
+
+## 7. Check a real file end to end (local only)
+```bash
+npm run verify:real -- chickin      # or goers | smbc | all; add --into-app to load it into the firm the app shows
+```
+Imports the files in `data/private/` into a fresh client and compares Buku with the files themselves; the report goes to
+`data/private/reports/` (never commit it). Rates for the Gabungan come from `data/private/rates.csv`
+(`currency,quote,date,kind,rate,note`).
 
 ## Environments
 | Where | How to open | Database |

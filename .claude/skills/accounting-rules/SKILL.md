@@ -1,6 +1,6 @@
 ---
 name: accounting-rules
-description: Non-negotiable accounting invariants for Buku's ledger, import pipeline, classifier, AI usage, reports and close controls. Load before touching lib/ledger, lib/import, lib/classify, lib/ai, lib/reports, lib/controls or prisma/.
+description: Non-negotiable accounting invariants for Buku's ledger, import pipeline, classifier, AI usage, reports and close controls. Load before touching lib/ledger, lib/import, lib/ledger-import, lib/fx, lib/classify, lib/ai, lib/reports, lib/controls or prisma/.
 ---
 
 # Accounting rules (break one = a bug, even if tests pass)
