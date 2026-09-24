@@ -22,7 +22,7 @@ export type PostLine = {
   sourceAccountId?: string | null;
   sourceRef?: string | null;
   /** Foreign-currency line: original currency, its (unsigned) amount in minor units and the rate (functional per 1 unit). */
-  fx?: { currency: string; amount: bigint; rate: string } | null;
+  fx?: { currency: string; amount: bigint; rate: string; revaluation?: boolean } | null;
 };
 
 export type PostInput = {
@@ -88,6 +88,11 @@ export async function postJournal(tx: Tx, input: PostInput) {
     if (!isCurrency(l.fx.currency)) throw new LedgerError(`Mata uang ${l.fx.currency} belum didukung`);
     if (l.fx.currency === entity.functionalCurrency) throw new LedgerError("Baris valas harus dalam mata uang selain mata uang fungsional entitas");
     if (l.fx.amount < 0n) throw new LedgerError("Nominal valas tidak boleh negatif");
+    // Revaluation (rule 6b): the functional value moves while the foreign balance doesn't — fx amount 0, rate = closing rate.
+    if (l.fx.revaluation) {
+      if (l.fx.amount !== 0n) throw new LedgerError("Baris revaluasi tidak mengubah saldo valas (nominal valas harus 0)");
+      continue;
+    }
     const expected = convertMinor(l.fx.amount, l.fx.currency, entity.functionalCurrency, l.fx.rate);
     const actual = l.debit + l.credit;
     const diff = expected > actual ? expected - actual : actual - expected;

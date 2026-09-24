@@ -17,6 +17,7 @@ import { addClient, OnboardingError, type NewClientInput } from "@/lib/onboardin
 import { OpeningError, postOpening, type OpeningLineInput } from "@/lib/opening";
 import type { TaxTag } from "@/lib/generated/prisma/enums";
 import { RateError, upsertRate, validateRateInput } from "@/lib/fx/rates";
+import { postRevaluation, RevaluationError } from "@/lib/fx/revalue";
 
 /**
  * Server actions — the only write path from the UI. Each returns {ok, …} or {ok:false, error}
@@ -26,7 +27,7 @@ type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string; needs
 
 function fail(e: unknown): { ok: false; error: string; needsPassword?: boolean } {
   if (e instanceof PdfPasswordError) return { ok: false, error: e.message, needsPassword: true };
-  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError || e instanceof RateError) return { ok: false, error: e.message };
+  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError || e instanceof RateError || e instanceof RevaluationError) return { ok: false, error: e.message };
   console.error(e);
   return { ok: false, error: "Terjadi kesalahan tak terduga. Coba lagi." };
 }
@@ -233,6 +234,19 @@ export async function deleteRateAction(clientId: string, rateId: string): Promis
     const client = await getClientForFirm(clientId);
     const { count } = await prisma.exchangeRate.deleteMany({ where: { id: rateId, firmId: client.firmId } });
     if (!count) return { ok: false, error: "Kurs tidak ditemukan." };
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Month-end FX revaluation — posted only on this explicit click (rule 6b). */
+export async function revaluationAction(clientId: string, entityId: string, year: number, month: number): Promise<Result> {
+  try {
+    const client = await getClientForFirm(clientId);
+    if (!client.entities.some((e) => e.id === entityId)) return { ok: false, error: "Entitas tidak ditemukan." };
+    await postRevaluation(prisma, client.id, entityId, year, month);
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
   } catch (e) {

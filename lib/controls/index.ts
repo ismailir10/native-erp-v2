@@ -3,6 +3,7 @@ import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { periodBounds } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
 import { FxMissingError } from "@/lib/reports/fx";
+import { revaluationProposals } from "@/lib/fx/revalue";
 import { balanceSheet, combinedWorksheet, trialBalance } from "@/lib/reports/ledger";
 
 /**
@@ -100,6 +101,25 @@ export async function runControls(db: Db, clientId: string, year: number, month:
       detail: clearing === 0n ? "Semua transfer antar rekening berpasangan" : `Sisa ${fmt(clearing)}. Ada transfer yang pasangannya belum diimpor`,
       href: `${base}/ledger/${ACCOUNT_CODES.CLEARING}?entity=${e.id}`,
       ack: acks.get(clKey),
+    });
+  }
+
+  // FX revaluation (rule 6b): REVIEW until the month-end difference is posted or rates are filled in.
+  for (const p of await revaluationProposals(db, clientId, year, month)) {
+    const key = `reval:${p.entityId}`;
+    const pending = p.lines.reduce((s, l) => s + l.diff, 0n);
+    controls.push({
+      key,
+      title: "Revaluasi kurs saldo valas",
+      scope: p.entityName,
+      status: p.missingRates.length || p.lines.length ? "REVIEW" : "PASS",
+      detail: p.missingRates.length
+        ? `Isi ${p.missingRates.join(", ")}`
+        : p.lines.length
+          ? `${p.lines.length} saldo valas belum dinilai ulang (selisih bersih ${formatMoney(pending, p.functional)} ke 7200)`
+          : "Saldo valas sudah dinilai dengan kurs penutup",
+      href: p.missingRates.length ? `${base}/rates` : `${base}/close?period=${year}-${String(month).padStart(2, "0")}`,
+      ack: acks.get(key),
     });
   }
 
