@@ -1,9 +1,11 @@
 import type { Db } from "@/lib/db";
 import { createClient, type ClientSpec } from "@/lib/setup";
+import { isCurrency } from "@/lib/fx/currency";
 
 /**
- * "Tambah klien": a real client with its entities (PT/CV/owner) and bank accounts. Reuses createClient(),
- * so the client gets the template COA and one GL bank account (1101–1109) per bank account.
+ * "Tambah klien": a real client with its entities (PT/CV/owner), each with its functional currency and optional bank
+ * accounts (a company whose books come from a ledger file has none). Reuses createClient(), so the client gets the
+ * template COA and one GL bank account (1101–1109) per bank account.
  */
 /** `fields` maps a form path ("name", "entities.0.banks.1.number") to what to fix, so the form can mark every field at once. */
 export class OnboardingError extends Error {
@@ -20,10 +22,10 @@ const BANK_NAME: Record<(typeof BANKS)[number], string> = { BCA: "BCA", MANDIRI:
 export type NewClientInput = {
   name: string;
   industry: string;
-  entities: { name: string; shortName: string; kind: (typeof KINDS)[number]; npwp: string; banks: { bank: (typeof BANKS)[number]; number: string; label: string }[] }[];
+  entities: { name: string; shortName: string; kind: (typeof KINDS)[number]; npwp: string; currency?: string; banks: { bank: (typeof BANKS)[number]; number: string; label: string }[] }[];
 };
 
-/** Every problem at once, keyed by field. Optional: industry, short name, NPWP, account label (defaults to "BCA ••5566"). */
+/** Every problem at once, keyed by field. Optional: industry, short name, NPWP, bank accounts, account label (defaults to "BCA ••5566"). */
 export function validateNewClient(input: NewClientInput): ClientSpec {
   const fields: Record<string, string> = {};
   const name = input.name.trim();
@@ -38,7 +40,8 @@ export function validateNewClient(input: NewClientInput): ClientSpec {
     if (!eName) fields[`${at}.name`] = e.kind === "PERORANGAN" ? "Isi nama pemilik." : "Isi nama badan usaha.";
     if (!KINDS.includes(e.kind)) fields[`${at}.kind`] = "Pilih jenis entitas.";
     if (e.npwp.trim() && !/^[\d.\-\s]{15,25}$/.test(e.npwp.trim())) fields[`${at}.npwp`] = "NPWP berisi 15 atau 16 angka, boleh dengan titik dan strip.";
-    if (e.banks.length === 0) fields[`${at}.banks`] = "Tambahkan minimal satu rekening bank.";
+    const currency = (e.currency ?? "IDR").trim().toUpperCase();
+    if (!isCurrency(currency)) fields[`${at}.currency`] = "Pilih mata uang dari daftar.";
     const banks = e.banks.map((b, k) => {
       const bt = `${at}.banks.${k}`;
       if (!BANKS.includes(b.bank)) fields[`${bt}.bank`] = "Pilih bank.";
@@ -50,7 +53,7 @@ export function validateNewClient(input: NewClientInput): ClientSpec {
       const label = b.label.trim() || `${BANK_NAME[b.bank] ?? "Bank"} ••${number.slice(-4)}`;
       return { bank: b.bank, number, label: label.slice(0, 60) };
     });
-    return { name: eName, shortName: e.shortName.trim() || eName, kind: e.kind, npwp: e.npwp.trim() || undefined, banks };
+    return { name: eName, shortName: e.shortName.trim() || eName, kind: e.kind, npwp: e.npwp.trim() || undefined, functionalCurrency: currency, banks };
   });
   if (seen.size > 9) fields.entities = "Maksimal 9 rekening bank per klien.";
   if (Object.keys(fields).length) throw new OnboardingError(fields);

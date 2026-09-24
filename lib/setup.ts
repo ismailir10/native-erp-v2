@@ -6,7 +6,7 @@ import { FIRM_RULES, type RuleLike } from "@/lib/classify/rules";
 export type ClientSpec = {
   name: string;
   industry: string;
-  entities: { name: string; shortName: string; kind: EntityKind; npwp?: string; banks: { bank: BankCode; number: string; label: string }[] }[];
+  entities: { name: string; shortName: string; kind: EntityKind; npwp?: string; functionalCurrency?: string; banks: { bank: BankCode; number: string; label: string }[] }[];
   rules?: Omit<RuleLike, "clientId">[];
 };
 
@@ -23,7 +23,7 @@ export async function createClient(tx: Tx, firmId: string, spec: ClientSpec) {
   let bankIndex = 0;
   const entities = [];
   for (const e of spec.entities) {
-    const entity = await tx.entity.create({ data: { firmId, clientId: client.id, name: e.name, shortName: e.shortName, kind: e.kind, npwp: e.npwp } });
+    const entity = await tx.entity.create({ data: { firmId, clientId: client.id, name: e.name, shortName: e.shortName, kind: e.kind, npwp: e.npwp, functionalCurrency: e.functionalCurrency ?? "IDR" } });
     const banks = [];
     for (const b of e.banks) {
       const gl = await tx.account.create({
