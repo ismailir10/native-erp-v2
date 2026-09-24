@@ -71,8 +71,8 @@ export function RateForm({ clientId, defaultCurrency, missing }: { clientId: str
           </Select>
         </Field>
         <Field>
-          <FieldLabel>Tanggal</FieldLabel>
-          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <FieldLabel htmlFor="rate-date">Tanggal</FieldLabel>
+          <Input id="rate-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </Field>
         <Field>
           <FieldLabel>Jenis</FieldLabel>
@@ -85,12 +85,12 @@ export function RateForm({ clientId, defaultCurrency, missing }: { clientId: str
           </Select>
         </Field>
         <Field>
-          <FieldLabel>Kurs (1 {currency} = … {quote})</FieldLabel>
-          <Input inputMode="decimal" className="num text-right" value={rate} onChange={(e) => setRate(e.target.value)} placeholder={quote === "IDR" ? "12250" : "1.31"} />
+          <FieldLabel htmlFor="rate-value">Kurs (1 {currency} = … {quote})</FieldLabel>
+          <Input id="rate-value" inputMode="decimal" className="num text-right" value={rate} onChange={(e) => setRate(e.target.value)} placeholder={quote === "IDR" ? "12250" : "1.31"} />
         </Field>
         <Field>
-          <FieldLabel>Sumber (opsional)</FieldLabel>
-          <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="mis. Kurs tengah BI" />
+          <FieldLabel htmlFor="rate-note">Sumber (opsional)</FieldLabel>
+          <Input id="rate-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="mis. Kurs tengah BI" />
         </Field>
       </div>
       <p className="num text-sm text-muted-foreground" aria-live="polite">{preview(rate, currency, quote)}</p>
