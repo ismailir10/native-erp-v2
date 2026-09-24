@@ -26,30 +26,30 @@ Who feels it: the accountant mapping a new client, and the investor/consultant d
 is the headline.
 
 ## Spec
-- [ ] **AI token budget fits reasoning models.** Mapping and classification requests ask for
+- [x] **AI token budget fits reasoning models.** Mapping and classification requests ask for
       `max_tokens = 1500 + 60 × items` (cap 8000). Still one call per ≤ 40 items, still ≤ 3 calls per request, still
       counted against the monthly token budget (actual usage is what's recorded).
-- [ ] **Truncated or unreadable answers are said out loud.** `finish_reason: "length"` → error
+- [x] **Truncated or unreadable answers are said out loud.** `finish_reason: "length"` → error
       "Jawaban AI terpotong (batas token)…"; a 200 with no parseable JSON → "Jawaban AI tidak terbaca…". Both are recorded
       as failed calls (`ok: false`) with the reason, shown in the toast and in Pengaturan → Panggilan terakhir. Nothing is
       cached from them. A valid JSON answer with zero usable codes still reads "0 saran AI" (that is the model's answer).
-- [ ] **Only compatible models are offered.** When the gateway is OpenCode Zen, the Pengaturan model list hides models
+- [x] **Only compatible models are offered.** When the gateway is OpenCode Zen, the Pengaturan model list hides models
       Zen serves on other endpoints (prefixes `gpt-`, `grok-`, `muse-`, `claude-`, `qwen`, `gemini-`, `jev-`), and saving
       one of them is refused with "Model ini tidak dilayani lewat /chat/completions di OpenCode Zen. Pilih mis. glm-5.3,
       kimi-k3, deepseek-v4-pro." Other gateways are untouched. An `AI 503 … Endpoint is unavailable` error adds the same hint.
-- [ ] **Keyword rules:** employee/staff/karyawan/related-party receivables and loans → 1140, not 1130; rental names
+- [x] **Keyword rules:** employee/staff/karyawan/related-party receivables and loans → 1140, not 1130; rental names
       (`sewa`, `rent`, `rental`, `lease expense`) and pay names (`honor`, `gaji`, `upah`, `salary`, `wages`) infer BEBAN
       before asset words like "peralatan", so "Sewa Peralatan Tata Suara" → 6120 Beban Sewa. Existing Chickin/Goers
       suggestions don't regress (verify:real + unit tests).
-- [ ] **Searchable mapping select.** "Akun Buku" in Pemetaan akun is a combobox: type "6150" or "pemasaran" to filter,
+- [x] **Searchable mapping select.** "Akun Buku" in Pemetaan akun is a combobox: type "6150" or "pemasaran" to filter,
       grouped as today, "+ Buat akun baru" stays first, keyboard works. Same accessible name (`Akun Buku untuk <kode>`).
-- [ ] **Kurs list grouped.** Manual rates listed as today. File rates collapse to one row per pair and file
+- [x] **Kurs list grouped.** Manual rates listed as today. File rates collapse to one row per pair and file
       ("USD → SGD · 128 kurs dari chickin.xlsx · 3 Jan 2023 – 31 Des 2025"), expandable to the full list with delete.
-- [ ] **Journal count is honest.** The draft's "N jurnal" / "Catat N jurnal" counts only groups that will post
+- [x] **Journal count is honest.** The draft's "N jurnal" / "Catat N jurnal" counts only groups that will post
       (at least one non-zero line, rounding or source difference). Posted count equals the button.
-- [ ] **Tambah klien:** while the first entity's name is still auto-filled, focusing the field selects its text so typing
+- [x] **Tambah klien:** while the first entity's name is still auto-filled, focusing the field selects its text so typing
       replaces it.
-- [ ] **Average rate only when there is P&L.** Kurs no longer asks for a year's average when the entity has no
+- [x] **Average rate only when there is P&L.** Kurs no longer asks for a year's average when the entity has no
       PENDAPATAN/BEBAN movement that year, and translation doesn't need it either (no FxMissingError for a zero P&L).
       Closing and historical needs are unchanged.
 
@@ -86,7 +86,7 @@ real-data preview (owner already approved sending account names to the gateway).
 - [x] T7 Kurs list grouped by pair + file (`app/(app)/clients/[id]/rates/page.tsx`, reuse `components/ui/collapsible.tsx`)
       — accept: browser check on the real-data preview's Chickin (≈130 file rates → 2–3 rows)
 - [x] T8 Tambah klien select-on-focus for the auto-filled entity name (`components/app/client-form.tsx`) — accept: browser check
-- [ ] T9 Verify on real-data preview: AI suggestions on "Uji AI (sintetis)" with glm-5.3, Kurs page, Goers draft — accept:
+- [x] T9 Verify on real-data preview: AI suggestions on "Uji AI (sintetis)" with glm-5.3, Kurs page, Goers draft — accept:
       Verification section filled
 
 ## Implementation
@@ -106,6 +106,7 @@ real-data preview (owner already approved sending account names to the gateway).
 - T7: `RateList` groups imported rates by currency pair and source filename, with count/date range and expandable original rows; manual rates remain visible. Synthetic ledger fixture covers collapsed/expanded file rates and their delete controls.
 - T8: `client-form.tsx` selects the untouched auto-filled first entity name on focus. Ledger e2e types a replacement and then confirms later edits append normally; Chrome manually confirmed replacement.
 - Final review (T2/T3): keep Zen-specific 503 advice scoped to Zen; exclude rental deposits, salary advances and rent receivables from the new expense inference. Regression checks cover all four names and non-Zen 503 behavior.
+- T9: continued from Claude's approved build-and-merge request; deployed an isolated tracked-files checkout to the protected `real-data` preview. Ran one live GLM-5.3 request on the existing synthetic draft; inspected Chickin rates and the Goers draft in Chrome.
 ## Verification
 - T1 gate: lint ✔ · typecheck ✔ · `Test Files 23 passed (23) · Tests 122 passed (122)`
 - T2 gate: lint ✔ · typecheck ✔ · `Test Files 23 passed (23) · Tests 125 passed (125)`
@@ -118,4 +119,14 @@ real-data preview (owner already approved sending account names to the gateway).
 - T7 gate: lint ✔ · typecheck ✔ · `Test Files 23 passed (23) · Tests 127 passed (127)`; ledger browser walk `1 passed (15.2s)`; Chrome screenshot reviewed for grouped rates. Private Chickin check follows in T9.
 - T8 gate: lint ✔ · typecheck ✔ · `Test Files 23 passed (23) · Tests 127 passed (127)`; ledger browser walk `1 passed (14.3s)`.
 - Final review gate: lint ✔ · typecheck ✔ · `Test Files 23 passed (23) · Tests 128 passed (128)`; production build ✔; `ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.`; full e2e `3 passed (17.8s)`; final `verify:real -- all` → `✓ Semua pemeriksaan lolos`.
+- Private-preview browser verification: GLM-5.3 returned 4 suggestions for the 4 synthetic leftover accounts; Pengaturan reports the last call as Berhasil. No mappings accepted or journals posted.
+- Chickin: 125 USD→SGD file rates collapsed into one file group; expansion exposes all 125 original delete controls. Manual rates remain listed. Account search visually verified by name with create-account still first.
+- Goers: existing 23-account Neraca remains an unposted draft with its source checks and mapping controls intact.
+- Preview caveat: the saved HoldCo 2022 opening actually contains three expense-account lines (confirmed read-only), so its 2022 average-rate need correctly remains. The no-P&L behavior is proven by the DB regression test. This corrects the Context assumption above; no posted data was changed.
+- Existing drafts retain persisted type hints and suggestions (including earlier employee-loan/equipment-rental suggestions); new staging uses the corrected rules. Review existing drafts manually before accepting them.
 ## Ship Notes
+- Migrations: none. Dependencies: none. New environment variables: none.
+- Existing AI configuration stays in place. One live synthetic mapping request was used; automated tests and seed use fake providers.
+- Existing posted entries and manual rates are unchanged. Previously staged drafts retain their stored counts/hints/suggestions; re-stage or review manually where appropriate.
+- After CI passes, merge the PR and fast-forward `real-data` from main for the private preview. No production data copy or reset.
+- Rollback: revert this cycle's commits and redeploy; no schema rollback is needed.
