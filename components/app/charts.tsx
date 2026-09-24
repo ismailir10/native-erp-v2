@@ -2,14 +2,14 @@
 
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
-import { formatRupiahCompact } from "@/lib/money";
+import { formatMoneyCompact } from "@/lib/money";
 
 type Point = { label: string; cash?: number; revenue?: number; expense?: number; pct?: number };
 
-const rp = (v: number) => formatRupiahCompact(BigInt(Math.round(v)));
 
 /** Single series → no legend; the card title names it. Hover tooltip by default. */
-export function CashChart({ data }: { data: Point[] }) {
+export function CashChart({ data, currency = "IDR" }: { data: Point[]; currency?: string }) {
+  const rp = (v: number) => formatMoneyCompact(BigInt(Math.round(v)), currency);
   const config = { cash: { label: "Saldo kas", color: "var(--chart-1)" } } satisfies ChartConfig;
   return (
     <ChartContainer config={config} className="h-56 w-full">
@@ -31,7 +31,8 @@ export function CashChart({ data }: { data: Point[] }) {
 }
 
 /** Two series: legend + tooltip; teal fails 3:1 vs surface, so values are also in the table below. */
-export function RevenueExpenseChart({ data }: { data: Point[] }) {
+export function RevenueExpenseChart({ data, currency = "IDR" }: { data: Point[]; currency?: string }) {
+  const rp = (v: number) => formatMoneyCompact(BigInt(Math.round(v)), currency);
   const config = {
     revenue: { label: "Pendapatan", color: "var(--chart-1)" },
     expense: { label: "Beban", color: "var(--chart-4)" },

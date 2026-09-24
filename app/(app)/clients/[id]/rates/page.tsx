@@ -11,10 +11,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export default async function RatesPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
-  const { client } = await loadClientPage(params, searchParams);
+  const { client, period } = await loadClientPage(params, searchParams);
   const [rates, needs] = await Promise.all([
     prisma.exchangeRate.findMany({ where: { firmId: client.firmId }, orderBy: [{ currency: "asc" }, { date: "desc" }, { kind: "asc" }] }),
-    rateNeeds(prisma, client.id),
+    rateNeeds(prisma, client.id, period.end),
   ]);
   const foreign = client.entities.filter((e) => e.functionalCurrency !== "IDR");
   const missing = needs.filter((n) => !n.present);

@@ -1,6 +1,6 @@
 import type { Db, Tx } from "@/lib/db";
 import { formatRate, invertRate, isCurrency, normalizeRateInput, parseRate } from "@/lib/fx/currency";
-import { dateOnly } from "@/lib/format";
+import { dateOnly, formatPeriod } from "@/lib/format";
 
 /**
  * Exchange-rate table (ADR 0006): rows are typed in or taken from an imported file — never fetched live.
@@ -91,7 +91,7 @@ export function averageRate(rows: RateRow[], currency: string, quote: string, pe
 export type RateNeed = { currency: string; quote: string; kind: "SPOT" | "AVERAGE"; date: Date; label: string; present: boolean };
 
 /** Rates the Gabungan (IDR) needs for every non-IDR entity: historical, each year-end spot and each year's average. */
-export async function rateNeeds(db: Db, clientId: string): Promise<RateNeed[]> {
+export async function rateNeeds(db: Db, clientId: string, asOf?: Date): Promise<RateNeed[]> {
   const client = await db.client.findUniqueOrThrow({ where: { id: clientId }, include: { entities: true } });
   const rows = await loadRates(db, client.firmId);
   const needs: RateNeed[] = [];
@@ -105,6 +105,11 @@ export async function rateNeeds(db: Db, clientId: string): Promise<RateNeed[]> {
       if (!needs.some((n) => n.currency === c && n.kind === kind && +n.date === +date)) needs.push({ currency: c, quote: "IDR", kind, date, label, present });
     };
     push("SPOT", monthEnd(first), `Kurs historis ${e.shortName} (entri pertama)`, closingRate(rows, c, "IDR", monthEnd(first)) !== null);
+    if (asOf && +asOf >= +first) {
+      // The period on screen: its closing spot and its year's average.
+      push("SPOT", monthEnd(asOf), `Kurs penutup ${formatPeriod(asOf.getUTCFullYear(), asOf.getUTCMonth() + 1)}`, closingRate(rows, c, "IDR", monthEnd(asOf)) !== null);
+      push("AVERAGE", monthEnd(asOf), `Kurs rata-rata s.d. ${formatPeriod(asOf.getUTCFullYear(), asOf.getUTCMonth() + 1)}`, averageRate(rows, c, "IDR", monthEnd(asOf)) !== null);
+    }
     for (let y = first.getUTCFullYear(); y <= span._max.date.getUTCFullYear(); y++) {
       const end = y === span._max.date.getUTCFullYear() ? monthEnd(span._max.date) : new Date(Date.UTC(y, 11, 31));
       push("SPOT", end, `Kurs penutup ${y}`, closingRate(rows, c, "IDR", end) !== null);

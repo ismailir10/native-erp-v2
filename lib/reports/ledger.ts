@@ -2,10 +2,14 @@ import type { Db } from "@/lib/db";
 import type { Account } from "@/lib/generated/prisma/client";
 import { FS_LINES, type FsLine } from "@/lib/coa/template";
 import { dateOnly } from "@/lib/format";
+import { loadRates } from "@/lib/fx/rates";
+import { entityRates, FxMissingError, isMixed, scopeEntities, translate, translateNets, type EntityCurrency, type EntityRates } from "@/lib/reports/fx";
 
 /**
  * All reports derive from JournalLine at read time (GL = single source of truth).
  * Sign convention inside this module: `net` = debit − credit.
+ * Amounts are minor units of the scope's currency: the entities' shared functional currency, or IDR for a mixed-currency
+ * scope, in which case non-IDR entities are translated (lib/reports/fx.ts) or FxMissingError is thrown.
  */
 export type Scope = { clientId: string; entityIds: string[] };
 
@@ -32,6 +36,37 @@ export type TbRow = { account: Account; debit: bigint; credit: bigint; net: bigi
  * asOf's year. Prior-year P&L is folded into retained earnings (3200) so the TB always balances.
  */
 export async function trialBalance(db: Db, scope: Scope, asOf: Date): Promise<TbRow[]> {
+  const entities = await scopeEntities(db, scope.entityIds);
+  if (!isMixed(entities)) return nativeTrialBalance(db, scope, asOf);
+  const rates = await ratesByEntity(db, scope.clientId, entities, asOf);
+  const perEntity = await Promise.all(entities.map((e) => nativeTrialBalance(db, { clientId: scope.clientId, entityIds: [e.id] }, asOf)));
+  const total = new Map<string, bigint>();
+  perEntity.forEach((tb, i) => {
+    const { nets } = translateNets(tb, entities[i].functionalCurrency, rates.get(entities[i].id)!);
+    for (const [id, v] of nets) total.set(id, (total.get(id) ?? 0n) + v);
+  });
+  return perEntity[0].map((r) => {
+    const net = total.get(r.account.id) ?? 0n;
+    return { account: r.account, net, debit: net > 0n ? net : 0n, credit: net < 0n ? -net : 0n };
+  });
+}
+
+/** Rates for every entity of a mixed scope, or FxMissingError listing everything that's missing. */
+async function ratesByEntity(db: Db, clientId: string, entities: EntityCurrency[], asOf: Date): Promise<Map<string, EntityRates>> {
+  const client = await db.client.findUniqueOrThrow({ where: { id: clientId }, select: { firmId: true } });
+  const rows = await loadRates(db, client.firmId);
+  const out = new Map<string, EntityRates>();
+  const missing: { entity: string; need: string }[] = [];
+  for (const e of entities) {
+    const r = await entityRates(db, client.firmId, e, asOf, rows);
+    if ("missing" in r) missing.push(...r.missing.map((need) => ({ entity: e.shortName, need })));
+    else out.set(e.id, r);
+  }
+  if (missing.length) throw new FxMissingError(missing);
+  return out;
+}
+
+async function nativeTrialBalance(db: Db, scope: Scope, asOf: Date): Promise<TbRow[]> {
   const accounts = await db.account.findMany({ where: { clientId: scope.clientId }, orderBy: { code: "asc" } });
   const yearStart = dateOnly(asOf.getUTCFullYear(), 1, 1);
   const [all, ytd] = await Promise.all([sumByAccount(db, scope, { to: asOf }), sumByAccount(db, scope, { from: yearStart, to: asOf })]);
@@ -93,10 +128,21 @@ const sum = (items: FsItem[]) => items.reduce((s, i) => s + i.amount, 0n);
 /** Laba Rugi for [from, to]. Income positive, expenses positive; net = income − expenses. */
 export async function incomeStatement(db: Db, scope: Scope, from: Date, to: Date): Promise<IncomeStatement> {
   const accounts = await db.account.findMany({ where: { clientId: scope.clientId, type: { in: ["PENDAPATAN", "BEBAN"] } } });
-  const sums = new Map((await sumByAccount(db, scope, { from, to })).map((r) => [r.accountId, r]));
+  const entities = await scopeEntities(db, scope.entityIds);
+  const netById = new Map<string, bigint>();
+  if (!isMixed(entities)) {
+    for (const r of await sumByAccount(db, scope, { from, to })) netById.set(r.accountId, r.debit - r.credit);
+  } else {
+    // Income & expense of non-IDR entities at the average rate of the period ending `to`.
+    const rates = await ratesByEntity(db, scope.clientId, entities, to);
+    const cur = new Map(entities.map((e) => [e.id, e.functionalCurrency]));
+    for (const r of await sumByAccount(db, scope, { from, to }, true)) {
+      const v = translate(r.debit - r.credit, cur.get(r.entityId!)!, rates.get(r.entityId!)!.average);
+      netById.set(r.accountId, (netById.get(r.accountId) ?? 0n) + v);
+    }
+  }
   const rows = accounts.map((a) => {
-    const s = sums.get(a.id);
-    const net = (s?.debit ?? 0n) - (s?.credit ?? 0n);
+    const net = netById.get(a.id) ?? 0n;
     return { account: a, amount: a.type === "PENDAPATAN" ? -net : net };
   });
   const revenue = group(rows, ["PENDAPATAN_USAHA"]);
@@ -167,7 +213,15 @@ export async function combinedWorksheet(db: Db, clientId: string, asOf: Date) {
   const entities = (await db.entity.findMany({ where: { clientId }, orderBy: { name: "asc" } })).sort(
     (a, b) => Number(a.kind === "PERORANGAN") - Number(b.kind === "PERORANGAN"),
   );
-  const perEntity = await Promise.all(entities.map((e) => trialBalance(db, { clientId, entityIds: [e.id] }, asOf)));
+  const native = await Promise.all(entities.map((e) => nativeTrialBalance(db, { clientId, entityIds: [e.id] }, asOf)));
+  // Mixed currencies: every column in IDR (translated), the residue on 3900 per entity.
+  const mixed = isMixed(entities);
+  const rates = mixed ? await ratesByEntity(db, clientId, entities, asOf) : null;
+  const perEntity = native.map((tb, i) => {
+    if (!rates) return tb;
+    const { nets } = translateNets(tb, entities[i].functionalCurrency, rates.get(entities[i].id)!);
+    return tb.map((r) => ({ ...r, net: nets.get(r.account.id) ?? 0n }));
+  });
   const accounts = perEntity[0]?.map((r) => r.account) ?? [];
   const rows: WorksheetRow[] = [];
   let residual = 0n;
@@ -189,13 +243,32 @@ export async function combinedWorksheet(db: Db, clientId: string, asOf: Date) {
     rows.push({ key: `${account.code}-P`, code: account.code, name: "Piutang antar entitas", values: recv, elimination: -m, combined: P - m });
     rows.push({ key: `${account.code}-U`, code: account.code, name: "Utang antar entitas", values: pay, elimination: m, combined: -(N - m) });
   });
-  return { entities, rows, matched, residual };
+  return { entities, rows, matched, residual, translated: mixed };
 }
 
 export type MonthPoint = { year: number; month: number; cash: bigint; revenue: bigint; expense: bigint };
 
 /** Month-end cash + monthly revenue/expense for charts (last `months` months up to asOf). */
 export async function monthlySeries(db: Db, scope: Scope, asOf: Date, months = 6): Promise<MonthPoint[]> {
+  const entities = await scopeEntities(db, scope.entityIds);
+  if (isMixed(entities)) {
+    // Each month translated with that month's rates; a missing month throws like every other report.
+    const perEntity = await Promise.all(entities.map((e) => monthlySeries(db, { clientId: scope.clientId, entityIds: [e.id] }, asOf, months)));
+    const points = perEntity[0].map((p) => ({ ...p, cash: 0n, revenue: 0n, expense: 0n }));
+    for (let i = 0; i < entities.length; i++) {
+      for (let k = 0; k < points.length; k++) {
+        const p = perEntity[i][k];
+        if (p.cash === 0n && p.revenue === 0n && p.expense === 0n) continue;
+        const end = new Date(Date.UTC(p.year, p.month, 0));
+        const r = (await ratesByEntity(db, scope.clientId, [entities[i]], end)).get(entities[i].id)!;
+        const c = entities[i].functionalCurrency;
+        points[k].cash += translate(p.cash, c, r.closing);
+        points[k].revenue += translate(p.revenue, c, r.average);
+        points[k].expense += translate(p.expense, c, r.average);
+      }
+    }
+    return points;
+  }
   const accounts = await db.account.findMany({ where: { clientId: scope.clientId } });
   const byId = new Map(accounts.map((a) => [a.id, a]));
   const lines = await db.journalLine.findMany({
@@ -212,7 +285,8 @@ export async function monthlySeries(db: Db, scope: Scope, asOf: Date, months = 6
     for (const l of lines) {
       const a = byId.get(l.accountId)!;
       const net = l.debit - l.credit;
-      if (a.isBank && l.date <= end) cash += net;
+      // Cash & equivalents: bank GL accounts and cash accounts from ledger imports (1110, 1120 …).
+      if ((a.isBank || a.fsLine === "KAS_SETARA_KAS") && l.date <= end) cash += net;
       if (l.date.getUTCFullYear() === y && l.date.getUTCMonth() + 1 === m) {
         if (a.type === "PENDAPATAN") revenue -= net;
         if (a.type === "BEBAN") expense += net;

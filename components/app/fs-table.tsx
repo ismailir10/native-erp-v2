@@ -10,7 +10,7 @@ const HIDE_ON_PHONE = "hidden sm:table-cell";
 /** Financial-statement table: section → FS line → accounts (each links to its ledger). */
 export type FsSection = { title?: string; items: FsItem[][]; total?: { label: string; values: bigint[]; strong?: boolean } };
 
-export function FsTable({ columns, sections, accountHref }: { columns: string[]; sections: FsSection[]; accountHref: (code: string) => string }) {
+export function FsTable({ columns, sections, accountHref, currency = "IDR" }: { columns: string[]; sections: FsSection[]; accountHref: (code: string) => string; currency?: string }) {
   const lineKeys = (items: FsItem[][]) => {
     const keys: string[] = [];
     for (const col of items) for (const i of col) if (!keys.includes(i.fsLine)) keys.push(i.fsLine);
@@ -28,14 +28,14 @@ export function FsTable({ columns, sections, accountHref }: { columns: string[];
       </thead>
       <tbody>
         {sections.map((s, si) => (
-          <SectionRows key={si} section={s} keys={lineKeys(s.items)} accountHref={accountHref} />
+          <SectionRows key={si} section={s} keys={lineKeys(s.items)} accountHref={accountHref} currency={currency} />
         ))}
       </tbody>
     </table>
   );
 }
 
-function SectionRows({ section, keys, accountHref }: { section: FsSection; keys: string[]; accountHref: (code: string) => string }) {
+function SectionRows({ section, keys, accountHref, currency }: { section: FsSection; keys: string[]; accountHref: (code: string) => string; currency: string }) {
   return (
     <>
       {section.title && (
@@ -52,7 +52,7 @@ function SectionRows({ section, keys, accountHref }: { section: FsSection; keys:
             <tr className="border-t border-border/60">
               <td className={cn("py-1.5 pl-6 font-medium", k === "SUSPENSE" && "text-review")}>{label}</td>
               {cells.map((c, i) => (
-                <td key={i} className={cn("py-1.5 pr-6 text-right font-medium", i > 0 && HIDE_ON_PHONE)}><Money value={c?.amount ?? 0n} /></td>
+                <td key={i} className={cn("py-1.5 pr-6 text-right font-medium", i > 0 && HIDE_ON_PHONE)}><Money value={c?.amount ?? 0n} currency={currency} /></td>
               ))}
             </tr>
             {accountCodes.map((code) => {
@@ -65,7 +65,7 @@ function SectionRows({ section, keys, accountHref }: { section: FsSection; keys:
                     </Link>
                   </td>
                   {cells.map((c, i) => (
-                    <td key={i} className={cn("py-1 pr-6 text-right", i > 0 && HIDE_ON_PHONE)}><Money value={c?.accounts.find((a) => a.code === code)?.amount ?? 0n} /></td>
+                    <td key={i} className={cn("py-1 pr-6 text-right", i > 0 && HIDE_ON_PHONE)}><Money value={c?.accounts.find((a) => a.code === code)?.amount ?? 0n} currency={currency} /></td>
                   ))}
                 </tr>
               );
@@ -77,7 +77,7 @@ function SectionRows({ section, keys, accountHref }: { section: FsSection; keys:
         <tr className="border-t-2 border-foreground/15">
           <td className={cn("py-2 pl-6", section.total.strong ? "font-semibold" : "font-medium")}>{section.total.label}</td>
           {section.total.values.map((v, i) => (
-            <td key={i} className={cn("py-2 pr-6 text-right", i > 0 && HIDE_ON_PHONE)}><Money value={v} strong={section.total!.strong} /></td>
+            <td key={i} className={cn("py-2 pr-6 text-right", i > 0 && HIDE_ON_PHONE)}><Money value={v} strong={section.total!.strong} currency={currency} /></td>
           ))}
         </tr>
       )}

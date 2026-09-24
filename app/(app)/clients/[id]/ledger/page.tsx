@@ -8,6 +8,8 @@ import { PageHeader } from "@/components/app/page-header";
 import { ScopeBar } from "@/components/app/scope-bar";
 import { Money } from "@/components/app/money";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { currencyNote, FxMissing, withFx } from "@/components/app/fx-missing";
+import { FxMissingError } from "@/lib/reports/fx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const TYPES = [
@@ -19,14 +21,17 @@ const TYPES = [
 ] as const;
 
 export default async function LedgerIndex({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
-  const { client, period, scope, periodOptions, entityOptions, base, scopeLabel } = await loadClientPage(params, searchParams);
-  const tb = await trialBalance(prisma, { clientId: client.id, entityIds: scope.entityIds }, period.end);
+  const { client, period, scope, periodOptions, entityOptions, base, scopeLabel, currency, mixed } = await loadClientPage(params, searchParams);
+  const note = currencyNote(currency, mixed);
+  const header = <PageHeader title="Buku Besar" description={`${scopeLabel} · saldo per ${formatPeriod(period.year, period.month)}${note ? ` · ${note}` : ""}`} actions={<ScopeBar entities={entityOptions} periods={periodOptions} entity={scope.value} period={period.key} />} />;
+  const tb = await withFx(() => trialBalance(prisma, { clientId: client.id, entityIds: scope.entityIds }, period.end));
+  if (tb instanceof FxMissingError) return <div className="space-y-6">{header}<FxMissing error={tb} base={base} /></div>;
   const counts = await prisma.journalLine.groupBy({ by: ["accountId"], where: { entityId: { in: scope.entityIds }, date: { gte: period.start, lte: period.end } }, _count: true });
   const countMap = new Map(counts.map((c) => [c.accountId, c._count]));
   const q = { period: period.key, entity: scope.value };
   return (
     <div className="space-y-6">
-      <PageHeader title="Buku Besar" description={`${scopeLabel} · saldo per ${formatPeriod(period.year, period.month)}`} actions={<ScopeBar entities={entityOptions} periods={periodOptions} entity={scope.value} period={period.key} />} />
+      {header}
       <div className="grid gap-4 lg:grid-cols-2">
         {TYPES.map(([t, label]) => {
           const rows = tb.filter((r) => r.account.type === t && (r.net !== 0n || countMap.get(r.account.id)));
@@ -53,7 +58,7 @@ export default async function LedgerIndex({ params, searchParams }: { params: Pr
                           </Link>
                         </TableCell>
                         <TableCell className="num text-right text-muted-foreground">{countMap.get(r.account.id) ?? "–"}</TableCell>
-                        <TableCell className="pr-6 text-right"><Money value={r.net * sign} /></TableCell>
+                        <TableCell className="pr-6 text-right"><Money value={r.net * sign} currency={currency} /></TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

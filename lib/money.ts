@@ -155,6 +155,21 @@ export function formatMoney(value: bigint, currency: string, opts: { accounting?
   return opts.accounting ? `(${withSymbol})` : `-${withSymbol}`;
 }
 
+/** Compact in any currency: IDR as formatRupiahCompact, others "S$ 1,2 jt" (display only). */
+export function formatMoneyCompact(value: bigint, currency: string): string {
+  if (currency === "IDR") return formatRupiahCompact(value);
+  const e = exponentOf(currency);
+  const n = Number(value) / 10 ** e;
+  const abs = Math.abs(n);
+  const sign = n < 0 ? "-" : "";
+  const symbol = CURRENCIES[currency as keyof typeof CURRENCIES].symbol;
+  const fmt = (x: number, d = 1) => x.toLocaleString("id-ID", { maximumFractionDigits: d });
+  if (abs >= 1e9) return `${sign}${symbol} ${fmt(abs / 1e9)} M`;
+  if (abs >= 1e6) return `${sign}${symbol} ${fmt(abs / 1e6)} jt`;
+  if (abs >= 1e3) return `${sign}${symbol} ${fmt(abs / 1e3)} rb`;
+  return `${sign}${symbol} ${fmt(abs, 2)}`;
+}
+
 /** Compact for charts/KPIs: "Rp 1,2 M", "Rp 350 jt". */
 export function formatRupiahCompact(value: bigint): string {
   const n = Number(value);
