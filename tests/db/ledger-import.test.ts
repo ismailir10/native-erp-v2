@@ -75,6 +75,24 @@ describe("ledger import: stage → map → post", () => {
     await expect(stageImport(db, { firmId: g.firm.id, clientId: g.client.id, fileName: "gl.xlsx", data: file })).rejects.toThrow(LedgerImportError);
   });
 
+  it("an all-zero group is reported but not staged, so 'Catat N jurnal' equals what posts", async () => {
+    const g = await makeGroup();
+    const file = await xlsx([
+      H,
+      ["PT Uji", d(2026, 1, 31), "10000", "Petty Cash", "IDR", 1000, 0, ""],
+      ["PT Uji", d(2026, 1, 31), "31001", "Modal Saham", "IDR", 0, 1000, ""],
+      ["PT Uji", d(2026, 2, 28), "10000", "Petty Cash", "IDR", 0, 0, ""],
+      ["PT Uji", d(2026, 2, 28), "31001", "Modal Saham", "IDR", 0, 0, ""],
+    ]);
+    const staged = await stageImport(db, { firmId: g.firm.id, clientId: g.client.id, fileName: "gl.xlsx", data: file });
+    if (staged.status !== "STAGED") throw new Error("not staged");
+    expect(staged.entries).toBe(1);
+    expect(staged.checks.find((c) => c.code === "STATS")?.message).toMatch(/1 jurnal bernilai nol dilewati/);
+    expect((await db.ledgerImport.findUniqueOrThrow({ where: { id: staged.importId } })).groupCount).toBe(1);
+    await mapAllBySuggestion(g.client.id, staged.importId);
+    expect((await postImport(db, g.client.id, staged.importId)).entries).toBe(1);
+  });
+
   it("asks for the sheet when several tables match", async () => {
     const g = await makeGroup();
     const wb = new ExcelJS.Workbook();

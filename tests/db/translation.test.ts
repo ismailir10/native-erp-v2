@@ -75,4 +75,15 @@ describe("translation of a non-IDR entity into the combined view", () => {
     await expect(trialBalance(db, all, asOf)).rejects.toThrow(/HoldCo — kurs rata-rata SGD→IDR 2025/);
     await expect(trialBalance(db, all, dateOnly(2025, 7, 31))).rejects.toThrow(/kurs penutup SGD→IDR bulan Jul 2025/);
   });
+
+  it("a year without income or expense doesn't need that year's average (HoldCo opening Neraca only)", async () => {
+    const { all } = await setup(false);
+    const jan = dateOnly(2025, 1, 31);
+    // As of January the HoldCo has only its capital entry: closing + historical are enough.
+    const tb = await trialBalance(db, all, jan);
+    expect(tb.reduce((s, r) => s + r.net, 0n)).toBe(0n);
+    expect((await incomeStatement(db, all, dateOnly(2025, 1, 1), jan)).totals.netProfit).toBe(0n);
+    // June has the S$12 expense: the average is required again.
+    await expect(trialBalance(db, all, asOf)).rejects.toThrow(/kurs rata-rata SGD→IDR 2025/);
+  });
 });

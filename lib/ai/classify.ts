@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Tx } from "@/lib/db";
 import type { Direction } from "@/lib/generated/prisma/enums";
-import { AI_BATCH_SIZE, aiConfig, type AiItem, type AiProvider } from "@/lib/ai/provider";
+import { AI_BATCH_SIZE, AiAnswerError, aiConfig, type AiItem, type AiProvider } from "@/lib/ai/provider";
 import type { Classification } from "@/lib/classify/types";
 
 export function aiCacheKey(merchantKey: string, direction: Direction, coaVersion: number) {
@@ -73,8 +73,9 @@ export async function suggestWithAi(
       }
     } catch (e) {
       note = `AI gagal: ${(e as Error).message.slice(0, 120)}`;
+      const billed = e instanceof AiAnswerError ? e : null; // truncated/unreadable answers were still billed
       await tx.aiUsage.create({
-        data: { firmId: args.firmId, model: args.provider.model, keysRequested: batch.length, cacheHits, calls: 1, promptTokens: 0, completionTokens: 0, ok: false, note },
+        data: { firmId: args.firmId, model: billed?.model ?? args.provider.model, keysRequested: batch.length, cacheHits, calls: 1, promptTokens: billed?.promptTokens ?? 0, completionTokens: billed?.completionTokens ?? 0, ok: false, note },
       });
       break; // no retry loop — credit protection
     }

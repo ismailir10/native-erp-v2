@@ -124,6 +124,9 @@ export function ClientForm() {
                   id={`e-name-${i}`}
                   value={e.name}
                   aria-invalid={!!err(`entities.${i}.name`)}
+                  onFocus={(ev) => {
+                    if (i === 0 && !firstNameTouched && e.kind !== "PERORANGAN") ev.currentTarget.select();
+                  }}
                   onChange={(ev) => {
                     if (i === 0) setFirstNameTouched(true);
                     setEntity(i, { name: ev.target.value });

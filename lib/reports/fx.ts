@@ -1,7 +1,7 @@
 import type { Db } from "@/lib/db";
 import type { Account } from "@/lib/generated/prisma/client";
 import { convertMinor, PRESENTATION_CURRENCY } from "@/lib/fx/currency";
-import { averageRate, closingRate, loadRates, type RateRow } from "@/lib/fx/rates";
+import { averageRate, closingRate, hasYearPl, loadRates, type RateRow } from "@/lib/fx/rates";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { formatDate } from "@/lib/format";
 
@@ -44,11 +44,13 @@ export async function entityRates(db: Db, firmId: string, e: EntityCurrency, asO
   const c = e.functionalCurrency;
   const histDate = monthEnd(first?.date ?? asOf);
   const closing = closingRate(rates, c, PRESENTATION_CURRENCY, asOf);
-  const average = averageRate(rates, c, PRESENTATION_CURRENCY, asOf);
+  // No income/expense this year → the average would translate only zeros, so it isn't demanded (rule 11: P&L only).
+  const needAverage = await hasYearPl(db, e.id, asOf);
+  const average = averageRate(rates, c, PRESENTATION_CURRENCY, asOf) ?? (needAverage ? null : closing);
   const historical = closingRate(rates, c, PRESENTATION_CURRENCY, histDate);
   const missing: string[] = [];
   if (!closing) missing.push(`kurs penutup ${c}→IDR bulan ${formatDate(asOf).replace(/^\d+ /, "")}`);
-  if (!average) missing.push(`kurs rata-rata ${c}→IDR ${asOf.getUTCFullYear()}`);
+  if (!average && needAverage) missing.push(`kurs rata-rata ${c}→IDR ${asOf.getUTCFullYear()}`);
   if (!historical) missing.push(`kurs historis ${c}→IDR bulan ${formatDate(histDate).replace(/^\d+ /, "")}`);
   return missing.length ? { missing } : { closing: closing!, average: average!, historical: historical! };
 }

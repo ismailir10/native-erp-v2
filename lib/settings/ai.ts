@@ -1,5 +1,5 @@
 import type { Db, Tx } from "@/lib/db";
-import { aiConfig, OpenAiCompatibleProvider, type AiProvider } from "@/lib/ai/provider";
+import { aiConfig, chatIncompatibility, OpenAiCompatibleProvider, type AiProvider } from "@/lib/ai/provider";
 import { decryptSecret, encryptSecret } from "@/lib/settings/secret";
 
 /**
@@ -71,7 +71,7 @@ export async function resolveProvider(db: Reader): Promise<AiProvider | null> {
   return cfg.apiKey && cfg.model ? new OpenAiCompatibleProvider(cfg) : null;
 }
 
-/** GET {baseUrl}/models — lists model ids, costs no tokens. Errors are Bahasa, shown verbatim. */
+/** GET {baseUrl}/models — lists model ids Buku can call (see `chatIncompatibility`), costs no tokens. Errors are Bahasa, shown verbatim. */
 export async function fetchModels(baseUrl: string, apiKey: string, fetchImpl: typeof fetch = fetch): Promise<string[]> {
   let res: Response;
   try {
@@ -83,7 +83,10 @@ export async function fetchModels(baseUrl: string, apiKey: string, fetchImpl: ty
   if (res.status === 401 || res.status === 403) throw new SettingsError("Kunci ditolak oleh gateway. Periksa kuncinya.");
   if (!res.ok) throw new SettingsError(`Gateway membalas ${res.status}. Coba lagi sebentar.`);
   const body = (await res.json().catch(() => ({}))) as { data?: { id?: unknown }[] };
-  return (body.data ?? []).map((m) => String(m.id ?? "")).filter(Boolean).sort();
+  return (body.data ?? [])
+    .map((m) => String(m.id ?? ""))
+    .filter((id) => id && !chatIncompatibility(baseUrl, id))
+    .sort();
 }
 
 export class SettingsError extends Error {}
@@ -92,10 +95,12 @@ const KEY_RE = /^\S{8,300}$/;
 const MODEL_RE = /^[\w.:/-]{1,100}$/;
 
 /** Validates input for Pengaturan → AI. Returns the fields to write (key only when a new one was typed). */
-export function validateAiInput(input: { apiKey: string; model: string }) {
+export function validateAiInput(input: { apiKey: string; model: string }, baseUrl = aiConfig().baseUrl) {
   const apiKey = input.apiKey.trim();
   const model = input.model.trim();
   if (apiKey && !KEY_RE.test(apiKey)) throw new SettingsError("Kunci API tidak valid. Tempel kunci lengkap tanpa spasi.");
   if (!MODEL_RE.test(model)) throw new SettingsError("Isi nama model. Klik Muat daftar model untuk memilih.");
+  const incompatible = chatIncompatibility(baseUrl, model);
+  if (incompatible) throw new SettingsError(incompatible);
   return { apiKey: apiKey || undefined, model };
 }

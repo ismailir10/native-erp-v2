@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPrompt, OpenAiCompatibleProvider, parseAiResponse } from "@/lib/ai/provider";
+import { AiAnswerError, buildPrompt, maxTokensFor, OpenAiCompatibleProvider, parseAiResponse } from "@/lib/ai/provider";
 
 const items = [
   { key: "CV SUMBER VAKSIN", direction: "OUT" as const, sample: "TRSF CV SUMBER VAKSIN" },
@@ -40,4 +40,60 @@ describe("OpenAiCompatibleProvider", () => {
     expect(res.answers[0].accountCode).toBe("6140");
     expect(res.promptTokens).toBe(120);
   });
+});
+
+describe("OpenAiCompatibleProvider — answers that can't be used", () => {
+  const cfg = { baseUrl: "https://gw.test/v1", apiKey: "k", model: "glm", maxCallsPerImport: 3, monthlyTokenBudget: 1000 };
+  const reply = (content: string | null, finish = "stop") =>
+    (async () =>
+      new Response(JSON.stringify({ model: "glm", usage: { prompt_tokens: 1354, completion_tokens: 220 }, choices: [{ message: { content }, finish_reason: finish }] }), {
+        status: 200,
+      })) as unknown as typeof fetch;
+  const mapItems = [{ key: "a0", code: "9103", name: "Royalti Artis Terutang", typeHint: null }];
+  const chart = [{ code: "2120", name: "Utang Lain-lain", group: "Liabilitas" }];
+
+  it("asks for enough output tokens for reasoning models", async () => {
+    let body: Record<string, unknown> = {};
+    const f = (async (_u: string, init: RequestInit) => {
+      body = JSON.parse(String(init.body));
+      return new Response(JSON.stringify({ choices: [{ message: { content: '{"items":[]}' }, finish_reason: "stop" }] }), { status: 200 });
+    }) as unknown as typeof fetch;
+    await new OpenAiCompatibleProvider(cfg, f).mapAccounts(mapItems, chart, "x");
+    expect(body.max_tokens).toBe(maxTokensFor(1));
+    expect(maxTokensFor(1)).toBeGreaterThanOrEqual(1500);
+    expect(maxTokensFor(1000)).toBe(8000);
+  });
+
+  it("a truncated answer is an error that carries the billed tokens", async () => {
+    const err = await new OpenAiCompatibleProvider(cfg, reply('{"items":[{"k":"a0","co', "length")).mapAccounts(mapItems, chart, "x").catch((e) => e);
+    expect(err).toBeInstanceOf(AiAnswerError);
+    expect(err.message).toMatch(/terpotong/);
+    expect([err.promptTokens, err.completionTokens]).toEqual([1354, 220]);
+  });
+
+  it("prose or an empty message is 'tidak terbaca', not zero suggestions", async () => {
+    for (const content of ["Saya kira akun ini utang.", null]) {
+      const err = await new OpenAiCompatibleProvider(cfg, reply(content)).classify(items, [{ code: "6140", name: "Logistik" }], "x").catch((e) => e);
+      expect(err).toBeInstanceOf(AiAnswerError);
+      expect(err.message).toMatch(/tidak terbaca/);
+    }
+  });
+
+  it("valid JSON with no usable code is still a (empty) answer", async () => {
+    const res = await new OpenAiCompatibleProvider(cfg, reply('{"items":[{"k":"a0","code":"9999","conf":1}]}')).mapAccounts(mapItems, chart, "x");
+    expect(res.answers).toEqual([]);
+  });
+});
+
+it("a Zen 503 'Endpoint is unavailable' leads with the fix (notes are cut at 120 chars)", async () => {
+  const f = (async () => new Response('{"error":{"type":"server_error","message":"Upstream request failed: Endpoint is unavailable."}}', { status: 503 })) as unknown as typeof fetch;
+  const p = new OpenAiCompatibleProvider({ baseUrl: "https://opencode.ai/zen/v1", apiKey: "k", model: "gpt-5.6-luna", maxCallsPerImport: 3, monthlyTokenBudget: 1000 }, f);
+  const err = await p.mapAccounts([{ key: "a0", code: "1", name: "Kas", typeHint: null }], [], "x").catch((e) => e);
+  expect(`AI gagal: ${err.message}`.slice(0, 120)).toMatch(/gpt-5\.6-luna tidak tersedia lewat \/chat\/completions \(AI 503\)\. Pilih mis\. glm-5\.3/);
+});
+
+it("keeps another gateway's 503 message without recommending Zen models", async () => {
+  const f = (async () => new Response("Endpoint is unavailable", { status: 503 })) as unknown as typeof fetch;
+  const p = new OpenAiCompatibleProvider({ baseUrl: "https://gw.test/v1", apiKey: "k", model: "custom", maxCallsPerImport: 3, monthlyTokenBudget: 1000 }, f);
+  await expect(p.mapAccounts([{ key: "a0", code: "1", name: "Kas", typeHint: null }], [], "x")).rejects.toThrow("AI 503: Endpoint is unavailable");
 });

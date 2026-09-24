@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Db, Tx } from "@/lib/db";
 import type { AccountType, MapMethod } from "@/lib/generated/prisma/enums";
-import { AI_BATCH_SIZE, aiConfig, type AiProvider, type MapItem } from "@/lib/ai/provider";
+import { AI_BATCH_SIZE, AiAnswerError, aiConfig, type AiProvider, type MapItem } from "@/lib/ai/provider";
 import { ACCOUNT_CODES, FS_LINES, type FsLine } from "@/lib/coa/template";
 
 /**
@@ -28,6 +28,8 @@ export function inferType(code: string, name: string): AccountType | null {
   const n = normName(name);
   if (/(expense|beban|biaya|cost of|cogs|hpp|harga pokok|\bloss\b|manfaat pajak)/.test(n) && !/(prepaid|dibayar di ?muka|accrued|accured|payable|utang|hutang)/.test(n)) return "BEBAN";
   if (/(revenue|income|pendapatan|penjualan|\bsales\b|\bgain\b)/.test(n) && !/(payable|receivable|tax payable|diterima di muka|unearned|deferred)/.test(n)) return "PENDAPATAN";
+  // Rent and pay are expenses even when the name also says what was rented ("Sewa Peralatan Tata Suara").
+  if (/(\bsewa\b|\brent(al)?\b|\bhonor|\bgaji\b|\bupah\b|salar|\bwages\b)/.test(n) && !/(prepaid|dibayar di ?muka|advance|uang muka|deposit|guarantee|jaminan|receivable|piutang|accrued|accured|payable|utang|hutang|pembiayaan|liabilit|hak guna|right of use)/.test(n)) return "BEBAN";
   if (/(akumulasi|accumulat|allowance|penyisihan)/.test(n)) return "ASET";
   if (/(receivable|piutang|loan to|placement|penempatan|investment|investasi|tax asset|dibayar di ?muka|prepaid|advance|uang muka)/.test(n)) return "ASET";
   if (/(payable|\butang\b|\bhutang\b|accrued|accured|masih harus|liabilit|kewajiban|long term|jangka panjang|non ?bank|\bloan\b|pinjaman|diterima di muka|unearned)/.test(n)) return "LIABILITAS";
@@ -55,7 +57,8 @@ const KEYWORDS: { re: RegExp; code: string; types?: AccountType[]; not?: RegExp 
   { re: /(allowance|penyisihan|cadangan kerugian|\becl\b)/, code: "1130", types: ["ASET"] },
   { re: /(ppn masukan|vat[- ]?in\b|input vat)/, code: "1150", types: ["ASET"] },
   { re: /(prepaid tax|pajak dibayar di ?muka|uang muka pajak|pph .*dibayar di ?muka|tax receivable)/, code: "1180", types: ["ASET"] },
-  { re: /(trade receivable|piutang usaha|accounts? receivable)/, code: "1130", types: ["ASET"] },
+  // Loans to staff and related parties are other receivables, not trade (1140 below).
+  { re: /(trade receivable|piutang usaha|accounts? receivable)/, code: "1130", types: ["ASET"], not: /(employee|karyawan|pegawai|staff|related|berelasi|afiliasi|affiliat|\bloan\b|pinjaman)/ },
   { re: /(persediaan|inventory|supplies|perlengkapan|finished goods|barang jadi|raw material)/, code: "1160", types: ["ASET"] },
   { re: /(prepaid|dibayar di ?muka|uang muka|advance|deposit|jaminan|guarantee)/, code: "1170", types: ["ASET"] },
   { re: /(piutang|receivable|loan to)/, code: "1140", types: ["ASET"] },
@@ -203,7 +206,11 @@ export async function suggestMappings(db: Db, args: { firmId: string; clientId: 
           }
         } catch (e) {
           note = `AI gagal: ${(e as Error).message.slice(0, 120)}`;
-          await db.aiUsage.create({ data: { firmId: args.firmId, model: args.provider!.model, keysRequested: items.length, cacheHits, calls: 1, promptTokens: 0, completionTokens: 0, ok: false, note } });
+          // A truncated/unreadable answer was still billed: record its tokens.
+          const billed = e instanceof AiAnswerError ? e : null;
+          await db.aiUsage.create({
+            data: { firmId: args.firmId, model: billed?.model ?? args.provider!.model, keysRequested: items.length, cacheHits, calls: 1, promptTokens: billed?.promptTokens ?? 0, completionTokens: billed?.completionTokens ?? 0, ok: false, note },
+          });
         }
       }
       if (!note && queue.length > calls * AI_BATCH_SIZE) note = "Batas panggilan AI per permintaan tercapai. Klik lagi untuk melanjutkan.";

@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AccountPicker } from "@/components/app/account-picker";
 import { MethodBadge } from "@/components/app/status";
 import { acceptMappingsAction, suggestMappingsAction } from "@/app/actions";
 import { cn } from "@/lib/utils";
@@ -27,6 +28,7 @@ export type MappingRow = {
 };
 type Option = { code: string; name: string; group: string };
 const NEW = "__new__";
+const NEW_ITEM = [{ value: NEW, label: "+ Buat akun baru" }];
 const RULES = ["PRIOR", "NAME", "KEYWORD"];
 const PAGE = 100;
 /** "Buat akun baru" starts on the FS line that fits the account's type. */
@@ -63,7 +65,6 @@ export function MappingPanel({
   const aiReady = unmapped.filter((r) => r.suggestedCode && r.suggestedBy === "AI");
   const noSuggestion = unmapped.filter((r) => !r.suggestedCode);
   const visible = (showAll ? rows : unmapped).slice(0, limit);
-  const groups = useMemo(() => [...new Set(options.map((o) => o.group))], [options]);
 
   async function run(key: string, fn: () => Promise<void>) {
     setBusy(key);
@@ -98,7 +99,7 @@ export function MappingPanel({
             run("ai", async () => {
               const r = await suggestMappingsAction(clientId, true);
               if (!r.ok) return void toast.error(r.error);
-              if (r.note) toast.message(r.note);
+              if (r.note) (r.note.startsWith("AI gagal") ? toast.error : toast.message)(r.note);
               else toast.success(`${r.aiAnswered} saran AI dari ${r.calls} panggilan`);
               router.refresh();
             })
@@ -155,24 +156,15 @@ export function MappingPanel({
                       </div>
                     </td>
                     <td className="min-w-64 p-2">
-                      <Select value={value} onValueChange={(v) => setChoice((c) => ({ ...c, [r.id]: v as string }))} disabled={locked}>
-                        <SelectTrigger className={cn("w-full", low && "border-review")} aria-label={`Akun Buku untuk ${r.code}`}>
-                          <SelectValue placeholder="Pilih akun">{value === NEW ? "+ Buat akun baru" : value ? `${value} ${options.find((o) => o.code === value)?.name ?? ""}` : undefined}</SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={NEW}>+ Buat akun baru</SelectItem>
-                          {groups.map((g) => (
-                            <SelectGroup key={g}>
-                              <SelectLabel>{g}</SelectLabel>
-                              {options.filter((o) => o.group === g).map((o) => (
-                                <SelectItem key={o.code} value={o.code}>
-                                  {o.code} {o.name}
-                                </SelectItem>
-                              ))}
-                            </SelectGroup>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <AccountPicker
+                        value={value}
+                        onChange={(v) => setChoice((c) => ({ ...c, [r.id]: v }))}
+                        options={options}
+                        extra={NEW_ITEM}
+                        ariaLabel={`Akun Buku untuk ${r.code}`}
+                        disabled={locked}
+                        className={cn(low && "border-review")}
+                      />
                       {creating && (
                         <div className="mt-2 grid gap-2 sm:grid-cols-2">
                           <Select value={na.fsLine} onValueChange={(v) => setNewAcc((m) => ({ ...m, [r.id]: { ...na, fsLine: v as string } }))}>
