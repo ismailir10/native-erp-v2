@@ -20,6 +20,9 @@ import type { TableCandidate } from "@/lib/ledger-import/types";
 export class LedgerImportError extends Error {}
 
 export type StageInput = {
+  allowedPeriod?: { start: string; end: string; currency?: string; entityId?: string };
+  evidenceVersionId?: string;
+  evidenceUnitKey?: string;
   firmId: string;
   clientId: string;
   fileName: string;
@@ -111,6 +114,11 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
     periodStart = periodEnd = date;
   }
 
+  if (input.allowedPeriod && (periodStart.toISOString().slice(0, 10) < input.allowedPeriod.start || periodEnd.toISOString().slice(0, 10) > input.allowedPeriod.end)) throw new LedgerImportError("Rentang sumber harus mencakup seluruh periode file.");
+
+  if (input.allowedPeriod?.entityId && [...entityInfos.values()].some(e => e.entityId !== input.allowedPeriod!.entityId)) throw new LedgerImportError("File mencakup entitas lain di luar pilihan sumber. Pisahkan sheet atau gunakan impor manual.");
+  if (input.allowedPeriod?.currency && [...entityInfos.values()].some(e => e.currency !== input.allowedPeriod!.currency)) throw new LedgerImportError("Mata uang fungsional entitas berbeda dengan pilihan sumber.");
+
   // Rates written in the file (rate column or "Rate: 1.31" notes) are kept and saved to the Kurs table on post.
   const fileRates = new Map<string, FileRate>();
   if (read.mode === "LEDGER") {
@@ -149,6 +157,8 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
           firmId: input.firmId,
           clientId: input.clientId,
           fileName: input.fileName,
+          evidenceVersionId: input.evidenceVersionId,
+          evidenceUnitKey: input.evidenceUnitKey,
           fileHash,
           sheetName: table.sheet,
           mode: read.mode,
