@@ -33,7 +33,7 @@ const HEURISTIC: Record<Direction, Classification> = {
 
 export async function importStatement(
   db: Db,
-  args: { bankAccountId: string; fileName: string; data: Buffer; provider: AiProvider | null; password?: string },
+  args: { evidenceVersionId?: string; evidenceUnitKey?: string; bankAccountId: string; fileName: string; data: Buffer; provider: AiProvider | null; password?: string },
 ): Promise<ImportSummary> {
   const bankAccount = await db.bankAccount.findUniqueOrThrow({
     where: { id: args.bankAccountId },
@@ -123,6 +123,7 @@ export async function importStatement(
   const postable = accounts.filter((a) => !a.isBank && !a.isSuspense && !a.isRetained).map((a) => ({ code: a.code, name: a.name }));
   const ai = await suggestWithAi(db, {
     firmId: client.firmId,
+    clientId: client.id,
     clientName: `${client.name} (${client.industry ?? "umum"})`,
     coaVersion: client.coaVersion,
     accounts: postable,
@@ -146,6 +147,8 @@ export async function importStatement(
           firmId: client.firmId,
           bankAccountId: bankAccount.id,
           fileName: args.fileName,
+          evidenceVersionId: args.evidenceVersionId,
+          evidenceUnitKey: args.evidenceUnitKey,
           format: st.format,
           periodStart: st.periodStart,
           periodEnd: st.periodEnd,

@@ -20,7 +20,7 @@ Accountants receive mixed folders containing statements, ledgers, reports, compa
 - [x] T1 Data foundation, bounded uploads, leased jobs, foreign entities.
 - [x] T2 Google OAuth and read-only Drive adapter.
 - [x] T3 Versioned extraction with exact source coordinates.
-- [ ] T4 Resumable inventory, company context, conflicts and shared AI foundation.
+- [x] T4 Resumable inventory, company context, conflicts and shared AI foundation.
 - [ ] T5 Unified workspace, onboarding and approved import handoff.
 - [ ] T6 Ask bar, cited read tools and scoped answer-planning caches.
 - [ ] T7 Synthetic integration/E2E verification, accounting and private rollout docs.
@@ -33,6 +33,8 @@ Accountants receive mixed folders containing statements, ledgers, reports, compa
 - T2: Google OAuth, encrypted refresh credentials and bounded read-only Drive adapter.
 
 - T3: PDF, workbook and text extraction with immutable coordinates and explicit limits.
+
+- T4: Resumable inventory, proposed facts, bounded conflicts and shared AI budget/cache foundation.
 
 ## Verification
 
@@ -58,6 +60,14 @@ Duration  52.01s (tests 76%, import 18%, transform 5%)
 Test Files  33 passed (33)
 Tests  252 passed (252)
 Duration  46.19s (tests 82%, import 15%, transform 2%)
+```
+
+### T4 gate
+`npm run lint && npm run typecheck && npm test` passed.
+```text
+Test Files  33 passed (33)
+Tests  252 passed (252)
+Duration  37.08s (tests 79%, import 17%, transform 4%)
 ```
 
 ## Ship Notes
