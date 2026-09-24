@@ -2,10 +2,11 @@ import { prisma } from "@/lib/db";
 import { loadClientPage } from "@/lib/client-page";
 import type { SearchParams } from "@/lib/scope";
 import { rateNeeds } from "@/lib/fx/rates";
-import { CURRENCIES, formatRateId, type CurrencyCode } from "@/lib/fx/currency";
+import { type CurrencyCode } from "@/lib/fx/currency";
 import { formatDate } from "@/lib/format";
 import { NextStep, PageHeader } from "@/components/app/page-header";
-import { RateForm, RateRowActions } from "@/components/app/rate-form";
+import { RateForm } from "@/components/app/rate-form";
+import { RateList } from "@/components/app/rate-list";
 import { StatusPill } from "@/components/app/status";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -92,39 +93,7 @@ export default async function RatesPage({ params, searchParams }: { params: Prom
           <CardDescription>Berlaku untuk semua klien kantor ini.</CardDescription>
         </CardHeader>
         <CardContent className="px-0">
-          {rates.length === 0 ? (
-            <p className="px-6 text-sm text-muted-foreground">Belum ada kurs.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="pl-6">Pasangan</TableHead>
-                  <TableHead>Tanggal</TableHead>
-                  <TableHead>Jenis</TableHead>
-                  <TableHead className="text-right">Kurs</TableHead>
-                  <TableHead className="hidden md:table-cell">Sumber</TableHead>
-                  <TableHead className="w-12 pr-6" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rates.map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell className="pl-6">
-                      1 {r.currency} → {r.quote}
-                      <div className="text-xs text-muted-foreground">{CURRENCIES[r.currency as CurrencyCode]?.name ?? r.currency}</div>
-                    </TableCell>
-                    <TableCell>{formatDate(r.date)}</TableCell>
-                    <TableCell>{r.kind === "SPOT" ? "Spot" : "Rata-rata"}</TableCell>
-                    <TableCell className="num text-right">{formatRateId(r.rate)}</TableCell>
-                    <TableCell className="hidden text-xs text-muted-foreground md:table-cell">{r.source === "MANUAL" ? "Manual" : `File${r.note ? ` · ${r.note}` : ""}`}</TableCell>
-                    <TableCell className="pr-6 text-right">
-                      <RateRowActions clientId={client.id} rateId={r.id} label={`${r.currency}→${r.quote} ${formatDate(r.date)}`} />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+          <RateList clientId={client.id} rates={rates} />
         </CardContent>
       </Card>
     </div>

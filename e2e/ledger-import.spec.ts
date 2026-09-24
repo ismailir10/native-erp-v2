@@ -18,10 +18,10 @@ async function ledgerXlsx(): Promise<Buffer> {
     ["SATU", d(2025, 3, 31), "10000", "Petty Cash", "IDR", 15_000_000, 0, ""],
     ["SATU", d(2025, 12, 31), "63005", "Platform Fee - Gofood", "IDR", 2_000_000, 0, ""],
     ["SATU", d(2025, 12, 31), "10000", "Petty Cash", "IDR", 0, 2_000_000, ""],
-    ["DUA", d(2025, 1, 15), "10001", "Bank OCBC - SGD", "SGD", 50_000, 0, ""],
+    ["DUA", d(2025, 1, 15), "10001", "Bank OCBC - SGD", "USD", 50_000, 0, "Rate: 1.31"],
     ["DUA", d(2025, 1, 15), "30000", "Ordinary Shares", "SGD", 0, 50_000, ""],
     ["DUA", d(2025, 12, 31), "41000", "Expense Bank Administration", "SGD", 120, 0, ""],
-    ["DUA", d(2025, 12, 31), "10001", "Bank OCBC - SGD", "SGD", 0, 120, ""],
+    ["DUA", d(2025, 12, 31), "10001", "Bank OCBC - SGD", "USD", 0, 120, "Rate: 1.32"],
   ];
   for (const r of rows) ws.addRow(r);
   return Buffer.from(await wb.xlsx.writeBuffer());
@@ -84,6 +84,12 @@ test("ledger import: checks, mapping, post, Kurs, Gabungan in IDR, Akun sumber",
   // Gabungan needs SGD→IDR rates; fill each missing one from the Kurs page.
   await page.getByRole("link", { name: "Kurs" }).click();
   await expect(page.getByRole("heading", { name: "Kurs" })).toBeVisible();
+  const fileRates = page.getByRole("button", { name: /USD → SGD · 2 kurs dari buku-besar-uji.xlsx/ });
+  await expect(fileRates).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("button", { name: /^Hapus kurs USD→SGD/ })).toHaveCount(0);
+  await fileRates.click();
+  await expect(page.getByRole("button", { name: /^Hapus kurs USD→SGD/ })).toHaveCount(2);
+  await fileRates.click();
   const rates = ["12000", "12500", "12300"];
   for (const rate of rates) {
     const missingRate = page.getByText("Isi yang belum ada:").locator("..").getByRole("button").first();
