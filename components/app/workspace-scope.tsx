@@ -10,6 +10,8 @@ type Scope = {
   label: string;
   period: string;
   periodLabel: string;
+  /** Current month (YYYY-MM, WIB) from the server; keeps SSR and hydration identical. */
+  today: string;
   clients: { id: string; name: string; entities: { id: string; name: string }[] }[];
 };
 
@@ -32,7 +34,7 @@ export function WorkspaceScopeBar({ scope }: { scope: Scope }) {
       ...client.entities.map((entity) => ({ value: `entity:${entity.id}`, label: `Perusahaan · ${entity.name}` })),
     ]),
   ];
-  const periods = monthOptions(scope.period);
+  const periods = monthOptions(scope.period, scope.today);
   function update(key: "scope" | "period", value: string) {
     const params = new URLSearchParams(searchParams.toString());
     params.set("scope", scope.key);
@@ -60,9 +62,9 @@ export function WorkspaceScopeBar({ scope }: { scope: Scope }) {
 }
 
 /** Last 24 months up to this month, always including the selected period. */
-function monthOptions(selected: string) {
-  const now = new Date();
-  const current = now.getFullYear() * 12 + now.getMonth();
+function monthOptions(selected: string, today: string) {
+  const [thisYear, thisMonth] = today.split("-").map(Number);
+  const current = thisYear * 12 + thisMonth - 1;
   const [year, month] = selected.split("-").map(Number);
   const chosen = year * 12 + month - 1;
   const last = Math.max(current, chosen);
