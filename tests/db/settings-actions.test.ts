@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetDb } from "../helpers";
 
+vi.mock("@/lib/tenant", () => ({ getCurrentFirm: async () => ({ id: "settings-test-firm" }) }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 const { saveAiSettingsAction, clearAiKeyAction } = await import("@/app/settings-actions");
 

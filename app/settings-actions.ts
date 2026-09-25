@@ -1,17 +1,19 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { getCurrentFirm } from "@/lib/tenant";
 import { prisma } from "@/lib/db";
 import { adminPasscodeConfigured, passcodeMatches, settingsSecretConfigured } from "@/lib/settings/secret";
 import { clearAiKey, fetchModels, resolveAiConfig, saveAiSettings, SettingsError, validateAiInput } from "@/lib/settings/ai";
 
 /**
- * Pengaturan → AI. Every action needs ADMIN_PASSCODE: the app has no login yet and the demo URL is public.
+ * Pengaturan → AI. Every action requires a workspace session; credential changes also need ADMIN_PASSCODE.
  * The stored key never leaves the server. Results only carry the last 4 characters.
  */
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
 async function guard(passcode: string): Promise<string | null> {
+  await getCurrentFirm();
   if (!adminPasscodeConfigured()) return "ADMIN_PASSCODE belum diatur di server, jadi pengaturan tidak bisa diubah.";
   if (!passcodeMatches(passcode)) {
     await new Promise((r) => setTimeout(r, 1000)); // slows down guessing
@@ -55,6 +57,7 @@ export async function clearAiKeyAction(input: { passcode: string }): Promise<Res
 /** Model ids from GET {baseUrl}/models (no tokens). OpenCode Zen serves this list without checking the key. */
 export async function listModelsAction(): Promise<Result<{ models: string[] }>> {
   try {
+    await getCurrentFirm();
     const cfg = await resolveAiConfig(prisma);
     return { ok: true, models: await fetchModels(cfg.baseUrl, cfg.apiKey) };
   } catch (e) {

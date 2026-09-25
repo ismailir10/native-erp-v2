@@ -1,4 +1,4 @@
-# Dokumen: private pilot
+# Dokumen: authenticated workspace
 
 ## Workflow
 1. Open **Dokumen → Tambahkan dokumen** from Beranda or a client's sidebar. Upload multiple files or connect Google once and paste a folder URL.
@@ -18,17 +18,17 @@ Defaults: 10 MiB/file, 100 MiB retained snapshots plus pending uploads/intake, 5
 Structured monetary figures require known source currency, scale, date and unambiguous labels/values. Multi-column or ambiguous layouts remain cited text instead of guessed comparisons. Missing formula caches are unresolved, never treated as zero by evidence extraction. Scaled statements cannot enter bookkeeping until exported in full units. Foreign-currency bank files remain evidence; existing bank posting supports IDR.
 
 ## Deployment
-No new runtime dependencies. Apply committed migrations through the existing deployment script.
+Apply committed migrations and configure [invitation-only access](../README.md#invitation-operations) before rollout. Both staging and main serve the same authenticated workspace, with separate users, data and credentials.
 
-- `EVIDENCE_ENABLED=true` enables the pilot; `DEMO_MODE` must be false.
-- On Vercel, `VERCEL_ENV=preview` and `EVIDENCE_PRIVATE_DEPLOYMENT=true` are additionally required. Enable this only on a deployment actually protected by Vercel login. Private evidence actions and source records stay disabled on production and the public demo.
-- With `DEMO_MODE=true`, `/documents` shows an interactive demonstration from bundled synthetic reports and company notes. Search/comparisons run in the browser without storing questions, calling AI, reading firm evidence, or enabling uploads/OAuth. The page links to the protected real workspace. No production evidence flags or Google credentials are needed for this demonstration.
+- `EVIDENCE_ENABLED=true` enables documents in both environments; explicit `false` is an operational kill switch. `DEMO_MODE` controls synthetic fixture availability, not authentication or document UI.
+- Retain additional Vercel protection on staging. Real client files remain restricted to local/protected staging per [real-data policy](real-data.md).
+- Dashboard scope filters collections by client; company selection requires confirmed current evidence selections. Collections can span periods, stated in the UI. Questions and reports retain the chosen period.
 - Large private intakes show progress counts and searchable pages of 20 files. Sheet review forms mount only when their document is expanded; questions remain above the file list. Loose code/tooling files are ignored on inventory refresh. Invalid Excel date cells show their coordinates for repair while other workbook content remains available.
 - Google: configure `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`. Fixed callback path: `/api/google/callback`; HTTPS except localhost development. Enable Drive API in the Google project and register the exact redirect URI/consent users.
 - Existing `ADMIN_PASSCODE` controls connect/disconnect, and `SETTINGS_SECRET` encrypts refresh tokens. Google OAuth requests `drive.readonly`; credentials never reach browser responses. Reconnect after revoked/expired consent. An OAuth testing project may require periodic reconnection.
 - Configure the existing AI provider through Pengaturan. No key means deterministic extraction/search/reports remain available. Tests and seeds use mocks; never place a real key in the disposable test database.
 
-Google's restricted-scope verification/security requirements must be addressed before public distribution: https://developers.google.com/workspace/drive/api/guides/api-specific-auth. The app currently retains the repo's single-firm tenancy seam; this pilot does not add public user authentication.
+Google's restricted-scope verification/security requirements must be addressed before public distribution: https://developers.google.com/workspace/drive/api/guides/api-specific-auth. Workspace reads and actions resolve the firm from the invited user session.
 
 AI calls reserve a conservative upper bound under a firm lock before contacting the provider, then settle actual usage. Interrupted/unknown-billing calls keep their reservation to avoid overspend. Monthly configuration remains `AI_MONTHLY_TOKEN_BUDGET`; evidence limits are 20,000 tokens/intake and 12,000/question. Exhaustion leaves source work intact for manual review. No automatic paid retry loops.
 

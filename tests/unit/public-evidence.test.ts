@@ -1,21 +1,20 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { evidenceEnabled, publicEvidenceDemoEnabled, requireEvidenceEnabled } from "@/lib/evidence/config";
+import { evidenceEnabled, requireEvidenceEnabled } from "@/lib/evidence/config";
 import { loadPublicEvidenceDemo } from "@/lib/demo/evidence-sources";
 import { answerPublicEvidence, demoSourceAnchor } from "@/lib/demo/evidence-answers";
 
 afterEach(() => vi.unstubAllEnvs());
 describe("public evidence boundary", () => {
-  it("exposes synthetic samples without enabling private actions, even with pilot flags set", () => {
-    vi.stubEnv("DEMO_MODE", "true"); vi.stubEnv("EVIDENCE_ENABLED", "true");
-    vi.stubEnv("VERCEL", "1"); vi.stubEnv("VERCEL_ENV", "production"); vi.stubEnv("EVIDENCE_PRIVATE_DEPLOYMENT", "true");
-    expect(publicEvidenceDemoEnabled()).toBe(true);
+  it("uses the same document capability in both authenticated environments", () => {
+    vi.stubEnv("EVIDENCE_ENABLED", "true");
+    for (const demo of ["true", "false"]) for (const environment of ["production", "preview"]) {
+      vi.stubEnv("DEMO_MODE", demo); vi.stubEnv("VERCEL", "1"); vi.stubEnv("VERCEL_ENV", environment);
+      expect(evidenceEnabled()).toBe(true);
+      expect(() => requireEvidenceEnabled()).not.toThrow();
+    }
+    vi.stubEnv("EVIDENCE_ENABLED", "false");
     expect(evidenceEnabled()).toBe(false);
     expect(() => requireEvidenceEnabled()).toThrow(/belum diaktifkan/);
-    vi.stubEnv("DEMO_MODE", "false");
-    expect(publicEvidenceDemoEnabled()).toBe(false);
-    expect(evidenceEnabled()).toBe(false);
-    vi.stubEnv("VERCEL_ENV", "preview");
-    expect(evidenceEnabled()).toBe(true);
   });
   it("compares extracted source amounts exactly and links each citation to an existing passage", async () => {
     const sources = await loadPublicEvidenceDemo();

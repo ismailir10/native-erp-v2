@@ -13,6 +13,7 @@ type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 const COOKIE = "buku_drive_oauth";
 
 async function guard(passcode: string): Promise<string | null> {
+  await getCurrentFirm();
   requireEvidenceEnabled();
   if (!adminPasscodeConfigured()) return "ADMIN_PASSCODE belum diatur. Hubungi admin untuk mengaktifkan koneksi Google.";
   if (typeof passcode !== "string" || !passcodeMatches(passcode)) {
