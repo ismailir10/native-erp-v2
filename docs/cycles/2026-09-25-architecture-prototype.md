@@ -38,6 +38,14 @@ Documentation-only work on `codex/buku-architecture-prototype`. The existing pro
 - Keyboard: Shift+Tab wraps within review dialog; Escape restores focus to its opening button.
 - Product architecture inspected in browser at desktop width, including all source labels and trust strip. Full production build/accounting/E2E gates are delegated to PR CI for this docs-only change; local verification focused on the new offline artifact plus existing lint/typecheck/tests.
 
+### Self-review follow-up
+- Replaced dashboard slogan with Beranda; made question context, search labels, question history, and mobile logout visible.
+- Report amounts now open only contributing journals, show the exact matching total, and return from source inspection to the same detail.
+- Empty document searches and empty periods have direct recovery buttons. Account choice survives opening and returning from evidence.
+- Browser checks passed at 390px: no page overflow, full period label, account 6200 retained, approved expense total Rp 12,400,000 matches its two journals. Source return, old answer context, and keyboard trapping passed.
+- Follow-up lint/typecheck and 35 files / 261 tests passed against the disposable local test database.
+- User subsequently authorized continuing into production UI and invitation-only login; that implementation is a separate cycle.
+
 ## Ship Notes
 Deliver as a documentation-only draft PR to staging. No merge or production deployment is part of this task. Open the local HTML for review; example email is prefilled and the simulated code is `123456`.
 
