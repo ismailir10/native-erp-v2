@@ -39,7 +39,7 @@ Decisions agreed with the user on 2026-09-25:
 - [x] T3 Component consistency
 - [x] T4 Don't Make Me Think pass
 - [x] T5 Visual pass and end-of-cycle gates
-- [ ] T6 Real Chickin + GLM, local
+- [x] T6 Real Chickin + GLM, local — handed to the user (2026-09-25: "proceed, i will test myself later")
 - [ ] T7 Ship to staging and smoke-test the deploy
 - [ ] T8 Production switch and promotion
 
@@ -83,6 +83,8 @@ Screenshots are in [docs/reviews/2026-09-25-ui-audit](../reviews/2026-09-25-ui-a
   - The e2e run found the setup collapsible toggling shut. The sidebar persists across client navigation, so the section holding the current page is now kept open.
   - The login page is now `force-dynamic`. Its "configured" check ran at build time, so a build without the auth secret prerendered "Akses belum siap".
   - E2E steps were updated for the Periode Select, the Akun sumber tab and the collapsible sections.
+
+- T6: Not run in this session. The Chickin files and the GLM key were not available here, and the user chose to run the real-data + real-GLM walk themselves after promotion.
 
 ## Follow-ups found
 - **Jurnal Penyesuaian and Saldo Awal parse amounts as whole Rupiah for every entity** (`parseRupiah` in `adjustmentAction`, `journal-form.tsx`, `opening-form.tsx`). For a non-IDR entity, typing `100` posts 100 minor units (S$1.00). This is an accounting change (currency-aware parsing plus tests), so it is out of scope for this UI cycle. It needs its own cycle before non-IDR adjustments are used on real data.
