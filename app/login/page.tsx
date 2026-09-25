@@ -4,6 +4,9 @@ import { authConfigured } from "@/lib/auth";
 import { BrandMark } from "@/components/app/brand-mark";
 import { LoginForm, SharedCodeLoginForm } from "./login-form";
 
+// Login configuration is runtime env; never prerender a build-time "not configured" page.
+export const dynamic = "force-dynamic";
+
 export default async function LoginPage() {
   const configured = authConfigured();
   if (configured && await getWorkspaceSession()) redirect("/");

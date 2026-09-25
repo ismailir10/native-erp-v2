@@ -65,7 +65,8 @@ test("statement in → reviewed → traceable reports → combined → closed", 
   await expect(page.getByText("Antar entitas cocok")).toBeVisible();
 
   // 6. Accrual adjustment: August depreciation
-  await page.getByText("Impor & pengaturan klien", { exact: true }).click();
+  const setup = page.getByRole("button", { name: "Impor & pengaturan klien" });
+  if ((await setup.getAttribute("aria-expanded")) !== "true") await setup.click();
   await page.getByRole("link", { name: "Jurnal Penyesuaian" }).click();
   await expect(page.getByRole("heading", { name: "Jurnal Penyesuaian" })).toBeVisible();
   await expect(page.getByRole("combobox").first()).toContainText("PT Ayam Nusantara Digital");

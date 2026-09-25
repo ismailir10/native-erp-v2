@@ -73,7 +73,7 @@ export async function getWorkspaceOverview(db: Db, firmId: string, input: Worksp
     ]);
     const readiness = closeReadiness(controls, period?.signoffs.map(s => s.key) ?? []);
     const state = period?.status === "LOCKED" ? "LOCKED" : !activity ? "EMPTY" : readiness.fails.length ? "FAIL" : readiness.ready ? "READY" : "REVIEW";
-    const labels = { LOCKED: "Buku ditutup", EMPTY: "Belum ada jurnal bulan ini", FAIL: "Kontrol gagal", READY: "Siap tutup buku", REVIEW: "Perlu diperiksa" };
+    const labels = { LOCKED: "Buku ditutup", EMPTY: "Belum ada jurnal bulan ini", FAIL: "Kontrol gagal", READY: "Siap tutup buku", REVIEW: "Perlu dicek" };
     return { id: c.id, name: c.name, state, label: labels[state], hasActivity: activity > 0, openReview: entities.filter(e => e.clientId === c.id).reduce((n, e) => n + e.openReview, 0), failCount: readiness.fails.length, reviewCount: readiness.unacked.length, missingSignoffs: readiness.missing.length, missingStatements: controls.filter(control => control.key.startsWith("bank:") && control.detail.includes("belum diimpor")).map(control => ({ title: control.title, detail: `${control.scope} · ${control.detail}`, href: workspaceHref(control.href ?? `/clients/${c.id}/import`, scope) })), closeHref: workspaceHref(`/clients/${c.id}/close`, scope) };
   }));
   const tasks: WorkspaceTask[] = entities.filter(e => e.openReview > 0).map(e => ({ id: `review:${e.id}`, title: `Periksa ${e.openReview} transaksi`, detail: `${e.name} · sampai ${scope.periodLabel}`, href: e.reviewHref, priority: "high", clientId: e.clientId, entityId: e.id }));

@@ -22,7 +22,8 @@ const pdf = makePdf(
 
 test("add a client, set opening balance, import a locked PDF, bank reconciles", async ({ page }) => {
   await page.goto("/");
-  await page.getByText(/^Daftar klien \(\d+\)$/).click();
+  const clientList = page.getByRole("button", { name: /^Daftar klien \(\d+\)$/ });
+  if ((await clientList.getAttribute("aria-expanded")) !== "true") await clientList.click();
   await page.getByRole("link", { name: "Tambah klien" }).click();
   await page.getByLabel("Nama klien").fill("Toko Uji Coba");
   await page.getByLabel("Nama lengkap").fill("PT Toko Uji Coba");

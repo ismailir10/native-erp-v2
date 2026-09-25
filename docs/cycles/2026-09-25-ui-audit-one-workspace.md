@@ -38,7 +38,7 @@ Decisions agreed with the user on 2026-09-25:
 - [x] T2 Navigation and scope
 - [x] T3 Component consistency
 - [x] T4 Don't Make Me Think pass
-- [ ] T5 Visual pass and end-of-cycle gates
+- [x] T5 Visual pass and end-of-cycle gates
 - [ ] T6 Real Chickin + GLM, local
 - [ ] T7 Ship to staging and smoke-test the deploy
 - [ ] T8 Production switch and promotion
@@ -79,10 +79,23 @@ Screenshots are in [docs/reviews/2026-09-25-ui-audit](../reviews/2026-09-25-ui-a
   - The Gabungan note moves from a hover tooltip to inline text.
   - Accountant copy replaces developer terms: no Vercel/env vars, `ADMIN_PASSCODE`, OpenCode Zen, host, merchant, memory, cache, Spot, Checklist or Sheet. "Mulai review" becomes "Review transaksi", and "Perlu review" becomes "Perlu dicek".
   - Empty ledger, trial balance and rate lists say what is missing and how to fill it.
+- T5: Captured after screenshots at 1280px and 390px on 19 routes, with no horizontal overflow. Status wording is unified to "Perlu dicek".
+  - The e2e run found the setup collapsible toggling shut. The sidebar persists across client navigation, so the section holding the current page is now kept open.
+  - The login page is now `force-dynamic`. Its "configured" check ran at build time, so a build without the auth secret prerendered "Akses belum siap".
+  - E2E steps were updated for the Periode Select, the Akun sumber tab and the collapsible sections.
 
 ## Follow-ups found
 - **Jurnal Penyesuaian and Saldo Awal parse amounts as whole Rupiah for every entity** (`parseRupiah` in `adjustmentAction`, `journal-form.tsx`, `opening-form.tsx`). For a non-IDR entity, typing `100` posts 100 minor units (S$1.00). This is an accounting change (currency-aware parsing plus tests), so it is out of scope for this UI cycle. It needs its own cycle before non-IDR adjustments are used on real data.
 
 ## Verification
+- T1–T5 gates:
+  - lint and typecheck clean.
+  - Vitest: `Test Files 43 passed (43)`, `Tests 301 passed (301)`.
+  - `npm run build` passed.
+  - `verify:books`: `ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.`
+- E2E in all three CI modes (`PW_CHROMIUM=/opt/pw-browsers/chromium`):
+  - Demo on: `8 passed`.
+  - `DEMO_MODE=false`: `8 passed`.
+  - Shared-code login: `9 passed`.
 
 ## Ship Notes
