@@ -52,13 +52,15 @@ through `postJournal()` as bigint minor units. This cycle makes the two typed fl
 
 ## Tasks
 - [x] T1 `parseMoney` + `MoneyError` in `lib/money.ts` (reuse `exponentOf`, `CURRENCIES`) + unit tests. Accept: `npm test -- money` green with IDR/SGD/USD/JPY/malformed/round-trip cases.
-- [ ] T2 Server side: `postAdjustment()` in `lib/ledger/adjustment.ts`; `adjustmentAction` delegates; `postOpening` uses entity currency; `fail()` maps `MoneyError`. DB tests for SGD adjustment + SGD opening (depends T1). Accept: `tests/db/adjustment.test.ts` + `tests/db/opening.test.ts` green.
+- [x] T2 Server side: `postAdjustment()` in `lib/ledger/adjustment.ts`; `adjustmentAction` delegates; `postOpening` uses entity currency; `fail()` maps `MoneyError`. DB tests for SGD adjustment + SGD opening (depends T1). Accept: `tests/db/adjustment.test.ts` + `tests/db/opening.test.ts` green.
 - [ ] T3 UI: `JournalForm`, `OpeningForm`, opening page prefill are currency-aware, and invalid fields are marked and block save (depends T1, T2). Accept: typecheck; manual check in dev with an entity switched to SGD: typing `100` shows total `100,00`, the *Selisih* pill in `S$`, and posts `10000n`.
 - [ ] T4 End-of-cycle gates + Verification section filled with real output tails (depends T1–T3). Accept: build, `verify:books` ALL PASS, `test:e2e` green.
 
 ## Implementation
 - Plan: tasks [T1, T2, T3, T4] sequential, done inline (each depends on the previous; small slices, no parallelism to gain). Branch `codex/currency-aware-manual-amounts` from `origin/staging` (local staging was 10 commits behind; re-read the drifted form files after rebasing the plan).
 - T1: `lib/money.ts`, `tests/unit/money.test.ts`: `parseMoney(input, currency)` (strict id-ID notation → minor units via `exponentOf`, BigInt only), `MoneyError`, `moneyExample(currency)` for hints/messages. Existing `parseRupiah`/`parseCents`/`parseMinor` untouched.
+- T2: `lib/ledger/adjustment.ts` (new `postAdjustment()`: entity looked up by `clientId`, currency from `entity.functionalCurrency`, `parseMoney` per line, `postJournal` in one transaction), `app/actions.ts` (`adjustmentAction` = tenancy + delegate; `fail()` maps `MoneyError`), `lib/opening.ts` (`parseMoney` in entity currency; the generic "tidak bisa dibaca" `OpeningError` is replaced by `MoneyError`'s message with a currency-specific example), `tests/db/adjustment.test.ts` (new), `tests/db/opening.test.ts` (SGD case).
 ## Verification
 - T1 gate: lint clean, typecheck clean, `Test Files  43 passed (43)` / `Tests  344 passed (344)` (money.test.ts: 63).
+- T2 gate: lint clean, typecheck clean, `Test Files  44 passed (44)` / `Tests  348 passed (348)`. New: SGD `100` → `10000n`, `12,34` → `1234n`; SGD opening `1.000,00` / `250,5` → `100000n` / `25050n`, plug 3200 `74950n`.
 ## Ship Notes
