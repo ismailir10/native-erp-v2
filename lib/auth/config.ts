@@ -1,16 +1,16 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { APIError, createAuthMiddleware } from "better-auth/api";
+import { APIError, createAuthEndpoint, createAuthMiddleware } from "better-auth/api";
+import { setSessionCookie } from "better-auth/cookies";
+import { z } from "zod";
 import { emailOTP } from "better-auth/plugins";
-import { createHash } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import type { Db } from "@/lib/db";
 import { sendLoginCode } from "./email";
 
-const allowedPaths = new Set(["/email-otp/send-verification-otp", "/sign-in/email-otp", "/get-session", "/sign-out"]);
-
 /** Database lock makes per-address delivery limits survive instances and concurrent requests. */
-async function limitDelivery(db: Db, email: string) {
-  const key = `email:${createHash("sha256").update(email).digest("hex")}`;
+async function limitDelivery(db: Db, email: string, purpose: "delivery" | "verification" = "delivery") {
+  const key = `${purpose}:${createHash("sha256").update(email).digest("hex")}`;
   const allowed = await db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))::text`;
     const row = await tx.authRateLimit.findUnique({ where: { key } });
@@ -20,15 +20,34 @@ async function limitDelivery(db: Db, email: string) {
     await tx.authRateLimit.upsert({ where: { key }, create: { key, count: 1, lastRequest: now }, update: { count: fresh ? 1 : row.count + 1, lastRequest: fresh ? now : row.lastRequest } });
     return true;
   });
-  if (!allowed) throw new APIError("TOO_MANY_REQUESTS", { message: "Terlalu banyak permintaan kode. Tunggu 10 menit lalu coba lagi." });
+  if (!allowed) throw new APIError("TOO_MANY_REQUESTS", { message: "Terlalu banyak percobaan. Tunggu 10 menit lalu coba lagi." });
 }
 
 /** Dependency injection is for transport tests; production always uses the same authentication rules. */
-export function createAuth(db: Db, config: { secret: string; baseURL: string; sendCode?: (email: string, otp: string) => Promise<void> }) {
+export function createAuth(db: Db, config: { secret: string; baseURL: string; sendCode?: (email: string, otp: string) => Promise<void>; sharedCode?: string }) {
+  if (config.sharedCode !== undefined && !/^\d{12}$/.test(config.sharedCode)) throw new Error("Kode akses bersama harus berisi 12 angka.");
   if (config.secret.length < 32) throw new Error("BETTER_AUTH_SECRET harus berisi sedikitnya 32 karakter.");
   const origin = new URL(config.baseURL);
   if (origin.protocol !== "https:" && !(origin.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(origin.hostname))) throw new Error("BETTER_AUTH_URL harus memakai HTTPS, kecuali localhost.");
   if (origin.pathname !== "/" || origin.search || origin.hash || origin.username || origin.password) throw new Error("BETTER_AUTH_URL harus berupa origin, tanpa path atau kredensial.");
+  const sharedCode = config.sharedCode;
+  const allowedPaths = new Set(["/get-session", "/sign-out", ...(sharedCode ? ["/sign-in/shared-code"] : ["/email-otp/send-verification-otp", "/sign-in/email-otp"])]);
+  const sharedAccess = {
+    id: "buku-shared-code",
+    endpoints: { signInSharedCode: createAuthEndpoint("/sign-in/shared-code", {
+      method: "POST", body: z.object({ email: z.email(), code: z.string().max(128) }),
+    }, async ctx => {
+      const email = ctx.body.email.trim().toLowerCase();
+      const matches = timingSafeEqual(createHash("sha256").update(ctx.body.code).digest(), createHash("sha256").update(sharedCode ?? "").digest());
+      const user = await db.authUser.findUnique({ where: { email } });
+      if (!sharedCode || !matches || !user || user.disabled) throw new APIError("UNAUTHORIZED", { message: "Email atau kode akses tidak cocok." });
+      const session = await ctx.context.internalAdapter.createSession(user.id);
+      if (!session) throw new APIError("UNAUTHORIZED", { message: "Akses tidak tersedia. Hubungi pengelola Buku." });
+      // This proves possession of a shared secret, not ownership of an email inbox.
+      await setSessionCookie(ctx, { session, user });
+      return ctx.json({ success: true });
+    }) },
+  };
   return betterAuth({
     appName: "Buku",
     secret: config.secret,
@@ -40,7 +59,7 @@ export function createAuth(db: Db, config: { secret: string; baseURL: string; se
     session: { modelName: "AuthSession", expiresIn: 60 * 60 * 24 * 7, updateAge: 60 * 60 * 24, cookieCache: { enabled: false } },
     account: { modelName: "AuthAccount" },
     verification: { modelName: "AuthVerification" },
-    rateLimit: { enabled: true, storage: "database", modelName: "AuthRateLimit", window: 60, max: 60, customRules: { "/email-otp/send-verification-otp": { window: 60, max: 3 }, "/sign-in/email-otp": { window: 60, max: 5 } } },
+    rateLimit: { enabled: true, storage: "database", modelName: "AuthRateLimit", window: 60, max: 60, customRules: { "/email-otp/send-verification-otp": { window: 60, max: 3 }, "/sign-in/email-otp": { window: 60, max: 5 }, "/sign-in/shared-code": { window: 60, max: 5 } } },
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
         // Login starts without cookies. Require its browser Origin too, before any delivery or mutation.
@@ -53,6 +72,9 @@ export function createAuth(db: Db, config: { secret: string; baseURL: string; se
           if (ctx.body?.type !== "sign-in") throw new APIError("BAD_REQUEST", { message: "Gunakan kode masuk Buku." });
           if (typeof ctx.body?.email === "string") await limitDelivery(db, ctx.body.email.trim().toLowerCase());
         }
+        if (sharedCode && ctx.path === "/sign-in/shared-code" && typeof ctx.body?.email === "string") {
+          await limitDelivery(db, ctx.body.email.trim().toLowerCase(), "verification");
+        }
       }),
     },
     databaseHooks: {
@@ -62,7 +84,7 @@ export function createAuth(db: Db, config: { secret: string; baseURL: string; se
         if (!user || user.disabled) throw new APIError("FORBIDDEN", { message: "Akses tidak tersedia. Hubungi pengelola Buku." });
       } } },
     },
-    plugins: [emailOTP({
+    plugins: [sharedCode ? sharedAccess : emailOTP({
       disableSignUp: true, storeOTP: "hashed", expiresIn: 300, allowedAttempts: 3,
       async sendVerificationOTP({ email, otp, type }) {
         const user = await db.authUser.findUnique({ where: { email } });

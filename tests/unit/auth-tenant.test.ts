@@ -1,14 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ getSession: vi.fn(), user: vi.fn(), client: vi.fn() }));
+const mocks = vi.hoisted(() => ({ configured: vi.fn(), getSession: vi.fn(), user: vi.fn(), client: vi.fn() }));
 vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
 vi.mock("next/navigation", () => ({ redirect: (url: string) => { throw new Error(`redirect:${url}`); } }));
-vi.mock("@/lib/auth", () => ({ getAuth: () => ({ api: { getSession: mocks.getSession } }) }));
+vi.mock("@/lib/auth", () => ({ authConfigured: mocks.configured, getAuth: () => ({ api: { getSession: mocks.getSession } }) }));
 vi.mock("@/lib/db", () => ({ prisma: { authUser: { findUnique: mocks.user }, client: { findFirst: mocks.client } } }));
 import { getCurrentFirm, getClientForFirm } from "@/lib/tenant";
 import { getWorkspaceSession } from "@/lib/auth/session";
 
 describe("authenticated tenant resolution", () => {
-  beforeEach(() => vi.resetAllMocks());
+  beforeEach(() => { vi.resetAllMocks(); mocks.configured.mockReturnValue(true); });
+  it("keeps an unconfigured deployment closed and redirects to the setup message", async () => {
+    mocks.configured.mockReturnValue(false);
+    expect(await getWorkspaceSession()).toBeNull();
+    await expect(getCurrentFirm()).rejects.toThrow("redirect:/login");
+    expect(mocks.getSession).not.toHaveBeenCalled();
+    expect(mocks.user).not.toHaveBeenCalled();
+  });
   it("redirects anonymous callers without creating or selecting a firm", async () => {
     mocks.getSession.mockResolvedValue(null);
     await expect(getCurrentFirm()).rejects.toThrow("redirect:/login");

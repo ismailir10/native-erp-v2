@@ -10,11 +10,31 @@ test("anonymous routes require an invitation session and login has no signup", a
   }
   await expect(page.getByRole("link", { name: /daftar|sign up/i })).toHaveCount(0);
   await page.getByLabel("Email yang diundang").fill("not-invited@example.test");
-  await page.getByRole("button", { name: "Kirim kode masuk", exact: true }).click();
-  await expect(page.getByLabel("Kode masuk 6 angka")).toBeVisible();
-  await page.getByLabel("Kode masuk 6 angka").fill("000000");
+  if (process.env.AUTH_MODE === "shared-code") {
+    await page.getByLabel("Kode akses 12 angka").fill(process.env.AUTH_SHARED_CODE!);
+  } else {
+    await page.getByRole("button", { name: "Kirim kode masuk", exact: true }).click();
+    await expect(page.getByLabel("Kode masuk 6 angka")).toBeVisible();
+    await page.getByLabel("Kode masuk 6 angka").fill("000000");
+  }
   await page.getByRole("button", { name: "Masuk ke Buku", exact: true }).click();
-  await expect(page.locator("#login-error")).toContainText("Kode tidak cocok");
+  await expect(page.locator("#login-error")).toContainText(process.env.AUTH_MODE === "shared-code" ? "Email atau kode akses tidak cocok" : "Kode tidak cocok");
+  await page.goto("/documents");
+  await expect(page).toHaveURL(/\/login$/);
+  await context.close();
+});
+
+if (process.env.AUTH_MODE === "shared-code") test("invited user signs in with the shared code and signs out", async ({ browser }) => {
+  const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+  const page = await context.newPage();
+  await page.goto("/login");
+  await expect(page.getByText("Tidak ada kode dikirim lewat email.", { exact: false })).toBeVisible();
+  await page.getByLabel("Email yang diundang").fill("accountant@buku.example");
+  await page.getByLabel("Kode akses 12 angka").fill(process.env.AUTH_SHARED_CODE!);
+  await page.getByRole("button", { name: "Masuk ke Buku", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Beranda", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Keluar", exact: true }).click();
+  await expect(page).toHaveURL(/\/login$/);
   await page.goto("/documents");
   await expect(page).toHaveURL(/\/login$/);
   await context.close();

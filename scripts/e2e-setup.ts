@@ -17,11 +17,14 @@ async function setup() {
     const email = "accountant@buku.example";
     await inviteUser(db, { firmId: firm.id, email, name: "Akuntan uji" });
     let otp = "";
-    const auth = createAuth(db, { baseURL, secret: process.env.BETTER_AUTH_SECRET!, sendCode: async (_email, code) => { otp = code; } });
+    const sharedCode = process.env.AUTH_MODE === "shared-code" ? process.env.AUTH_SHARED_CODE : undefined;
+    const auth = createAuth(db, { baseURL, secret: process.env.BETTER_AUTH_SECRET!, ...(sharedCode ? { sharedCode } : {}), sendCode: async (_email, code) => { otp = code; } });
     const post = (path: string, body: object) => auth.handler(new Request(`${baseURL}/api/auth${path}`, { method: "POST", headers: { "content-type": "application/json", origin: baseURL, "x-forwarded-for": "192.0.2.200" }, body: JSON.stringify(body) }));
-    const sent = await post("/email-otp/send-verification-otp", { email, type: "sign-in" });
-    if (sent.status !== 200 || !otp) throw new Error("Synthetic invitation code could not be issued.");
-    const signedIn = await post("/sign-in/email-otp", { email, otp });
+    if (!sharedCode) {
+      const sent = await post("/email-otp/send-verification-otp", { email, type: "sign-in" });
+      if (sent.status !== 200 || !otp) throw new Error("Synthetic invitation code could not be issued.");
+    }
+    const signedIn = sharedCode ? await post("/sign-in/shared-code", { email, code: sharedCode }) : await post("/sign-in/email-otp", { email, otp });
     if (signedIn.status !== 200) throw new Error("Synthetic account could not sign in.");
     const cookies = signedIn.headers.getSetCookie().map(header => {
       const [pair, ...attributes] = header.split(";");

@@ -29,7 +29,7 @@ Supported evidence formats include text PDFs, XLSX, CSV, Google Docs/Sheets, TXT
 
 ### Current experience and limits
 
-**Available in this implementation:** invitation-only email-code login, dashboard-level Tanya Buku, shared client/company and period selectors, prioritized work, document evidence and company-context review, financial reports, and controlled month-end close. Staging and main use the same authenticated application screens with separate databases, users, secrets, and provider settings.
+**Available in this implementation:** invitation-only login (email codes or temporary shared access code), dashboard-level Tanya Buku, shared client/company and period selectors, prioritized work, document evidence and company-context review, financial reports, and controlled month-end close. Staging and main use the same authenticated application screens with separate databases, users, secrets, and provider settings.
 
 **Tanya Buku supports bounded read-only questions:** close readiness, posted profit/revenue, cash and account balances, document search, and company context. Its portfolio answers are calculated with deterministic tools; unsupported questions say so. Answers retain the scope and period at submission, with source links and session-only history. Document-specific AI tools remain available within their existing budget controls. Cross-client views compare companies in their own currencies; they do not consolidate them. Always-on agents and live bank feeds are not implemented.
 
@@ -63,7 +63,7 @@ npm run access -- list           # find the local firm ID
 npm run access -- invite --firm FIRM_ID --email accountant@example.com --name "Accountant"
 npm run dev                     # http://localhost:3000/login
 ```
-Before sign-in, set `BETTER_AUTH_URL`, a random `BETTER_AUTH_SECRET` of at least 32 characters, `RESEND_API_KEY`, and a verified `AUTH_EMAIL_FROM`. The invite command provisions access and sends no email. Codes are sent only when invited users request login. For an empty non-demo database, use `npm run access -- init --name "Your firm"` instead of seeding.
+Before sign-in, set `BETTER_AUTH_URL` and a random `BETTER_AUTH_SECRET` of at least 32 characters. Choose `AUTH_MODE=email` with `RESEND_API_KEY` and a verified `AUTH_EMAIL_FROM`, or temporary `AUTH_MODE=shared-code` with a randomly generated 12-digit `AUTH_SHARED_CODE` stored only as a server secret. The invite command provisions access and sends no email. Shared-code mode requires an invited email plus the operator-provided code; it never sends mail. For an empty non-demo database, use `npm run access -- init --name "Your firm"` instead of seeding.
 
 Claude Code sessions run `scripts/session-start.sh` automatically (Postgres, deps, migrate, seed).
 
@@ -90,7 +90,9 @@ Next.js 16 (App Router, server actions) · TypeScript · Tailwind v4 · shadcn (
 | `DEMO_MODE` | `true` enables synthetic demo fixtures; database reset remains an explicit operator command |
 | `BETTER_AUTH_URL` | Exact application origin for this environment; HTTPS outside localhost |
 | `BETTER_AUTH_SECRET` | Random secret, at least 32 characters; distinct per environment |
-| `RESEND_API_KEY` / `AUTH_EMAIL_FROM` | Email-code delivery key and verified sender |
+| `AUTH_MODE` | `email` (default), or temporary `shared-code` for operator-distributed access |
+| `AUTH_SHARED_CODE` | Random 12-digit server-only secret, required in shared-code mode; never a source-code constant |
+| `RESEND_API_KEY` / `AUTH_EMAIL_FROM` | Email-code delivery key and verified sender; required only in email mode |
 | `EVIDENCE_ENABLED` | Same authenticated document workspace in both environments; `false` is an operational kill switch |
 | `AI_BASE_URL` | LLM gateway (default OpenCode Zen). Env-only on purpose, so a stored key can't be redirected |
 | `AI_API_KEY` / `AI_MODEL` | Fallback when nothing is saved in **Pengaturan**. Empty = rules + memory only (fully functional) |
@@ -102,7 +104,7 @@ Next.js 16 (App Router, server actions) · TypeScript · Tailwind v4 · shadcn (
 1. **Connect Neon to the Vercel project**: Vercel → project → *Storage* → *Connect Database* → Neon → the existing project
    (branch `production`), environments Production + Preview. This injects `DATABASE_URL` (pooled) and `DATABASE_URL_UNPOOLED`.
 2. **Env vars** (Settings → Environment Variables): `DEMO_MODE=true`, `SETTINGS_SECRET`, `ADMIN_PASSCODE`, and optionally `AI_BASE_URL`.
-   Also configure the four login variables above and `EVIDENCE_ENABLED=true` in each environment. Provision at least one invited user for that environment before routing users to the new version. The AI key + model are set in **Pengaturan**.
+   Also configure the login URL, signing secret, and the variables for the chosen login mode and `EVIDENCE_ENABLED=true` in each environment. Provision at least one invited user for that environment before routing users to the new version. The AI key + model are set in **Pengaturan**.
 3. **Connect Git** (Settings → Git): `ismailir10/native-erp-v2`; production branch `main`.
 4. **Access**: application login is required on both staging and main. Keep existing Vercel protection on staging as an additional boundary; investors must receive a production invitation. Do not copy staging users, source files, or secrets into production.
 5. Put Functions in the same region as the Neon database (Settings → Functions) — every page runs many queries.
@@ -125,9 +127,13 @@ npm run access -- invite --firm FIRM_ID --email accountant@example.com --name "A
 npm run access -- revoke --firm FIRM_ID --email accountant@example.com
 ```
 
-Run these only against the intended environment. Revocation invalidates sessions and unused codes. Re-invitation starts a fresh session lifecycle; existing accounts cannot be moved to another firm implicitly. Codes expire after five minutes, are stored hashed, and have bounded attempts and persistent request limits. Shared workspace access has no application roles.
+Run these only against the intended environment. Revocation invalidates sessions and unused codes. Re-invitation starts a fresh session lifecycle; existing accounts cannot be moved to another firm implicitly. Email codes expire after five minutes and are stored hashed. Both modes enforce persistent request limits, exact-origin checks, and live revocation. Shared workspace access has no application roles.
 
-E2E uses a disposable localhost database, the real invitation/OTP/session flow, and a captured test email transport. It never sends real messages or enables an authentication bypass. `.playwright/` contains ephemeral synthetic sessions and is ignored by Git.
+**Temporary shared-code mode:** the code acts as a shared password and does not verify ownership of an email inbox; the account is not marked email-verified. Only existing, enabled invitations can sign in. The code is never returned by an API or included in browser assets. Verification is limited per address across IPs/instances. Rotate `AUTH_SHARED_CODE` and redeploy to reject the old code immediately on new login attempts; existing sessions last up to seven days unless their users are revoked. Switch back to `AUTH_MODE=email` once email delivery is ready.
+
+Missing login configuration keeps the workspace closed and shows a setup message instead of a server error.
+
+E2E uses a disposable localhost database, the real invitation/session flow in both login modes, and a captured test email transport. It never sends real messages or enables an authentication bypass. `.playwright/` contains ephemeral synthetic sessions and is ignored by Git.
 
 ## Branch workflow
 

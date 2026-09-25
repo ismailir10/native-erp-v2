@@ -138,3 +138,57 @@ describe("invitation-only authentication", () => {
     expect(await db.authSession.count()).toBe(0);
   });
 });
+
+describe("temporary invitation-only shared code", () => {
+  const code = "482619735084";
+  beforeEach(async () => {
+    await resetDb(); sendCode.mockClear();
+    auth = createAuth(db, { secret, baseURL, sharedCode: code, sendCode });
+  });
+  it("accepts only an invited user without sending mail or claiming email verification", async () => {
+    const { user } = await invite();
+    expect((await request("/sign-in/shared-code", { email: "unknown@example.test", code })).status).toBe(401);
+    expect((await request("/sign-in/shared-code", { email, code: "000000000000" })).status).toBe(401);
+    const response = await request("/sign-in/shared-code", { email, code });
+    expect(response.status).toBe(200);
+    const cookie = response.headers.getSetCookie().map(value => value.split(";")[0]).join("; ");
+    const session = await (await request("/get-session", undefined, cookie)).json();
+    expect(session.user.id).toBe(user.id);
+    expect(session.user.emailVerified).toBe(false);
+    expect(await db.authVerification.count()).toBe(0);
+    expect(sendCode).not.toHaveBeenCalled();
+  });
+  it("blocks the OTP path in shared mode and the shared path in email mode", async () => {
+    await invite();
+    expect((await request("/email-otp/send-verification-otp", { email, type: "sign-in" })).status).toBe(404);
+    auth = createAuth(db, { secret, baseURL, sendCode });
+    expect((await request("/sign-in/shared-code", { email, code })).status).toBe(404);
+    expect(await db.authSession.count()).toBe(0);
+  });
+  it("limits attempts across IPs and server instances", async () => {
+    await invite();
+    for (let i = 0; i < 3; i++) expect((await request("/sign-in/shared-code", { email, code: "000000000000" }, undefined, `192.0.2.${50 + i}`)).status).toBe(401);
+    auth = createAuth(db, { secret, baseURL, sharedCode: code, sendCode });
+    expect((await request("/sign-in/shared-code", { email: email.toUpperCase(), code }, undefined, "192.0.2.60")).status).toBe(429);
+    expect(await db.authSession.count()).toBe(0);
+  });
+  it("rejects rotated codes and revoked users", async () => {
+    const { firm } = await invite();
+    auth = createAuth(db, { secret, baseURL, sharedCode: "731084629518", sendCode });
+    expect((await request("/sign-in/shared-code", { email, code })).status).toBe(401);
+    const signed = await request("/sign-in/shared-code", { email, code: "731084629518" });
+    expect(signed.status).toBe(200);
+    const cookie = signed.headers.getSetCookie().map(value => value.split(";")[0]).join("; ");
+    await revokeUser(db, { email, firmId: firm.id });
+    expect(await (await request("/get-session", undefined, cookie)).json()).toBeNull();
+    expect((await request("/sign-in/shared-code", { email, code: "731084629518" })).status).toBe(401);
+  });
+  it("rejects foreign and missing origins before creating sessions", async () => {
+    await invite();
+    for (const origin of [undefined, "https://untrusted.example"]) {
+      const response = await auth.handler(new Request(`${baseURL}/api/auth/sign-in/shared-code`, { method: "POST", headers: { "content-type": "application/json", ...(origin ? { origin } : {}) }, body: JSON.stringify({ email, code }) }));
+      expect(response.status).toBe(403);
+    }
+    expect(await db.authSession.count()).toBe(0);
+  });
+});

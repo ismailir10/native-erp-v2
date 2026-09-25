@@ -5,6 +5,36 @@ import { authClient } from "@/lib/auth/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
+/** Temporary invitation-only shared code; the server never exposes the configured value. */
+export function SharedCodeLoginForm() {
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function submit() {
+    if (busy) return;
+    setBusy(true); setError("");
+    try {
+      const address = email.trim().toLowerCase();
+      const result = await fetch("/api/auth/sign-in/shared-code", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: address, code }) });
+      if (!result.ok) {
+        setError(result.status === 429 ? "Terlalu banyak percobaan. Tunggu 10 menit lalu coba lagi." : "Email atau kode akses tidak cocok. Gunakan email yang diundang dan kode terbaru dari pengelola.");
+        return;
+      }
+      router.push("/"); router.refresh();
+    } catch { setError("Koneksi terputus. Periksa internet lalu coba lagi."); }
+    finally { setBusy(false); }
+  }
+  return <form onSubmit={event => { event.preventDefault(); void submit(); }} className="space-y-5" aria-busy={busy}>
+    <div className="space-y-2"><label htmlFor="shared-email" className="text-sm font-medium">Email yang diundang</label><Input id="shared-email" type="email" autoComplete="username" required value={email} onChange={event => setEmail(event.target.value)} autoFocus /></div>
+    <div className="space-y-2"><label htmlFor="shared-code" className="text-sm font-medium">Kode akses 12 angka</label><Input id="shared-code" type="password" inputMode="numeric" autoComplete="current-password" pattern="[0-9]{12}" maxLength={12} required value={code} onChange={event => setCode(event.target.value.replace(/\D/g, "").slice(0, 12))} aria-describedby={error ? "shared-hint login-error" : "shared-hint"} /><p id="shared-hint" className="text-sm text-muted-foreground">Gunakan kode yang diberikan pengelola kantor. Tidak ada kode dikirim lewat email.</p></div>
+    {error && <p id="login-error" role="alert" className="text-sm text-fail">{error}</p>}
+    <Button type="submit" disabled={busy} className="w-full">{busy ? "Memeriksa…" : "Masuk ke Buku"}</Button>
+    <p className="text-sm text-muted-foreground">Belum punya akses? Hubungi pengelola kantor untuk undangan dan kode.</p>
+  </form>;
+}
+
 export function LoginForm() {
   const router = useRouter();
   const [email, setEmail] = useState("");

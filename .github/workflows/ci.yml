@@ -50,6 +50,12 @@ jobs:
           DEMO_MODE: "false"
           AI_API_KEY: ""
           AI_MODEL: ""
+      - name: Invitation-only shared-code access (synthetic data)
+        run: npm run test:e2e
+        env:
+          DEMO_MODE: "false"
+          AUTH_MODE: shared-code
+          AUTH_SHARED_CODE: "482619735084"
       - uses: actions/upload-artifact@v4
         if: failure()
         with: { name: playwright-report, path: test-results, retention-days: 7 }

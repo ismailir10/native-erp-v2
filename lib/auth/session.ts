@@ -1,9 +1,11 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { getAuth } from "@/lib/auth";
+import { authConfigured, getAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
 export async function getWorkspaceSession() {
+  // An incomplete rollout stays closed and reaches the login setup message.
+  if (!authConfigured()) return null;
   const result = await getAuth().api.getSession({ headers: await headers() });
   if (!result) return null;
   // Always consult the live user. Revocation takes effect even for an in-flight session creation.

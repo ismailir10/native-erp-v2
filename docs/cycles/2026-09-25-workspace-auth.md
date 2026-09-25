@@ -56,3 +56,10 @@ The user requested self-review against Don't Make Me Think and explicitly chose 
 - Rollback: keep external access protection in place, revert the application changes as needed, and retain the additive auth tables. Do not expose the previous anonymous application when rolling back access controls.
 - Limits: portfolio questions use bounded deterministic tools; no general autonomous agent or formal portfolio consolidation. Answer history is memory-only. Real provider delivery remains a rollout check.
 
+
+## Merge follow-up
+- User authorized testing and merging into staging. They then explicitly requested a temporary fixed access code because Resend is unavailable; invitation-only shared-code mode is now included in this approved scope.
+- Shared-code login uses a separate Better Auth endpoint. It does not pretend to send email or mark email ownership verified. The code remains a server-only environment secret; only enabled invitations can create sessions. Persistent per-address/IP limits, origin checks, firm scoping, logout and revocation remain enforced. New login attempts reject rotated codes immediately.
+- Added regression coverage for unconfigured rollout, missing/invalid shared secrets, unknown invitations, wrong codes, mode isolation, distributed attempts, code rotation, revocation and foreign origins. Browser verification includes the actual shared-code form and logout.
+- Staging signing secret and login origin were configured separately from main. The shared code and first invitation will be provisioned only for staging; no email provider is needed in this mode.
+- Follow-up validation: lint/typecheck and production build passed; `43` test files / `302` tests passed. The full shared-code browser suite passed all `9` journeys, including actual sign-in and logout. Existing email-mode and private-mode suites remain in CI alongside this new mode.
