@@ -22,7 +22,7 @@ The user requested self-review against Don't Make Me Think and explicitly chose 
 ## Tasks
 - [x] T1 Access — Better Auth, login, operator CLI, session tenancy, tests and migration.
 - [x] T2 Scoped read model — validated shared scope, period, portfolio summaries and cited deterministic questions.
-- [ ] T3 Workspace — dashboard Ask Buku, four destinations, clear next actions, context-preserving navigation and answer history.
+- [x] T3 Workspace — dashboard Ask Buku, four destinations, clear next actions, context-preserving navigation and answer history.
 - [ ] T4 Integration and verification — same screens across environments, all access boundaries, README/setup/E2E updates, full gates and draft PR.
 
 ## Implementation
@@ -32,7 +32,10 @@ The user requested self-review against Don't Make Me Think and explicitly chose 
 
 - T2: Added server-validated all/client/company scope and period, ledger-derived financial summaries, real close blockers, and bounded deterministic questions with immutable context and source citations. Each company retains its currency; uploaded figures remain evidence. Scoped bulk review cannot accept another company’s or a future period’s transactions. Tests cover foreign-firm IDs, exact bigint amounts, mixed currencies, missing data, source citations and company context.
 
+- T3: Replaced the dashboard with visible Tanya Buku, four main destinations, shared scope/period, prioritized work, close progress and company financials. History remains in memory across navigation; cited answers retain their submission context. Simplified secondary navigation and made logout available on mobile. Self-review fixed heading semantics and moved the keyboard skip link before the sidebar.
+
 ## Verification
 - Integrated T1–T3 gate: lint and typecheck passed; Vitest reported `Test Files 42 passed (42)` and `Tests 291 passed (291)`. Authentication tests cover unknown addresses, code hashing/expiry/reuse, rate limits across instances, revocation, disabled users, forbidden origins and logout. Mail delivery is mocked.
 
 ## Ship Notes
+
