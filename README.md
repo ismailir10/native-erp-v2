@@ -72,10 +72,22 @@ Next.js 16 (App Router, server actions) · TypeScript · Tailwind v4 · shadcn (
 |---|---|---|---|
 | Production (`main`) | `production` | `true` | Public investor demo, synthetic data |
 | Preview (PR branches) | `preview` | `true` | Behind Vercel login |
-| Preview, git branch `real-data` | `real-data` | `false` | Behind Vercel login. **Real client files only here**, see [docs/real-data.md](docs/real-data.md) |
+| Preview, git branch `staging` | `real-data` | `false` | Behind Vercel login. **Real client files only here**, see [docs/real-data.md](docs/real-data.md) |
 
 `vercel-build` (`scripts/vercel-build.sh`) then runs `prisma migrate deploy` on the unpooled URL, seeds the demo **only if the
 database is empty**, and builds. Reset the demo any time from the sidebar. Neon Auth / Functions / buckets are not used.
+
+## Branch workflow
+
+Only `staging` and `main` are permanent branches. `staging` is the repository default and the base for new work.
+Create a temporary `codex/<task>` branch from current staging, open its PR against `staging`, and merge after CI passes.
+GitHub automatically deletes the merged task branch; remove its local copy after returning to staging.
+Promote tested staging to production with a separate `staging` → `main` PR using a **merge commit** to preserve ancestry.
+Both permanent branches are protected from deletion and force-push, and require the CI `check` result.
+
+The protected staging deployment still uses the existing `native-erp-v2-git-real-data-ismails-projects-196d40d3.vercel.app`
+domain, now assigned to git branch `staging`, so saved links and Google OAuth callbacks continue working.
+The Neon database branch remains named `real-data`; git branch names and database names are independent.
 
 ## For contributors (humans and agents)
 Read [CLAUDE.md](CLAUDE.md) (= `AGENTS.md`): the spec → build → ship loop, gates, and which skill governs which folder.
