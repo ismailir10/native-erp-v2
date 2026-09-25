@@ -6,7 +6,7 @@ import { resolveAiConfig } from "@/lib/settings/ai";
 import { automationByMonth } from "@/lib/queries";
 import { TAX_TAG_LABEL } from "@/lib/coa/template";
 import { formatMonthShort } from "@/lib/format";
-import { PageHeader, Stat } from "@/components/app/page-header";
+import { NextStep, PageHeader, Stat } from "@/components/app/page-header";
 import { StatusPill } from "@/components/app/status";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChevronRight } from "lucide-react";
@@ -33,18 +33,19 @@ export default async function SettingsPage({ params, searchParams }: { params: P
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Aturan & AI" description="Urutan klasifikasi: transfer → aturan → memori → AI. AI hanya dipakai untuk yang belum pernah dilihat." />
+      <PageHeader title="Aturan klasifikasi" description="Urutan: transfer antar rekening sendiri, aturan, pilihan yang diingat, lalu usulan AI untuk yang belum pernah dilihat." />
+      <NextStep>Tambahkan aturan untuk transaksi yang selalu masuk ke akun yang sama. Aturan dipakai sebelum AI.</NextStep>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Status AI" value={<StatusPill status={live ? "PASS" : "REVIEW"} label={live ? "Aktif" : "Aturan saja"} />} hint={live ? `${cfg.model} via ${new URL(cfg.baseUrl).host}` : <>Atur kunci & model di <Link href="/settings" className="text-primary hover:underline">Pengaturan</Link></>} />
+        <Stat label="Status AI" value={<StatusPill status={live ? "PASS" : "REVIEW"} label={live ? "Aktif" : "Aturan saja"} />} hint={live ? `Model ${cfg.model}` : <>Atur kunci & model di <Link href="/settings" className="text-primary hover:underline">Pengaturan</Link></>} />
         <Stat label="Dikode tanpa AI" value={`${total ? Math.round(((total - aiLines) / total) * 100) : 0}%`} hint={`${total} baris sejak awal`} />
         <Stat label="Panggilan AI (total)" value={usage._sum.calls ?? 0} hint={`${((usage._sum.promptTokens ?? 0) + (usage._sum.completionTokens ?? 0)).toLocaleString("id-ID")} token`} />
-        <Stat label="Jawaban AI tersimpan" value={cacheSize} hint="Merchant yang sama tidak ditanyakan lagi" />
+        <Stat label="Jawaban AI tersimpan" value={cacheSize} hint="Penerima atau pengirim yang sama tidak ditanyakan lagi" />
       </div>
       <Card>
         <CardHeader>
           <CardTitle>Batas pemakaian</CardTitle>
           <CardDescription>
-            Maks. {cfg.maxCallsPerImport} panggilan per impor · {cfg.monthlyTokenBudget.toLocaleString("id-ID")} token per bulan · 40 merchant per panggilan.
+            Maks. {cfg.maxCallsPerImport} panggilan per impor · {cfg.monthlyTokenBudget.toLocaleString("id-ID")} token per bulan.
             {lastMonth && ` Bulan terakhir: ${lastMonth.pct}% dikode otomatis (${formatMonthShort(Number(lastMonth.ym.slice(0, 4)), Number(lastMonth.ym.slice(5)))}).`}
           </CardDescription>
         </CardHeader>
@@ -71,13 +72,13 @@ export default async function SettingsPage({ params, searchParams }: { params: P
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>Memori</CardTitle>
+            <CardTitle>Pilihan yang diingat</CardTitle>
             <CardDescription>Dipelajari dari keputusan reviewer dan dipakai sebelum AI.</CardDescription>
           </CardHeader>
           <CardContent className="px-0">
             <Table>
               <TableHeader>
-                <TableRow><TableHead className="pl-6">Merchant</TableHead><TableHead>Akun</TableHead><TableHead className="pr-6 text-right">Dikonfirmasi</TableHead></TableRow>
+                <TableRow><TableHead className="pl-6">Penerima / pengirim</TableHead><TableHead>Akun</TableHead><TableHead className="pr-6 text-right">Dikonfirmasi</TableHead></TableRow>
               </TableHeader>
               <TableBody>
                 {memories.map((m) => (
@@ -89,7 +90,7 @@ export default async function SettingsPage({ params, searchParams }: { params: P
                 ))}
               </TableBody>
             </Table>
-            {memories.length === 0 && <p className="px-6 py-4 text-sm text-muted-foreground">Belum ada. Memori terisi saat Anda mereview transaksi.</p>}
+            {memories.length === 0 && <p className="px-6 py-4 text-sm text-muted-foreground">Belum ada pilihan yang diingat. Buku mengingat akun yang Anda pilih saat mereview transaksi.</p>}
           </CardContent>
         </Card>
       </div>

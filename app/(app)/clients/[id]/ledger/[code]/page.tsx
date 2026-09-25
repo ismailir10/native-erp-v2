@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { prisma } from "@/lib/db";
 import { loadClientPage } from "@/lib/client-page";
 import { type SearchParams, withParams } from "@/lib/scope";
@@ -31,13 +32,13 @@ export default async function AccountLedger({ params, searchParams }: { params: 
       <div className="space-y-6">
         {back}
         <PageHeader title={`${account.code} ${account.name}`} description={`${scopeLabel} · ${formatPeriod(period.year, period.month)}`} actions={<ScopeBar entities={entityOptions} periods={periodOptions} entity={scope.value} period={period.key} />} />
-        <NextStep>Baris buku besar ditampilkan per entitas karena mata uangnya berbeda. Pilih entitas:</NextStep>
+        <NextStep>Buku besar ditampilkan per perusahaan karena mata uangnya berbeda. Pilih perusahaan.</NextStep>
         <ul className="flex flex-wrap gap-2">
           {scoped.map((e) => (
             <li key={e.id}>
-              <Link className="rounded-md border bg-card px-3 py-1.5 text-sm hover:border-primary hover:text-primary" href={withParams(`${base}/ledger/${code}`, { period: period.key, entity: e.id })}>
-                {e.shortName} · {e.functionalCurrency}
-              </Link>
+              <Button variant="outline" render={<Link href={withParams(`${base}/ledger/${code}`, { period: period.key, entity: e.id })} />}>
+                {e.shortName} · {e.functionalCurrency} <ChevronRight />
+              </Button>
             </li>
           ))}
         </ul>

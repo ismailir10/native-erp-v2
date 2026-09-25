@@ -117,7 +117,7 @@ test("ledger import: checks, mapping, post, Kurs, Gabungan in IDR, Akun sumber",
   await expect(page.getByText("Seimbang").first()).toBeVisible();
 
   await page.getByRole("link", { name: "Neraca Saldo" }).click();
-  await page.getByRole("link", { name: "Akun sumber" }).click();
+  await page.getByRole("tab", { name: "Akun sumber" }).click();
   await expect(page.getByText("Pilih satu entitas")).toBeVisible();
   await page.getByRole("combobox").first().click();
   await page.getByRole("option", { name: "Dua Holdings Pte Ltd" }).click();

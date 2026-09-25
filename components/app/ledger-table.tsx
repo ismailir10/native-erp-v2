@@ -50,7 +50,7 @@ export function LedgerTable({ rows, opening, currency = "IDR" }: { rows: LedgerR
             <TableRow key={r.id} className="cursor-pointer" onClick={() => setOpen(r)} data-testid="ledger-row">
               <TableCell className="num pl-6 whitespace-nowrap text-muted-foreground">{r.date}</TableCell>
               <TableCell className="max-w-md">
-                <div className="truncate">{r.memo}</div>
+                <button type="button" className="block max-w-full truncate text-left underline decoration-border underline-offset-4 hover:text-primary hover:decoration-primary" onClick={(e) => { e.stopPropagation(); setOpen(r); }}>{r.memo}</button>
                 <div className="flex items-center gap-1 text-xs text-muted-foreground">
                   {KIND[r.kind]} · {r.entity}
                   {(r.source || r.fileSource) && <FileText className="size-3" aria-label="Ada sumber" />}

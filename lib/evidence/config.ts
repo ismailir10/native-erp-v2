@@ -1,11 +1,6 @@
-/** The pilot runs locally or behind the protected preview, never on the public demo. */
+/** Both environments use the same authenticated document workspace. Explicit false is an operational kill switch. */
 export function evidenceEnabled() {
-  return process.env.EVIDENCE_ENABLED === "true" && process.env.DEMO_MODE !== "true" &&
-    (!process.env.VERCEL || (process.env.VERCEL_ENV === "preview" && process.env.EVIDENCE_PRIVATE_DEPLOYMENT === "true"));
-}
-/** Public demo reads bundled synthetic examples only; never enables private actions. */
-export function publicEvidenceDemoEnabled() {
-  return process.env.DEMO_MODE === "true";
+  return process.env.EVIDENCE_ENABLED !== "false";
 }
 export function requireEvidenceEnabled() {
   if (!evidenceEnabled()) throw new Error("Dokumen belum diaktifkan di lingkungan ini.");

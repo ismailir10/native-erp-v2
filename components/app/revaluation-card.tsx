@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Money } from "@/components/app/money";
 import { revaluationAction } from "@/app/actions";
 import { formatRateId } from "@/lib/fx/currency";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 type Line = { code: string; name: string; currency: string; fxBalance: string; carried: string; target: string; diff: string; rate: string };
 type Proposal = { entityId: string; entityName: string; functional: string; lines: Line[]; missingRates: string[] };
@@ -31,28 +32,28 @@ export function RevaluationCard({ clientId, year, month, periodLabel, proposals,
             {p.lines.length > 0 && (
               <>
                 <div className="overflow-x-auto rounded-lg border">
-                  <table className="w-full text-sm">
-                    <thead className="bg-muted/50 text-xs text-muted-foreground">
-                      <tr>
-                        <th className="p-2 pl-3 text-left font-medium">Akun</th>
-                        <th className="p-2 text-right font-medium">Saldo valas</th>
-                        <th className="hidden p-2 text-right font-medium md:table-cell">Tercatat</th>
-                        <th className="hidden p-2 text-right font-medium md:table-cell">Dengan kurs penutup</th>
-                        <th className="p-2 pr-3 text-right font-medium">Selisih</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="p-2 pl-3 text-left font-medium">Akun</TableHead>
+                        <TableHead className="p-2 text-right font-medium">Saldo valas</TableHead>
+                        <TableHead className="hidden p-2 text-right font-medium md:table-cell">Tercatat</TableHead>
+                        <TableHead className="hidden p-2 text-right font-medium md:table-cell">Dengan kurs penutup</TableHead>
+                        <TableHead className="p-2 pr-3 text-right font-medium">Selisih</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
                       {p.lines.map((l) => (
-                        <tr key={`${l.code}-${l.currency}`} className="border-t">
-                          <td className="p-2 pl-3"><span className="num text-muted-foreground">{l.code}</span> {l.name}</td>
-                          <td className="p-2 text-right"><Money value={BigInt(l.fxBalance)} currency={l.currency} /> <span className="text-xs text-muted-foreground">@ {formatRateId(l.rate)}</span></td>
-                          <td className="hidden p-2 text-right md:table-cell"><Money value={BigInt(l.carried)} currency={p.functional} /></td>
-                          <td className="hidden p-2 text-right md:table-cell"><Money value={BigInt(l.target)} currency={p.functional} /></td>
-                          <td className="p-2 pr-3 text-right font-medium"><Money value={BigInt(l.diff)} currency={p.functional} /></td>
-                        </tr>
+                        <TableRow key={`${l.code}-${l.currency}`} className="border-t">
+                          <TableCell className="p-2 pl-3"><span className="num text-muted-foreground">{l.code}</span> {l.name}</TableCell>
+                          <TableCell className="p-2 text-right"><Money value={BigInt(l.fxBalance)} currency={l.currency} /> <span className="text-xs text-muted-foreground">@ {formatRateId(l.rate)}</span></TableCell>
+                          <TableCell className="hidden p-2 text-right md:table-cell"><Money value={BigInt(l.carried)} currency={p.functional} /></TableCell>
+                          <TableCell className="hidden p-2 text-right md:table-cell"><Money value={BigInt(l.target)} currency={p.functional} /></TableCell>
+                          <TableCell className="p-2 pr-3 text-right font-medium"><Money value={BigInt(l.diff)} currency={p.functional} /></TableCell>
+                        </TableRow>
                       ))}
-                    </tbody>
-                  </table>
+                    </TableBody>
+                  </Table>
                 </div>
                 <Button
                   variant="outline"

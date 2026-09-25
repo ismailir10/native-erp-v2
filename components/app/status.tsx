@@ -24,7 +24,7 @@ export function MethodBadge({ method }: { method: string }) {
   const labels: Record<string, [string, string]> = {
     TRANSFER: ["Transfer", "bg-secondary text-secondary-foreground"],
     RULE: ["Aturan", "bg-secondary text-secondary-foreground"],
-    MEMORY: ["Memori", "bg-secondary text-secondary-foreground"],
+    MEMORY: ["Diingat", "bg-secondary text-secondary-foreground"],
     AI: ["AI", "bg-primary-subtle text-primary"],
     HEURISTIC: ["Tebakan", "bg-review-subtle text-review"],
     MANUAL: ["Manual", "bg-muted text-muted-foreground"],

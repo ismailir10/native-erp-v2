@@ -4,14 +4,15 @@ import type { SearchParams } from "@/lib/scope";
 import { formatDate } from "@/lib/format";
 import { FS_LINES } from "@/lib/coa/template";
 import { NextStep, PageHeader } from "@/components/app/page-header";
+import { ScopeBar } from "@/components/app/scope-bar";
 import { ReviewQueue } from "@/components/app/review-queue";
 
 const TYPE_LABEL: Record<string, string> = { ASET: "Aset", LIABILITAS: "Liabilitas", EKUITAS: "Ekuitas", PENDAPATAN: "Pendapatan", BEBAN: "Beban" };
 
 export default async function ReviewPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
-  const { client, base } = await loadClientPage(params, searchParams);
+  const { client, base, scope, period, scopeLabel, entityOptions, periodOptions } = await loadClientPage(params, searchParams);
   const txs = await prisma.bankTransaction.findMany({
-    where: { bankAccount: { entity: { clientId: client.id } }, status: "NEEDS_REVIEW" },
+    where: { firmId: client.firmId, entityId: { in: scope.entityIds }, date: { lte: period.end }, status: "NEEDS_REVIEW" },
     include: { bankAccount: { include: { entity: true } } },
     orderBy: [{ date: "asc" }, { rowNumber: "asc" }],
   });
@@ -26,6 +27,7 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
     bank: t.bankAccount.label,
     description: t.description,
     amount: t.amount.toString(),
+    currency: t.bankAccount.currency,
     method: t.method,
     confidence: t.confidence,
     reason: t.reason,
@@ -37,15 +39,15 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Review" description={`${client.name} · ${txs.length} transaksi menunggu keputusan Anda`} />
+      <PageHeader title="Review transaksi" description={`${scopeLabel} · ${txs.length} transaksi sampai ${formatDate(period.end)}, termasuk sisa periode sebelumnya`} actions={<ScopeBar entities={entityOptions} periods={periodOptions} entity={scope.value} period={period.key} />} />
       {txs.length > 0 ? (
         <NextStep>
           Cek usulan akun. Tekan <b>Enter</b> untuk menerima, atau ganti akunnya. Buku mengingat pilihan Anda untuk impor berikutnya.
         </NextStep>
       ) : (
-        <NextStep href={`${base}/close`} cta="Tutup buku" tone="done">Semua transaksi sudah terklasifikasi.</NextStep>
+        <NextStep href={`${base}/close?entity=${scope.value}&period=${period.key}`} cta="Tutup buku" tone="done">Tidak ada transaksi menunggu review dalam cakupan ini.</NextStep>
       )}
-      <ReviewQueue items={items} accounts={options} />
+      <ReviewQueue items={items} accounts={options} scope={{ entityIds: scope.entityIds, period: period.key }} />
     </div>
   );
 }

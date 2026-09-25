@@ -4,7 +4,7 @@ import { loadClientPage } from "@/lib/client-page";
 import { type SearchParams, withParams } from "@/lib/scope";
 import { trialBalance } from "@/lib/reports/ledger";
 import { formatPeriod } from "@/lib/format";
-import { PageHeader } from "@/components/app/page-header";
+import { NextStep, PageHeader } from "@/components/app/page-header";
 import { ScopeBar } from "@/components/app/scope-bar";
 import { Money } from "@/components/app/money";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,6 +32,8 @@ export default async function LedgerIndex({ params, searchParams }: { params: Pr
   return (
     <div className="space-y-6">
       {header}
+      <NextStep>Pilih akun untuk melihat mutasinya dan menelusuri ke baris rekening koran atau file sumber.</NextStep>
+      {!tb.some((r) => r.net !== 0n || countMap.get(r.account.id)) && <p className="text-sm text-muted-foreground">Belum ada jurnal sampai {formatPeriod(period.year, period.month)}. Impor rekening koran atau buku besar untuk mengisi buku besar.</p>}
       <div className="grid gap-4 lg:grid-cols-2">
         {TYPES.map(([t, label]) => {
           const rows = tb.filter((r) => r.account.type === t && (r.net !== 0n || countMap.get(r.account.id)));
@@ -53,7 +55,7 @@ export default async function LedgerIndex({ params, searchParams }: { params: Pr
                     {rows.map((r) => (
                       <TableRow key={r.account.id}>
                         <TableCell className="pl-6">
-                          <Link href={withParams(`${base}/ledger/${r.account.code}`, q)} className="hover:text-primary">
+                          <Link href={withParams(`${base}/ledger/${r.account.code}`, q)} className="underline decoration-border underline-offset-4 hover:text-primary hover:decoration-primary">
                             <span className="num text-muted-foreground">{r.account.code}</span> {r.account.name}
                           </Link>
                         </TableCell>

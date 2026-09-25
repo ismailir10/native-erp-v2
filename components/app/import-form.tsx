@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 
 type BankOption = { id: string; label: string; entity: string; bank: string; number: string };
 
-const METHOD_LABEL: Record<string, string> = { TRANSFER: "Transfer antar rekening", RULE: "Aturan", MEMORY: "Memori (pernah dikonfirmasi)", AI: "Usulan AI", HEURISTIC: "Tebakan sederhana", MANUAL: "Manual" };
+const METHOD_LABEL: Record<string, string> = { TRANSFER: "Transfer antar rekening", RULE: "Aturan", MEMORY: "Pilihan yang diingat", AI: "Usulan AI", HEURISTIC: "Tebakan sederhana", MANUAL: "Manual" };
 
 export function ImportForm({ clientId, banks, sample }: { clientId: string; banks: BankOption[]; sample?: { bankAccountId: string; fileName: string } }) {
   const router = useRouter();
@@ -122,7 +122,7 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
             </Field>
           )}
           <div className="flex flex-wrap items-center gap-2">
-            <Button onClick={submit} disabled={!file || !bankId || pending || (needsPassword && !password)}>
+            <Button variant={result ? "outline" : "default"} onClick={submit} disabled={!file || !bankId || pending || (needsPassword && !password)}>
               {pending ? <Loader2 className="animate-spin" /> : <FileUp />} Proses mutasi
             </Button>
             {sample && (
@@ -164,7 +164,7 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
               {result.continuityNote && <p className="text-xs text-review">{result.continuityNote}</p>}
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Panggilan AI</span>
-                <span className="num">{result.ai.calls} panggilan · {result.ai.cacheHits} dari cache</span>
+                <span className="num">{result.ai.calls} panggilan · {result.ai.cacheHits} dari jawaban tersimpan</span>
               </div>
               {result.ai.note && <p className="text-xs text-muted-foreground">{result.ai.note}</p>}
               {result.duplicates > 0 && <p className="text-xs text-muted-foreground">{result.duplicates} baris dilewati karena sudah pernah diimpor.</p>}

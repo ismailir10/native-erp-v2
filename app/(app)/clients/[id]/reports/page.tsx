@@ -3,17 +3,16 @@ import { loadClientPage } from "@/lib/client-page";
 import { type SearchParams, withParams } from "@/lib/scope";
 import { balanceSheet, combinedWorksheet, incomeStatement } from "@/lib/reports/ledger";
 import { formatPeriod, monthName } from "@/lib/format";
-import { PageHeader } from "@/components/app/page-header";
+import { NextStep, PageHeader } from "@/components/app/page-header";
 import { ScopeBar } from "@/components/app/scope-bar";
 import { FsTable } from "@/components/app/fs-table";
 import { Money } from "@/components/app/money";
 import { StatusPill } from "@/components/app/status";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Info } from "lucide-react";
 import { currencyNote, FxMissing, withFx } from "@/components/app/fx-missing";
 import { FxMissingError } from "@/lib/reports/fx";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export default async function ReportsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, period, scope, periodOptions, entityOptions, base, scopeLabel, sp, currency, mixed } = await loadClientPage(params, searchParams);
@@ -30,19 +29,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
   const header = (
     <PageHeader
       title="Laporan Keuangan"
-      description={
-        <span className="inline-flex items-center gap-1">
-          {scopeLabel} · basis kas + penyesuaian{note && ` · ${note}`}
-          {scope.mode === "combined" && (
-            <Tooltip>
-              <TooltipTrigger render={<button type="button" aria-label="Tentang gabungan" className="text-muted-foreground hover:text-foreground" />}>
-                <Info className="size-3.5" />
-              </TooltipTrigger>
-              <TooltipContent className="max-w-xs">{combinedNote}</TooltipContent>
-            </Tooltip>
-          )}
-        </span>
-      }
+      description={`${scopeLabel} · basis kas + penyesuaian${note ? ` · ${note}` : ""}`}
       actions={<ScopeBar entities={entityOptions} periods={periodOptions} entity={scope.value} period={period.key} />}
     />
   );
@@ -74,6 +61,8 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
   return (
     <div className="space-y-6">
       {header}
+      <NextStep>Pilih nama akun untuk menelusuri buku besar sampai baris sumbernya.</NextStep>
+      {scope.mode === "combined" && <p className="text-sm text-muted-foreground">{combinedNote}</p>}
       <Tabs defaultValue={tab}>
         <TabsList>
           <TabsTrigger value="pl">Laba Rugi</TabsTrigger>
@@ -143,26 +132,26 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
                 <CardDescription>{combinedNote} Saldo debit (+) / kredit (−){ws.translated ? ", semua kolom dalam Rupiah" : wsCurrency !== "IDR" ? `, dalam ${wsCurrency}` : ""}.</CardDescription>
               </CardHeader>
               <CardContent className="overflow-x-auto px-0">
-                <table className="w-full text-sm" data-testid="worksheet">
-                  <thead>
-                    <tr className="border-b text-xs text-muted-foreground">
-                      <th className="py-2 pl-6 text-left font-medium">Akun</th>
-                      {ws.entities.map((e) => <th key={e.id} className="py-2 pr-4 text-right font-medium">{e.shortName}</th>)}
-                      <th className="py-2 pr-4 text-right font-medium">Eliminasi</th>
-                      <th className="py-2 pr-6 text-right font-medium">Gabungan</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                <Table data-testid="worksheet">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="py-2 pl-6 text-left font-medium">Akun</TableHead>
+                      {ws.entities.map((e) => <TableHead key={e.id} className="py-2 pr-4 text-right font-medium">{e.shortName}</TableHead>)}
+                      <TableHead className="py-2 pr-4 text-right font-medium">Eliminasi</TableHead>
+                      <TableHead className="py-2 pr-6 text-right font-medium">Gabungan</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {ws.rows.map((r) => (
-                      <tr key={r.key} className={r.elimination !== 0n ? "bg-primary-subtle/60" : "border-t border-border/60"}>
-                        <td className="py-1.5 pl-6"><span className="num text-muted-foreground">{r.code}</span> {r.name}</td>
-                        {r.values.map((v, i) => <td key={i} className="py-1.5 pr-4 text-right"><Money value={v} currency={wsCurrency} /></td>)}
-                        <td className="py-1.5 pr-4 text-right font-medium text-primary"><Money value={r.elimination} currency={wsCurrency} /></td>
-                        <td className="py-1.5 pr-6 text-right font-medium"><Money value={r.combined} currency={wsCurrency} /></td>
-                      </tr>
+                      <TableRow key={r.key} className={r.elimination !== 0n ? "bg-primary-subtle/60" : "border-t border-border/60"}>
+                        <TableCell className="py-1.5 pl-6"><span className="num text-muted-foreground">{r.code}</span> {r.name}</TableCell>
+                        {r.values.map((v, i) => <TableCell key={i} className="py-1.5 pr-4 text-right"><Money value={v} currency={wsCurrency} /></TableCell>)}
+                        <TableCell className="py-1.5 pr-4 text-right font-medium text-primary"><Money value={r.elimination} currency={wsCurrency} /></TableCell>
+                        <TableCell className="py-1.5 pr-6 text-right font-medium"><Money value={r.combined} currency={wsCurrency} /></TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
                 {ws.residual !== 0n && (
                   <p className="px-6 pt-3 text-sm text-review">
                     Selisih <Money value={ws.residual} currency={wsCurrency} />. Biasanya karena mutasi salah satu entitas belum diimpor.

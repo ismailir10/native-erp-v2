@@ -17,7 +17,8 @@
     "ai:smoke": "tsx scripts/ai-smoke.ts",
     "inspect:statement": "tsx scripts/inspect-statement.ts",
     "vercel-build": "bash scripts/vercel-build.sh",
-    "verify:real": "tsx scripts/verify-real.ts"
+    "verify:real": "tsx scripts/verify-real.ts",
+    "access": "tsx scripts/access.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
@@ -25,6 +26,7 @@
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "@tanstack/react-table": "^8.21.3",
+    "better-auth": "^1.7.6",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",

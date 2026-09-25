@@ -128,6 +128,7 @@ model Firm {
   rules     Rule[]
   aiUsage   AiUsage[]
   rates     ExchangeRate[]
+  users     AuthUser[]
 }
 
 model Client {
@@ -704,4 +705,69 @@ model EvidenceAiCache {
   payload Json
   createdAt DateTime @default(now())
   @@index([firmId, scope])
+}
+
+// Authentication data is separate from accounting Account and Journal models.
+model AuthUser {
+  id String @id @default(cuid())
+  name String
+  email String @unique
+  emailVerified Boolean @default(false)
+  image String?
+  firmId String
+  firm Firm @relation(fields: [firmId], references: [id])
+  disabled Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  sessions AuthSession[]
+  accounts AuthAccount[]
+  @@index([firmId])
+}
+
+model AuthSession {
+  id String @id @default(cuid())
+  expiresAt DateTime
+  token String @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId String
+  user AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+}
+
+model AuthAccount {
+  id String @id @default(cuid())
+  accountId String
+  providerId String
+  userId String
+  user AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken String?
+  refreshToken String?
+  idToken String?
+  accessTokenExpiresAt DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope String?
+  password String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([userId])
+}
+
+model AuthVerification {
+  id String @id @default(cuid())
+  identifier String
+  value String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([identifier])
+}
+
+model AuthRateLimit {
+  id String @id @default(cuid())
+  key String @unique
+  count Int
+  lastRequest BigInt
 }

@@ -7,7 +7,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export function RateList({ clientId, rates }: { clientId: string; rates: ExchangeRate[] }) {
-  if (!rates.length) return <p className="px-6 text-sm text-muted-foreground">Belum ada kurs.</p>;
+  if (!rates.length) return <p className="px-6 text-sm text-muted-foreground">Belum ada kurs tercatat untuk klien ini. Tambahkan kurs di formulir, atau impor file yang memuat kurs.</p>;
   const manual = rates.filter((r) => r.source === "MANUAL");
   const files = new Map<string, { file: string; rates: ExchangeRate[] }>();
   for (const rate of rates.filter((r) => r.source === "FILE")) {
@@ -65,7 +65,7 @@ function RateTable({ clientId, rates }: { clientId: string; rates: ExchangeRate[
               <div className="text-xs text-muted-foreground">{CURRENCIES[r.currency as CurrencyCode]?.name ?? r.currency}</div>
             </TableCell>
             <TableCell>{formatDate(r.date)}</TableCell>
-            <TableCell>{r.kind === "SPOT" ? "Spot" : "Rata-rata"}</TableCell>
+            <TableCell>{r.kind === "SPOT" ? "Penutup" : "Rata-rata"}</TableCell>
             <TableCell className="num text-right">{formatRateId(r.rate)}</TableCell>
             <TableCell className="hidden text-xs text-muted-foreground md:table-cell">{r.source === "MANUAL" ? "Manual" : `File${r.note ? ` · ${r.note}` : ""}`}</TableCell>
             <TableCell className="pr-6 text-right">

@@ -12,7 +12,7 @@ import { ParseError } from "@/lib/import/types";
 import { PdfPasswordError } from "@/lib/import/parsers/pdf";
 import { parseRupiah } from "@/lib/money";
 import { dateOnly } from "@/lib/format";
-import { liveUploadFile, seedDemo } from "@/lib/demo/seed";
+import { liveUploadFile } from "@/lib/demo/seed";
 import { addClient, OnboardingError, type NewClientInput } from "@/lib/onboarding";
 import { OpeningError, postOpening, type OpeningLineInput } from "@/lib/opening";
 import type { TaxTag } from "@/lib/generated/prisma/enums";
@@ -87,10 +87,15 @@ export async function reviewAction(input: { bankTxId: string; accountCode: strin
   }
 }
 
-export async function acceptSimilarAction(bankTxId: string): Promise<Result<{ count: number }>> {
+export async function acceptSimilarAction(bankTxId: string, scope: { entityIds: string[]; period: string }): Promise<Result<{ count: number }>> {
   try {
     const clientId = await assertTxInFirm(bankTxId);
-    const count = await acceptSimilar(prisma, bankTxId);
+    const client = await getClientForFirm(clientId);
+    const source = await prisma.bankTransaction.findUniqueOrThrow({ where: { id: bankTxId } });
+    if (!scope || !/^(19|20|21)\d{2}-(0[1-9]|1[0-2])$/.test(scope.period) || !scope.entityIds.length || scope.entityIds.some(id => !client.entities.some(e => e.id === id)) || !scope.entityIds.includes(source.entityId)) return { ok: false, error: "Cakupan review tidak valid. Muat ulang halaman." };
+    const through = new Date(Date.UTC(Number(scope.period.slice(0, 4)), Number(scope.period.slice(5)), 0));
+    if (source.date > through) return { ok: false, error: "Transaksi berada di luar periode review." };
+    const count = await acceptSimilar(prisma, bankTxId, { entityIds: scope.entityIds, through });
     revalidatePath(`/clients/${clientId}`, "layout");
     return { ok: true, count };
   } catch (e) {
@@ -209,15 +214,10 @@ export async function openingAction(input: { clientId: string; entityId: string;
   }
 }
 
+/** Demo reset is operator-only tooling; never truncate shared workspace data from a session. */
 export async function resetDemoAction(): Promise<Result> {
-  if (process.env.DEMO_MODE !== "true") return { ok: false, error: "Reset hanya tersedia di mode demo." };
-  try {
-    await seedDemo(prisma);
-    revalidatePath("/", "layout");
-    return { ok: true };
-  } catch (e) {
-    return fail(e);
-  }
+  await getCurrentFirm();
+  return { ok: false, error: "Reset data hanya tersedia melalui alat operator di lingkungan demo." };
 }
 
 /** Kurs page: typed-in rates are firm data (source MANUAL) and win over rates taken from files. */

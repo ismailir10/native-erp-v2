@@ -10,7 +10,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { MethodBadge } from "@/components/app/status";
 import { acceptSimilarAction, reviewAction } from "@/app/actions";
-import { formatRupiah } from "@/lib/money";
+import { formatMoney } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
 export type ReviewItem = {
@@ -20,6 +20,7 @@ export type ReviewItem = {
   bank: string;
   description: string;
   amount: string; // bigint as string (client boundary)
+  currency: string;
   method: string;
   confidence: number;
   reason: string;
@@ -39,7 +40,7 @@ const TAX = [
   { value: "PPH_25", label: "PPh 25" },
 ];
 
-export function ReviewQueue({ items, accounts }: { items: ReviewItem[]; accounts: AccountOption[] }) {
+export function ReviewQueue({ items, accounts, scope }: { items: ReviewItem[]; accounts: AccountOption[]; scope: { entityIds: string[]; period: string } }) {
   const router = useRouter();
   const [done, setDone] = useState<Set<string>>(new Set());
   const [active, setActive] = useState(0);
@@ -69,7 +70,7 @@ export function ReviewQueue({ items, accounts }: { items: ReviewItem[]; accounts
 
   const acceptSimilar = async (i: ReviewItem) => {
     setBusy(i.id);
-    const r = await acceptSimilarAction(i.id);
+    const r = await acceptSimilarAction(i.id, scope);
     setBusy(null);
     if (!r.ok) return void toast.error(r.error);
     toast.success(`${r.count} transaksi serupa diterima`);
@@ -93,7 +94,7 @@ export function ReviewQueue({ items, accounts }: { items: ReviewItem[]; accounts
       <div className="rounded-lg border bg-card px-6 py-12 text-center">
         <CheckCheck className="mx-auto size-8 text-pass" />
         <div className="mt-2 font-medium">Antrean kosong</div>
-        <p className="text-sm text-muted-foreground">Semua mutasi sudah terklasifikasi.</p>
+        <p className="text-sm text-muted-foreground">Tidak ada transaksi menunggu review dalam cakupan ini.</p>
       </div>
     );
   }
@@ -123,8 +124,9 @@ export function ReviewQueue({ items, accounts }: { items: ReviewItem[]; accounts
                   </div>
                   <div className="mt-1 break-words font-mono text-sm">{i.description}</div>
                 </div>
-                <div className={cn("num text-right text-lg font-semibold", amt > 0n ? "text-pass" : "text-foreground")}>
-                  {amt > 0n ? "+" : "−"}{formatRupiah(amt < 0n ? -amt : amt)}
+                <div className="text-right">
+                  <div className="text-xs text-muted-foreground">{amt > 0n ? "Uang masuk" : "Uang keluar"}</div>
+                  <div className="num text-lg font-semibold">{formatMoney(amt < 0n ? -amt : amt, i.currency)}</div>
                 </div>
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
@@ -168,7 +170,7 @@ export function ReviewQueue({ items, accounts }: { items: ReviewItem[]; accounts
                   {i.similar > 1 && !changed && (
                     <Button variant="outline" size="sm" disabled={pending} onClick={() => acceptSimilar(i)}>Terima {i.similar} serupa</Button>
                   )}
-                  <Button size="sm" disabled={pending} onClick={() => accept(i)} data-testid="accept">
+                  <Button size="sm" variant={idx === active ? "default" : "outline"} disabled={pending} onClick={() => accept(i)} data-testid="accept">
                     {busy === i.id ? <Loader2 className="animate-spin" /> : <Check />} {changed ? "Simpan" : "Terima"}
                   </Button>
                 </div>

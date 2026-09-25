@@ -82,7 +82,7 @@ export function ClosePanel(props: {
       <div className="space-y-4">
         <Card>
           <CardHeader>
-            <CardTitle>Checklist</CardTitle>
+            <CardTitle>Daftar periksa</CardTitle>
             <CardDescription>Diperiksa dan dicentang oleh akuntan</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">

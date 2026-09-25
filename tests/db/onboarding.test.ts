@@ -1,8 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { db, resetDb } from "../helpers";
 import { addClient, OnboardingError, validateNewClient, type NewClientInput } from "@/lib/onboarding";
 import { createFirm } from "@/lib/setup";
-import { getCurrentFirm } from "@/lib/tenant";
 
 const input = (): NewClientInput => ({
   name: "Grup Maju",
@@ -79,24 +78,5 @@ describe("Tambah klien", () => {
     const entities = await db.entity.findMany({ where: { clientId: client.id }, orderBy: { shortName: "asc" } });
     expect(entities.map((e) => [e.shortName, e.functionalCurrency])).toEqual([["HOLDCO", "SGD"], ["SKP", "IDR"]]);
     expect(await db.bankAccount.count()).toBe(0);
-  });
-});
-
-describe("first visit on a real-data deployment", () => {
-  beforeEach(resetDb);
-  afterEach(() => vi.unstubAllEnvs());
-
-  it("creates one empty firm, even under concurrent first requests", async () => {
-    vi.stubEnv("DEMO_MODE", "false");
-    const [a, b] = await Promise.all([getCurrentFirm(), getCurrentFirm()]);
-    expect(a.id).toBe(b.id);
-    expect(a.name).toBe("Kantor Anda");
-    expect(await db.firm.count()).toBe(1);
-  });
-
-  it("never creates a firm in demo mode", async () => {
-    vi.stubEnv("DEMO_MODE", "true");
-    await expect(getCurrentFirm()).rejects.toThrow(/demo:reset/);
-    expect(await db.firm.count()).toBe(0);
   });
 });

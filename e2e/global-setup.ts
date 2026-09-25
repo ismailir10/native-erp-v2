@@ -1,6 +1,6 @@
 import { execSync } from "node:child_process";
 
-/** Fresh demo data before the walk (same as the "Reset data demo" button). */
+/** Run the Prisma ESM fixture through the same tsx runtime as the seed. */
 export default function setup() {
-  execSync("npx tsx scripts/seed.ts", { stdio: "inherit", env: process.env });
+  execSync("npx tsx scripts/e2e-setup.ts", { stdio: "inherit", env: process.env });
 }

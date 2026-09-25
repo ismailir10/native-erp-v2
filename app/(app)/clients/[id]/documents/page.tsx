@@ -1,17 +1,13 @@
-import { notFound, redirect } from "next/navigation";
-import { evidenceEnabled, publicEvidenceDemoEnabled } from "@/lib/evidence/config";
+import { redirect } from "next/navigation";
 import { getClientForFirm } from "@/lib/tenant";
-import { prisma } from "@/lib/db";
-import { oauthConfigured } from "@/lib/evidence/drive";
-import { EvidenceHome } from "@/components/app/evidence-workspace";
-export default async function ClientDocumentsPage({ params }: { params: Promise<{ id: string }> }) {
-  if (publicEvidenceDemoEnabled()) redirect("/documents");
-  if (!evidenceEnabled()) notFound();
+import type { SearchParams } from "@/lib/scope";
+
+export default async function ClientDocumentsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { id } = await params;
   const client = await getClientForFirm(id);
-  const [intakes, connection] = await Promise.all([
-    prisma.evidenceIntake.findMany({ where: { firmId: client.firmId, clientId: id }, select: { id: true, name: true, status: true, clientId: true }, orderBy: { updatedAt: "desc" }, take: 100 }),
-    prisma.driveConnection.findUnique({ where: { firmId: client.firmId }, select: { id: true } }),
-  ]);
-  return <EvidenceHome clientId={id} intakes={intakes} clients={[{ id, name: client.name }]} connected={Boolean(connection)} googleConfigured={oauthConfigured()} />;
+  const input = await searchParams;
+  const entity = typeof input.entity === "string" && client.entities.some(e => e.id === input.entity) ? input.entity : undefined;
+  const query = new URLSearchParams({ scope: entity ? `entity:${entity}` : `client:${id}` });
+  if (typeof input.period === "string") query.set("period", input.period);
+  redirect(`/documents?${query}`);
 }
