@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { loadClientPage } from "@/lib/client-page";
 import type { SearchParams } from "@/lib/scope";
 import { formatDate, toIsoDate } from "@/lib/format";
-import { formatRupiah } from "@/lib/money";
+import { Money } from "@/components/app/money";
 import { PageHeader } from "@/components/app/page-header";
 import { JournalForm } from "@/components/app/journal-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -43,10 +43,10 @@ export default async function NewJournalPage({ params, searchParams }: { params:
                   <div className="truncate">{e.memo}</div>
                   <div className="text-xs text-muted-foreground">{formatDate(e.date)} · {e.entity.shortName}</div>
                 </div>
-                <span className="num shrink-0">{formatRupiah(e.lines.reduce((s, l) => s + l.debit, 0n), { bare: true })}</span>
+                <Money className="shrink-0" value={e.lines.reduce((s, l) => s + l.debit, 0n)} currency={e.entity.functionalCurrency} />
               </div>
             ))}
-            {recent.length === 0 && <p className="text-muted-foreground">Belum ada.</p>}
+            {recent.length === 0 && <p className="text-muted-foreground">Belum ada jurnal penyesuaian untuk klien ini.</p>}
           </CardContent>
         </Card>
       </div>

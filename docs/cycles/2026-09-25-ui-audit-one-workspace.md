@@ -36,7 +36,7 @@ Decisions agreed with the user on 2026-09-25:
 ## Tasks
 - [x] T1 One workspace (code + docs)
 - [x] T2 Navigation and scope
-- [ ] T3 Component consistency
+- [x] T3 Component consistency
 - [ ] T4 Don't Make Me Think pass
 - [ ] T5 Visual pass and end-of-cycle gates
 - [ ] T6 Real Chickin + GLM, local
@@ -64,6 +64,17 @@ Screenshots are in [docs/reviews/2026-09-25-ui-audit](../reviews/2026-09-25-ui-a
 ## Implementation
 - T1: Deleted the unused public demo component and its two synthetic answer helpers; kept the evidence on/off test as `evidence-config.test.ts`. Dokumen leaves the sidebar when documents are switched off instead of opening a 404. ADR 0008 records production as the one real workspace; README, real-data, evidence and investor docs follow it.
 - T2: One scope control everywhere, in the page header: compact client/company and period Selects (Indonesian month names, last 24 months) replace the card with a native month input; Review moves its picker into the header and is titled "Review transaksi". Sidebar: unique icons, collapsibles instead of raw `<details>` (client list open when no client is selected), "Aturan klasifikasi" instead of "Aturan & AI", a Plus on Tambah klien. Login and sidebar share `BrandMark`.
+- T3:
+  - Six raw tables (FS statement, Gabungan worksheet, revaluation, mapping, journal and opening forms) now use `components/ui/table`. FS account names are visibly underlined links.
+  - Dokumen: its raw selects become a shared `SimpleSelect` (shadcn Select), and its status boxes become `Alert`.
+  - Labels become `Label`, and the trial-balance view switch becomes `Tabs`.
+  - Review shows "Uang masuk/keluar" with the amount in the bank account's currency, instead of a green +/− Rupiah. Recent adjusting journals use `Money` with the entity currency.
+  - Dates are Indonesian, and the source page drops the hash and gets outline back buttons.
+  - Beranda/Laporan finance cards: amounts sit under their labels, and "Dari buku besar" is stated once in the description instead of as a badge per card.
+  - Client summary control rows wrap instead of truncating.
+
+## Follow-ups found
+- **Jurnal Penyesuaian and Saldo Awal parse amounts as whole Rupiah for every entity** (`parseRupiah` in `adjustmentAction`, `journal-form.tsx`, `opening-form.tsx`). For a non-IDR entity, typing `100` posts 100 minor units (S$1.00). This is an accounting change (currency-aware parsing plus tests), so it is out of scope for this UI cycle. It needs its own cycle before non-IDR adjustments are used on real data.
 
 ## Verification
 

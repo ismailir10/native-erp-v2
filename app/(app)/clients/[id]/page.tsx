@@ -17,6 +17,7 @@ import { Money } from "@/components/app/money";
 import { AutomationChart, CashChart, RevenueExpenseChart } from "@/components/app/charts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ArrowRight } from "lucide-react";
 
 export default async function ClientOverview({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, period, scope, periodOptions, entityOptions, base, scopeLabel, currency } = await loadClientPage(params, searchParams);
@@ -144,17 +145,17 @@ export default async function ClientOverview({ params, searchParams }: { params:
           <CardHeader>
             <CardTitle>Kontrol {formatPeriod(period.year, period.month)}</CardTitle>
             <CardDescription>
-              <Link className="text-primary hover:underline" href={withParams(`${base}/close`, { period: period.key })}>Buka Tutup Buku →</Link>
+              <Link className="inline-flex items-center gap-1 text-primary hover:underline" href={withParams(`${base}/close`, { period: period.key })}>Buka Tutup Buku <ArrowRight className="size-3.5" /></Link>
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             {controls.filter((c) => c.status !== "PASS").slice(0, 5).map((c) => (
               <div key={c.key} className="flex items-start justify-between gap-2 text-sm">
                 <div className="min-w-0">
-                  <div className="truncate font-medium">{c.title}</div>
-                  <div className="truncate text-xs text-muted-foreground">{c.scope} · {c.detail}</div>
+                  <div className="break-words font-medium">{c.title}</div>
+                  <div className="break-words text-xs text-muted-foreground">{c.scope} · {c.detail}</div>
                 </div>
-                <StatusPill status={c.status} />
+                <StatusPill status={c.status} className="shrink-0" />
               </div>
             ))}
             {counts.REVIEW + counts.FAIL === 0 && <div className="text-sm text-muted-foreground">Semua {controls.length} kontrol lolos.</div>}
@@ -201,7 +202,7 @@ export default async function ClientOverview({ params, searchParams }: { params:
         </Card>
       </div>
       <p className="text-xs text-muted-foreground">
-        Laporan disusun dari mutasi bank (basis kas) + jurnal penyesuaian. <Link className="text-primary hover:underline" href={withParams(`${base}/reports`, q)}>Lihat laporan keuangan →</Link>
+        Laporan disusun dari mutasi bank (basis kas) + jurnal penyesuaian. <Link className="text-primary hover:underline" href={withParams(`${base}/reports`, q)}>Lihat laporan keuangan <ArrowRight className="inline size-3" /></Link>
       </p>
     </div>
   );

@@ -11,6 +11,7 @@ import { AccountPicker } from "@/components/app/account-picker";
 import { MethodBadge } from "@/components/app/status";
 import { acceptMappingsAction, suggestMappingsAction } from "@/app/actions";
 import { cn } from "@/lib/utils";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export type MappingRow = {
   id: string;
@@ -128,16 +129,16 @@ export function MappingPanel({
 
       {visible.length > 0 && (
         <div className="overflow-x-auto rounded-lg border">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-xs text-muted-foreground">
-              <tr>
-                <th className="p-2 pl-3 text-left font-medium">Akun di file</th>
-                <th className="p-2 text-left font-medium">Akun Buku</th>
-                <th className="hidden p-2 text-left font-medium lg:table-cell">Dasar</th>
-                <th className="w-28 p-2 pr-3" />
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="p-2 pl-3 text-left font-medium">Akun di file</TableHead>
+                <TableHead className="p-2 text-left font-medium">Akun Buku</TableHead>
+                <TableHead className="hidden p-2 text-left font-medium lg:table-cell">Dasar</TableHead>
+                <TableHead className="w-28 p-2 pr-3" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {visible.map((r) => {
                 const value = choice[r.id] ?? r.mappedCode ?? r.suggestedCode ?? "";
                 const changed = value !== (r.mappedCode ?? "");
@@ -145,8 +146,8 @@ export function MappingPanel({
                 const creating = value === NEW;
                 const na = newAcc[r.id] ?? { fsLine: DEFAULT_FS[r.typeHint ?? ""] ?? fsLines[0]?.key ?? "", name: r.name };
                 return (
-                  <tr key={r.id} className="border-t align-top">
-                    <td className="p-2 pl-3">
+                  <TableRow key={r.id} className="border-t align-top">
+                    <TableCell className="whitespace-normal p-2 pl-3">
                       <div>
                         <span className="num text-muted-foreground">{r.code.replace(/^NC:/, "")}</span> {r.name}
                       </div>
@@ -154,8 +155,8 @@ export function MappingPanel({
                         {r.entity}
                         {r.previousNames.length > 0 && <> · dulu: {r.previousNames.map((p) => `“${p}”`).join(", ")}</>}
                       </div>
-                    </td>
-                    <td className="min-w-64 p-2">
+                    </TableCell>
+                    <TableCell className="whitespace-normal min-w-64 p-2">
                       <AccountPicker
                         value={value}
                         onChange={(v) => setChoice((c) => ({ ...c, [r.id]: v }))}
@@ -175,8 +176,8 @@ export function MappingPanel({
                         </div>
                       )}
                       {low && <div className="mt-1 text-xs text-review">Keyakinan AI rendah ({Math.round((r.confidence ?? 0) * 100)}%). Periksa sebelum menerima.</div>}
-                    </td>
-                    <td className="hidden p-2 lg:table-cell">
+                    </TableCell>
+                    <TableCell className="whitespace-normal hidden p-2 lg:table-cell">
                       {r.mappedCode ? (
                         <MethodBadge method={r.mappedBy ?? "MANUAL"} />
                       ) : r.suggestedBy ? (
@@ -188,8 +189,8 @@ export function MappingPanel({
                       ) : (
                         <span className="text-xs text-muted-foreground">Belum ada saran</span>
                       )}
-                    </td>
-                    <td className="p-2 pr-3 text-right">
+                    </TableCell>
+                    <TableCell className="whitespace-normal p-2 pr-3 text-right">
                       {r.mappedCode && !changed ? (
                         <span className="inline-flex items-center gap-1 text-xs text-pass"><Check className="size-3.5" /> Dipetakan</span>
                       ) : (
@@ -212,12 +213,12 @@ export function MappingPanel({
                           {r.mappedCode ? "Ubah" : "Terima"}
                         </Button>
                       )}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 );
               })}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
       {(showAll ? rows : unmapped).length > limit && (

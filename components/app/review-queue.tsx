@@ -10,7 +10,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { MethodBadge } from "@/components/app/status";
 import { acceptSimilarAction, reviewAction } from "@/app/actions";
-import { formatRupiah } from "@/lib/money";
+import { formatMoney } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
 export type ReviewItem = {
@@ -20,6 +20,7 @@ export type ReviewItem = {
   bank: string;
   description: string;
   amount: string; // bigint as string (client boundary)
+  currency: string;
   method: string;
   confidence: number;
   reason: string;
@@ -123,8 +124,9 @@ export function ReviewQueue({ items, accounts, scope }: { items: ReviewItem[]; a
                   </div>
                   <div className="mt-1 break-words font-mono text-sm">{i.description}</div>
                 </div>
-                <div className={cn("num text-right text-lg font-semibold", amt > 0n ? "text-pass" : "text-foreground")}>
-                  {amt > 0n ? "+" : "−"}{formatRupiah(amt < 0n ? -amt : amt)}
+                <div className="text-right">
+                  <div className="text-xs text-muted-foreground">{amt > 0n ? "Uang masuk" : "Uang keluar"}</div>
+                  <div className="num text-lg font-semibold">{formatMoney(amt < 0n ? -amt : amt, i.currency)}</div>
                 </div>
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">

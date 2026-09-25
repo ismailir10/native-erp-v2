@@ -27,6 +27,7 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
     bank: t.bankAccount.label,
     description: t.description,
     amount: t.amount.toString(),
+    currency: t.bankAccount.currency,
     method: t.method,
     confidence: t.confidence,
     reason: t.reason,

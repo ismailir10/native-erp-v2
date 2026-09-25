@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 /** Temporary invitation-only shared code; the server never exposes the configured value. */
 export function SharedCodeLoginForm() {
@@ -27,8 +28,8 @@ export function SharedCodeLoginForm() {
     finally { setBusy(false); }
   }
   return <form onSubmit={event => { event.preventDefault(); void submit(); }} className="space-y-5" aria-busy={busy}>
-    <div className="space-y-2"><label htmlFor="shared-email" className="text-sm font-medium">Email yang diundang</label><Input id="shared-email" type="email" autoComplete="username" required value={email} onChange={event => setEmail(event.target.value)} autoFocus /></div>
-    <div className="space-y-2"><label htmlFor="shared-code" className="text-sm font-medium">Kode akses 12 angka</label><Input id="shared-code" type="password" inputMode="numeric" autoComplete="current-password" pattern="[0-9]{12}" maxLength={12} required value={code} onChange={event => setCode(event.target.value.replace(/\D/g, "").slice(0, 12))} aria-describedby={error ? "shared-hint login-error" : "shared-hint"} /><p id="shared-hint" className="text-sm text-muted-foreground">Gunakan kode yang diberikan pengelola kantor. Tidak ada kode dikirim lewat email.</p></div>
+    <div className="space-y-2"><Label htmlFor="shared-email">Email yang diundang</Label><Input id="shared-email" type="email" autoComplete="username" required value={email} onChange={event => setEmail(event.target.value)} autoFocus /></div>
+    <div className="space-y-2"><Label htmlFor="shared-code">Kode akses 12 angka</Label><Input id="shared-code" type="password" inputMode="numeric" autoComplete="current-password" pattern="[0-9]{12}" maxLength={12} required value={code} onChange={event => setCode(event.target.value.replace(/\D/g, "").slice(0, 12))} aria-describedby={error ? "shared-hint login-error" : "shared-hint"} /><p id="shared-hint" className="text-sm text-muted-foreground">Gunakan kode yang diberikan pengelola kantor. Tidak ada kode dikirim lewat email.</p></div>
     {error && <p id="login-error" role="alert" className="text-sm text-fail">{error}</p>}
     <Button type="submit" disabled={busy} className="w-full">{busy ? "Memeriksa…" : "Masuk ke Buku"}</Button>
     <p className="text-sm text-muted-foreground">Belum punya akses? Hubungi pengelola kantor untuk undangan dan kode.</p>
@@ -85,12 +86,12 @@ export function LoginForm() {
 
   return <form onSubmit={(event) => { event.preventDefault(); void (step === "email" ? sendCode() : verify()); }} className="space-y-5" aria-busy={busy}>
     {step === "email" ? <div className="space-y-2">
-      <label htmlFor="email" className="text-sm font-medium">Email yang diundang</label>
+      <Label htmlFor="email">Email yang diundang</Label>
       <Input id="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} aria-describedby={error ? "access-hint login-error" : "access-hint"} autoFocus />
       <p id="access-hint" className="text-sm text-muted-foreground">Belum punya akses? Hubungi pengelola kantor Anda untuk undangan.</p>
     </div> : <div className="space-y-3">
       <p className="text-sm break-all">Kode untuk <strong>{email}</strong></p>
-      <div className="space-y-2"><label htmlFor="otp" className="text-sm font-medium">Kode masuk 6 angka</label>
+      <div className="space-y-2"><Label htmlFor="otp">Kode masuk 6 angka</Label>
         <Input ref={codeRef} id="otp" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} aria-describedby={error ? "code-hint login-error" : "code-hint"} className="num text-lg tracking-widest" />
         <p id="code-hint" className="text-sm text-muted-foreground">Berlaku 5 menit. Gunakan kode dari email terbaru.</p>
       </div>
