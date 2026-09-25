@@ -40,7 +40,7 @@ Decisions agreed with the user on 2026-09-25:
 - [x] T4 Don't Make Me Think pass
 - [x] T5 Visual pass and end-of-cycle gates
 - [x] T6 Real Chickin + GLM, local — handed to the user (2026-09-25: "proceed, i will test myself later")
-- [ ] T7 Ship to staging and smoke-test the deploy
+- [x] T7 Ship to staging (smoke test on the deploy is part of the user's own run)
 - [ ] T8 Production switch and promotion
 
 ## Audit findings (before)
@@ -101,3 +101,15 @@ Screenshots are in [docs/reviews/2026-09-25-ui-audit](../reviews/2026-09-25-ui-a
   - Shared-code login: `9 passed`.
 
 ## Ship Notes
+- **No migrations, dependencies or accounting changes.** `verify:books` ALL PASS; no report number moves.
+- **Code first, environment second.** Merging to `main` alone keeps production on its current synthetic database with `DEMO_MODE=true`, so it is safe on its own. Claude's Vercel access cannot read or change environment variables (403), so the owner switches the environment in Vercel → Settings → Environment Variables:
+  1. **Production:**
+     - Set `DATABASE_URL` and `DATABASE_URL_UNPOOLED` to the Neon `real-data` branch (the values the `staging` branch uses today).
+     - Set `DEMO_MODE=false`.
+     - Keep production's own `BETTER_AUTH_URL`/`BETTER_AUTH_SECRET`.
+  2. **Preview, git branch `staging`:** point the database at the Neon `preview` branch and set `DEMO_MODE=true`. Staging then becomes synthetic, and the two deployments never share a database.
+  3. **Redeploy** production, then staging.
+  4. **Access:** in production, invite the accountants with `npm run access -- invite …`, run against the production database. Users invited on the old real-data staging keep their records in `real-data`; check `npm run access -- list`.
+  5. **Google OAuth:** add the production callback URL to the Google client if Drive folders are used.
+- **Rollback:** restore the previous production `DATABASE_URL*`/`DEMO_MODE` values and redeploy. The code reverts with a normal PR.
+- **Known follow-up:** Jurnal Penyesuaian and Saldo Awal parse amounts for non-IDR entities as whole Rupiah (see Follow-ups found). Avoid non-IDR adjustments on real data until that is fixed.
