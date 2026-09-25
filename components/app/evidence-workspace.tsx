@@ -23,10 +23,11 @@ const factNames: Record<string, string> = { companyName: "Nama perusahaan", busi
 const statusNames: Record<string, string> = { READY: "Siap diperiksa", PENDING: "Menunggu proses", ERROR: "Perlu tindakan", MISSING: "Tidak tersedia", DIRECTORY: "Folder", SHORTCUT: "Pintasan", IGNORED: "Dilewati", DONE: "Pemeriksaan selesai", PARTIAL: "Pemeriksaan belum lengkap" };
 type Clients = { id: string; name: string }[];
 
-export function EvidenceHome({ intakes, clients, clientId, connected, googleConfigured, googleResult }: { intakes: { id: string; name: string; status: string; clientId: string | null }[]; clients: Clients; clientId?: string; connected: boolean; googleConfigured: boolean; googleResult?: "connected" | "error" }) {
+export function EvidenceHome({ intakes, clients, clientId, connected, googleConfigured, googleResult, actions, note }: { intakes: { id: string; name: string; status: string; clientId: string | null }[]; clients: Clients; clientId?: string; connected: boolean; googleConfigured: boolean; googleResult?: "connected" | "error"; actions?: React.ReactNode; note?: React.ReactNode }) {
   const router = useRouter(); const contextParams = useSearchParams(); const contextQuery = new URLSearchParams(); for (const key of ["scope", "period"]) { const value = contextParams.get(key); if (value) contextQuery.set(key, value); } const suffix = contextQuery.size ? `?${contextQuery}` : ""; const [busy, setBusy] = useState(false); const [passcode, setPasscode] = useState("");
   return <div className="space-y-6">
-    <PageHeader title="Dokumen" description="Rekening koran, buku besar, laporan, dan konteks perusahaan dalam satu tempat." />
+    <PageHeader title="Dokumen" description="Rekening koran, buku besar, laporan, dan konteks perusahaan dalam satu tempat." actions={actions} />
+    {note}
     <NextStep>Unggah file atau tempel tautan Drive. Periksa hasil sebelum mencatat ke buku.</NextStep>
     {googleResult === "connected" && connected && <p role="status" className="rounded-lg border border-pass/20 bg-pass-subtle p-3 text-sm text-pass">Google berhasil dihubungkan. Tambahkan dokumen lalu tempel tautan folder.</p>}
     {googleResult === "error" && <p role="alert" className="rounded-lg border border-review/30 bg-review-subtle p-3 text-sm">Google belum berhasil dihubungkan. Izin mungkin dibatalkan atau sesi kedaluwarsa. Masukkan kode admin lalu coba hubungkan kembali.</p>}

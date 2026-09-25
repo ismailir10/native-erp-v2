@@ -3,6 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { formatPeriod } from "@/lib/format";
 
 type Scope = {
   key: string;
@@ -31,6 +32,7 @@ export function WorkspaceScopeBar({ scope }: { scope: Scope }) {
       ...client.entities.map((entity) => ({ value: `entity:${entity.id}`, label: `Perusahaan · ${entity.name}` })),
     ]),
   ];
+  const periods = monthOptions(scope.period);
   function update(key: "scope" | "period", value: string) {
     const params = new URLSearchParams(searchParams.toString());
     params.set("scope", scope.key);
@@ -40,20 +42,35 @@ export function WorkspaceScopeBar({ scope }: { scope: Scope }) {
     router.push(`${pathname}?${params}`);
   }
   return (
-    <section aria-label="Konteks ruang kerja" className="grid min-w-0 gap-3 rounded-lg border bg-card p-4 sm:grid-cols-[minmax(0,1fr)_11rem]">
-      <div className="min-w-0 space-y-1.5">
-        <label id="workspace-scope-label" className="block text-xs font-medium text-muted-foreground">Klien atau perusahaan</label>
-        <Select items={options} value={scope.key} onValueChange={(value) => value && update("scope", value)}>
-          <SelectTrigger aria-labelledby="workspace-scope-label" className="w-full min-w-0 bg-card [&_[data-slot=select-value]]:truncate"><SelectValue /></SelectTrigger>
-          <SelectContent className="max-w-[calc(100vw-2rem)]">
-            {options.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="min-w-0 space-y-1.5">
-        <label htmlFor="workspace-period" className="block text-xs font-medium text-muted-foreground">Periode</label>
-        <input id="workspace-period" aria-label="Periode" type="month" value={scope.period} min="1900-01" max="2199-12" onChange={(event) => /^(19|20|21)\d{2}-(0[1-9]|1[0-2])$/.test(event.target.value) && update("period", event.target.value)} className="h-8 w-full min-w-0 rounded-lg border bg-card px-2.5 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50" />
-      </div>
-    </section>
+    <div role="group" aria-label="Konteks ruang kerja" className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto">
+      <Select items={options} value={scope.key} onValueChange={(value) => value && update("scope", value)}>
+        <SelectTrigger aria-label="Klien atau perusahaan" className="w-full min-w-0 bg-card sm:w-64 [&_[data-slot=select-value]]:truncate"><SelectValue /></SelectTrigger>
+        <SelectContent className="max-w-[calc(100vw-2rem)]">
+          {options.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+        </SelectContent>
+      </Select>
+      <Select items={periods} value={scope.period} onValueChange={(value) => value && update("period", value)}>
+        <SelectTrigger aria-label="Periode" className="w-full min-w-40 bg-card sm:w-auto"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          {periods.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+        </SelectContent>
+      </Select>
+    </div>
   );
+}
+
+/** Last 24 months up to this month, always including the selected period. */
+function monthOptions(selected: string) {
+  const now = new Date();
+  const current = now.getFullYear() * 12 + now.getMonth();
+  const [year, month] = selected.split("-").map(Number);
+  const chosen = year * 12 + month - 1;
+  const last = Math.max(current, chosen);
+  const first = Math.min(last - 23, chosen);
+  const out: { value: string; label: string }[] = [];
+  for (let index = last; index >= first; index--) {
+    const y = Math.floor(index / 12), m = (index % 12) + 1;
+    out.push({ value: `${y}-${String(m).padStart(2, "0")}`, label: formatPeriod(y, m) });
+  }
+  return out;
 }
