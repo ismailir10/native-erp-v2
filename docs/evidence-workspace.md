@@ -33,7 +33,7 @@ Google's restricted-scope verification/security requirements must be addressed b
 AI calls reserve a conservative upper bound under a firm lock before contacting the provider, then settle actual usage. Interrupted/unknown-billing calls keep their reservation to avoid overspend. Monthly configuration remains `AI_MONTHLY_TOKEN_BUDGET`; evidence limits are 20,000 tokens/intake and 12,000/question. Exhaustion leaves source work intact for manual review. No automatic paid retry loops.
 
 ## Verification and rollback
-Run normal repo gates, then the evidence E2E against a disposable local database with `EVIDENCE_ENABLED=true DEMO_MODE=false AI_API_KEY='' AI_MODEL=''`. Tests upload invented companies/figures, never client files. Real data stays local or protected `real-data` preview; do not copy it into fixtures or PR screenshots.
+Run normal repo gates, then the evidence E2E against a disposable local database with `EVIDENCE_ENABLED=true DEMO_MODE=false AI_API_KEY='' AI_MODEL=''`. Tests upload invented companies/figures, never client files. Real data stays local or protected `staging` preview; do not copy it into fixtures or PR screenshots.
 
 Rollback: turn off `EVIDENCE_ENABLED`, then revert application changes if needed. Keep additive evidence tables and source snapshots for audit; existing bookkeeping does not depend on them. Preserve `SETTINGS_SECRET` while retained connection tokens exist.
 

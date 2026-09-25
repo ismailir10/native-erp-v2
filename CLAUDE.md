@@ -32,7 +32,7 @@ Next.js here is **16.x** — APIs differ from older training data. When unsure, 
 |---|---|---|
 | `/spec` | [`.claude/skills/spec`](.claude/skills/spec/SKILL.md) | `docs/cycles/YYYY-MM-DD-<slug>.md` with Context / Spec / Tasks. **Stop for approval.** |
 | `/build` | [`.claude/skills/build`](.claude/skills/build/SKILL.md) | One commit per task, gates between tasks, cycle doc updated as you go |
-| `/ship` | [`.claude/skills/ship`](.claude/skills/ship/SKILL.md) | Push branch, draft PR to `main`, CI green, Ship Notes filled |
+| `/ship` | [`.claude/skills/ship`](.claude/skills/ship/SKILL.md) | Push branch, draft PR to `staging`, CI green, Ship Notes filled |
 
 **You drive the loop, not the user.** The user says what they want; you classify it:
 
@@ -100,13 +100,13 @@ docs/{cycles,adrs,demo}/   history, decisions, demo script
 - `.env` from `.env.example`. `DEMO_MODE=true` enables the seeded firm + Reset button.
 - AI: `AI_BASE_URL` (env-only, default OpenCode Zen); key + model from **Pengaturan** (encrypted, `SETTINGS_SECRET`, guarded by
   `ADMIN_PASSCODE`), else `AI_API_KEY` / `AI_MODEL`. No key = rules-only mode, fully working.
-- Real client files: only locally or on the `real-data` preview. Read [docs/real-data.md](docs/real-data.md) first.
+- Real client files: only locally or on the protected `staging` preview. Read [docs/real-data.md](docs/real-data.md) first.
   **Credit is limited** — tests and seed never call a real model (MockProvider + cache). `npm run ai:smoke` makes one real call.
 - Auth is **out of scope** in the MVP: `lib/tenant.ts#getCurrentFirm()` is the seam. Every query is already firm-scoped.
 
 ## 7. Deliberately not copied from annisaa-erp-v3 (and why)
 
-Session-role files, worktree scripts, git-hook suite, staging→main promotion, doc-count audits.
+Session-role files, worktree scripts, git-hook suite, doc-count audits.
 Greenfield + one developer + CI as the enforcement boundary doesn't need them yet. Add one only
 when a real incident shows the need, and record it as an ADR.
 
@@ -115,4 +115,5 @@ when a real incident shows the need, and record it as an ADR.
 - Conventional subjects: `feat(scope): …`, `fix(scope): …`, `docs: …`, `test: …`. One task = one commit.
 - Body references the cycle doc: `Cycle: docs/cycles/<file>.md`.
 - Never commit `.env`, real client statements, or anything under `data/private/` (gitignored). Demo data is synthetic only.
-- PRs are drafts to `main`, body follows `.github/pull_request_template.md`.
+- PRs are drafts to `staging`, body follows `.github/pull_request_template.md`.
+- Branch lifecycle and production promotion: follow [README → Branch workflow](README.md#branch-workflow) and the ship skill. Start new work from staging.
