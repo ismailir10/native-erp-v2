@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { getClientForFirm } from "@/lib/tenant";
 import { openingContext } from "@/lib/opening";
 import Link from "next/link";
-import { formatDate, formatRupiah, toIsoDate } from "@/lib/format";
+import { formatDate, toIsoDate } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { NextStep, PageHeader } from "@/components/app/page-header";
@@ -72,8 +72,9 @@ export default async function OpeningPage({ params }: { params: Promise<{ id: st
               <OpeningForm
                 clientId={client.id}
                 entityId={c.entity.id}
+                currency={currencyOf(c.entity.id)}
                 suggestedDate={toIsoDate(c.suggestedDate)}
-                banks={c.banks.map((b) => ({ accountCode: b.accountCode, label: b.label, prefill: b.statementOpening === null ? "" : formatRupiah(b.statementOpening, { bare: true }), source: b.source }))}
+                banks={c.banks.map((b) => ({ accountCode: b.accountCode, label: b.label, prefill: b.statementOpening === null ? "" : formatMoney(b.statementOpening, currencyOf(c.entity.id), { bare: true }), source: b.source }))}
                 accounts={accounts.map((a) => ({ code: a.code, name: a.name }))}
               />
               </div>

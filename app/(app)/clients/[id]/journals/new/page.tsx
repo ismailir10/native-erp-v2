@@ -26,7 +26,7 @@ export default async function NewJournalPage({ params, searchParams }: { params:
             <JournalForm
               clientId={client.id}
               // Companies first: an adjusting entry almost always belongs to the PT/CV, not the owner.
-              entities={[...client.entities].sort((a, b) => Number(a.kind === "PERORANGAN") - Number(b.kind === "PERORANGAN")).map((e) => ({ id: e.id, name: e.name }))}
+              entities={[...client.entities].sort((a, b) => Number(a.kind === "PERORANGAN") - Number(b.kind === "PERORANGAN")).map((e) => ({ id: e.id, name: e.name, currency: e.functionalCurrency }))}
               accounts={accounts.map((a) => ({ code: a.code, name: a.name }))}
               defaultDate={toIsoDate(period.end)}
             />
