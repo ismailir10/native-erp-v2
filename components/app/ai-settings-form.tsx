@@ -130,7 +130,7 @@ export function AiSettingsForm({ status, canSave }: { status: Status; canSave: b
           <Field>
             <FieldLabel htmlFor="ai-passcode">Kode admin</FieldLabel>
             <Input id="ai-passcode" type="password" autoComplete="off" value={passcode} onChange={(e) => setPasscode(e.target.value)} disabled={!canSave} />
-            <FieldDescription>Nilai ADMIN_PASSCODE di server. Wajib untuk menyimpan atau menghapus kunci.</FieldDescription>
+            <FieldDescription>Kode admin dari pengelola aplikasi. Wajib untuk menyimpan atau menghapus kunci.</FieldDescription>
           </Field>
         </div>
       </CardContent>

@@ -35,7 +35,7 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
       ) : missing ? (
         <NextStep href={`${base}/import`} cta="Impor mutasi">{missing.title.replace("Rekonsiliasi", "Mutasi")} belum diimpor. Beberapa kontrol baru bisa lolos setelah mutasinya masuk.</NextStep>
       ) : open ? (
-        <NextStep href={`${base}/review`} cta="Mulai review">{open.detail}.</NextStep>
+        <NextStep href={`${base}/review`} cta="Review transaksi">{open.detail}.</NextStep>
       ) : r.unacked.length ? (
         <NextStep>Cek kontrol yang ditandai “Perlu dicek”, lalu beri catatan kenapa wajar.</NextStep>
       ) : r.missing.length ? (

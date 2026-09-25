@@ -17,13 +17,15 @@ export default async function SettingsPage() {
       <PageHeader title="Pengaturan" description="Berlaku untuk semua klien di kantor ini." />
       {missing.length > 0 ? (
         <NextStep>
-          Tambahkan {missing.join(" dan ")} di Vercel → Settings → Environment Variables, lalu deploy ulang. Sampai itu, pengaturan hanya bisa dilihat.
+          Pengaturan belum bisa diubah karena kunci keamanan server belum disiapkan. Hubungi pengelola aplikasi.
         </NextStep>
       ) : cfg.keyError ? (
         <NextStep>{cfg.keyError}</NextStep>
       ) : !live ? (
-        <NextStep>Tempel kunci API OpenCode Zen dan pilih model untuk menyalakan usulan AI.</NextStep>
-      ) : null}
+        <NextStep>Tempel kunci API dan pilih model untuk menyalakan usulan AI. Tanpa kunci, Buku tetap bekerja dengan aturan.</NextStep>
+      ) : (
+        <NextStep tone="done">Usulan AI aktif. Semua usulan tetap masuk Review transaksi sebelum dicatat.</NextStep>
+      )}
       <AiSettingsForm
         status={{
           live,

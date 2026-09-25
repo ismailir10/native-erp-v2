@@ -3,7 +3,7 @@ import { loadClientPage } from "@/lib/client-page";
 import type { SearchParams } from "@/lib/scope";
 import { formatDate } from "@/lib/format";
 import { liveUploadFile } from "@/lib/demo/seed";
-import { PageHeader } from "@/components/app/page-header";
+import { NextStep, PageHeader } from "@/components/app/page-header";
 import { ImportForm } from "@/components/app/import-form";
 import { StatusPill } from "@/components/app/status";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -91,6 +91,7 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
         title={hasBanks ? "Impor Mutasi" : "Impor Buku Besar"}
         description={`${client.name} · ${hasBanks ? "rekening koran, buku besar atau neraca" : "buku besar atau neraca dari sistem lama"}; setiap angka tetap bisa ditelusuri ke baris file aslinya`}
       />
+      <NextStep>{hasBanks ? "Pilih rekening, unggah rekening koran, lalu periksa hasilnya di Review transaksi." : "Unggah buku besar atau neraca, periksa file, petakan akun, lalu catat."}</NextStep>
       {!hasBanks ? (
         ledger
       ) : (

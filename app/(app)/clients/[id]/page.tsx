@@ -70,7 +70,7 @@ export default async function ClientOverview({ params, searchParams }: { params:
           Mutasi {missing.map((m) => m.title.replace("Rekonsiliasi ", "")).join(", ")} untuk {formatPeriod(period.year, period.month)} belum diimpor.
         </NextStep>
       ) : openReview ? (
-        <NextStep href={`${base}/review`} cta="Mulai review">
+        <NextStep href={`${base}/review`} cta="Review transaksi">
           {openReview} transaksi perlu dicek. Semuanya sudah punya usulan akun.
         </NextStep>
       ) : (

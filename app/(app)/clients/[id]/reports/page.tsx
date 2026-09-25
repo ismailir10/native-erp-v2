@@ -3,15 +3,13 @@ import { loadClientPage } from "@/lib/client-page";
 import { type SearchParams, withParams } from "@/lib/scope";
 import { balanceSheet, combinedWorksheet, incomeStatement } from "@/lib/reports/ledger";
 import { formatPeriod, monthName } from "@/lib/format";
-import { PageHeader } from "@/components/app/page-header";
+import { NextStep, PageHeader } from "@/components/app/page-header";
 import { ScopeBar } from "@/components/app/scope-bar";
 import { FsTable } from "@/components/app/fs-table";
 import { Money } from "@/components/app/money";
 import { StatusPill } from "@/components/app/status";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Info } from "lucide-react";
 import { currencyNote, FxMissing, withFx } from "@/components/app/fx-missing";
 import { FxMissingError } from "@/lib/reports/fx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -31,19 +29,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
   const header = (
     <PageHeader
       title="Laporan Keuangan"
-      description={
-        <span className="inline-flex items-center gap-1">
-          {scopeLabel} · basis kas + penyesuaian{note && ` · ${note}`}
-          {scope.mode === "combined" && (
-            <Tooltip>
-              <TooltipTrigger render={<button type="button" aria-label="Tentang gabungan" className="text-muted-foreground hover:text-foreground" />}>
-                <Info className="size-3.5" />
-              </TooltipTrigger>
-              <TooltipContent className="max-w-xs">{combinedNote}</TooltipContent>
-            </Tooltip>
-          )}
-        </span>
-      }
+      description={`${scopeLabel} · basis kas + penyesuaian${note ? ` · ${note}` : ""}`}
       actions={<ScopeBar entities={entityOptions} periods={periodOptions} entity={scope.value} period={period.key} />}
     />
   );
@@ -75,6 +61,8 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
   return (
     <div className="space-y-6">
       {header}
+      <NextStep>Pilih nama akun untuk menelusuri buku besar sampai baris sumbernya.</NextStep>
+      {scope.mode === "combined" && <p className="text-sm text-muted-foreground">{combinedNote}</p>}
       <Tabs defaultValue={tab}>
         <TabsList>
           <TabsTrigger value="pl">Laba Rugi</TabsTrigger>

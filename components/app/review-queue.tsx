@@ -170,7 +170,7 @@ export function ReviewQueue({ items, accounts, scope }: { items: ReviewItem[]; a
                   {i.similar > 1 && !changed && (
                     <Button variant="outline" size="sm" disabled={pending} onClick={() => acceptSimilar(i)}>Terima {i.similar} serupa</Button>
                   )}
-                  <Button size="sm" disabled={pending} onClick={() => accept(i)} data-testid="accept">
+                  <Button size="sm" variant={idx === active ? "default" : "outline"} disabled={pending} onClick={() => accept(i)} data-testid="accept">
                     {busy === i.id ? <Loader2 className="animate-spin" /> : <Check />} {changed ? "Simpan" : "Terima"}
                   </Button>
                 </div>

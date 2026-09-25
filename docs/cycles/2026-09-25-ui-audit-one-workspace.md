@@ -37,7 +37,7 @@ Decisions agreed with the user on 2026-09-25:
 - [x] T1 One workspace (code + docs)
 - [x] T2 Navigation and scope
 - [x] T3 Component consistency
-- [ ] T4 Don't Make Me Think pass
+- [x] T4 Don't Make Me Think pass
 - [ ] T5 Visual pass and end-of-cycle gates
 - [ ] T6 Real Chickin + GLM, local
 - [ ] T7 Ship to staging and smoke-test the deploy
@@ -72,6 +72,13 @@ Screenshots are in [docs/reviews/2026-09-25-ui-audit](../reviews/2026-09-25-ui-a
   - Dates are Indonesian, and the source page drops the hash and gets outline back buttons.
   - Beranda/Laporan finance cards: amounts sit under their labels, and "Dari buku besar" is stated once in the description instead of as a badge per card.
   - Client summary control rows wrap instead of truncating.
+- T4:
+  - Every page states its next step: ledger, trial balance, client reports, import, client rules, adjusting journals, new client, and settings when AI is live.
+  - One primary button per view: only the active review card's Terima is primary, and Proses mutasi drops to outline once a result offers the next step.
+  - Links are visible without hover: account names on ledger, trial balance and FS are underlined, and ledger rows open from an underlined description.
+  - The Gabungan note moves from a hover tooltip to inline text.
+  - Accountant copy replaces developer terms: no Vercel/env vars, `ADMIN_PASSCODE`, OpenCode Zen, host, merchant, memory, cache, Spot, Checklist or Sheet. "Mulai review" becomes "Review transaksi", and "Perlu review" becomes "Perlu dicek".
+  - Empty ledger, trial balance and rate lists say what is missing and how to fill it.
 
 ## Follow-ups found
 - **Jurnal Penyesuaian and Saldo Awal parse amounts as whole Rupiah for every entity** (`parseRupiah` in `adjustmentAction`, `journal-form.tsx`, `opening-form.tsx`). For a non-IDR entity, typing `100` posts 100 minor units (S$1.00). This is an accounting change (currency-aware parsing plus tests), so it is out of scope for this UI cycle. It needs its own cycle before non-IDR adjustments are used on real data.

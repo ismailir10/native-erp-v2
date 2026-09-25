@@ -79,7 +79,7 @@ export function RateForm({ clientId, defaultCurrency, missing }: { clientId: str
           <Select value={kind} onValueChange={(v) => setKind(v as string)}>
             <SelectTrigger className="w-full" aria-label="Jenis kurs"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="SPOT">Spot (penutup)</SelectItem>
+              <SelectItem value="SPOT">Kurs penutup</SelectItem>
               <SelectItem value="AVERAGE">Rata-rata</SelectItem>
             </SelectContent>
           </Select>
