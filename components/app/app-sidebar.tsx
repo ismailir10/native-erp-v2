@@ -2,16 +2,19 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { BookOpen, Building2, ChevronRight, ClipboardCheck, FileSpreadsheet, Home, Inbox, Landmark, LogOut, NotebookPen, Scale, Settings2, SlidersHorizontal, Upload, Coins } from "lucide-react";
+import { useState } from "react";
+import { BookOpen, Building2, ChartColumn, ChevronDown, ClipboardCheck, Coins, FileSpreadsheet, FolderOpen, Home, Inbox, Landmark, ListChecks, ListFilter, LogOut, NotebookPen, Plus, Scale, Settings2, SlidersHorizontal, Upload } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { BrandMark } from "@/components/app/brand-mark";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { signOutAction } from "@/app/login/actions";
 
 type Client = { id: string; name: string; entities: { id: string }[] };
 const DESTINATIONS = [
   { href: "/", label: "Beranda", icon: Home },
-  { href: "/work", label: "Pekerjaan", icon: Inbox },
-  { href: "/documents", label: "Dokumen", icon: FileSpreadsheet },
-  { href: "/reports", label: "Laporan", icon: BookOpen },
+  { href: "/work", label: "Pekerjaan", icon: ListChecks },
+  { href: "/documents", label: "Dokumen", icon: FolderOpen },
+  { href: "/reports", label: "Laporan", icon: ChartColumn },
 ];
 const ACCOUNTING = [
   { href: "/review", label: "Review transaksi", icon: Inbox },
@@ -25,10 +28,10 @@ const SETUP = [
   { href: "/opening", label: "Saldo Awal", icon: Landmark },
   { href: "/journals/new", label: "Jurnal Penyesuaian", icon: NotebookPen },
   { href: "/rates", label: "Kurs", icon: Coins },
-  { href: "/settings", label: "Aturan & AI", icon: Settings2 },
+  { href: "/settings", label: "Aturan klasifikasi", icon: ListFilter },
 ];
 
-export function AppSidebar({ firmName, clients, userEmail }: { firmName: string; clients: Client[]; userEmail?: string }) {
+export function AppSidebar({ firmName, clients, userEmail, documents = true }: { firmName: string; clients: Client[]; userEmail?: string; documents?: boolean }) {
   const pathname = usePathname();
   const search = useSearchParams();
   const { setOpenMobile } = useSidebar();
@@ -52,17 +55,20 @@ export function AppSidebar({ firmName, clients, userEmail }: { firmName: string;
     params.set("entity", entity?.id || "combined");
     return `/clients/${client.id}${path}?${params}`;
   }
+  const inSetup = Boolean(selectedClient && SETUP.some((item) => pathname.startsWith(`/clients/${selectedClient.id}${item.href}`)));
+  // The section holding the current page stays open; elsewhere it toggles.
+  const [setupOpen, setSetupOpen] = useState(false);
   const closeMobile = () => setOpenMobile(false);
   function accountingLinks(items: typeof ACCOUNTING, client: Client) {
     return <SidebarMenuSub>{items.map((item) => <SidebarMenuSubItem key={item.href}><SidebarMenuSubButton isActive={pathname.startsWith(`/clients/${client.id}${item.href}`)} render={<Link href={clientHref(client, item.href)} onClick={closeMobile} />}><item.icon /><span>{item.label}</span></SidebarMenuSubButton></SidebarMenuSubItem>)}</SidebarMenuSub>;
   }
   return (
     <Sidebar>
-      <SidebarHeader className="border-b"><Link href={destinationHref("/")} onClick={closeMobile} className="flex items-center gap-2 px-2 py-1.5"><span className="flex size-7 items-center justify-center rounded-md bg-primary text-sm font-bold text-primary-foreground">B</span><span className="min-w-0"><span className="block text-sm font-semibold">Buku</span><span className="block truncate text-xs text-muted-foreground">{firmName}</span></span></Link></SidebarHeader>
+      <SidebarHeader className="border-b"><Link href={destinationHref("/")} onClick={closeMobile} className="flex items-center gap-2 px-2 py-1.5"><BrandMark /><span className="min-w-0"><span className="block text-sm font-semibold">Buku</span><span className="block truncate text-xs text-muted-foreground">{firmName}</span></span></Link></SidebarHeader>
       <SidebarContent>
-        <SidebarGroup><SidebarMenu>{DESTINATIONS.map((item) => <SidebarMenuItem key={item.href}><SidebarMenuButton isActive={pathname === item.href || (item.href !== "/" && pathname.startsWith(`${item.href}/`))} render={<Link href={destinationHref(item.href)} onClick={closeMobile} />}><item.icon /><span>{item.label}</span></SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu></SidebarGroup>
-        {selectedClient && <SidebarGroup><SidebarGroupLabel>Akuntansi · {selectedClient.name}</SidebarGroupLabel><SidebarMenu><SidebarMenuItem><SidebarMenuButton isActive={pathname === `/clients/${selectedClient.id}`} render={<Link href={clientHref(selectedClient)} onClick={closeMobile} />}><Building2 /><span>Ringkasan klien</span><ChevronRight className="ml-auto" /></SidebarMenuButton>{accountingLinks(ACCOUNTING, selectedClient)}</SidebarMenuItem><SidebarMenuItem><details open={SETUP.some((item) => pathname.startsWith(`/clients/${selectedClient.id}${item.href}`)) || undefined}><summary className="cursor-pointer px-2 py-2 text-xs font-medium text-muted-foreground">Impor & pengaturan klien</summary>{accountingLinks(SETUP, selectedClient)}</details></SidebarMenuItem></SidebarMenu></SidebarGroup>}
-        <SidebarGroup><details><summary className="cursor-pointer px-2 py-2 text-xs font-medium text-muted-foreground">Daftar klien ({clients.length})</summary><SidebarMenu>{clients.map((client) => <SidebarMenuItem key={client.id}><SidebarMenuButton render={<Link href={clientHref(client)} onClick={closeMobile} />}><Building2 /><span>{client.name}</span><ChevronRight className="ml-auto" /></SidebarMenuButton></SidebarMenuItem>)}<SidebarMenuItem><SidebarMenuButton render={<Link href="/clients/new" onClick={closeMobile} />}><span>Tambah klien</span></SidebarMenuButton></SidebarMenuItem></SidebarMenu></details></SidebarGroup>
+        <SidebarGroup><SidebarMenu>{DESTINATIONS.filter((item) => documents || item.href !== "/documents").map((item) => <SidebarMenuItem key={item.href}><SidebarMenuButton isActive={pathname === item.href || (item.href !== "/" && pathname.startsWith(`${item.href}/`))} render={<Link href={destinationHref(item.href)} onClick={closeMobile} />}><item.icon /><span>{item.label}</span></SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu></SidebarGroup>
+        {selectedClient && <SidebarGroup><SidebarGroupLabel>Akuntansi · {selectedClient.name}</SidebarGroupLabel><SidebarMenu><SidebarMenuItem><SidebarMenuButton isActive={pathname === `/clients/${selectedClient.id}`} render={<Link href={clientHref(selectedClient)} onClick={closeMobile} />}><Building2 /><span>Ringkasan klien</span></SidebarMenuButton>{accountingLinks(ACCOUNTING, selectedClient)}</SidebarMenuItem><Collapsible open={inSetup || setupOpen} onOpenChange={setSetupOpen} render={<SidebarMenuItem />}><CollapsibleTrigger render={<SidebarMenuButton className="group/trigger text-muted-foreground" />}><Settings2 /><span>Impor & pengaturan klien</span><ChevronDown className="ml-auto transition-transform group-data-[panel-open]/trigger:rotate-180" /></CollapsibleTrigger><CollapsibleContent>{accountingLinks(SETUP, selectedClient)}</CollapsibleContent></Collapsible></SidebarMenu></SidebarGroup>}
+        <SidebarGroup><Collapsible defaultOpen={!selectedClient}><CollapsibleTrigger render={<SidebarGroupLabel render={<button type="button" />} className="group/trigger w-full cursor-pointer hover:bg-sidebar-accent" />}><span>Daftar klien ({clients.length})</span><ChevronDown className="ml-auto transition-transform group-data-[panel-open]/trigger:rotate-180" /></CollapsibleTrigger><CollapsibleContent><SidebarMenu>{clients.map((client) => <SidebarMenuItem key={client.id}><SidebarMenuButton isActive={client.id === selectedClient?.id} render={<Link href={clientHref(client)} onClick={closeMobile} />}><Building2 /><span>{client.name}</span></SidebarMenuButton></SidebarMenuItem>)}<SidebarMenuItem><SidebarMenuButton render={<Link href="/clients/new" onClick={closeMobile} />}><Plus /><span>Tambah klien</span></SidebarMenuButton></SidebarMenuItem></SidebarMenu></CollapsibleContent></Collapsible></SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="border-t"><SidebarMenu><SidebarMenuItem><SidebarMenuButton isActive={pathname === "/settings"} render={<Link href={destinationHref("/settings")} onClick={closeMobile} />}><SlidersHorizontal /><span>Pengaturan</span></SidebarMenuButton></SidebarMenuItem><SidebarMenuItem><form action={signOutAction}><SidebarMenuButton type="submit"><LogOut /><span>Keluar</span></SidebarMenuButton></form></SidebarMenuItem></SidebarMenu>{userEmail && <p className="truncate px-2 text-xs text-muted-foreground">{userEmail}</p>}</SidebarFooter>
     </Sidebar>

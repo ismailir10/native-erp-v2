@@ -65,4 +65,4 @@ Automated end to end by `e2e/investor-demo.spec.ts` — if you change this scrip
 - Live AI instead of cache: set `AI_API_KEY`/`AI_MODEL`, run `DEMO_LIVE_AI=1 npm run demo:reset`; step 2 then makes exactly one real call.
 # Public document evidence demo
 
-Open **Dokumen** from the public sidebar. Click **Bandingkan pendapatan**: the invented Citra Ternak reports show a USD 250 change. Open the 2024 citation to highlight `Pendapatan: 1250.00` at its exact source line. **Bukti apa yang kurang?** explains that transaction details and reconciliation require bank statements and ledgers. This example uses no paid AI and writes no journals. Personal files and Google Drive are available through **Buka ruang kerja privat**, behind login.
+Open **Dokumen**, add a synthetic report, and ask a question about it: the answer cites the exact source line. Uploaded figures stay evidence; they never become journals on their own. Run this walk locally or on staging (synthetic); production holds real client work.

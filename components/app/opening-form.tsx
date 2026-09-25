@@ -10,6 +10,7 @@ import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { openingAction } from "@/app/actions";
 import { formatRupiah, parseRupiah } from "@/lib/money";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 type Line = { accountCode: string; debit: string; credit: string };
 type BankLine = { accountCode: string; label: string; prefill: string; source: string | null };
@@ -77,23 +78,23 @@ export function OpeningForm({
       </Field>
 
       <div className="overflow-x-auto rounded-lg border">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50 text-xs text-muted-foreground">
-            <tr>
-              <th className="p-2 pl-3 text-left font-medium">Akun</th>
-              <th className="p-2 text-right font-medium">Debit</th>
-              <th className="p-2 text-right font-medium">Kredit</th>
-              <th className="w-10" />
-            </tr>
-          </thead>
-          <tbody>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="p-2 pl-3 text-left font-medium">Akun</TableHead>
+              <TableHead className="p-2 text-right font-medium">Debit</TableHead>
+              <TableHead className="p-2 text-right font-medium">Kredit</TableHead>
+              <TableHead className="w-10" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {banks.map((b, i) => (
-              <tr key={b.accountCode} className="border-t">
-                <td className="p-2 pl-3">
+              <TableRow key={b.accountCode} className="border-t">
+                <TableCell className="p-2 pl-3">
                   <div className="font-medium">{b.accountCode} {b.label}</div>
                   <div className="text-xs text-muted-foreground">{b.source ?? "Belum ada rekening koran. Isi saldo dari rekening koran bulan sebelumnya."}</div>
-                </td>
-                <td className="p-2" colSpan={2}>
+                </TableCell>
+                <TableCell className="p-2" colSpan={2}>
                   <Input
                     aria-label={`Saldo ${b.label}`}
                     inputMode="numeric"
@@ -102,31 +103,31 @@ export function OpeningForm({
                     onChange={(e) => setBankBalances((vs) => vs.map((v, j) => (j === i ? e.target.value : v)))}
                     placeholder="Saldo di bank, mis. 125.000.000"
                   />
-                </td>
-                <td />
-              </tr>
+                </TableCell>
+                <TableCell />
+              </TableRow>
             ))}
             {others.map((l, i) => (
-              <tr key={i} className="border-t">
-                <td className="p-2 pl-3">
+              <TableRow key={i} className="border-t">
+                <TableCell className="p-2 pl-3">
                   <Select value={l.accountCode} onValueChange={(v) => setOther(i, { accountCode: v as string })}>
                     <SelectTrigger className="w-full min-w-64" aria-label={`Akun baris ${i + 1}`}><SelectValue placeholder="Pilih akun" /></SelectTrigger>
                     <SelectContent>{accounts.map((a) => <SelectItem key={a.code} value={a.code}>{a.code} {a.name}</SelectItem>)}</SelectContent>
                   </Select>
-                </td>
-                <td className="p-2"><Input aria-label="Debit" inputMode="numeric" className="num text-right" value={l.debit} onChange={(e) => setOther(i, { debit: e.target.value, credit: e.target.value ? "" : l.credit })} placeholder="0" /></td>
-                <td className="p-2"><Input aria-label="Kredit" inputMode="numeric" className="num text-right" value={l.credit} onChange={(e) => setOther(i, { credit: e.target.value, debit: e.target.value ? "" : l.debit })} placeholder="0" /></td>
-                <td className="p-2"><Button variant="ghost" size="icon-sm" aria-label="Hapus baris" onClick={() => setOthers((ls) => ls.filter((_, j) => j !== i))}><Trash2 /></Button></td>
-              </tr>
+                </TableCell>
+                <TableCell className="p-2"><Input aria-label="Debit" inputMode="numeric" className="num text-right" value={l.debit} onChange={(e) => setOther(i, { debit: e.target.value, credit: e.target.value ? "" : l.credit })} placeholder="0" /></TableCell>
+                <TableCell className="p-2"><Input aria-label="Kredit" inputMode="numeric" className="num text-right" value={l.credit} onChange={(e) => setOther(i, { credit: e.target.value, debit: e.target.value ? "" : l.debit })} placeholder="0" /></TableCell>
+                <TableCell className="p-2"><Button variant="ghost" size="icon-sm" aria-label="Hapus baris" onClick={() => setOthers((ls) => ls.filter((_, j) => j !== i))}><Trash2 /></Button></TableCell>
+              </TableRow>
             ))}
-            <tr className="border-t text-muted-foreground">
-              <td className="p-2 pl-3">3200 Saldo Laba <span className="text-xs">· penyeimbang otomatis</span></td>
-              <td className="num p-2 pr-5 text-right">{plug < 0n ? formatRupiah(-plug, { bare: true }) : "–"}</td>
-              <td className="num p-2 pr-5 text-right">{plug > 0n ? formatRupiah(plug, { bare: true }) : "–"}</td>
-              <td />
-            </tr>
-          </tbody>
-        </table>
+            <TableRow className="border-t text-muted-foreground">
+              <TableCell className="p-2 pl-3">3200 Saldo Laba <span className="text-xs">· penyeimbang otomatis</span></TableCell>
+              <TableCell className="num p-2 pr-5 text-right">{plug < 0n ? formatRupiah(-plug, { bare: true }) : "–"}</TableCell>
+              <TableCell className="num p-2 pr-5 text-right">{plug > 0n ? formatRupiah(plug, { bare: true }) : "–"}</TableCell>
+              <TableCell />
+            </TableRow>
+          </TableBody>
+        </Table>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">

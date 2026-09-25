@@ -94,9 +94,9 @@ export function LedgerImportForm({ clientId, entities }: { clientId: string; ent
 
         {candidates && (
           <Field>
-            <FieldLabel>Sheet</FieldLabel>
+            <FieldLabel>Lembar kerja</FieldLabel>
             <Select value={sheet} onValueChange={(v) => setSheet(v as string)}>
-              <SelectTrigger className="w-full" aria-label="Sheet"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-full" aria-label="Lembar kerja"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {candidates.map((c) => (
                   <SelectItem key={c.sheet} value={c.sheet}>

@@ -30,7 +30,9 @@ export async function resolveWorkspaceScope(db: Db, firmId: string, input: Works
   const latest = input.period ? null : await db.journalEntry.findFirst({ where: { firmId, entityId: { in: entityIds }, kind: { not: "OPENING" } }, orderBy: { date: "desc" }, select: { date: true } });
   const period = input.period ?? (latest?.date ?? new Date()).toISOString().slice(0, 7);
   const { year, month } = parseWorkspacePeriod(period);
-  return { key, kind, label: entity?.name ?? client?.name ?? "Semua klien", period, periodLabel: formatPeriod(year, month), year, month, clientIds, entityIds, clients, entities };
+  // The current month in WIB, computed once on the server so every render lists the same periods.
+  const today = new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 7);
+  return { key, kind, label: entity?.name ?? client?.name ?? "Semua klien", period, periodLabel: formatPeriod(year, month), today, year, month, clientIds, entityIds, clients, entities };
 }
 export type WorkspaceScope = Awaited<ReturnType<typeof resolveWorkspaceScope>>;
 
@@ -73,7 +75,7 @@ export async function getWorkspaceOverview(db: Db, firmId: string, input: Worksp
     ]);
     const readiness = closeReadiness(controls, period?.signoffs.map(s => s.key) ?? []);
     const state = period?.status === "LOCKED" ? "LOCKED" : !activity ? "EMPTY" : readiness.fails.length ? "FAIL" : readiness.ready ? "READY" : "REVIEW";
-    const labels = { LOCKED: "Buku ditutup", EMPTY: "Belum ada jurnal bulan ini", FAIL: "Kontrol gagal", READY: "Siap tutup buku", REVIEW: "Perlu diperiksa" };
+    const labels = { LOCKED: "Buku ditutup", EMPTY: "Belum ada jurnal bulan ini", FAIL: "Kontrol gagal", READY: "Siap tutup buku", REVIEW: "Perlu dicek" };
     return { id: c.id, name: c.name, state, label: labels[state], hasActivity: activity > 0, openReview: entities.filter(e => e.clientId === c.id).reduce((n, e) => n + e.openReview, 0), failCount: readiness.fails.length, reviewCount: readiness.unacked.length, missingSignoffs: readiness.missing.length, missingStatements: controls.filter(control => control.key.startsWith("bank:") && control.detail.includes("belum diimpor")).map(control => ({ title: control.title, detail: `${control.scope} · ${control.detail}`, href: workspaceHref(control.href ?? `/clients/${c.id}/import`, scope) })), closeHref: workspaceHref(`/clients/${c.id}/close`, scope) };
   }));
   const tasks: WorkspaceTask[] = entities.filter(e => e.openReview > 0).map(e => ({ id: `review:${e.id}`, title: `Periksa ${e.openReview} transaksi`, detail: `${e.name} · sampai ${scope.periodLabel}`, href: e.reviewHref, priority: "high", clientId: e.clientId, entityId: e.id }));

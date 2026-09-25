@@ -102,19 +102,19 @@ Next.js 16 (App Router, server actions) · TypeScript · Tailwind v4 · shadcn (
 
 ## Deploy (Vercel + Neon)
 1. **Connect Neon to the Vercel project**: Vercel → project → *Storage* → *Connect Database* → Neon → the existing project
-   (branch `production`), environments Production + Preview. This injects `DATABASE_URL` (pooled) and `DATABASE_URL_UNPOOLED`.
-2. **Env vars** (Settings → Environment Variables): `DEMO_MODE=true`, `SETTINGS_SECRET`, `ADMIN_PASSCODE`, and optionally `AI_BASE_URL`.
+   with the branch per environment from the table below. This injects `DATABASE_URL` (pooled) and `DATABASE_URL_UNPOOLED`.
+2. **Env vars** (Settings → Environment Variables): `DEMO_MODE` per the table below, `SETTINGS_SECRET`, `ADMIN_PASSCODE`, and optionally `AI_BASE_URL`.
    Also configure the login URL, signing secret, and the variables for the chosen login mode and `EVIDENCE_ENABLED=true` in each environment. Provision at least one invited user for that environment before routing users to the new version. The AI key + model are set in **Pengaturan**.
 3. **Connect Git** (Settings → Git): `ismailir10/native-erp-v2`; production branch `main`.
-4. **Access**: application login is required on both staging and main. Keep existing Vercel protection on staging as an additional boundary; investors must receive a production invitation. Do not copy staging users, source files, or secrets into production.
+4. **Access**: application login is required on both staging and main. Production is the one real workspace ([ADR 0008](docs/adrs/0008-one-workspace.md)); staging keeps Vercel protection as an additional boundary and holds synthetic data only. Do not copy staging users or secrets into production.
 5. Put Functions in the same region as the Neon database (Settings → Functions) — every page runs many queries.
    Neon `long-voice-58936160` is in `aws-ap-southeast-1`, so Functions run in `sin1`.
 
 | Vercel environment | Neon branch | `DEMO_MODE` | Who sees it |
 |---|---|---|---|
-| Production (`main`) | `production` | `true` | Invited investors, synthetic data |
+| Production (`main`) | `real-data` | `false` | Invited accountants. **The real workspace**, see [docs/real-data.md](docs/real-data.md) |
+| Preview, git branch `staging` | `preview` | `true` | Invited users + Vercel protection. Synthetic pre-production |
 | Preview (PR branches) | `preview` | `true` | Invited users + Vercel protection |
-| Preview, git branch `staging` | `real-data` | `false` | Invited users + Vercel protection. **Real client files only here**, see [docs/real-data.md](docs/real-data.md) |
 
 `vercel-build` (`scripts/vercel-build.sh`) then runs `prisma migrate deploy` on the unpooled URL, seeds the demo **only if the
 database is empty**, and builds. `npm run demo:reset` is destructive operator tooling: it removes all demo database data, including invitations and sessions; re-provision users afterward. The shared UI cannot trigger it. Neon Auth / Functions / buckets are not used.
@@ -143,9 +143,8 @@ GitHub automatically deletes the merged task branch; remove its local copy after
 Promote tested staging to production with a separate `staging` → `main` PR using a **merge commit** to preserve ancestry.
 Both permanent branches are protected from deletion and force-push, and require the CI `check` result.
 
-The protected staging deployment still uses the existing `native-erp-v2-git-real-data-ismails-projects-196d40d3.vercel.app`
-domain, now assigned to git branch `staging`, so saved links and Google OAuth callbacks continue working.
-The Neon database branch remains named `real-data`; git branch names and database names are independent.
+Staging keeps the `native-erp-v2-git-real-data-…vercel.app` domain for saved links but now holds synthetic data only.
+Production uses the Neon branch named `real-data`; git branch names and database names are independent.
 
 ## For contributors (humans and agents)
 Read [CLAUDE.md](CLAUDE.md) (= `AGENTS.md`): the spec → build → ship loop, gates, and which skill governs which folder.

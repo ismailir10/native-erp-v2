@@ -27,6 +27,7 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
     bank: t.bankAccount.label,
     description: t.description,
     amount: t.amount.toString(),
+    currency: t.bankAccount.currency,
     method: t.method,
     confidence: t.confidence,
     reason: t.reason,
@@ -38,9 +39,7 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Review" description={`${scopeLabel} · ${txs.length} transaksi sampai ${formatDate(period.end)}`} />
-      <ScopeBar entities={entityOptions} periods={periodOptions} entity={scope.value} period={period.key} />
-      <p className="text-sm text-muted-foreground">Termasuk transaksi periode sebelumnya yang masih perlu diperiksa.</p>
+      <PageHeader title="Review transaksi" description={`${scopeLabel} · ${txs.length} transaksi sampai ${formatDate(period.end)}, termasuk sisa periode sebelumnya`} actions={<ScopeBar entities={entityOptions} periods={periodOptions} entity={scope.value} period={period.key} />} />
       {txs.length > 0 ? (
         <NextStep>
           Cek usulan akun. Tekan <b>Enter</b> untuk menerima, atau ganti akunnya. Buku mengingat pilihan Anda untuk impor berikutnya.

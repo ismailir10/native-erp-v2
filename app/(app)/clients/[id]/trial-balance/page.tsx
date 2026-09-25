@@ -13,8 +13,8 @@ import { currencyNote, FxMissing, withFx } from "@/components/app/fx-missing";
 import { FxMissingError } from "@/lib/reports/fx";
 import { sourceTrialBalance } from "@/lib/reports/source";
 import { NextStep } from "@/components/app/page-header";
-import { cn } from "@/lib/utils";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default async function TrialBalancePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, period, scope, periodOptions, entityOptions, base, scopeLabel, currency, mixed, sp } = await loadClientPage(params, searchParams);
@@ -29,18 +29,15 @@ export default async function TrialBalancePage({ params, searchParams }: { param
         actions={<ScopeBar entities={entityOptions} periods={periodOptions} entity={scope.value} period={period.key} />}
       />
       {hasSources && (
-        <nav className="inline-flex rounded-lg border bg-card p-0.5 text-sm" aria-label="Tampilan akun">
-          {(["client", "source"] as const).map((v) => (
-            <Link
-              key={v}
-              href={withParams(`${base}/trial-balance`, { period: period.key, entity: scope.value, view: v === "source" ? "source" : undefined })}
-              className={cn("rounded-md px-3 py-1", view === v ? "bg-primary-subtle font-medium text-primary" : "text-muted-foreground hover:text-foreground")}
-              aria-current={view === v ? "page" : undefined}
-            >
-              {v === "client" ? "Bagan akun Buku" : "Akun sumber"}
-            </Link>
-          ))}
-        </nav>
+        <Tabs value={view}>
+          <TabsList aria-label="Tampilan akun">
+            {(["client", "source"] as const).map((v) => (
+              <TabsTrigger key={v} value={v} nativeButton={false} render={<Link href={withParams(`${base}/trial-balance`, { period: period.key, entity: scope.value, view: v === "source" ? "source" : undefined })} />}>
+                {v === "client" ? "Bagan akun Buku" : "Akun sumber"}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
       )}
     </>
   );
@@ -79,7 +76,7 @@ export default async function TrialBalancePage({ params, searchParams }: { param
                       {!r.isSource && r.code && <span className="ml-2 text-xs text-muted-foreground">(tanpa akun sumber)</span>}
                       {r.previousNames.length > 0 && <div className="text-xs text-muted-foreground">dulu: {r.previousNames.map((p) => `“${p}”`).join(", ")}</div>}
                       {r.clientAccount && (
-                        <Link className="block text-xs text-muted-foreground hover:text-primary" href={withParams(`${base}/ledger/${r.clientAccount.code}`, { period: period.key, entity: scope.value })}>
+                        <Link className="block text-xs text-muted-foreground underline decoration-border underline-offset-4 hover:text-primary hover:decoration-primary" href={withParams(`${base}/ledger/${r.clientAccount.code}`, { period: period.key, entity: scope.value })}>
                           → <span className="num">{r.clientAccount.code}</span> {r.clientAccount.name}
                         </Link>
                       )}
@@ -115,6 +112,7 @@ export default async function TrialBalancePage({ params, searchParams }: { param
   return (
     <div className="space-y-6">
       {header}
+      {tb.length === 0 ? <p className="text-sm text-muted-foreground">Belum ada saldo per akhir {formatPeriod(period.year, period.month)}. Impor rekening koran atau buku besar untuk mengisi neraca saldo.</p> : <NextStep>Debit dan kredit harus sama. Pilih nama akun untuk membuka buku besarnya.</NextStep>}
       <Card>
         <CardContent className="px-0">
           <Table>
@@ -131,8 +129,8 @@ export default async function TrialBalancePage({ params, searchParams }: { param
                 <TableRow key={r.account.id}>
                   <TableCell className="num pl-6 text-muted-foreground">{r.account.code}</TableCell>
                   <TableCell>
-                    <Link className="hover:text-primary" href={withParams(`${base}/ledger/${r.account.code}`, q)}>{r.account.name}</Link>
-                    {r.account.isSuspense && <StatusPill className="ml-2" status="REVIEW" label="Perlu review" />}
+                    <Link className="underline decoration-border underline-offset-4 hover:text-primary hover:decoration-primary" href={withParams(`${base}/ledger/${r.account.code}`, q)}>{r.account.name}</Link>
+                    {r.account.isSuspense && <StatusPill className="ml-2" status="REVIEW" label="Perlu dicek" />}
                   </TableCell>
                   <TableCell className="pr-0 text-right">{r.debit ? <Money value={r.debit} currency={currency} /> : null}</TableCell>
                   <TableCell className="pr-6 text-right">{r.credit ? <Money value={r.credit} currency={currency} /> : null}</TableCell>

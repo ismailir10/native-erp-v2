@@ -4,11 +4,11 @@ Real bank statements are client data (NDA, UU PDP). This page says where they ma
 file to a closed month.
 
 ## Rules
-1. **Never** upload real files to the public demo (https://native-erp-v2.vercel.app). Production is reserved for synthetic data, regardless of its login mode. Operator resets remove all data.
+1. There is **one workspace** ([ADR 0008](adrs/0008-one-workspace.md)). Real client work lives in production (https://native-erp-v2.vercel.app),
+   behind invitation-only login, on Neon branch `real-data` with `DEMO_MODE=false`. Staging is synthetic pre-production: never upload real files there.
 2. Real data lives in exactly two places:
    - **Local**: Postgres on your machine. Files go in `data/private/` (gitignored).
-   - **Private preview**: the Vercel Preview for git branch `staging`. It sits behind Vercel login, uses Neon branch `real-data`
-     and runs with `DEMO_MODE=false` (no demo firm, no reset button).
+   - **Production**: the workspace above. No demo firm and no reset. Never point `demo:reset` at its database.
 3. Never commit a statement, a screenshot of one, or `inspect:statement` output. Tests use synthetic fixtures (`tests/pdf-fixture.ts`).
 4. With an AI key set, *unrecognised* lines go to the AI gateway (OpenCode Zen): the merchant key, the first 80 characters
    of the description, and the client's name and business type. Lines matched by transfers, rules or memory are never sent.
@@ -87,11 +87,12 @@ Imports the files in `data/private/` into a fresh client and compares Buku with 
 | Where | How to open | Database |
 |---|---|---|
 | Local | `npm run dev` with `.env` → `postgresql://buku:buku@localhost:5432/buku` and `DEMO_MODE=false` | local `buku` |
-| Private preview | Vercel → project → Deployments → branch `staging` (log in to Vercel) | Neon `real-data` |
+| Production (real workspace) | https://native-erp-v2.vercel.app (invitation login) | Neon `real-data` |
+| Staging (synthetic pre-production) | Vercel → Deployments → branch `staging` (Vercel login + invitation login) | Neon `preview` |
 
 New work merges into `staging` first. Promote tested staging through a separate PR to `main` using a merge commit; do not push production into staging after every feature. See [Branch workflow](../README.md#branch-workflow).
 
-The existing `native-erp-v2-git-real-data-ismails-projects-196d40d3.vercel.app` domain is assigned to git branch `staging`, preserving Google OAuth callbacks and bookmarked source links. Neon still uses database branch `real-data`.
+The `native-erp-v2-git-real-data-…vercel.app` domain still points at git branch `staging`; it no longer holds client data. Google OAuth for Drive must list the production callback URL.
 
 Neon connection strings for every branch are in `.env.neon.local` (gitignored, not auto-loaded). Never point `.env`
 at Neon `production` or `real-data`, because `npm run demo:reset` truncates whatever `DATABASE_URL` points at.

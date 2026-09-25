@@ -21,9 +21,8 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Se
     prisma.evidenceIntake.findMany({ where: { firmId: firm.id, ...(scope.kind !== "all" ? { clientId: { in: scope.clientIds } } : {}), ...(scope.kind === "entity" ? { id: { in: current.map(d => d.intakeId) } } : {}) }, select: { id: true, name: true, status: true, clientId: true }, orderBy: { updatedAt: "desc" }, take: 100 }),
     prisma.driveConnection.findUnique({ where: { firmId: firm.id }, select: { id: true } }),
   ]);
-  return <div className="space-y-6">
-    <WorkspaceScopeBar scope={scope} />
-    <p className="text-sm text-muted-foreground">Kumpulan dokumen dapat memuat beberapa periode. Periode terpilih digunakan saat bertanya dan membuka laporan.{scope.kind === "entity" && <> Hanya kumpulan dengan perusahaan terkonfirmasi ditampilkan. <Link className="text-primary underline" href={workspaceHref("/documents", { key: `client:${scope.clientIds[0]}`, period: scope.period })}>Lihat dokumen grup yang belum dikonfirmasi</Link>.</>}</p>
-    <EvidenceHome googleResult={googleResult} intakes={intakes} clients={scope.clients.map(c => ({ id: c.id, name: c.name }))} clientId={scope.kind === "all" ? undefined : scope.clientIds[0]} connected={Boolean(connection)} googleConfigured={oauthConfigured()} />
-  </div>;
+  return <EvidenceHome
+    actions={<WorkspaceScopeBar scope={scope} />}
+    note={<p className="text-sm text-muted-foreground">Kumpulan dokumen dapat memuat beberapa periode. Periode terpilih digunakan saat bertanya dan membuka laporan.{scope.kind === "entity" && <> Hanya kumpulan dengan perusahaan terkonfirmasi ditampilkan. <Link className="text-primary underline" href={workspaceHref("/documents", { key: `client:${scope.clientIds[0]}`, period: scope.period })}>Lihat dokumen grup yang belum dikonfirmasi</Link>.</>}</p>}
+    googleResult={googleResult} intakes={intakes} clients={scope.clients.map(c => ({ id: c.id, name: c.name }))} clientId={scope.kind === "all" ? undefined : scope.clientIds[0]} connected={Boolean(connection)} googleConfigured={oauthConfigured()} />;
 }

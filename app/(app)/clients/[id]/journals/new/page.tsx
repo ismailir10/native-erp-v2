@@ -2,8 +2,8 @@ import { prisma } from "@/lib/db";
 import { loadClientPage } from "@/lib/client-page";
 import type { SearchParams } from "@/lib/scope";
 import { formatDate, toIsoDate } from "@/lib/format";
-import { formatRupiah } from "@/lib/money";
-import { PageHeader } from "@/components/app/page-header";
+import { Money } from "@/components/app/money";
+import { NextStep, PageHeader } from "@/components/app/page-header";
 import { JournalForm } from "@/components/app/journal-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -18,7 +18,8 @@ export default async function NewJournalPage({ params, searchParams }: { params:
   });
   return (
     <div className="space-y-6">
-      <PageHeader title="Jurnal Penyesuaian" description="Untuk yang tidak lewat bank: penyusutan, akrual, piutang. Harus seimbang sebelum bisa disimpan." />
+      <PageHeader title="Jurnal Penyesuaian" description="Untuk yang tidak lewat bank: penyusutan, akrual, piutang." />
+      <NextStep>Pilih perusahaan dan tanggal, isi baris sampai debit dan kredit seimbang, lalu simpan.</NextStep>
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardContent className="pt-6">
@@ -43,10 +44,10 @@ export default async function NewJournalPage({ params, searchParams }: { params:
                   <div className="truncate">{e.memo}</div>
                   <div className="text-xs text-muted-foreground">{formatDate(e.date)} · {e.entity.shortName}</div>
                 </div>
-                <span className="num shrink-0">{formatRupiah(e.lines.reduce((s, l) => s + l.debit, 0n), { bare: true })}</span>
+                <Money className="shrink-0" value={e.lines.reduce((s, l) => s + l.debit, 0n)} currency={e.entity.functionalCurrency} />
               </div>
             ))}
-            {recent.length === 0 && <p className="text-muted-foreground">Belum ada.</p>}
+            {recent.length === 0 && <p className="text-muted-foreground">Belum ada jurnal penyesuaian untuk klien ini.</p>}
           </CardContent>
         </Card>
       </div>

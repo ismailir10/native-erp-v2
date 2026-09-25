@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { StatusPill } from "@/components/app/status";
 import { adjustmentAction } from "@/app/actions";
 import { formatRupiah, parseRupiah } from "@/lib/money";
+import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 type Line = { accountCode: string; debit: string; credit: string };
 const safe = (s: string) => {
@@ -65,34 +66,34 @@ export function JournalForm({ clientId, entities, accounts, defaultDate }: { cli
         </Field>
       </div>
       <div className="overflow-x-auto rounded-lg border">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50 text-xs text-muted-foreground">
-            <tr><th className="p-2 pl-3 text-left font-medium">Akun</th><th className="p-2 text-right font-medium">Debit</th><th className="p-2 text-right font-medium">Kredit</th><th className="w-10" /></tr>
-          </thead>
-          <tbody>
+        <Table>
+          <TableHeader>
+            <TableRow><TableHead className="p-2 pl-3 text-left font-medium">Akun</TableHead><TableHead className="p-2 text-right font-medium">Debit</TableHead><TableHead className="p-2 text-right font-medium">Kredit</TableHead><TableHead className="w-10" /></TableRow>
+          </TableHeader>
+          <TableBody>
             {lines.map((l, i) => (
-              <tr key={i} className="border-t">
-                <td className="p-2 pl-3">
+              <TableRow key={i} className="border-t">
+                <TableCell className="p-2 pl-3">
                   <Select value={l.accountCode} onValueChange={(v) => setLine(i, { accountCode: v as string })}>
                     <SelectTrigger className="w-full min-w-64" aria-label={`Akun baris ${i + 1}`}><SelectValue placeholder="Pilih akun" /></SelectTrigger>
                     <SelectContent>{accounts.map((a) => <SelectItem key={a.code} value={a.code}>{a.code} {a.name}</SelectItem>)}</SelectContent>
                   </Select>
-                </td>
-                <td className="p-2"><Input inputMode="numeric" className="num text-right" value={l.debit} onChange={(e) => setLine(i, { debit: e.target.value, credit: e.target.value ? "" : l.credit })} placeholder="0" /></td>
-                <td className="p-2"><Input inputMode="numeric" className="num text-right" value={l.credit} onChange={(e) => setLine(i, { credit: e.target.value, debit: e.target.value ? "" : l.debit })} placeholder="0" /></td>
-                <td className="p-2">{lines.length > 2 && <Button variant="ghost" size="icon-sm" aria-label="Hapus baris" onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}><Trash2 /></Button>}</td>
-              </tr>
+                </TableCell>
+                <TableCell className="p-2"><Input inputMode="numeric" className="num text-right" value={l.debit} onChange={(e) => setLine(i, { debit: e.target.value, credit: e.target.value ? "" : l.credit })} placeholder="0" /></TableCell>
+                <TableCell className="p-2"><Input inputMode="numeric" className="num text-right" value={l.credit} onChange={(e) => setLine(i, { credit: e.target.value, debit: e.target.value ? "" : l.debit })} placeholder="0" /></TableCell>
+                <TableCell className="p-2">{lines.length > 2 && <Button variant="ghost" size="icon-sm" aria-label="Hapus baris" onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}><Trash2 /></Button>}</TableCell>
+              </TableRow>
             ))}
-          </tbody>
-          <tfoot className="border-t bg-muted/30">
-            <tr>
-              <td className="p-2 pl-3"><Button variant="ghost" size="sm" onClick={() => setLines((ls) => [...ls, { accountCode: "", debit: "", credit: "" }])}><Plus /> Tambah baris</Button></td>
-              <td className="num p-2 text-right font-semibold">{formatRupiah(dr, { bare: true })}</td>
-              <td className="num p-2 text-right font-semibold">{formatRupiah(cr, { bare: true })}</td>
-              <td />
-            </tr>
-          </tfoot>
-        </table>
+          </TableBody>
+          <TableFooter>
+            <TableRow>
+              <TableCell className="p-2 pl-3"><Button variant="ghost" size="sm" onClick={() => setLines((ls) => [...ls, { accountCode: "", debit: "", credit: "" }])}><Plus /> Tambah baris</Button></TableCell>
+              <TableCell className="num p-2 text-right font-semibold">{formatRupiah(dr, { bare: true })}</TableCell>
+              <TableCell className="num p-2 text-right font-semibold">{formatRupiah(cr, { bare: true })}</TableCell>
+              <TableCell />
+            </TableRow>
+          </TableFooter>
+        </Table>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <StatusPill status={balanced ? "PASS" : "REVIEW"} label={balanced ? "Seimbang" : dr === cr ? "Isi nominal" : `Selisih ${formatRupiah(dr - cr)}`} />

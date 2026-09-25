@@ -55,7 +55,8 @@ test("scope, period and answer context survive navigation at desktop and 390px",
   await page.getByRole("combobox", { name: "Klien atau perusahaan" }).click();
   await page.getByRole("option", { name: "Perusahaan · PT Ayam Nusantara Digital", exact: true }).click();
   await expect(page).toHaveURL(/scope=entity/);
-  await page.getByLabel("Periode", { exact: true }).fill("2026-07");
+  await page.getByRole("combobox", { name: "Periode" }).click();
+  await page.getByRole("option", { name: "Juli 2026", exact: true }).click();
   await expect(page).toHaveURL(/period=2026-07/);
   await expect(answer).toContainText("Semua klien · Agustus 2026");
   await page.getByRole("link", { name: "Dokumen", exact: true }).click();
@@ -70,6 +71,7 @@ test("scope, period and answer context survive navigation at desktop and 390px",
   await page.getByRole("button", { name: "Buka navigasi" }).click();
   await expect(page.getByRole("button", { name: "Keluar", exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
-  await page.getByLabel("Periode", { exact: true }).fill("2027-01");
+  await page.getByRole("combobox", { name: "Periode" }).click();
+  await page.getByRole("option", { name: "Januari 2026", exact: true }).click();
   await expect(page.getByText("Belum ada jurnal bulan ini.", { exact: false }).first()).toBeVisible();
 });
