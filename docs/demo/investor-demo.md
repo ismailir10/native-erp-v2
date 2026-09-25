@@ -2,8 +2,7 @@
 
 Automated end to end by `e2e/investor-demo.spec.ts` — if you change this script, change the test.
 
-**Before you start:** `npm run demo:reset` (or sidebar → *Reset data demo*). Browser at 1440px, logged-in state
-isn't needed (auth is out of scope). No internet or AI credit required; everything below runs offline.
+**Before you start:** seed an isolated demo database with `npm run demo:reset`, then provision an invited user through `npm run access`. Browser at 1440px; sign in with the email code. Manual login needs configured delivery; automated E2E captures a test code through the real auth flow without sending email. No paid AI is used.
 
 ---
 
@@ -12,8 +11,9 @@ isn't needed (auth is out of scope). No internet or AI credit required; everythi
 > days per client per month. Buku does it in minutes, and every number traces back to the bank line it came from."
 
 ### 1. Beranda — the firm's month-end at a glance (30 s)
-- Three clients, August 2026 close. *1/3 done, 6 transactions to review, **91% coded automatically** (up from 66% in month one).*
-- The banner already says what to do: **Grup Ayam Nusantara is waiting for one bank statement.** Click **Kerjakan**.
+- Four main destinations: Beranda, Pekerjaan, Dokumen, Laporan. Shared client/company and period selectors govern the work.
+- Ask **Apa yang menghambat tutup buku?** and inspect the cited close controls. Answers keep their original context when selectors change.
+- Open **Pekerjaan** and choose **Lengkapi 1 rekening koran** for Grup Ayam Nusantara. The held-back bank statement remains the next live step.
 
 > Talking point: *the product gets cheaper to run every month — memory and rules replace AI calls.*
 

@@ -2,21 +2,11 @@ import { expect, test, type Page } from "@playwright/test";
 
 /** The 5-minute investor walk (docs/demo/investor-demo.md), end to end. */
 
-test("public Dokumen demo answers from synthetic reports and opens exact citations", async ({ page }) => {
-  test.skip(process.env.DEMO_MODE === "false", "Public synthetic demonstration uses demo mode.");
-  await page.goto("/");
-  await page.getByRole("link", { name: "Dokumen", exact: true }).click();
+test("shared Dokumen workspace has the same protected controls in either environment", async ({ page }) => {
+  await page.goto("/documents");
   await expect(page.getByRole("heading", { name: "Dokumen", exact: true })).toBeVisible();
-  await expect(page.getByText("Demo publik · perusahaan dan angka rekaan")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Hubungkan Google" })).toHaveCount(0);
-  await expect(page.locator('input[type="file"]')).toHaveCount(0);
-  await page.getByRole("button", { name: "Bandingkan pendapatan", exact: true }).click();
-  const answer = page.getByRole("region", { name: "Jawaban dokumen contoh" });
-  await expect(answer).toContainText("US$ 250,00");
-  await answer.getByRole("link", { name: "Laporan keuangan 2024.txt · baris 5", exact: true }).click();
-  await expect(page.locator(':target')).toContainText("Pendapatan: 1250.00");
-  await page.getByRole("button", { name: "Bukti apa yang kurang?", exact: true }).click();
-  await expect(answer).toContainText("tidak dapat disimpulkan");
+  await expect(page.getByRole("button", { name: "Tambahkan dokumen", exact: true })).toBeVisible();
+  await expect(page.getByText("Demo publik · perusahaan dan angka rekaan")).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.goto("/documents/source/private-version");
@@ -31,12 +21,15 @@ async function pickOption(page: Page, trigger: ReturnType<Page["locator"]>, name
 test("statement in → reviewed → traceable reports → combined → closed", async ({ page }) => {
   // 1. Beranda points at the client that needs work
   await page.goto("/");
-  await expect(page.getByTestId("next-step")).toContainText("Grup Ayam Nusantara");
-  await page.getByTestId("next-step").getByRole("link", { name: "Kerjakan" }).click();
+  await expect(page.getByRole("heading", { name: "Tanya Buku", exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Pekerjaan", exact: true }).click();
+  await page.getByRole("link", { name: /Lengkapi 1 rekening koran · Grup Ayam Nusantara/ }).click();
 
   // 2. Live upload of the held-back BRI statement
   await expect(page.getByRole("heading", { name: "Impor Mutasi" })).toBeVisible();
-  await page.getByRole("button", { name: /Pakai file contoh/ }).click();
+  await pickOption(page, page.getByRole("combobox", { name: "Rekening", exact: true }), /5509/);
+  await page.getByTestId("file-input").setInputFiles("public/demo/BRI-5509-2026-08.csv");
+  await page.getByRole("button", { name: "Proses mutasi", exact: true }).click();
   const result = page.getByTestId("import-result");
   await expect(result).toContainText("perlu review");
   await expect(result).toContainText("Nyambung");
@@ -72,6 +65,7 @@ test("statement in → reviewed → traceable reports → combined → closed", 
   await expect(page.getByText("Antar entitas cocok")).toBeVisible();
 
   // 6. Accrual adjustment: August depreciation
+  await page.getByText("Impor & pengaturan klien", { exact: true }).click();
   await page.getByRole("link", { name: "Jurnal Penyesuaian" }).click();
   await expect(page.getByRole("heading", { name: "Jurnal Penyesuaian" })).toBeVisible();
   await expect(page.getByRole("combobox").first()).toContainText("PT Ayam Nusantara Digital");

@@ -9,7 +9,7 @@ import { makePdf } from "../tests/pdf-fixture";
  * Run server and runner with EVIDENCE_ENABLED=true, DEMO_MODE=false and AI disabled.
  */
 test.describe("document evidence workspace", () => {
-  test.skip(process.env.EVIDENCE_ENABLED !== "true" || process.env.DEMO_MODE === "true", "Evidence workspace is enabled only for the private pilot.");
+  test.skip(process.env.EVIDENCE_ENABLED === "false", "Documents disabled by the explicit environment switch.");
   let db: Pool;
   test.beforeAll(async () => {
     db = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -24,7 +24,7 @@ test.describe("document evidence workspace", () => {
   test("large inventories keep questions visible and bound document rendering", async ({ page }) => {
     await page.goto("/documents");
     await page.getByRole("button", { name: "Tambahkan dokumen" }).click();
-    await expect(page).toHaveURL(/\/documents\/[^/?]+$/);
+    await expect(page).toHaveURL(/\/documents\/[^/?]+(?:\?.*)?$/);
     const intakeId = new URL(page.url()).pathname.split("/").at(-1)!;
     await db.query(`INSERT INTO "EvidenceDocument" (id, "firmId", "intakeId", "sourceKey", name, path, "mimeType", status)
       SELECT $1 || '-' || n, i."firmId", i.id, 'synthetic-' || n, 'Contoh ' || lpad(n::text, 3, '0') || '.txt', 'Contoh', 'text/plain', 'READY'
@@ -72,7 +72,7 @@ test.describe("document evidence workspace", () => {
     await page.goto("/documents");
     await expect(page.getByRole("heading", { name: "Dokumen", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Tambahkan dokumen" }).click();
-    await expect(page).toHaveURL(/\/documents\/[^/?]+$/);
+    await expect(page).toHaveURL(/\/documents\/[^/?]+(?:\?.*)?$/);
     const workspaceUrl = page.url();
     const intakeId = new URL(workspaceUrl).pathname.split("/").at(-1)!;
     await expect(page.getByText("Unggah file atau tempel tautan Drive", { exact: true })).toBeVisible();

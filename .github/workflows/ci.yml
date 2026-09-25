@@ -21,6 +21,11 @@ jobs:
       DATABASE_URL: postgresql://buku:buku@localhost:5432/buku
       TEST_DATABASE_URL: postgresql://buku:buku@localhost:5432/buku_test
       DEMO_MODE: "true"
+      EVIDENCE_ENABLED: "true"
+      BETTER_AUTH_URL: http://localhost:3200
+      BETTER_AUTH_SECRET: synthetic-ci-only-secret-not-for-any-deployment
+      AI_API_KEY: ""
+      AI_MODEL: ""
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -38,13 +43,19 @@ jobs:
         run: npm run demo:reset && npm run verify:books
       - name: Playwright investor walk (layer 3)
         run: npx playwright install --with-deps chromium && npm run test:e2e
-      - name: Evidence workspace (private pilot, synthetic data)
-        run: npm run test:e2e -- e2e/evidence-workspace.spec.ts
+      - name: Private-mode workspace parity (synthetic data)
+        run: npm run test:e2e
         env:
           EVIDENCE_ENABLED: "true"
           DEMO_MODE: "false"
           AI_API_KEY: ""
           AI_MODEL: ""
+      - name: Invitation-only shared-code access (synthetic data)
+        run: npm run test:e2e
+        env:
+          DEMO_MODE: "false"
+          AUTH_MODE: shared-code
+          AUTH_SHARED_CODE: "482619735084"
       - uses: actions/upload-artifact@v4
         if: failure()
         with: { name: playwright-report, path: test-results, retention-days: 7 }

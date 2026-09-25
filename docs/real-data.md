@@ -4,7 +4,7 @@ Real bank statements are client data (NDA, UU PDP). This page says where they ma
 file to a closed month.
 
 ## Rules
-1. **Never** upload real files to the public demo (https://native-erp-v2.vercel.app). It has no login, and *Reset data demo* wipes it.
+1. **Never** upload real files to the public demo (https://native-erp-v2.vercel.app). Production is reserved for synthetic data, regardless of its login mode. Operator resets remove all data.
 2. Real data lives in exactly two places:
    - **Local**: Postgres on your machine. Files go in `data/private/` (gitignored).
    - **Private preview**: the Vercel Preview for git branch `staging`. It sits behind Vercel login, uses Neon branch `real-data`
@@ -13,7 +13,7 @@ file to a closed month.
 4. With an AI key set, *unrecognised* lines go to the AI gateway (OpenCode Zen): the merchant key, the first 80 characters
    of the description, and the client's name and business type. Lines matched by transfers, rules or memory are never sent.
    Leave the key empty for rules-only.
-5. The opt-in private [evidence workspace](evidence-workspace.md) can send bounded source passages to AI for explicitly requested context proposals and question planning. This is broader than merchant/account-name classification above; source files and citations remain private.
+5. The authenticated [evidence workspace](evidence-workspace.md) can send bounded source passages to AI for explicitly requested context proposals and question planning. This is broader than merchant/account-name classification above; source files and citations remain private.
 6. PDF passwords are used once to open the file. They're never stored or logged.
 
 ## 1. Check the file before importing (no database)
@@ -35,7 +35,7 @@ Not supported: scanned PDFs (no text layer) and `.xls` (save as `.xlsx`). Both g
 changed. That's enough to add the layout.
 
 ## 2. Add the client
-Beranda → **Tambah klien**. Enter the client (group) name and business type, then one entity per company or person
+Navigasi → **Daftar klien** → **Tambah klien**. Enter the client (group) name and business type, then one entity per company or person
 with its own books (PT/CV first, then the owner) and its **Mata uang pembukuan** (IDR unless it keeps books in e.g. SGD).
 Add each bank account with its number as printed on the statement; tick **PRK** for an overdraft loan account (its balance
 is a debt to the bank). An entity whose books come from a ledger file needs no bank account: remove the row.

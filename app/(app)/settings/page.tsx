@@ -1,3 +1,4 @@
+import { getCurrentFirm } from "@/lib/tenant";
 import { prisma } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { resolveAiConfig } from "@/lib/settings/ai";
@@ -6,7 +7,8 @@ import { PageHeader, NextStep } from "@/components/app/page-header";
 import { AiSettingsForm } from "@/components/app/ai-settings-form";
 
 export default async function SettingsPage() {
-  const [cfg, lastCall] = await Promise.all([resolveAiConfig(prisma), prisma.aiUsage.findFirst({ where: { model: { not: "demo-seed" } }, orderBy: { at: "desc" } })]);
+  const firm = await getCurrentFirm();
+  const [cfg, lastCall] = await Promise.all([resolveAiConfig(prisma), prisma.aiUsage.findFirst({ where: { firmId: firm.id, model: { not: "demo-seed" } }, orderBy: { at: "desc" } })]);
   const missing = [!adminPasscodeConfigured() && "ADMIN_PASSCODE", !settingsSecretConfigured() && "SETTINGS_SECRET"].filter(Boolean) as string[];
   const live = Boolean(cfg.apiKey && cfg.model);
 

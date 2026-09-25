@@ -43,10 +43,10 @@ export async function reviewTransaction(
 }
 
 /** Accept every open line with the same merchant key + direction using its suggestion. */
-export async function acceptSimilar(db: Db, bankTxId: string) {
+export async function acceptSimilar(db: Db, bankTxId: string, scope?: { entityIds: string[]; through: Date }) {
   const t = await db.bankTransaction.findUniqueOrThrow({ where: { id: bankTxId } });
   const peers = await db.bankTransaction.findMany({
-    where: { bankAccount: { entity: { clientId: (await db.entity.findUniqueOrThrow({ where: { id: t.entityId } })).clientId } }, merchantKey: t.merchantKey, direction: t.direction, status: "NEEDS_REVIEW" },
+    where: { ...(scope ? { entityId: { in: scope.entityIds }, date: { lte: scope.through } } : {}), bankAccount: { entity: { clientId: (await db.entity.findUniqueOrThrow({ where: { id: t.entityId } })).clientId } }, merchantKey: t.merchantKey, direction: t.direction, status: "NEEDS_REVIEW" },
   });
   for (const p of peers) {
     await reviewTransaction(db, { bankTxId: p.id, accountCode: t.suggestedCode ?? "6190", taxTag: t.taxTag });

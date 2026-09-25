@@ -24,16 +24,16 @@ const statusNames: Record<string, string> = { READY: "Siap diperiksa", PENDING: 
 type Clients = { id: string; name: string }[];
 
 export function EvidenceHome({ intakes, clients, clientId, connected, googleConfigured, googleResult }: { intakes: { id: string; name: string; status: string; clientId: string | null }[]; clients: Clients; clientId?: string; connected: boolean; googleConfigured: boolean; googleResult?: "connected" | "error" }) {
-  const router = useRouter(); const [busy, setBusy] = useState(false); const [passcode, setPasscode] = useState("");
+  const router = useRouter(); const contextParams = useSearchParams(); const contextQuery = new URLSearchParams(); for (const key of ["scope", "period"]) { const value = contextParams.get(key); if (value) contextQuery.set(key, value); } const suffix = contextQuery.size ? `?${contextQuery}` : ""; const [busy, setBusy] = useState(false); const [passcode, setPasscode] = useState("");
   return <div className="space-y-6">
     <PageHeader title="Dokumen" description="Rekening koran, buku besar, laporan, dan konteks perusahaan dalam satu tempat." />
     <NextStep>Unggah file atau tempel tautan Drive. Periksa hasil sebelum mencatat ke buku.</NextStep>
     {googleResult === "connected" && connected && <p role="status" className="rounded-lg border border-pass/20 bg-pass-subtle p-3 text-sm text-pass">Google berhasil dihubungkan. Tambahkan dokumen lalu tempel tautan folder.</p>}
     {googleResult === "error" && <p role="alert" className="rounded-lg border border-review/30 bg-review-subtle p-3 text-sm">Google belum berhasil dihubungkan. Izin mungkin dibatalkan atau sesi kedaluwarsa. Masukkan kode admin lalu coba hubungkan kembali.</p>}
-    <Button disabled={busy} onClick={async () => { setBusy(true); const r = await createEvidenceAction(clientId); setBusy(false); if (r.ok) router.push(`/documents/${r.data.id}`); else toast.error(r.error); }}><Upload className="size-4" /> Tambahkan dokumen</Button>
+    <Button disabled={busy} onClick={async () => { setBusy(true); const r = await createEvidenceAction(clientId); setBusy(false); if (r.ok) router.push(`/documents/${r.data.id}${suffix}`); else toast.error(r.error); }}><Upload className="size-4" /> Tambahkan dokumen</Button>
     <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
       <Card><CardHeader><CardTitle>Kumpulan dokumen</CardTitle></CardHeader><CardContent>
-        {!intakes.length ? <p className="text-sm text-muted-foreground">Belum ada dokumen. Klien bisa dibuat setelah file diperiksa.</p> : <ul className="divide-y">{intakes.map(i => <li key={i.id}><Link href={`/documents/${i.id}`} className="flex items-center gap-3 py-4"><FileText className="size-5 text-muted-foreground" /><span className="min-w-0 flex-1"><span className="block truncate font-medium">{i.name}</span><span className="text-xs text-muted-foreground">{clients.find(c => c.id === i.clientId)?.name ?? "Belum dihubungkan ke klien"} · {statusNames[i.status] ?? i.status}</span></span><ChevronRight className="size-4" /></Link></li>)}</ul>}
+        {!intakes.length ? <p className="text-sm text-muted-foreground">Belum ada dokumen. Klien bisa dibuat setelah file diperiksa.</p> : <ul className="divide-y">{intakes.map(i => <li key={i.id}><Link href={`/documents/${i.id}${suffix}`} className="flex items-center gap-3 py-4"><FileText className="size-5 text-muted-foreground" /><span className="min-w-0 flex-1"><span className="block truncate font-medium">{i.name}</span><span className="text-xs text-muted-foreground">{clients.find(c => c.id === i.clientId)?.name ?? "Belum dihubungkan ke klien"} · {statusNames[i.status] ?? i.status}</span></span><ChevronRight className="size-4" /></Link></li>)}</ul>}
       </CardContent></Card>
       <Card><CardHeader><CardTitle>Google Drive</CardTitle></CardHeader><CardContent className="space-y-3 text-sm">
         <p>{connected ? "Google terhubung. Buku membaca folder yang Anda tambahkan." : "Hubungkan sekali melalui admin, lalu tempel tautan folder."}</p>
@@ -64,7 +64,7 @@ export function EvidenceWorkspace({ initial, clients }: { initial: Workspace; cl
   const [workspace, setWorkspace] = useState(initial); const [busy, setBusy] = useState(false); const [running, setRunning] = useState(false); const [progress, setProgress] = useState("");
   const [url, setUrl] = useState(initial.intake.sourceUrl ?? ""); const [question, setQuestion] = useState(""); const [answer, setAnswer] = useState<EvidenceAnswer | null>(null); const [answerScope, setAnswerScope] = useState(""); const [showClient, setShowClient] = useState(false); const [existingClient, setExistingClient] = useState("");
   const [fileSearch, setFileSearch] = useState(""); const [fileFilter, setFileFilter] = useState("included"); const [filePage, setFilePage] = useState(0);
-  const search = useSearchParams(); const router = useRouter(); const entityId = search.get("entity") === "combined" ? "" : search.get("entity") ?? ""; const period = search.get("period") ?? "";
+  const search = useSearchParams(); const router = useRouter(); const scopedEntity = search.get("scope")?.startsWith("entity:") ? search.get("scope")!.slice(7) : ""; const entityId = search.get("entity") === "combined" ? "" : search.get("entity") ?? (workspace.entities.some(e => e.id === scopedEntity) ? scopedEntity : ""); const period = search.get("period") ?? "";
   const stopped = useRef(false); const mounted = useRef(true); const processing = useRef(false); const autoResumed = useRef(false); const uploadInput = useRef<HTMLInputElement>(null); const id = workspace.intake.id;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; stopped.current = true; }; }, []);
   const refresh = useCallback(async () => { if (!mounted.current) return; const r = await loadEvidenceAction(id); if (r.ok && mounted.current) setWorkspace(r.data); }, [id]);
@@ -105,7 +105,7 @@ export function EvidenceWorkspace({ initial, clients }: { initial: Workspace; cl
     if (processed.data.busy) return { ok: false, error: "Sesi lain sedang memproses. Tunggu lalu coba kembali." };
     return processed.data.error ? { ok: false, error: processed.data.error } : { ok: true };
   }
-  function scope(nextEntity: string, nextPeriod: string) { setAnswer(null); const p = new URLSearchParams(); if (nextEntity) p.set("entity", nextEntity); if (nextPeriod) p.set("period", nextPeriod); router.replace(`/documents/${id}?${p}`); }
+  function scope(nextEntity: string, nextPeriod: string) { setAnswer(null); const p = new URLSearchParams(search.toString()); p.delete("entity"); p.delete("period"); if (nextEntity) p.set("entity", nextEntity); if (nextPeriod) p.set("period", nextPeriod); router.replace(`/documents/${id}?${p}`); }
   const pending = workspace.documents.filter(d => !d.excluded && d.status === "PENDING").length;
   const ready = workspace.documents.filter(d => !d.excluded && d.status === "READY").length;
   const errors = workspace.documents.filter(d => !d.excluded && d.status === "ERROR").length;
@@ -114,7 +114,7 @@ export function EvidenceWorkspace({ initial, clients }: { initial: Workspace; cl
   const pages = Math.max(1, Math.ceil(docs.length / 20)); const currentPage = Math.min(filePage, pages - 1);
   const visibleDocs = docs.slice(currentPage * 20, (currentPage + 1) * 20);
   return <div className="space-y-6">
-    <PageHeader title={workspace.intake.name} description="Bukti sumber tersimpan terpisah dari buku. Setiap versi dapat ditelusuri." actions={<Link href={workspace.intake.clientId ? `/clients/${workspace.intake.clientId}/documents` : "/documents"} className="text-sm text-primary">Semua dokumen</Link>} />
+    <PageHeader title={workspace.intake.name} description="Bukti sumber tersimpan terpisah dari buku. Setiap versi dapat ditelusuri." actions={<Link href={`/documents?${new URLSearchParams({ scope: search.get("scope") ?? (workspace.intake.clientId ? `client:${workspace.intake.clientId}` : "all"), ...(period ? { period } : {}) })}`} className="text-sm text-primary">Semua dokumen</Link>} />
     <NextStep>{running ? "File sedang diperiksa. Menutup halaman menjeda proses setelah langkah aktif selesai." : workspace.intake.status === "PARTIAL" ? "Pemeriksaan belum lengkap. Periksa kendala di bawah." : pending ? `${pending} file menunggu. Lanjutkan pemeriksaan dari progres tersimpan.` : "Periksa peran sumber dan perbedaan. Anda sudah bisa bertanya tentang dokumen."}</NextStep>
     <p data-testid="evidence-progress" className="text-sm text-muted-foreground">{ready} file siap · {errors} perlu tindakan · {pending} menunggu · {excluded} tidak disertakan. {workspace.documents.length} item ditemukan.{workspace.intake.hasPendingWork && " Pemeriksaan belum selesai."}</p>
     {workspace.intake.issue && <p role="alert" className="rounded-md border border-review/30 bg-review-subtle p-3 text-sm">{workspace.intake.issue}</p>}
