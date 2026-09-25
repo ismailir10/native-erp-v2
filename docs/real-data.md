@@ -7,7 +7,7 @@ file to a closed month.
 1. **Never** upload real files to the public demo (https://native-erp-v2.vercel.app). It has no login, and *Reset data demo* wipes it.
 2. Real data lives in exactly two places:
    - **Local**: Postgres on your machine. Files go in `data/private/` (gitignored).
-   - **Private preview**: the Vercel Preview for git branch `real-data`. It sits behind Vercel login, uses Neon branch `real-data`
+   - **Private preview**: the Vercel Preview for git branch `staging`. It sits behind Vercel login, uses Neon branch `real-data`
      and runs with `DEMO_MODE=false` (no demo firm, no reset button).
 3. Never commit a statement, a screenshot of one, or `inspect:statement` output. Tests use synthetic fixtures (`tests/pdf-fixture.ts`).
 4. With an AI key set, *unrecognised* lines go to the AI gateway (OpenCode Zen): the merchant key, the first 80 characters
@@ -87,12 +87,11 @@ Imports the files in `data/private/` into a fresh client and compares Buku with 
 | Where | How to open | Database |
 |---|---|---|
 | Local | `npm run dev` with `.env` → `postgresql://buku:buku@localhost:5432/buku` and `DEMO_MODE=false` | local `buku` |
-| Private preview | Vercel → project → Deployments → branch `real-data` (log in to Vercel) | Neon `real-data` |
+| Private preview | Vercel → project → Deployments → branch `staging` (log in to Vercel) | Neon `real-data` |
 
-Keep `real-data` in sync with `main` after each merge:
-```bash
-git push origin main:real-data
-```
+New work merges into `staging` first. Promote tested staging through a separate PR to `main` using a merge commit; do not push production into staging after every feature. See [Branch workflow](../README.md#branch-workflow).
+
+The existing `native-erp-v2-git-real-data-ismails-projects-196d40d3.vercel.app` domain is assigned to git branch `staging`, preserving Google OAuth callbacks and bookmarked source links. Neon still uses database branch `real-data`.
 
 Neon connection strings for every branch are in `.env.neon.local` (gitignored, not auto-loaded). Never point `.env`
 at Neon `production` or `real-data`, because `npm run demo:reset` truncates whatever `DATABASE_URL` points at.
