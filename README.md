@@ -1,11 +1,41 @@
 # Buku
 
-**AI-native month-end close for Indonesian accounting firms.** Upload a client's *rekening koran*; Buku codes every line,
-posts a double-entry ledger, reconciles, and produces Laba Rugi, Neraca and a PT + owner combined view — where **every
-number traces back to the bank row it came from**. The accountant reviews what the AI proposes and closes the month.
+**Buku combines a double-entry general ledger, document evidence, and company context to help accounting firms prepare books, answer financial questions, and close with confidence.**
 
-> Status: investor demo live, ready for first real-client tests (cycle 1). Auth and tax filing are next. See
-> [docs/cycles](docs/cycles/) and [docs/real-data.md](docs/real-data.md).
+Bring a client's **rekening koran, existing ledgers, financial statements, company profiles, and supporting documents**.
+Buku helps accountants understand the business, review accounting work, and trace results to their sources.
+
+## How Buku works
+
+![Buku product architecture: client information supports a shared foundation of document evidence, a central double-entry general ledger, and company context. Buku intelligence connects this foundation to Ask Buku, the accounting workspace, and reporting and close. Accounting controls, human review, and source traceability span the system.](docs/architecture/buku-architecture.svg)
+
+**One foundation, three ways to work.** Ask questions, prepare and review accounting, or inspect financial reports and close readiness. AI uses company context and source evidence alongside the books; accounting rules govern calculations and posting.
+
+| What you bring | What Buku does with it |
+|---|---|
+| **Rekening koran** | Reads bank transactions, checks continuity, suggests classifications, and reconciles transactions with the books. |
+| **Existing ledgers / neraca saldo** | Checks exported books, maps source accounts, and prepares reviewed imports into Buku's own ledger. |
+| **Financial statements** | Reads and compares source-reported figures, even before transaction-level books are available. |
+| **Company profiles** | Proposes business context and company/entity information for the accountant to confirm. |
+| **Supporting documents** | Preserves searchable evidence and source references for questions and accounting decisions. |
+
+### The general ledger is the accounting core
+
+Buku **imports existing ledgers and maintains its own double-entry general ledger**. Bank transactions, approved ledger imports, and adjustments produce journal entries through the accounting engine. Buku's financial reports are calculated from those posted entries, with reconciliation controls and period locks.
+
+Document evidence remains distinct: an uploaded financial statement records **what that source reports**; it does not automatically create journal entries or become a Buku financial report. Company profiles provide context, not balances. AI proposes classifications, mappings, and explanations; accountants review AI suggestions, while deterministic services calculate amounts and enforce posting rules. Report figures drill through the ledger to their sources; document answers cite the relevant evidence.
+
+Supported evidence formats include text PDFs, XLSX, CSV, Google Docs/Sheets, TXT, and Markdown. **Support depends on document structure:** scans require a text export, and ambiguous financial layouts remain searchable evidence rather than guessed figures. See [document support and limits](docs/evidence-workspace.md#supported-input-and-limits).
+
+### Available today and proposed experience
+
+**Available today:** bank and ledger import, double-entry bookkeeping, document evidence and company-context review, source-cited questions within a document workspace, financial reports, and controlled month-end close. Private uploads and Drive access currently belong to the protected pilot; the public evidence view uses synthetic examples.
+
+**Proposed experience:** dashboard-level Ask Buku across all clients, a group, or a company; a unified work queue; shared scope and period controls; invitation-only application login. The architecture above describes this product direction built on the existing accounting foundation. It does not claim always-on agents, live bank feeds, or formal group consolidation.
+
+Review the [standalone, clickable HTML prototype](docs/prototypes/buku-workspace.html) and its [review guide](docs/prototypes/README.md). Download the HTML and open it in a browser, or serve this repository locally. All prototype data, answers, sign-in, and accounting actions are simulated; no production changes or API calls occur.
+
+> Current deployment and real-data boundaries are documented below and in [docs/real-data.md](docs/real-data.md). Development history: [docs/cycles](docs/cycles/).
 
 ## What it does
 | Area | |
@@ -18,6 +48,7 @@ number traces back to the bank row it came from**. The accountant reviews what t
 | **Ledger** | double entry, BigInt Rupiah, immutable entries, reclass-by-difference, period locks, PPN 11% split |
 | **Reports** | Neraca Saldo, Laba Rugi (month + YTD), Neraca (comparative), Kertas Kerja Gabungan with intercompany elimination, drill-down to source |
 | **Close** | Automatic controls per entity + group (TB, A=L+E, bank recon per account, continuity, clearing, suspense, intercompany), notes, sign-offs, lock |
+| **Document evidence** | Financial statements, company profiles, and supporting documents · versioned sources · reviewed company context · cited questions before posting · [support and limits](docs/evidence-workspace.md) |
 | **Demo** | 3 synthetic clients × 6 months seeded through the real pipeline; [5-minute investor script](docs/demo/investor-demo.md) |
 
 ## Quick start
