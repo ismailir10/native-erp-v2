@@ -28,7 +28,7 @@ const SETUP = [
   { href: "/settings", label: "Aturan & AI", icon: Settings2 },
 ];
 
-export function AppSidebar({ firmName, clients, userEmail }: { firmName: string; clients: Client[]; userEmail?: string }) {
+export function AppSidebar({ firmName, clients, userEmail, documents = true }: { firmName: string; clients: Client[]; userEmail?: string; documents?: boolean }) {
   const pathname = usePathname();
   const search = useSearchParams();
   const { setOpenMobile } = useSidebar();
@@ -60,7 +60,7 @@ export function AppSidebar({ firmName, clients, userEmail }: { firmName: string;
     <Sidebar>
       <SidebarHeader className="border-b"><Link href={destinationHref("/")} onClick={closeMobile} className="flex items-center gap-2 px-2 py-1.5"><span className="flex size-7 items-center justify-center rounded-md bg-primary text-sm font-bold text-primary-foreground">B</span><span className="min-w-0"><span className="block text-sm font-semibold">Buku</span><span className="block truncate text-xs text-muted-foreground">{firmName}</span></span></Link></SidebarHeader>
       <SidebarContent>
-        <SidebarGroup><SidebarMenu>{DESTINATIONS.map((item) => <SidebarMenuItem key={item.href}><SidebarMenuButton isActive={pathname === item.href || (item.href !== "/" && pathname.startsWith(`${item.href}/`))} render={<Link href={destinationHref(item.href)} onClick={closeMobile} />}><item.icon /><span>{item.label}</span></SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu></SidebarGroup>
+        <SidebarGroup><SidebarMenu>{DESTINATIONS.filter((item) => documents || item.href !== "/documents").map((item) => <SidebarMenuItem key={item.href}><SidebarMenuButton isActive={pathname === item.href || (item.href !== "/" && pathname.startsWith(`${item.href}/`))} render={<Link href={destinationHref(item.href)} onClick={closeMobile} />}><item.icon /><span>{item.label}</span></SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu></SidebarGroup>
         {selectedClient && <SidebarGroup><SidebarGroupLabel>Akuntansi · {selectedClient.name}</SidebarGroupLabel><SidebarMenu><SidebarMenuItem><SidebarMenuButton isActive={pathname === `/clients/${selectedClient.id}`} render={<Link href={clientHref(selectedClient)} onClick={closeMobile} />}><Building2 /><span>Ringkasan klien</span><ChevronRight className="ml-auto" /></SidebarMenuButton>{accountingLinks(ACCOUNTING, selectedClient)}</SidebarMenuItem><SidebarMenuItem><details open={SETUP.some((item) => pathname.startsWith(`/clients/${selectedClient.id}${item.href}`)) || undefined}><summary className="cursor-pointer px-2 py-2 text-xs font-medium text-muted-foreground">Impor & pengaturan klien</summary>{accountingLinks(SETUP, selectedClient)}</details></SidebarMenuItem></SidebarMenu></SidebarGroup>}
         <SidebarGroup><details><summary className="cursor-pointer px-2 py-2 text-xs font-medium text-muted-foreground">Daftar klien ({clients.length})</summary><SidebarMenu>{clients.map((client) => <SidebarMenuItem key={client.id}><SidebarMenuButton render={<Link href={clientHref(client)} onClick={closeMobile} />}><Building2 /><span>{client.name}</span><ChevronRight className="ml-auto" /></SidebarMenuButton></SidebarMenuItem>)}<SidebarMenuItem><SidebarMenuButton render={<Link href="/clients/new" onClick={closeMobile} />}><span>Tambah klien</span></SidebarMenuButton></SidebarMenuItem></SidebarMenu></details></SidebarGroup>
       </SidebarContent>

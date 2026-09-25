@@ -21,7 +21,7 @@ Structured monetary figures require known source currency, scale, date and unamb
 Apply committed migrations and configure [invitation-only access](../README.md#invitation-operations) before rollout. Both staging and main serve the same authenticated workspace, with separate users, data and credentials.
 
 - `EVIDENCE_ENABLED=true` enables documents in both environments; explicit `false` is an operational kill switch. `DEMO_MODE` controls synthetic fixture availability, not authentication or document UI.
-- Retain additional Vercel protection on staging. Real client files remain restricted to local/protected staging per [real-data policy](real-data.md).
+- Retain additional Vercel protection on staging. Real client files belong in production (the one workspace) or local only, per [real-data policy](real-data.md) and [ADR 0008](adrs/0008-one-workspace.md).
 - Dashboard scope filters collections by client; company selection requires confirmed current evidence selections. Collections can span periods, stated in the UI. Questions and reports retain the chosen period.
 - Large private intakes show progress counts and searchable pages of 20 files. Sheet review forms mount only when their document is expanded; questions remain above the file list. Loose code/tooling files are ignored on inventory refresh. Invalid Excel date cells show their coordinates for repair while other workbook content remains available.
 - Google: configure `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`. Fixed callback path: `/api/google/callback`; HTTPS except localhost development. Enable Drive API in the Google project and register the exact redirect URI/consent users.

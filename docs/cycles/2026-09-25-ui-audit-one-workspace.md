@@ -34,7 +34,7 @@ Decisions agreed with the user on 2026-09-25:
 **Non-goals:** accounting rule changes, new AI features, new roles, copying staging secrets into production.
 
 ## Tasks
-- [ ] T1 One workspace (code + docs)
+- [x] T1 One workspace (code + docs)
 - [ ] T2 Navigation and scope
 - [ ] T3 Component consistency
 - [ ] T4 Don't Make Me Think pass
@@ -62,6 +62,7 @@ Screenshots are in [docs/reviews/2026-09-25-ui-audit](../reviews/2026-09-25-ui-a
 - **Leftovers:** `components/app/public-evidence-demo.tsx` (unused) still links to the staging URL as a "ruang kerja privat".
 
 ## Implementation
+- T1: Deleted the unused public demo component and its two synthetic answer helpers; kept the evidence on/off test as `evidence-config.test.ts`. Dokumen leaves the sidebar when documents are switched off instead of opening a 404. ADR 0008 records production as the one real workspace; README, real-data, evidence and investor docs follow it.
 
 ## Verification
 
