@@ -1,0 +1,115 @@
+# Drive evidence → ledger handoff for real group workbooks
+
+## Context
+The first end-to-end run of a real client workbook through **Dokumen → Google Drive** (Chickin group reconciliation workbook,
+production, 26 Sep 2026) connected Drive, read the folder, and created the client. It stopped before posting: only
+1 of the 3 postable sheets could be handed to the ledger import. The accountant would have to leave the Drive workflow
+and re-upload the same file in **Impor → Buku besar**. The findings are recorded outside the repo (private data); the
+synthetic reproduction below carries every shape that matters.
+
+What went wrong, with the root cause in code:
+
+| # | Symptom | Cause |
+|---|---|---|
+| 1 | Multi-entity GL sheet (entity column SKP/CSP/CAH/SPN) refused: "File mencakup entitas lain…" | `EvidenceSelection` holds one `entityId`; `stageImport` `allowedPeriod.entityId` rejects any other entity (`lib/ledger-import/post.ts:119`) |
+| 2 | HoldCo GL sheet classified **BANK**, so it asks for a bank account, then refuses SGD | `kindOf()` (`lib/evidence/extract.ts:83`) tests bank keywords first; memo cells say "Rekening koran…" |
+| 3 | 11 derived sheets (movement/TB engines, action log, IC mapping, registers) default to **Sumber pencatatan** | role = SOURCE for any LEDGER/BANK keyword hit; nothing checks the sheet is a postable table |
+| 4 | Opening neraca would post on 2023-01-01 instead of 2022-12-31 | the file states no balance date; staging falls back to the selection's `periodEnd`, taken from a prose line ("Closing 31 Dec 2022 … Opening 1 Jan 2023"), and the selection must cover that 2-day hint |
+| 5 | "Nama perusahaan: Source Type / Calendar Year / GL Entry ID / PASS"; new-client form prefilled 7 junk entities (one AUD) | entity regex runs on `|`-joined rows, so a header row `Entity | GL Entry ID | …` reads as label → value |
+| 6 | Opening the file renders ~7.4 M characters; tooling and the page freeze | one issue per formula cell without a cached result (up to 15,244 on one sheet) |
+| 7 | Toast "Unsupported state or unable to authenticate data" | Drive refresh token encrypted with an older `SETTINGS_SECRET`; `decryptSecret` error surfaces raw |
+| 8 | Reconnect failed twice with no trace | `/api/google/callback` catches everything and returns `?google=error` without a reason or log line |
+
+`detectTables()` (`lib/ledger-import/read.ts:131`) — the manual import's own table detector — finds exactly the three
+postable sheets in that workbook (one NERACA, two LEDGER) and none of the 27 derived ones. It becomes the authority.
+
+Outcome: from one Drive folder, an accountant can confirm the three source sheets and open three ledger drafts, all
+posting through the existing check → map → post path. Everything else in the workbook stays evidence.
+
+## Spec
+Extraction (`lib/evidence/extract.ts`)
+- [ ] XLSX/CSV units carry `table: { mode: "LEDGER" | "NERACA", entities: string[], periodStart, periodEnd, date }` when
+      `detectTables()` + `readTable()` recognise the sheet. Such units get kind LEDGER, role SOURCE. No other unit
+      defaults to SOURCE in a workbook. A sheet with ledger/bank keywords but no postable table is COMPARISON (report-like) or CONTEXT.
+- [ ] BANK kind needs a statement-shaped header row (date + description + debit/credit or mutation + balance), not a
+      keyword anywhere in the first 40 rows. A detected ledger table always wins over BANK.
+- [ ] Entity/company name is read only from a label → value pair: one cell `Label: value`, or a row with exactly two
+      non-empty cells. Multi-column header rows never produce an entity or a `companyName` fact.
+- [ ] Per-cell issues are aggregated per sheet and kind: e.g. `1.027 rumus belum memiliki hasil tersimpan (contoh: I5, I6, I7). Hitung ulang dan simpan di Excel.`
+      At most 20 issue lines per unit; the rest are summarised as a count.
+
+Selection and handoff (`lib/evidence/review.ts`, `lib/ledger-import/post.ts`)
+- [ ] NERACA unit: the accountant confirms a single **Tanggal neraca** (periodStart = periodEnd). A date written in the
+      file must equal it. The text-derived period hint no longer has to be covered. The OPENING entry is dated with that date.
+- [ ] LEDGER unit with an entity column: entity choice **"Sesuai kolom Entitas di file"** (stored as `entityId = null`).
+      On confirm, every file label must match a client entity by short or full name (the same rule `stageImport` uses),
+      all matched entities must share the confirmed currency, and the overlap check runs per matched entity. Unmatched
+      labels are listed in the error ("Tambahkan entitas SKP, CAH ke klien atau gunakan impor manual.").
+- [ ] `stageImport`'s `allowedPeriod` accepts a set of entity ids; the evidence handoff passes the matched set. A file
+      entity outside the set is still refused. Manual import is unchanged.
+- [ ] Postable units never take the bank path. `prepare()` uses the unit's `table`, not text keywords, to choose ledger staging.
+
+UI (`components/app/evidence-workspace.tsx`)
+- [ ] Table units show mode ("Buku besar · 3.437 baris · 4 entitas" / "Neraca · tanpa tanggal"). A neraca shows one date
+      field. A multi-entity ledger shows the entity-column option, preselected. No bank-account field appears for table units.
+- [ ] Unit issues render at most 5 lines, then a "+N lainnya" disclosure. The expanded Chickin-shaped fixture stays under 50 kB of text.
+- [ ] The new-client proposal is built from the cleaned `companyName` facts only (no header junk). Behaviour is otherwise unchanged.
+
+Drive errors (`lib/evidence/jobs.ts`, `app/api/google/callback/route.ts`)
+- [ ] A refresh token that can't be decrypted raises `DriveError("RECONNECT")` with the message "Koneksi Google perlu
+      dihubungkan ulang oleh admin." — never the crypto text.
+- [ ] The OAuth callback logs one line per failure with an allowlisted reason (`state`, `denied`, `no_refresh_token`,
+      `scope`, `invalid_client`, `exchange`, `config`) and redirects `?google=error&reason=<reason>`. The alert names the
+      likely fix (e.g. scope → "centang izin Google Drive"). Codes, tokens and secrets never appear in URLs or logs.
+
+Tests, docs
+- [ ] A synthetic fixture workbook reproduces every shape above (invented names and figures).
+- [ ] A DB test goes from intake → confirm 3 sources → prepare → post. It checks the journals split per entity, every
+      entry keeps `ledgerImportId` + `sheet!row`, and the OPENING entry is dated with the chosen date.
+- [ ] Update `docs/evidence-workspace.md` (multi-entity ledgers, neraca date, re-read = new collection).
+
+**Gate-reopeners:** none. No schema migration (`EvidenceSelection.entityId` is already nullable; `table` lives in the
+existing `units` JSON). No new dependency. No AI calls. Posting still runs only through `stageImport` → `postJournal`
+(accounting-rules 2, 15, 15a unchanged).
+
+**Non-goals:**
+- Re-extracting existing evidence versions. To pick up the fix, the Chickin run makes a **new collection** of the same
+  folder and links the existing empty client.
+- A kind/role override beyond what `detectTables()` supports; sheets it can't read still go through manual import.
+- Using file entity labels to propose new-client entities.
+- Raising extraction caps (the "Ekstraksi dibatasi" limit).
+- AI key re-encryption when `SETTINGS_SECRET` changes (operational: re-save in Pengaturan).
+- Mixed-currency multi-entity sheets (refused with a manual-import hint).
+- Bank handoff changes.
+
+**Assumptions:**
+1. `detectTables()` is the single authority for "postable". A sheet it rejects in the manual import can't be a Drive source either.
+2. Entity matching for the entity column = exact short-name or full-name match (case-insensitive), as `stageImport` does
+   today. No fuzzy matching; mismatches are an explicit error.
+3. The multi-entity selection's confirmed currency must equal every matched entity's functional currency (IDR for the
+   Chickin OpCos). HOLDCO (SGD) is its own single-entity sheet.
+4. For a neraca without a date in the file, the accountant types the date. No guessing from prose.
+5. Existing selections and imports are untouched. Only new extractions carry `table`; units without it keep today's behaviour,
+   except they no longer default to SOURCE.
+6. After ship, the Chickin production run resumes: new collection of `buku-e2e-chickin` → link "Chickin (uji Drive)" →
+   3 drafts → Kurs → reports vs ground truth.
+
+## Tasks
+- [ ] T1 Fixture: synthetic workbook builder in `tests/evidence-workbook-fixture.ts` (README, source register with "Rekening koran" memos,
+      neraca without date plus a prose "Closing … Opening …" line, single-entity SGD GL with an `Entity | GL Entry ID | …` header, 4-entity IDR GL,
+      2 engine sheets with formulas lacking cached results). Reuse ExcelJS as `tests/pdf-fixture.ts` does for PDFs — accept: fixture loads in `detectTables()` with 3 candidates.
+- [ ] T2 Extraction: `table` on units via `readSheets`/`detectTables`/`readTable` (reuse `lib/ledger-import/read.ts`); role/kind rules; statement-shaped BANK;
+      label/value entity rule — accept: unit test on the fixture shows 3 SOURCE units (NERACA, LEDGER×2), 0 other SOURCE, no header entity, no BANK.
+- [ ] T3 Issue aggregation (per sheet + kind, ≤20 lines) — accept: unit test shows the engine sheet's thousands of formula cells as one line with a count and 3 examples.
+- [ ] T4 Handoff: neraca date rule; entity-column selection (`entityId = null`), label matching helper shared with `stageImport`, per-entity overlap check;
+      `allowedPeriod.entityIds` — depends T2 — accept: DB test intake → confirm 3 → prepare → `postImport` posts; journals per entity; OPENING dated as chosen; overlap and unmatched-label errors covered.
+- [ ] T5 UI: table summary, neraca date field, entity-column option, no bank field for tables, issue disclosure (≤5 + "+N lainnya") — depends T4 —
+      accept: e2e `evidence-workspace.spec.ts` uploads the fixture and reaches a multi-entity ledger draft; page text length < 50 kB.
+- [ ] T6 Drive errors: RECONNECT on decrypt failure; callback reason codes, log line, alert copy — accept: unit tests in `evidence-oauth.test.ts` / `evidence-drive.test.ts` for each reason; no token/code in the redirect or logs.
+- [ ] T7 Docs: `docs/evidence-workspace.md` (+ `docs/real-data.md` pointer) — accept: describes multi-entity handoff, neraca date, new-collection re-read.
+- [ ] T8 End-of-cycle gates: lint, typecheck, test, build, `verify:books` ALL PASS, `test:e2e` green — accept: all green.
+
+## Implementation
+- Plan: tasks T1–T8 sequential, done inline (T2–T5 share the unit/selection contract; each builds on the previous).
+## Verification
+## Ship Notes
