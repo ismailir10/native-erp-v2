@@ -19,20 +19,20 @@ Found during the 2026-09-25 UI audit (`docs/cycles/2026-09-25-ui-audit-one-works
 Notes ask to avoid non-IDR adjustments on real data until this is fixed).
 
 ## Spec
-- [ ] `parseMoney(input, currency)` in `lib/money.ts`: a typed **major-unit** amount in Indonesian notation → bigint minor units via `exponentOf`. No `Number`/`parseFloat`.
+- [x] `parseMoney(input, currency)` in `lib/money.ts`: a typed **major-unit** amount in Indonesian notation → bigint minor units via `exponentOf`. No `Number`/`parseFloat`.
   - Accepts `""`/whitespace (→ `0n`), `100`, `1500000`, `1.500.000`, `1.500.000,50`, `12.500,00`, `-1.234`, `(1.234)`, and an optional leading symbol/code of **that** currency (`Rp`, `Rp.`, `IDR`, `S$`, `SGD`…).
   - Dot = thousands grouping, only in groups of 3 (`1.500.000`). Comma = decimal separator.
   - Fraction digits beyond the currency exponent are accepted only if they are zeros (`12.500.000,00` IDR → `12500000n`); otherwise rejected, never rounded.
   - Rejects with a typed `MoneyError` (Bahasa message): letters, `1.5`, `100.50`, `1500.000`, `1,234,567`, `1,2,3`, `--1`, `,`, a symbol of a different currency, `100,5` for IDR, `1,005` for SGD.
-- [ ] Round trip: `parseMoney(formatMoney(v, c, { bare: true }), c) === v` for IDR, SGD, USD, JPY, incl. negatives.
-- [ ] Jurnal Penyesuaian: server resolves the entity's `functionalCurrency` itself (never trusts the client) and parses every line with `parseMoney`. Logic moves out of `adjustmentAction` into `postAdjustment()` in `lib/ledger/adjustment.ts` so a DB test can reach it; the action keeps tenancy (`getClientForFirm`) and calls it.
-- [ ] Saldo Awal: `postOpening` parses with `parseMoney(…, entity.functionalCurrency)`; its "can't read" message gives an example in that currency.
-- [ ] `fail()` in `app/actions.ts` shows `MoneyError` messages verbatim.
-- [ ] `JournalForm`: entities carry `currency`; totals and the *Selisih* pill use `formatMoney` in the selected entity's currency. An unparseable field is marked `aria-invalid` and disables *Simpan jurnal*.
-- [ ] `OpeningForm`: gets `currency`; bank lines are sent as `formatMoney(|v|, currency, { bare: true })`, not `String(v)`; the 3200 plug row uses `formatMoney`; invalid fields marked and block *Simpan*. Amount inputs use `inputMode="decimal"` so a phone keyboard offers the comma.
-- [ ] Opening page prefills bank lines with `formatMoney(statementOpening, currency, { bare: true })`. (*Terakhir dicatat* on the journal page already renders `Money` in the entry's entity currency since the UI-audit cycle; no change.)
-- [ ] Unit tests: IDR (exp 0), SGD and USD (exp 2), JPY (exp 0), malformed input, round trip.
-- [ ] DB tests: SGD entity: `postAdjustment` with `100` / `12,34` posts `10000n` / `1234n`; `postOpening` with `1.000,00` posts `100000n` and the 3200 plug in cents; IDR opening test unchanged (`50.000.000` → `50_000_000n`).
+- [x] Round trip: `parseMoney(formatMoney(v, c, { bare: true }), c) === v` for IDR, SGD, USD, JPY, incl. negatives.
+- [x] Jurnal Penyesuaian: server resolves the entity's `functionalCurrency` itself (never trusts the client) and parses every line with `parseMoney`. Logic moves out of `adjustmentAction` into `postAdjustment()` in `lib/ledger/adjustment.ts` so a DB test can reach it; the action keeps tenancy (`getClientForFirm`) and calls it.
+- [x] Saldo Awal: `postOpening` parses with `parseMoney(…, entity.functionalCurrency)`; its "can't read" message gives an example in that currency.
+- [x] `fail()` in `app/actions.ts` shows `MoneyError` messages verbatim.
+- [x] `JournalForm`: entities carry `currency`; totals and the *Selisih* pill use `formatMoney` in the selected entity's currency. An unparseable field is marked `aria-invalid` and disables *Simpan jurnal*.
+- [x] `OpeningForm`: gets `currency`; bank lines are sent as `formatMoney(|v|, currency, { bare: true })`, not `String(v)`; the 3200 plug row uses `formatMoney`; invalid fields marked and block *Simpan*. Amount inputs use `inputMode="decimal"` so a phone keyboard offers the comma.
+- [x] Opening page prefills bank lines with `formatMoney(statementOpening, currency, { bare: true })`. (*Terakhir dicatat* on the journal page already renders `Money` in the entry's entity currency since the UI-audit cycle; no change.)
+- [x] Unit tests: IDR (exp 0), SGD and USD (exp 2), JPY (exp 0), malformed input, round trip.
+- [x] DB tests: SGD entity: `postAdjustment` with `100` / `12,34` posts `10000n` / `1234n`; `postOpening` with `1.000,00` posts `100000n` and the 3200 plug in cents; IDR opening test unchanged (`50.000.000` → `50_000_000n`).
 - [ ] Gates: lint, typecheck, test, build, `verify:books` ALL PASS, `test:e2e` green. Draft PR to `staging`.
 
 **Non-goals:** bank-statement and ledger-file parsers (`parseRupiah` / `parseCents` / `parseMinor` stay as they are; they read
@@ -54,16 +54,32 @@ through `postJournal()` as bigint minor units. This cycle makes the two typed fl
 - [x] T1 `parseMoney` + `MoneyError` in `lib/money.ts` (reuse `exponentOf`, `CURRENCIES`) + unit tests. Accept: `npm test -- money` green with IDR/SGD/USD/JPY/malformed/round-trip cases.
 - [x] T2 Server side: `postAdjustment()` in `lib/ledger/adjustment.ts`; `adjustmentAction` delegates; `postOpening` uses entity currency; `fail()` maps `MoneyError`. DB tests for SGD adjustment + SGD opening (depends T1). Accept: `tests/db/adjustment.test.ts` + `tests/db/opening.test.ts` green.
 - [x] T3 UI: `JournalForm`, `OpeningForm`, opening page prefill are currency-aware, and invalid fields are marked and block save (depends T1, T2). Accept: typecheck; manual check in dev with an entity switched to SGD: typing `100` shows total `100,00`, the *Selisih* pill in `S$`, and posts `10000n`.
-- [ ] T4 End-of-cycle gates + Verification section filled with real output tails (depends T1–T3). Accept: build, `verify:books` ALL PASS, `test:e2e` green.
+- [x] T4 End-of-cycle gates + Verification section filled with real output tails (depends T1–T3). Accept: build, `verify:books` ALL PASS, `test:e2e` green.
 
 ## Implementation
 - Plan: tasks [T1, T2, T3, T4] sequential, done inline (each depends on the previous; small slices, no parallelism to gain). Branch `codex/currency-aware-manual-amounts` from `origin/staging` (local staging was 10 commits behind; re-read the drifted form files after rebasing the plan).
 - T1: `lib/money.ts`, `tests/unit/money.test.ts`: `parseMoney(input, currency)` (strict id-ID notation → minor units via `exponentOf`, BigInt only), `MoneyError`, `moneyExample(currency)` for hints/messages. Existing `parseRupiah`/`parseCents`/`parseMinor` untouched.
 - T2: `lib/ledger/adjustment.ts` (new `postAdjustment()`: entity looked up by `clientId`, currency from `entity.functionalCurrency`, `parseMoney` per line, `postJournal` in one transaction), `app/actions.ts` (`adjustmentAction` = tenancy + delegate; `fail()` maps `MoneyError`), `lib/opening.ts` (`parseMoney` in entity currency; the generic "tidak bisa dibaca" `OpeningError` is replaced by `MoneyError`'s message with a currency-specific example), `tests/db/adjustment.test.ts` (new), `tests/db/opening.test.ts` (SGD case).
 - T3: `components/app/journal-form.tsx` (entities carry `currency`; `parseMoney` per field, totals / *Selisih* via `formatMoney`, `(SGD)` in the column headers for non-IDR, `aria-invalid` + the Bahasa reason under the table, save blocked while any field is unreadable, `inputMode="decimal"`, placeholder `0` / `0,00`), `components/app/opening-form.tsx` (`currency` prop; bank lines sent as `formatMoney(|v|, currency, { bare: true })` instead of raw minor units; plug via `formatMoney`; same invalid-field handling; placeholder via `moneyExample`), `app/(app)/clients/[id]/opening/page.tsx` (prefill + currency via `formatMoney`), `app/(app)/clients/[id]/journals/new/page.tsx` (passes `functionalCurrency`). The preview pane couldn't start the dev server here (`EPERM: operation not permitted, uv_cwd`, a macOS folder permission on the pane's launcher), so the UI check used a throwaway Playwright spec (not committed) against `next start`, with a synthetic SGD client made through `addClient`.
+- T4: `e2e/investor-demo.spec.ts`: the walk found the adjustment amounts by `input[inputmode=numeric]`, which this cycle changed to `decimal`; it now uses the new labels `Debit baris 1` / `Kredit baris 2`. Same flow, so `docs/demo/investor-demo.md` is unchanged.
 ## Verification
 - T1 gate: lint clean, typecheck clean, `Test Files  43 passed (43)` / `Tests  344 passed (344)` (money.test.ts: 63).
 - T2 gate: lint clean, typecheck clean, `Test Files  44 passed (44)` / `Tests  348 passed (348)`. New: SGD `100` → `10000n`, `12,34` → `1234n`; SGD opening `1.000,00` / `250,5` → `100000n` / `25050n`, plug 3200 `74950n`.
 - T3 UI check (throwaway Playwright spec on the production build, SGD client *Uji SGD Pte*): headers `Debit (SGD)`; `1,005` → alert "…paling banyak 2 angka di belakang koma…", field `aria-invalid="true"`, *Simpan jurnal* disabled; 100 vs 90 → pill `Selisih S$ 10,00`; 100 vs 100 → `Seimbang`, saved. Saldo Awal placeholder `Saldo di bank, mis. 1.250,50`; `1.000,00` → plug row `1.000,00`, saved. DB after: `[{"kind":"OPENING","lines":[["1101","100000","0"],["3200","0","100000"]]},{"kind":"ADJUSTMENT","lines":[["6180","10000","0"],["1219","0","10000"]]}]` → `1 passed`.
 - T3 gate: lint clean, typecheck clean, `Test Files  44 passed (44)` / `Tests  348 passed (348)`.
+- End of cycle (on the final tree):
+  - lint clean; typecheck clean.
+  - Vitest: `Test Files  44 passed (44)`, `Tests  348 passed (348)`.
+  - `npm run build`: `✓ Compiled successfully`.
+  - `npm run demo:reset && npm run verify:books`: `ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.`
+  - E2E in the three CI modes: `DEMO_MODE=true` `8 passed (35.5s)`; `DEMO_MODE=false` `8 passed (32.3s)`; `DEMO_MODE=false AUTH_MODE=shared-code` `9 passed (32.6s)`.
+  - The first e2e run failed at `investor-demo.spec.ts:75` (`waiting for locator('input[inputmode=numeric]')`). The root cause was the selector (see T4), not behaviour.
+
 ## Ship Notes
+- **No migrations, env vars or dependencies.** No AI calls. `verify:books` ALL PASS; IDR demo books are unchanged.
+- **Behaviour change for typed amounts (both flows, every currency):**
+  - Only Indonesian notation is accepted: `1.500.000`, `1.500.000,00`, `1500000`. `1,234,567.00` and `1500000.00` used to be guessed and are now refused with a message that gives an example.
+  - Decimals a currency doesn't have are refused, not rounded (IDR `1.000,50`, SGD `1,005`).
+  - Bank-statement and ledger-file parsing is unchanged.
+- **Non-IDR entities:** a typed `100` now posts 100 units of the entity's currency. This lifts the UI-audit caveat "avoid non-IDR adjustments on real data". Any SGD adjustment or opening entered before this ships was posted 100× too small and needs a correcting Jurnal Penyesuaian by hand (Assumption 4; not checked here).
+- **Rollback:** revert the PR. No data migration to undo.
