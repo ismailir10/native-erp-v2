@@ -86,7 +86,7 @@ in production (none known — production Chickin HoldCo was posted as-is, no fil
 
 ## Tasks
 - [x] T1 Question scope excludes only known-out-of-scope units; limitation for unconfirmed ones; CONTEXT includes proposed facts — accept: DB test on a collection with **no** selections: dated question (field and plan) returns the passage; confirmed-other-entity unit and confirmed-out-of-range unit excluded
-- [ ] T2 Lenient optional fields in `parseEvidenceAnswerPlan` — accept: unit test `{"intent":"SEARCH","terms":["x"],"from":null,"entityId":""}` parses; unknown key still throws
+- [x] T2 Lenient optional fields in `parseEvidenceAnswerPlan` — accept: unit test `{"intent":"SEARCH","terms":["x"],"from":null,"entityId":""}` parses; unknown key still throws
 - [ ] T3 *Periode* field on its own `tanya` param, empty by default (depends T1) — accept: `/documents/<id>?period=2025-12` shows empty field; choosing a month sets `tanya=` and the answer scope
 - [ ] T4 File rates fill gaps only + REVIEW `FX_FILE_RATE_DIFFERS` (reuse `formatRate`, `lookupRate`) — accept: DB test: existing FILE and MANUAL rows untouched after posting; differing file rate yields one REVIEW per pair
 - [ ] T5 Conversion residue of per-currency-balanced groups → 7190; currency-neutral rounding memo; accounting-rules 6a/6b text — accept: unit test (3 USD lines, residue 1 → rounding, no BLOCK; mixed USD/SGD unequal group → BLOCK unchanged); DB test posts with 7190 line and `postJournal` fx check passes
@@ -96,7 +96,10 @@ in production (none known — production Chickin HoldCo was posted as-is, no fil
 ## Implementation
 - Plan: tasks T1–T7 sequential, done inline (T1/T3 and T5/T6 share files; slices too small to delegate).
 - T1: `lib/evidence/answers.ts` (`sourceScope`), `tests/db/evidence-scope.test.ts`, `tests/unit/evidence-answers.test.ts` — units are excluded only when confirmed for another entity or with a known (confirmed, else extracted) period outside the range; passage/fact queries use `NOT (excluded)`; unconfirmed units counted in a limitation. Unit test updated: an *unconfirmed* other-entity sheet is now searched (the spec's rule), a *confirmed* one is still dropped.
+- T2: `lib/ai/provider.ts` (`parseEvidenceAnswerPlan`), `tests/unit/evidence-ai.test.ts` — optional fields `null`/`""` dropped before validation; a lone `from` or `to` becomes a one-day range (previously a plan with only `from` passed the parser and then failed the question in `rangeFor`). Unknown keys (`note: null`) still rejected.
 
 ## Verification
-- T1: new DB test fails on old code (`expected [] to deeply equal [ 'Dec24!12', 'PnL!12' ]`), passes after. Gate: lint ✓, typecheck ✓, `Test Files 48 passed (48) · Tests 367 passed`.
+- T1: new DB test fails on old code (`expected [] to deeply equal [ 'Dec24!12', 'PnL!12' ]`), passes after. Gate: lint ✓, typecheck ✓, `Test Files 48 passed (48) · Tests 365 passed (365)`.
+- T2: gate lint ✓, typecheck ✓, `Test Files 48 passed (48) · Tests 366 passed (366)`.
+
 ## Ship Notes
