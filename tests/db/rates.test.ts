@@ -40,7 +40,7 @@ describe("rate lookup rules", () => {
 describe("rate table", () => {
   beforeEach(resetDb);
 
-  it("file rates never overwrite manual ones", async () => {
+  it("file rates never overwrite an existing rate, whatever its source", async () => {
     const g = await makeGroup();
     const row = R("USD", "SGD", 2023, 1, 3, "SPOT", "1.30");
     await upsertRate(db, g.firm.id, { ...row, source: "MANUAL" });
@@ -48,6 +48,8 @@ describe("rate table", () => {
     expect((await db.exchangeRate.findFirstOrThrow()).rate).toBe("1.3");
     await upsertFileRate(db, g.firm.id, { ...row, date: dateOnly(2023, 1, 4), rate: "1.31" });
     expect(await db.exchangeRate.count({ where: { source: "FILE" } })).toBe(1);
+    await upsertFileRate(db, g.firm.id, { ...row, date: dateOnly(2023, 1, 4), rate: "1.3669" });
+    expect((await db.exchangeRate.findFirstOrThrow({ where: { date: dateOnly(2023, 1, 4) } })).rate).toBe("1.31");
   });
 
   it("lists what the Gabungan needs for a non-IDR entity", async () => {

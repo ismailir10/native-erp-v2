@@ -29,10 +29,13 @@ export async function loadRates(db: Db | Tx, firmId: string): Promise<RateRow[]>
 
 export class RateError extends Error {}
 
-/** Rates picked up from an imported file never overwrite a rate the accountant typed in. */
+/**
+ * Rates picked up from an imported file only fill empty dates. The Kurs table is per firm, so a stale rate written in one
+ * client's file must never replace a rate another import or the accountant already recorded (the draft says so instead).
+ */
 export async function upsertFileRate(db: Db | Tx, firmId: string, r: RateRow & { note?: string | null }) {
   const existing = await db.exchangeRate.findUnique({ where: { firmId_currency_quote_date_kind: { firmId, currency: r.currency, quote: r.quote, date: r.date, kind: r.kind } } });
-  if (existing?.source === "MANUAL") return existing;
+  if (existing) return existing;
   return upsertRate(db, firmId, { ...r, source: "FILE" });
 }
 
