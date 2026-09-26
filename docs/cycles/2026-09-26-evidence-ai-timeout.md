@@ -33,11 +33,13 @@ choosing another model.
 3. Vercel's 300 s function limit (already in the layout) covers every path that reaches these calls (`/documents/**` server actions).
 
 ## Tasks
-- [ ] T1 Provider: per-call timeout in `complete()`; `EVIDENCE_TIMEOUT_MS = 90_000`, default 30 s — accept: unit test spies `AbortSignal.timeout` → 90 000 for `analyzeEvidence`/`planEvidenceAnswer`, 30 000 for `classify`/`mapAccounts`.
+- [x] T1 Provider: per-call timeout in `complete()`; `EVIDENCE_TIMEOUT_MS = 90_000`, default 30 s — accept: unit test spies `AbortSignal.timeout` → 90 000 for `analyzeEvidence`/`planEvidenceAnswer`, 30 000 for `classify`/`mapAccounts`.
 - [ ] T2 Lease: `claimStep(db, firmId, intakeId, ms = 90_000)`; analysis claims 150 s — depends T1 — accept: DB test shows an analysis lease ≥ 150 s ahead and an inventory step lease still 90 s.
 - [ ] T3 Docs + end-of-cycle gates (lint, typecheck, test, build, `verify:books`, `test:e2e`) — accept: all green.
 
 ## Implementation
 - Plan: T1–T3 sequential, done inline (three small dependent edits).
+- T1: `lib/ai/provider.ts` — `AI_TIMEOUT_MS = 30_000`, `EVIDENCE_TIMEOUT_MS = 90_000`; `complete()` takes the timeout; `analyzeEvidence`/`planEvidenceAnswer` pass 90 s. Test in `tests/unit/evidence-ai.test.ts`.
 ## Verification
+- T1: `AbortSignal.timeout` spy → [90000] for analyzeEvidence and planEvidenceAnswer, [30000] for classify and mapAccounts. Gate: lint ✔, typecheck ✔, `Test Files 44 passed (44) · Tests 349 passed (349)`.
 ## Ship Notes
