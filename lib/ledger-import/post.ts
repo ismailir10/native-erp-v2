@@ -267,7 +267,7 @@ export async function postImport(db: Db, clientId: string, importId: string) {
           });
         }
         const r = BigInt(e.rounding);
-        if (r !== 0n) lines.push({ accountId: rounding.id, debit: r > 0n ? r : 0n, credit: r < 0n ? -r : 0n, memo: "Selisih pembulatan sen ke Rupiah" });
+        if (r !== 0n) lines.push({ accountId: rounding.id, debit: r > 0n ? r : 0n, credit: r < 0n ? -r : 0n, memo: e.fxRounding ? "Selisih pembulatan konversi kurs" : "Selisih pembulatan sen" });
         const imbalance = BigInt(e.imbalance);
         if (imbalance !== 0n) lines.push({ accountId: suspense.id, debit: imbalance < 0n ? -imbalance : 0n, credit: imbalance > 0n ? imbalance : 0n, memo: "Selisih dari file sumber" });
         if (lines.length < 2) continue;

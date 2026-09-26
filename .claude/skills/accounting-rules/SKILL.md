@@ -26,10 +26,13 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
    pixels. Across the server→client boundary pass bigint as string. Never add amounts of entities with different currencies
    without translating first (rule 11).
 6a. **IDR sen:** source amounts with sen round half-up per line to whole Rupiah; the entry's residue goes to one line on
-   **7190 Selisih Pembulatan** (`roundEntry()`). Never spread it silently over other lines.
+   **7190 Selisih Pembulatan** (`roundEntry()`). Never spread it silently over other lines. Same for conversion: when a ledger
+   group balances in every source currency, the ≤ 1 minor unit per converted line left after converting goes to 7190
+   ("Selisih pembulatan konversi kurs"); a larger residue, or a group that doesn't balance per currency, is a real difference.
 6b. **Foreign-currency lines** keep `currency`, `fxAmount` (minor units) and `fxRate` (decimal string, functional per 1 unit);
    `postJournal` checks `round(fxAmount × fxRate) = functional amount` (±1 minor unit). Rates are `ExchangeRate` rows (typed in
-   or taken from the file) — never fetched live. Month-end revaluation is **proposed** to **7200 Laba/Rugi Selisih Kurs** and
+   or taken from the file) — never fetched live. A file rate only **fills an empty date**; it never overwrites a Kurs row (the table
+   is per firm), and a differing one is shown as REVIEW `FX_FILE_RATE_DIFFERS` on the draft. Month-end revaluation is **proposed** to **7200 Laba/Rugi Selisih Kurs** and
    posted only by an explicit click.
 7. Dates are date-only `@db.Date` (UTC midnight). Read with `getUTC*`. Use `dateOnly()` / `periodBounds()`.
 8. PPN split: tagged lines split gross → DPP + PPN at `PPN_EFFECTIVE_PERCENT` (11% = 12% × 11/12). `dpp + ppn === gross` always. It's an estimate — label it.

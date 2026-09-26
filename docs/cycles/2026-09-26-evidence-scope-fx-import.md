@@ -89,7 +89,7 @@ in production (none known — production Chickin HoldCo was posted as-is, no fil
 - [x] T2 Lenient optional fields in `parseEvidenceAnswerPlan` — accept: unit test `{"intent":"SEARCH","terms":["x"],"from":null,"entityId":""}` parses; unknown key still throws
 - [x] T3 *Periode* field on its own `tanya` param, empty by default (depends T1) — accept: `/documents/<id>?period=2025-12` shows empty field; choosing a month sets `tanya=` and the answer scope
 - [x] T4 File rates fill gaps only + REVIEW `FX_FILE_RATE_DIFFERS` (reuse `formatRate`, `lookupRate`) — accept: DB test: existing FILE and MANUAL rows untouched after posting; differing file rate yields one REVIEW per pair
-- [ ] T5 Conversion residue of per-currency-balanced groups → 7190; currency-neutral rounding memo; accounting-rules 6a/6b text — accept: unit test (3 USD lines, residue 1 → rounding, no BLOCK; mixed USD/SGD unequal group → BLOCK unchanged); DB test posts with 7190 line and `postJournal` fx check passes
+- [x] T5 Conversion residue of per-currency-balanced groups → 7190; currency-neutral rounding memo; accounting-rules 6a/6b text — accept: unit test (3 USD lines, residue 1 → rounding, no BLOCK; mixed USD/SGD unequal group → BLOCK unchanged); DB test posts with 7190 line and `postJournal` fx check passes
 - [ ] T6 `table.currencies` at extraction; *Baris valas* choice in Dokumen; `prepareEvidenceImportAction(…, currencyMode)` → `stageImport` (depends T5) — accept: evidence review DB test stages CONVERT draft with converted lines; UI shows the field only for multi-currency/unknown units
 - [ ] T7 Docs (`real-data.md`, `evidence-workspace.md`) + local re-run on `buku_real`: FKM dated question answers, Chickin HoldCo via Dokumen with *Konversi* shows 6 real differences (not 16) and no Kurs rows changed — accept: results recorded in Verification
 
@@ -99,11 +99,13 @@ in production (none known — production Chickin HoldCo was posted as-is, no fil
 - T2: `lib/ai/provider.ts` (`parseEvidenceAnswerPlan`), `tests/unit/evidence-ai.test.ts` — optional fields `null`/`""` dropped before validation; a lone `from` or `to` becomes a one-day range (previously a plan with only `from` passed the parser and then failed the question in `rangeFor`). Unknown keys (`note: null`) still rejected.
 - T3: `components/app/evidence-workspace.tsx` — question period reads/writes `tanya`; the app-wide `period` is only carried on the "Semua dokumen" link.
 - T4: `lib/fx/rates.ts` (`upsertFileRate` insert-only), `lib/ledger-import/post.ts` (`fileRateChecks`), `tests/db/rates.test.ts`, `tests/db/ledger-import.test.ts` — file rates only fill empty Kurs dates; a differing existing rate yields one REVIEW `FX_FILE_RATE_DIFFERS` per pair (latest 5 dates + count), mode-aware wording.
+- T5: `lib/ledger-import/check.ts` (per-currency source sums, `fxRounding`), `lib/ledger-import/post.ts` (memo), `.claude/skills/accounting-rules` 6a/6b, `tests/unit/ledger-check.test.ts`, `tests/db/ledger-import.test.ts` — residue ≤ n converted lines of a group balanced in every source currency moves from `imbalance` to `rounding` (7190, "Selisih pembulatan konversi kurs"); rounding memo no longer says "ke Rupiah". `lib/controls` STATS wording untouched (still labels the total IDR — noted, out of scope).
 
 ## Verification
 - T1: new DB test fails on old code (`expected [] to deeply equal [ 'Dec24!12', 'PnL!12' ]`), passes after. Gate: lint ✓, typecheck ✓, `Test Files 48 passed (48) · Tests 365 passed (365)`.
 - T2: gate lint ✓, typecheck ✓, `Test Files 48 passed (48) · Tests 366 passed (366)`.
 - T3 (browser, local `buku_real`, kimi-k3): `/documents/<FKM>?scope=all&period=2025-12` → Periode field empty; "Berapa Penjualan Minuman Desember 2024?" → 30 cited passages incl. `4 1 01 01 | Penjualan Minuman | 1125635898.336` (was: "Tidak ada bukti yang cocok"); limitation "13 bagian belum dikonfirmasi entitas/periodenya; ikut dicari."; AiUsage kimi-k3 264/346 ok. Gate: lint ✓, typecheck ✓, `Test Files 48 passed (48) · Tests 366 passed (366)`.
 - T4: new ledger-import test — FILE-source 1,2855 kept after posting a file with `Rate: 1.3669`; REVIEW message asserted verbatim. Gate: lint ✓, typecheck ✓, `Test Files 48 passed (48) · Tests 367 passed (367)`.
+- T5: unit — 3 USD lines at 1,3669 → lines 1368/1368/−2737, rounding +1, no BLOCK; USD 150.000 vs "SGD 150.000" still BLOCK S$46.500,00. DB — posts via `postJournal` with one 7190 debit 1 "Selisih pembulatan konversi kurs", no 1999. Gate: lint ✓, typecheck ✓, `Test Files 48 passed (48) · Tests 370 passed (370)`.
 
 ## Ship Notes

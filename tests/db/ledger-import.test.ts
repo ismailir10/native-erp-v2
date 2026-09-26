@@ -173,6 +173,26 @@ describe("ledger import: stage → map → post", () => {
     expect(kurs.map((k) => [k.date.toISOString().slice(0, 10), k.rate, k.source])).toEqual([["2025-12-30", "1.3669", "FILE"], ["2025-12-31", "1.2855", "FILE"]]);
   });
 
+  it("CONVERT mode posts a conversion residue of a USD-balanced journal to 7190 instead of blocking", async () => {
+    const g = await makeGroup();
+    await db.entity.update({ where: { id: g.pt.entity.id }, data: { functionalCurrency: "SGD" } });
+    const file = await xlsx([
+      H,
+      ["PT Uji", d(2024, 3, 31), "11000", "Account Receivable", "USD", 10.01, 0, "Rate: 1.3669"],
+      ["PT Uji", d(2024, 3, 31), "11002", "Loan to Subsidiary", "USD", 10.01, 0, "Rate: 1.3669"],
+      ["PT Uji", d(2024, 3, 31), "20000", "Loan Payable", "USD", 0, 20.02, "Rate: 1.3669"],
+    ]);
+    const staged = await stageImport(db, { firmId: g.firm.id, clientId: g.client.id, fileName: "hc.xlsx", data: file, currencyMode: "CONVERT" });
+    if (staged.status !== "STAGED") throw new Error("not staged");
+    expect(staged.checks.filter((c) => c.severity === "BLOCK")).toEqual([]);
+    await mapAllBySuggestion(g.client.id, staged.importId);
+    await postImport(db, g.client.id, staged.importId);
+    const lines = await db.journalLine.findMany({ where: { entry: { ledgerImportId: staged.importId } }, include: { account: true } });
+    const rounding = lines.filter((l) => l.account.code === "7190");
+    expect(rounding.map((l) => [l.debit, l.credit, l.memo])).toEqual([[1n, 0n, "Selisih pembulatan konversi kurs"]]);
+    expect(lines.some((l) => l.account.code === "1999")).toBe(false);
+  });
+
   it("CONVERT mode posts foreign lines with fx amount and rate (SGD entity, USD lines)", async () => {
     const g = await makeGroup();
     await db.entity.update({ where: { id: g.pt.entity.id }, data: { functionalCurrency: "SGD" } });
