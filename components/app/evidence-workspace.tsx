@@ -76,7 +76,8 @@ export function EvidenceWorkspace({ initial, clients }: { initial: Workspace; cl
   const [workspace, setWorkspace] = useState(initial); const [busy, setBusy] = useState(false); const [running, setRunning] = useState(false); const [progress, setProgress] = useState("");
   const [url, setUrl] = useState(initial.intake.sourceUrl ?? ""); const [question, setQuestion] = useState(""); const [answer, setAnswer] = useState<EvidenceAnswer | null>(null); const [answerScope, setAnswerScope] = useState(""); const [showClient, setShowClient] = useState(false); const [existingClient, setExistingClient] = useState("");
   const [fileSearch, setFileSearch] = useState(""); const [fileFilter, setFileFilter] = useState("included"); const [filePage, setFilePage] = useState(0);
-  const search = useSearchParams(); const router = useRouter(); const scopedEntity = search.get("scope")?.startsWith("entity:") ? search.get("scope")!.slice(7) : ""; const entityId = search.get("entity") === "combined" ? "" : search.get("entity") ?? (workspace.entities.some(e => e.id === scopedEntity) ? scopedEntity : ""); const period = search.get("period") ?? "";
+  const search = useSearchParams(); const router = useRouter(); const scopedEntity = search.get("scope")?.startsWith("entity:") ? search.get("scope")!.slice(7) : ""; const entityId = search.get("entity") === "combined" ? "" : search.get("entity") ?? (workspace.entities.some(e => e.id === scopedEntity) ? scopedEntity : ""); // Question period has its own param: the app-wide `period` must not silently narrow evidence questions.
+  const period = search.get("tanya") ?? ""; const globalPeriod = search.get("period");
   const stopped = useRef(false); const mounted = useRef(true); const processing = useRef(false); const autoResumed = useRef(false); const uploadInput = useRef<HTMLInputElement>(null); const id = workspace.intake.id;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; stopped.current = true; }; }, []);
   const refresh = useCallback(async () => { if (!mounted.current) return; const r = await loadEvidenceAction(id); if (r.ok && mounted.current) setWorkspace(r.data); }, [id]);
@@ -117,7 +118,7 @@ export function EvidenceWorkspace({ initial, clients }: { initial: Workspace; cl
     if (processed.data.busy) return { ok: false, error: "Sesi lain sedang memproses. Tunggu lalu coba kembali." };
     return processed.data.error ? { ok: false, error: processed.data.error } : { ok: true };
   }
-  function scope(nextEntity: string, nextPeriod: string) { setAnswer(null); const p = new URLSearchParams(search.toString()); p.delete("entity"); p.delete("period"); if (nextEntity) p.set("entity", nextEntity); if (nextPeriod) p.set("period", nextPeriod); router.replace(`/documents/${id}?${p}`); }
+  function scope(nextEntity: string, nextPeriod: string) { setAnswer(null); const p = new URLSearchParams(search.toString()); p.delete("entity"); p.delete("tanya"); if (nextEntity) p.set("entity", nextEntity); if (nextPeriod) p.set("tanya", nextPeriod); router.replace(`/documents/${id}?${p}`); }
   const pending = workspace.documents.filter(d => !d.excluded && d.status === "PENDING").length;
   const ready = workspace.documents.filter(d => !d.excluded && d.status === "READY").length;
   const errors = workspace.documents.filter(d => !d.excluded && d.status === "ERROR").length;
@@ -126,7 +127,7 @@ export function EvidenceWorkspace({ initial, clients }: { initial: Workspace; cl
   const pages = Math.max(1, Math.ceil(docs.length / 20)); const currentPage = Math.min(filePage, pages - 1);
   const visibleDocs = docs.slice(currentPage * 20, (currentPage + 1) * 20);
   return <div className="space-y-6">
-    <PageHeader title={workspace.intake.name} description="Bukti sumber tersimpan terpisah dari buku. Setiap versi dapat ditelusuri." actions={<Link href={`/documents?${new URLSearchParams({ scope: search.get("scope") ?? (workspace.intake.clientId ? `client:${workspace.intake.clientId}` : "all"), ...(period ? { period } : {}) })}`} className="text-sm text-primary">Semua dokumen</Link>} />
+    <PageHeader title={workspace.intake.name} description="Bukti sumber tersimpan terpisah dari buku. Setiap versi dapat ditelusuri." actions={<Link href={`/documents?${new URLSearchParams({ scope: search.get("scope") ?? (workspace.intake.clientId ? `client:${workspace.intake.clientId}` : "all"), ...(globalPeriod ? { period: globalPeriod } : {}) })}`} className="text-sm text-primary">Semua dokumen</Link>} />
     <NextStep>{running ? "File sedang diperiksa. Menutup halaman menjeda proses setelah langkah aktif selesai." : workspace.intake.status === "PARTIAL" ? "Pemeriksaan belum lengkap. Periksa kendala di bawah." : pending ? `${pending} file menunggu. Lanjutkan pemeriksaan dari progres tersimpan.` : "Periksa peran sumber dan perbedaan. Anda sudah bisa bertanya tentang dokumen."}</NextStep>
     <p data-testid="evidence-progress" className="text-sm text-muted-foreground">{ready} file siap · {errors} perlu tindakan · {pending} menunggu · {excluded} tidak disertakan. {workspace.documents.length} item ditemukan.{workspace.intake.hasPendingWork && " Pemeriksaan belum selesai."}</p>
     {workspace.intake.issue && <Alert className="border-review/30 bg-review-subtle"><AlertCircle /><AlertDescription>{workspace.intake.issue}</AlertDescription></Alert>}
