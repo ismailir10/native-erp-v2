@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatRupiah, parseRupiah, splitPpn } from "@/lib/money";
+import { formatRupiah, MoneyError, moneyExample, parseMoney, parseRupiah, splitPpn } from "@/lib/money";
 
 describe("parseRupiah", () => {
   it.each([
@@ -92,5 +92,80 @@ describe("formatMoney", () => {
     expect(formatMoney(-4_497n, "USD", { accounting: true })).toBe("(US$ 44,97)");
     expect(formatMoney(5n, "SGD", { bare: true })).toBe("0,05");
     expect(formatMoney(12_750n, "JPY")).toBe("¥ 12.750");
+  });
+});
+
+describe("parseMoney (typed major units → minor units of the entity currency)", () => {
+  it.each([
+    ["IDR", "", 0n],
+    ["IDR", "   ", 0n],
+    ["IDR", "100", 100n],
+    ["IDR", "1500000", 1_500_000n],
+    ["IDR", "1.500.000", 1_500_000n],
+    ["IDR", " 12.500.000,00 ", 12_500_000n],
+    ["IDR", "Rp 1.000", 1_000n],
+    ["IDR", "Rp. 1.000", 1_000n],
+    ["IDR", "idr 1.000", 1_000n],
+    ["IDR", "-1.234", -1_234n],
+    ["IDR", "(1.234)", -1_234n],
+    ["JPY", "1.500", 1_500n],
+    ["SGD", "100", 10_000n],
+    ["SGD", "12,34", 1_234n],
+    ["SGD", "12,3", 1_230n],
+    ["SGD", "1.500.000,50", 150_000_050n],
+    ["SGD", "1.000,00", 100_000n],
+    ["SGD", "1.000,000", 100_000n],
+    ["SGD", "S$ 100", 10_000n],
+    ["SGD", "SGD 100", 10_000n],
+    ["SGD", "-0,01", -1n],
+    ["USD", "US$ 44,97", 4_497n],
+    ["USD", "(44,97)", -4_497n],
+  ])("%s %j → %s", (currency, input, expected) => {
+    expect(parseMoney(input, currency)).toBe(expected);
+  });
+
+  it.each([
+    ["IDR", "12a4"],
+    ["IDR", "1.5"],
+    ["IDR", "100.50"],
+    ["IDR", "1500.000"],
+    ["IDR", "1.50.000"],
+    ["IDR", "1,234,567"],
+    ["IDR", "1,234,567.00"],
+    ["IDR", "1,2,3"],
+    ["IDR", "--1"],
+    ["IDR", "(-1)"],
+    ["IDR", ","],
+    ["IDR", ",50"],
+    ["IDR", "S$ 100"],
+    ["SGD", "Rp 100"],
+    ["USD", "S$ 100"],
+    ["SGD", "100.50"],
+    ["SGD", "1e3"],
+  ])("rejects %s %j as unreadable", (currency, input) => {
+    expect(() => parseMoney(input, currency)).toThrow(MoneyError);
+    expect(() => parseMoney(input, currency)).toThrow(/tidak bisa dibaca/);
+  });
+
+  it("rejects decimals the currency doesn't have, never rounds", () => {
+    expect(() => parseMoney("100,5", "IDR")).toThrow('Rupiah tidak memakai angka desimal: "100,5".');
+    expect(() => parseMoney("1.000,50", "IDR")).toThrow(MoneyError);
+    expect(() => parseMoney("1,005", "SGD")).toThrow('Dolar Singapura paling banyak 2 angka di belakang koma: "1,005".');
+  });
+
+  it("gives an example in the entity's own notation", () => {
+    expect(moneyExample("IDR")).toBe("1.250.000");
+    expect(moneyExample("SGD")).toBe("1.250,50");
+    expect(() => parseMoney("abc", "SGD")).toThrow("misalnya 1.250,50");
+  });
+
+  it("round-trips formatMoney output", () => {
+    for (const currency of ["IDR", "SGD", "USD", "JPY"]) {
+      for (const v of [0n, 1n, 99n, 100n, 123_456_789n, -1n, -100_001n]) {
+        expect(parseMoney(formatMoney(v, currency, { bare: true }), currency)).toBe(v);
+        expect(parseMoney(formatMoney(v, currency), currency)).toBe(v);
+        expect(parseMoney(formatMoney(v, currency, { accounting: true }), currency)).toBe(v);
+      }
+    }
   });
 });

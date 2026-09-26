@@ -62,4 +62,27 @@ describe("Saldo awal", () => {
     await postOpening(db, { ...base, date: dateOnly(2026, 7, 31), lines: [{ accountCode: "1102", debit: "50.000.000", credit: "" }] });
     await expect(postOpening(db, { ...base, date: dateOnly(2026, 7, 31), lines: [{ accountCode: "1102", debit: "1", credit: "" }] })).rejects.toBeInstanceOf(OpeningError);
   });
+
+  it("SGD entity: balances are typed in dollars and posted in cents, plug included", async () => {
+    const g = await makeGroup();
+    await db.entity.update({ where: { id: g.pt.entity.id }, data: { functionalCurrency: "SGD" } });
+    await postOpening(db, {
+      clientId: g.client.id,
+      entityId: g.pt.entity.id,
+      date: dateOnly(2026, 7, 31),
+      lines: [
+        { accountCode: "1102", debit: "1.000,00", credit: "" },
+        { accountCode: "2210", debit: "", credit: "250,5" },
+      ],
+    });
+    const entry = await db.journalEntry.findFirstOrThrow({ where: { entityId: g.pt.entity.id, kind: "OPENING" }, include: { lines: { include: { account: true } } } });
+    expect(entry.lines.map((l) => [l.account.code, l.debit, l.credit]).sort()).toEqual([
+      ["1102", 100_000n, 0n],
+      ["2210", 0n, 25_050n],
+      ["3200", 0n, 74_950n],
+    ]);
+    await expect(
+      postOpening(db, { clientId: g.client.id, entityId: g.owner.entity.id, date: dateOnly(2026, 7, 31), lines: [{ accountCode: "1103", debit: "12,5", credit: "" }] }),
+    ).rejects.toThrow("Rupiah tidak memakai angka desimal");
+  });
 });

@@ -113,6 +113,49 @@ export function parseMinor(input: string | number | bigint | null | undefined, c
   return centsToMinor(parseCents(input), currency);
 }
 
+/** A typed amount that can't be read; the message is Bahasa and shown to the user verbatim. */
+export class MoneyError extends Error {}
+
+/** A sample amount in `currency`, id-ID notation: "1.250.000" (IDR), "1.250,50" (SGD). For hints and error messages. */
+export function moneyExample(currency: string): string {
+  const e = exponentOf(currency);
+  return formatMoney(e === 0 ? 1_250_000n : 1_250n * 10n ** BigInt(e) + 5n * 10n ** BigInt(e - 1), currency, { bare: true });
+}
+
+/**
+ * Parse an amount an accountant typed, in **major units** of `currency` and Indonesian notation, into minor units.
+ * Dots group thousands (in threes only), a comma starts the decimals: "1.500.000", "12.500,50", "-1.234", "(1.234)",
+ * optionally led by that currency's symbol or code ("Rp", "S$", "SGD"). Blank → 0n. Decimals beyond the currency's
+ * exponent must be zeros ("12.500.000,00" for IDR); anything else throws MoneyError. Never rounds, never guesses.
+ */
+export function parseMoney(input: string, currency: string): bigint {
+  const e = exponentOf(currency);
+  const unreadable = () => new MoneyError(`Nominal "${input.trim()}" tidak bisa dibaca. Tulis dengan titik ribuan dan koma desimal, misalnya ${moneyExample(currency)}.`);
+  let s = input.replace(/\s/g, "");
+  if (s === "") return 0n;
+  let negative = false;
+  if (/^\(.*\)$/.test(s)) {
+    negative = true;
+    s = s.slice(1, -1);
+  }
+  if (s.startsWith("-")) {
+    if (negative) throw unreadable();
+    negative = true;
+    s = s.slice(1);
+  }
+  const { symbol, name } = CURRENCIES[currency as keyof typeof CURRENCIES];
+  const prefix = [`${symbol}.`, symbol, currency].find((p) => s.toUpperCase().startsWith(p.toUpperCase()));
+  if (prefix) s = s.slice(prefix.length);
+  const m = s.match(/^(\d{1,3}(?:\.\d{3})+|\d+)(?:,(\d+))?$/);
+  if (!m) throw unreadable();
+  const frac = m[2] ?? "";
+  if (/[1-9]/.test(frac.slice(e))) {
+    throw new MoneyError(e === 0 ? `${name} tidak memakai angka desimal: "${input.trim()}".` : `${name} paling banyak ${e} angka di belakang koma: "${input.trim()}".`);
+  }
+  const value = BigInt(m[1].replace(/\./g, "")) * 10n ** BigInt(e) + BigInt(frac.slice(0, e).padEnd(e, "0") || "0");
+  return negative ? -value : value;
+}
+
 /**
  * Rule 6a: round each signed sen amount to the currency's minor unit and report the residue that one line on
  * 7190 Selisih Pembulatan must carry so the rounded entry sums to the rounded total. Nothing is spread silently.

@@ -1,7 +1,7 @@
 import type { Db } from "@/lib/db";
 import { postJournal, type PostLine } from "@/lib/ledger/post";
 import { formatDate } from "@/lib/format";
-import { parseRupiah } from "@/lib/money";
+import { parseMoney } from "@/lib/money";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
 
 /**
@@ -72,14 +72,9 @@ export async function postOpening(db: Db, input: { clientId: string; entityId: s
   let debit = 0n;
   let credit = 0n;
   for (const l of input.lines) {
-    let dr: bigint;
-    let cr: bigint;
-    try {
-      dr = parseRupiah(l.debit);
-      cr = parseRupiah(l.credit);
-    } catch {
-      throw new OpeningError("Ada nominal yang tidak bisa dibaca. Tulis angka saja, misalnya 12.500.000.");
-    }
+    // Typed in major units of the entity's currency; an unreadable amount throws MoneyError with an example in it.
+    const dr = parseMoney(l.debit, entity.functionalCurrency);
+    const cr = parseMoney(l.credit, entity.functionalCurrency);
     if (dr === 0n && cr === 0n) continue;
     const acc = accounts.get(l.accountCode);
     if (!acc) throw new OpeningError("Pilih akun untuk setiap baris yang berisi nominal.");
