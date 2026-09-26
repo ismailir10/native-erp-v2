@@ -112,9 +112,9 @@ Next.js 16 (App Router, server actions) · TypeScript · Tailwind v4 · shadcn (
 
 | Vercel environment | Neon branch | `DEMO_MODE` | Who sees it |
 |---|---|---|---|
-| Production (`main`) | `real-data` | `false` | Invited accountants. **The real workspace**, see [docs/real-data.md](docs/real-data.md) |
-| Preview, git branch `staging` | `preview` | `true` | Invited users + Vercel protection. Synthetic pre-production |
-| Preview (PR branches) | `preview` | `true` | Invited users + Vercel protection |
+| Production (`main`) | `main` | `false` | Invited accountants. **The real workspace**, see [docs/real-data.md](docs/real-data.md) |
+| Preview, git branch `staging` | `staging` | `true` | Invited users + Vercel protection. Synthetic pre-production |
+| Preview (PR branches) | `staging` | `true` | Invited users + Vercel protection |
 
 `vercel-build` (`scripts/vercel-build.sh`) then runs `prisma migrate deploy` on the unpooled URL, seeds the demo **only if the
 database is empty**, and builds. `npm run demo:reset` is destructive operator tooling: it removes all demo database data, including invitations and sessions; re-provision users afterward. The shared UI cannot trigger it. Neon Auth / Functions / buckets are not used.
@@ -143,8 +143,9 @@ GitHub automatically deletes the merged task branch; remove its local copy after
 Promote tested staging to production with a separate `staging` → `main` PR using a **merge commit** to preserve ancestry.
 Both permanent branches are protected from deletion and force-push, and require the CI `check` result.
 
-Staging keeps the `native-erp-v2-git-real-data-…vercel.app` domain for saved links but now holds synthetic data only.
-Production uses the Neon branch named `real-data`; git branch names and database names are independent.
+Neon mirrors git: branch `main` (real workspace) and branch `staging` (synthetic demo, the Neon default so any new
+Neon branch copies demo data, never client data). Nothing else. Staging keeps the `native-erp-v2-git-real-data-…vercel.app`
+domain for saved links; it serves the synthetic `staging` database.
 
 ## For contributors (humans and agents)
 Read [CLAUDE.md](CLAUDE.md) (= `AGENTS.md`): the spec → build → ship loop, gates, and which skill governs which folder.

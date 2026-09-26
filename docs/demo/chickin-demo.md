@@ -1,7 +1,7 @@
 # Chickin group demo (private)
 
-A 10-minute walk through a real multi-company, multi-currency group. **Run it locally or on the `real-data` preview only**
-(behind Vercel login). The numbers are client data: they appear on screen, never in this repo.
+A 10-minute walk through a real multi-company, multi-currency group. **Run it locally or in production only**
+(behind invitation login). The numbers are client data: they appear on screen, never in this repo.
 
 ## Before
 ```bash
