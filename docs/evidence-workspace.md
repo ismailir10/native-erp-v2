@@ -30,7 +30,7 @@ Apply committed migrations and configure [invitation-only access](../README.md#i
 
 Google's restricted-scope verification/security requirements must be addressed before public distribution: https://developers.google.com/workspace/drive/api/guides/api-specific-auth. Workspace reads and actions resolve the firm from the invited user session.
 
-AI calls reserve a conservative upper bound under a firm lock before contacting the provider, then settle actual usage. Interrupted/unknown-billing calls keep their reservation to avoid overspend. Monthly configuration remains `AI_MONTHLY_TOKEN_BUDGET`; evidence limits are 20,000 tokens/intake and 12,000/question. Exhaustion leaves source work intact for manual review. No automatic paid retry loops.
+AI calls reserve a conservative upper bound under a firm lock before contacting the provider, then settle actual usage. Interrupted/unknown-billing calls keep their reservation to avoid overspend. Monthly configuration remains `AI_MONTHLY_TOKEN_BUDGET`; evidence limits are 20,000 tokens/intake and 12,000/question. Evidence calls (context proposals, question planning) may take 90 s before Buku aborts them; classification and account mapping keep 30 s. Exhaustion leaves source work intact for manual review. No automatic paid retry loops.
 
 ## Verification and rollback
 Run normal repo gates, then the evidence E2E against a disposable local database with `EVIDENCE_ENABLED=true DEMO_MODE=false AI_API_KEY='' AI_MODEL=''`. Tests upload invented companies/figures, never client files. Real data stays local or protected `staging` preview; do not copy it into fixtures or PR screenshots.
