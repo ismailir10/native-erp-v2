@@ -5,7 +5,7 @@ import { postJournal, type PostLine } from "@/lib/ledger/post";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { formatDate } from "@/lib/format";
 import { loadRates, lookupRate, upsertFileRate } from "@/lib/fx/rates";
-import { formatRate, isCurrency, parseRate } from "@/lib/fx/currency";
+import { formatRate, formatRateId, isCurrency, parseRate } from "@/lib/fx/currency";
 import { ParseError } from "@/lib/import/types";
 import { detectTables, readSheets, readTable } from "@/lib/ledger-import/read";
 import { accountKey, planLedger, planNeraca, type Check, type CurrencyMode, type EntityInfo, type Plan, type PlanEntry } from "@/lib/ledger-import/check";
@@ -128,6 +128,8 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
 
   // Rates written in the file (rate column or "Rate: 1.31" notes) are kept and saved to the Kurs table on post.
   const fileRates = new Map<string, FileRate>();
+  // Every distinct rate a row states, for the Kurs comparison; only one per date can be kept in the table.
+  const statedRates = new Map<string, FileRate>();
   if (read.mode === "LEDGER") {
     for (const r of read.rows) {
       const ei = entityInfos.get(r.entity ?? "");
@@ -135,12 +137,15 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
       try {
         const rate = formatRate(parseRate(r.rate));
         const date = r.date.toISOString().slice(0, 10);
-        fileRates.set(`${r.currency}|${ei.currency}|${date}`, { currency: r.currency, quote: ei.currency, date, rate, ref: r.ref });
+        const stated = { currency: r.currency, quote: ei.currency, date, rate, ref: r.ref };
+        fileRates.set(`${r.currency}|${ei.currency}|${date}`, stated);
+        if (!statedRates.has(`${r.currency}|${ei.currency}|${date}|${rate}`)) statedRates.set(`${r.currency}|${ei.currency}|${date}|${rate}`, stated);
       } catch {
         // an unreadable rate note is just not a rate
       }
     }
   }
+  plan.checks.push(...(await fileRateChecks(db, input.firmId, [...statedRates.values()], currencyMode)));
   // All-zero groups are reported in the checks ("… jurnal bernilai nol dilewati") but not staged, so the draft's
   // "Catat N jurnal" is the number that will post.
   const entries = plan.entries.filter(willPost);
@@ -266,7 +271,7 @@ export async function postImport(db: Db, clientId: string, importId: string) {
           });
         }
         const r = BigInt(e.rounding);
-        if (r !== 0n) lines.push({ accountId: rounding.id, debit: r > 0n ? r : 0n, credit: r < 0n ? -r : 0n, memo: "Selisih pembulatan sen ke Rupiah" });
+        if (r !== 0n) lines.push({ accountId: rounding.id, debit: r > 0n ? r : 0n, credit: r < 0n ? -r : 0n, memo: e.fxRounding ? "Selisih pembulatan konversi kurs" : "Selisih pembulatan sen" });
         const imbalance = BigInt(e.imbalance);
         if (imbalance !== 0n) lines.push({ accountId: suspense.id, debit: imbalance < 0n ? -imbalance : 0n, credit: imbalance > 0n ? imbalance : 0n, memo: "Selisih dari file sumber" });
         if (lines.length < 2) continue;
@@ -289,4 +294,33 @@ export async function postImport(db: Db, clientId: string, importId: string) {
     },
     { timeout: 300_000, maxWait: 20_000 },
   );
+}
+
+/**
+ * File rates only fill empty Kurs dates (`upsertFileRate`). Where the Kurs table already holds a different rate for the same
+ * pair and date, say so: one REVIEW per pair, latest dates first.
+ */
+async function fileRateChecks(db: Db, firmId: string, rates: FileRate[], mode: CurrencyMode): Promise<Check[]> {
+  if (!rates.length) return [];
+  const existing = await db.exchangeRate.findMany({ where: { firmId, kind: "SPOT", OR: rates.map((r) => ({ currency: r.currency, quote: r.quote, date: new Date(`${r.date}T00:00:00.000Z`) })) }, select: { currency: true, quote: true, date: true, rate: true } });
+  const kurs = new Map(existing.map((e) => [`${e.currency}|${e.quote}|${e.date.toISOString().slice(0, 10)}`, e.rate]));
+  const byPair = new Map<string, { r: FileRate; kurs: string }[]>();
+  for (const r of rates) {
+    const k = kurs.get(`${r.currency}|${r.quote}|${r.date}`);
+    if (!k || formatRate(k) === formatRate(r.rate)) continue;
+    byPair.set(`${r.currency}|${r.quote}`, [...(byPair.get(`${r.currency}|${r.quote}`) ?? []), { r, kurs: k }]);
+  }
+  return [...byPair.values()].map((list) => {
+    const sorted = list.sort((a, b) => b.r.date.localeCompare(a.r.date));
+    const { r } = sorted[0];
+    const sample = sorted.slice(0, 5).map((x) => `${formatDate(new Date(`${x.r.date}T00:00:00.000Z`))}: file ${formatRateId(x.r.rate)}, Kurs ${formatRateId(x.kurs)}`).join("; ");
+    const dates = new Set(sorted.map((x) => x.r.date)).size;
+    const more = sorted.length > 5 ? ` dan ${sorted.length - 5} lainnya` : "";
+    return {
+      severity: "REVIEW" as const,
+      code: "FX_FILE_RATE_DIFFERS",
+      message: `Kurs ${r.currency}→${r.quote} di file berbeda dari tabel Kurs pada ${dates} tanggal (${sample}${more}). ${mode === "CONVERT" ? "Baris dikonversi dengan kurs file; " : ""}tabel Kurs tidak diubah.`,
+      refs: sorted.slice(0, 20).map((x) => x.r.ref),
+    };
+  });
 }

@@ -22,6 +22,8 @@ export type EvidenceTable = {
   /** Ledger: first/last row date. Neraca: the balance date written in the file, else null. */
   periodStart: string | null;
   periodEnd: string | null;
+  /** Distinct row currencies (ledger rows with a currency column). Absent on older extractions. */
+  currencies?: string[];
 };
 export type EvidenceUnit = {
   key: string;

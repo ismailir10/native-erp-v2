@@ -89,6 +89,11 @@ export function parseEvidenceAnalysis(text: string, input: EvidenceInput): Evide
 }
 export function parseEvidenceAnswerPlan(text: string): EvidenceAnswerPlan {
   const value = jsonObject(text);
+  // Models often spell an absent optional field as null or "": treat those as absent, still reject unknown keys.
+  for (const key of ["accountCode", "from", "to", "entityId"]) if (value[key] === null || value[key] === "") delete value[key];
+  // One date ("per 31 Des 2024") scopes that day; a half-open range would fail the question instead.
+  if (value.from !== undefined && value.to === undefined) value.to = value.from;
+  if (value.to !== undefined && value.from === undefined) value.from = value.to;
   if (!EVIDENCE_INTENTS.has(String(value.intent)) || !Array.isArray(value.terms) || value.terms.length > 8 || value.terms.some((term) => typeof term !== "string" || term.length > 100)) throw new Error("Rencana jawaban AI tidak valid");
   for (const key of Object.keys(value)) if (!["intent", "terms", "accountCode", "from", "to", "entityId"].includes(key)) throw new Error("Rencana jawaban AI memuat perintah tidak dikenal");
   if (value.from !== undefined && !validDate(value.from) || value.to !== undefined && !validDate(value.to)) throw new Error("Tanggal rencana AI tidak valid");

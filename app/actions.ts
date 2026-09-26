@@ -338,7 +338,12 @@ export async function postLedgerImportAction(clientId: string, importId: string)
 export async function discardLedgerDraftAction(clientId: string, importId: string): Promise<Result> {
   try {
     const client = await getClientForFirm(clientId);
-    const { count } = await prisma.ledgerImport.deleteMany({ where: { id: importId, clientId: client.id, status: "DRAFT" } });
+    const count = await prisma.$transaction(async (tx) => {
+      const { count } = await tx.ledgerImport.deleteMany({ where: { id: importId, clientId: client.id, status: "DRAFT" } });
+      // A draft prepared from Dokumen can be prepared again after discarding it.
+      if (count) await tx.evidenceSelection.updateMany({ where: { firmId: client.firmId, importId }, data: { importId: null } });
+      return count;
+    });
     if (!count) return { ok: false, error: "Draf tidak ditemukan atau sudah dicatat." };
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };

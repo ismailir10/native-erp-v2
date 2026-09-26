@@ -333,8 +333,8 @@ async function postableTables(name: string, data: Buffer): Promise<Map<string, E
       const read = readTable(sheets, candidate);
       if (read.mode === "LEDGER") {
         const dates = read.rows.flatMap((r) => r.date ? [iso(r.date)!] : []).sort();
-        out.set(candidate.sheet, { mode: "LEDGER", rows: read.rows.length, entities: [...new Set(read.rows.flatMap((r) => r.entity ? [r.entity] : []))], periodStart: dates[0] ?? null, periodEnd: dates.at(-1) ?? null });
-      } else out.set(candidate.sheet, { mode: "NERACA", rows: read.rows.length, entities: [], periodStart: iso(read.date), periodEnd: iso(read.date) });
+        out.set(candidate.sheet, { mode: "LEDGER", rows: read.rows.length, entities: [...new Set(read.rows.flatMap((r) => r.entity ? [r.entity] : []))], periodStart: dates[0] ?? null, periodEnd: dates.at(-1) ?? null, currencies: [...new Set(read.rows.flatMap((r) => r.currency ? [r.currency] : []))].sort() });
+      } else out.set(candidate.sheet, { mode: "NERACA", rows: read.rows.length, entities: [], periodStart: iso(read.date), periodEnd: iso(read.date), currencies: [] });
     } catch { /* Unreadable table stays evidence; the manual import explains why. */ }
   }
   return out;

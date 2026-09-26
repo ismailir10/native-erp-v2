@@ -70,13 +70,18 @@ Sumber pencatatan (multi-entity ledgers via *Sesuai kolom Entitas di file*, Nera
 same draft. Keep the folder small (one workbook) — see [evidence workspace](evidence-workspace.md).
 
 Currency: *Jumlah sudah dalam mata uang entitas* posts the amounts as written (default, faithful to the file).
-*Konversi dengan kurs* converts foreign lines with the rate in the file, else the **Kurs** page on that date.
+*Konversi dengan kurs* converts foreign lines with the rate in the file, else the **Kurs** page on that date. The same choice
+(**Baris valas**) appears in Dokumen for a confirmed ledger sheet with foreign rows; to switch after preparing, *Batalkan draf*
+and prepare again. A journal that balances in each of its source currencies posts its conversion rounding (≤ 1 minor unit per
+converted line) to 7190; any larger gap is a difference in the file and must be accepted into 1999 or fixed.
 
 ## 6. Kurs and Gabungan Grup in Rupiah
 Entities in another currency are translated for the Gabungan: assets & liabilities at the month's closing rate, income &
 expense at the year's average rate, equity at the historical rate; the difference is *Selisih penjabaran mata uang asing*.
 The **Kurs** page lists every rate that's still missing; a report without its rates says *belum dijabarkan* instead of
-showing a number. Rates are typed in (or taken from the imported file); Buku never fetches them.
+showing a number. Rates are typed in (or taken from the imported file); Buku never fetches them. A rate written in a file only
+fills a date the Kurs table doesn't have yet: it never replaces an existing rate (the table is shared by every client of the
+firm). When the file's rate differs, the draft lists it under *Perlu dicek* (`Kurs … di file berbeda dari tabel Kurs …`).
 Foreign balances (lines imported with a rate) are revalued at month end on **Tutup Buku → Catat revaluasi**.
 
 ## 7. Check a real file end to end (local only)

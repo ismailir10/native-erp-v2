@@ -10,6 +10,7 @@ import { incomeStatement, trialBalance } from "@/lib/reports/ledger";
 import { runControls } from "@/lib/controls";
 import { intakeForFirm, json, hash } from "./store";
 import type { EvidenceFigure, EvidenceUnit } from "./types";
+import { selectionEntityIds } from "./review";
 
 export type EvidenceQuestion = { question: string; entityId?: string; period?: string | { from: string; to: string } };
 export type EvidenceAnswer = {
@@ -56,6 +57,50 @@ function matches(label: string, terms: string[]) {
 }
 function validFigure(value: EvidenceFigure) {
   return typeof value?.label === "string" && typeof value.amount === "string" && /^-?\d+$/.test(value.amount) && isCurrency(value.currency) && typeof value.locator === "string" && !!value.periodEnd;
+}
+
+type UnitRef = { versionId: string; unitKey: string };
+/**
+ * Units are left out of an answer only when they are known to be out of scope: confirmed for another entity, or with a
+ * known period (confirmed, else extracted) outside the range. Unconfirmed units stay in and are counted, so a freshly
+ * uploaded collection answers dated questions instead of returning nothing.
+ */
+async function sourceScope(db: Db, firmId: string, intakeId: string, clientId: string | null, versionIds: string[], entityId: string | undefined, range: { start: Date; end: Date } | null, intent: EvidenceAnswerPlan["intent"]) {
+  if (!versionIds.length) return { excluded: [] as UnitRef[], unknown: 0 };
+  const [selections, units] = await Promise.all([
+    db.evidenceSelection.findMany({ where: { firmId, intakeId, versionId: { in: versionIds }, confirmed: true }, select: { versionId: true, unitKey: true, entityId: true, periodStart: true, periodEnd: true } }),
+    db.$queryRaw<{ versionId: string; unitKey: string; periodStart: string | null; periodEnd: string | null }[]>(Prisma.sql`
+      SELECT v.id AS "versionId", u->>'key' AS "unitKey",
+             COALESCE(u->>'periodStart', u->'table'->>'periodStart') AS "periodStart",
+             COALESCE(u->>'periodEnd', u->'table'->>'periodEnd') AS "periodEnd"
+      FROM "EvidenceVersion" v CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(v.units) = 'array' THEN v.units ELSE '[]'::jsonb END) u
+      WHERE v."firmId" = ${firmId} AND v.id IN (${Prisma.join(versionIds)})`),
+  ]);
+  const confirmed = new Map(selections.map((s) => [`${s.versionId}\0${s.unitKey}`, s]));
+  const refs = new Map<string, UnitRef & { periodStart: string | null; periodEnd: string | null }>();
+  for (const u of units) if (u.unitKey) refs.set(`${u.versionId}\0${u.unitKey}`, u);
+  for (const s of selections) if (!refs.has(`${s.versionId}\0${s.unitKey}`)) refs.set(`${s.versionId}\0${s.unitKey}`, { versionId: s.versionId, unitKey: s.unitKey, periodStart: null, periodEnd: null });
+  const start = range?.start.toISOString().slice(0, 10), end = range?.end.toISOString().slice(0, 10);
+  const excluded: UnitRef[] = [];
+  let unknown = 0;
+  for (const [key, unit] of refs) {
+    const sel = confirmed.get(key);
+    let known = true;
+    if (entityId && sel) {
+      // A confirmed selection without an entity is "per entity column" (multi-entity ledger): resolve its labels.
+      const covered = sel.entityId ? [sel.entityId] : clientId ? await selectionEntityIds(db, clientId, sel) : [];
+      if (covered.length && !covered.includes(entityId)) { excluded.push({ versionId: unit.versionId, unitKey: unit.unitKey }); continue; }
+      if (!covered.length) known = false;
+    }
+    if (entityId && !sel) known = false;
+    if (range) {
+      const periodEnd = sel?.periodEnd ?? unit.periodEnd, periodStart = sel?.periodEnd ? sel.periodStart : unit.periodStart;
+      if (!periodEnd) known = false;
+      else if (intent === "COMPARE" ? periodEnd > end! : periodEnd < start! || (periodStart ?? periodEnd) > end!) { excluded.push({ versionId: unit.versionId, unitKey: unit.unitKey }); continue; }
+    }
+    if (!known) unknown++;
+  }
+  return { excluded, unknown };
 }
 
 /** All arithmetic is deterministic; the model chooses from bounded read tools only. */
@@ -183,16 +228,13 @@ export async function askEvidence(db: Db, firmId: string, intakeId: string, inpu
       if (truncated.length) answer.limitations.push("Sebagian isi dokumen melewati batas ekstraksi; jawaban hanya mencakup bagian yang sudah dibaca. Pecah dokumen untuk hasil lengkap.");
     }
     const sourceRange = input.period || plan.from || plan.to ? rangeFor(input.period, plan, new Date()) : null;
-    const sourceSelections = entityId || sourceRange ? await db.evidenceSelection.findMany({ where: { firmId, intakeId, versionId: { in: plan.intent === "CONTEXT" ? contextVersionIds : versionIds }, ...(entityId ? { entityId, confirmed: true } : {}) }, select: { versionId: true, unitKey: true, periodStart: true, periodEnd: true } }) : null;
-    const permitted = sourceSelections?.filter((s) => {
-      if (!sourceRange) return true;
-      if (!s.periodEnd) return false;
-      const end = sourceRange.end.toISOString().slice(0, 10), start = sourceRange.start.toISOString().slice(0, 10);
-      return plan.intent === "COMPARE" ? s.periodEnd <= end : s.periodEnd >= start && (s.periodStart ?? s.periodEnd) <= end;
-    });
-    const permittedKeys = permitted ? new Set(permitted.map((s) => `${s.versionId}\0${s.unitKey}`)) : null;
-    const unitAllowed = (versionId: string, unitKey: string) => !permittedKeys || permittedKeys.has(`${versionId}\0${unitKey}`);
-    if (sourceSelections) answer.limitations.push("Cakupan sumber memakai entitas yang dikonfirmasi dan periode dokumen; bagian tanpa cakupan yang cocok tidak disertakan.");
+    const scope = entityId || sourceRange ? await sourceScope(db, firmId, intakeId, intake.clientId, plan.intent === "CONTEXT" ? contextVersionIds : versionIds, entityId, sourceRange, plan.intent) : null;
+    const excludedKeys = new Set(scope?.excluded.map((s) => `${s.versionId}\0${s.unitKey}`) ?? []);
+    const unitAllowed = (versionId: string, unitKey: string) => !excludedKeys.has(`${versionId}\0${unitKey}`);
+    if (scope) {
+      answer.limitations.push("Cakupan sumber memakai entitas yang dikonfirmasi dan periode dokumen; bagian yang diketahui di luar cakupan tidak disertakan.");
+      if (scope.unknown) answer.limitations.push(`${scope.unknown} bagian belum dikonfirmasi entitas/periodenya; ikut dicari.`);
+    }
     if (documents.length > 500) answer.limitations.push("Pencarian dibatasi 500 dokumen pertama.");
     const partial = documents.some((d) => !d.excluded && d.status !== "DIRECTORY" && (d.issue || !d.currentVersionId || ["REMOVED", "INACCESSIBLE", "ERROR", "MISSING"].includes(d.status)));
     if (partial || intake.issue || !["READY", "COMPLETE", "DONE"].includes(intake.status)) answer.limitations.push("Sebagian dokumen belum diproses atau tidak dapat diakses; hasil belum mencakup seluruh kumpulan.");
@@ -207,7 +249,7 @@ export async function askEvidence(db: Db, firmId: string, intakeId: string, inpu
       answer.text = answer.rows.length ? "Dokumen dan keputusan yang masih perlu ditangani:" : "Tidak ada pengecualian terbuka yang tercatat.";
       answer.limitations.push("Daftar ini bukan jaminan dokumen lengkap; kelengkapan bergantung rekening, entitas, dan periode yang dikonfirmasi.");
     } else if (plan.intent === "CONTEXT") {
-      const facts = contextVersionIds.length ? await db.evidenceFact.findMany({ where: { firmId, intakeId, AND: [{ OR: [{ versionId: { in: versionIds }, status: { in: ["CONFIRMED", "PROPOSED", "CONFLICTING"] } }, { versionId: { in: contextVersionIds }, status: "CONFIRMED" }] }, ...(permitted ? [{ OR: permitted.map(s => ({ versionId: s.versionId, unitKey: s.unitKey })) }] : [])] }, orderBy: [{ status: "asc" }, { id: "asc" }], take: MAX_RESULTS + 1 }) : [];
+      const facts = contextVersionIds.length ? await db.evidenceFact.findMany({ where: { firmId, intakeId, AND: [{ OR: [{ versionId: { in: versionIds }, status: { in: ["CONFIRMED", "PROPOSED", "CONFLICTING"] } }, { versionId: { in: contextVersionIds }, status: "CONFIRMED" }] }, ...(scope?.excluded.length ? [{ NOT: { OR: scope.excluded } }] : [])] }, orderBy: [{ status: "asc" }, { id: "asc" }], take: MAX_RESULTS + 1 }) : [];
       if (facts.length > MAX_RESULTS) answer.limitations.push(`Hanya ${MAX_RESULTS} fakta pertama ditampilkan; persempit cakupan.`);
       const scopedFacts = facts.slice(0, MAX_RESULTS).filter((f) => unitAllowed(f.versionId, f.unitKey));
       if (scopedFacts.some(f => !versionIds.includes(f.versionId))) answer.limitations.push("Konteks dikonfirmasi dari versi sebelumnya tetap dipertahankan. Usulan baru tidak menggantikannya tanpa keputusan Anda.");
@@ -254,7 +296,7 @@ export async function askEvidence(db: Db, firmId: string, intakeId: string, inpu
       const terms = plan.terms.map((t) => t.trim()).filter(Boolean).slice(0, 8);
       if (versionIds.length && terms.length) {
         try {
-          const unitFilter = permitted ? permitted.length ? Prisma.sql`AND (${Prisma.join(permitted.map((s) => Prisma.sql`(p."versionId" = ${s.versionId} AND p."unitKey" = ${s.unitKey})`), " OR ")})` : Prisma.sql`AND FALSE` : Prisma.empty;
+          const unitFilter = scope?.excluded.length ? Prisma.sql`AND NOT (${Prisma.join(scope.excluded.map((s) => Prisma.sql`(p."versionId" = ${s.versionId} AND p."unitKey" = ${s.unitKey})`), " OR ")})` : Prisma.empty;
           hits = await db.$queryRaw<{ versionId: string; unitKey: string; locator: string; text: string }[]>(Prisma.sql`
             SELECT p."versionId", p."unitKey", p.locator, p.text FROM "EvidencePassage" p
             WHERE p."firmId" = ${firmId} AND p."versionId" IN (${Prisma.join(versionIds)})
@@ -263,7 +305,7 @@ export async function askEvidence(db: Db, firmId: string, intakeId: string, inpu
             ORDER BY p.id LIMIT ${MAX_RESULTS}`);
         } catch { answer.limitations.push("Indeks pencarian belum tersedia; pencarian teks digunakan."); }
       }
-      if (!hits.length && versionIds.length) hits = await db.evidencePassage.findMany({ where: { firmId, versionId: { in: versionIds }, AND: [...(permitted ? [{ OR: permitted.map((s) => ({ versionId: s.versionId, unitKey: s.unitKey })) }] : []), ...(terms.length ? [{ OR: terms.map((term) => ({ text: { contains: term, mode: "insensitive" as const } })) }] : [])] }, select: { versionId: true, unitKey: true, locator: true, text: true }, orderBy: { id: "asc" }, take: MAX_RESULTS });
+      if (!hits.length && versionIds.length) hits = await db.evidencePassage.findMany({ where: { firmId, versionId: { in: versionIds }, AND: [...(scope?.excluded.length ? [{ NOT: { OR: scope.excluded } }] : []), ...(terms.length ? [{ OR: terms.map((term) => ({ text: { contains: term, mode: "insensitive" as const } })) }] : [])] }, select: { versionId: true, unitKey: true, locator: true, text: true }, orderBy: { id: "asc" }, take: MAX_RESULTS });
       answer.rows = hits.filter((h) => names.has(h.versionId) && unitAllowed(h.versionId, h.unitKey)).map((hit) => { citation(hit.versionId, hit.locator); return { label: names.get(hit.versionId)!, value: hit.text.slice(0, 1600), source: hit.locator }; });
       answer.text = answer.rows.length ? "Kutipan dokumen yang cocok. Ini bukti sumber, bukan penjelasan atau saldo buku yang diverifikasi." : "Tidak ada bukti yang cocok pada versi dokumen aktif. Coba istilah lebih spesifik atau lengkapi dokumen.";
       if (hits.length >= MAX_RESULTS) answer.limitations.push(`Hanya ${MAX_RESULTS} kutipan pertama ditampilkan; persempit pertanyaan.`);
