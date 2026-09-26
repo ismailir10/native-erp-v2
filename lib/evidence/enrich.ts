@@ -1,6 +1,6 @@
 import type { Db } from "@/lib/db";
 import { INTAKE_TOKEN_LIMIT, runBudgetedAi } from "@/lib/ai/budget";
-import { AiAnswerError, buildEvidencePrompt, EVIDENCE_MAX_TOKENS, EVIDENCE_PROMPT_VERSION, parseEvidenceAnalysis, type AiProvider } from "@/lib/ai/provider";
+import { AiAnswerError, buildEvidencePrompt, EVIDENCE_MAX_TOKENS, EVIDENCE_PROMPT_VERSION, EVIDENCE_TIMEOUT_MS, parseEvidenceAnalysis, type AiProvider } from "@/lib/ai/provider";
 import { assertLease, claimStep, intakeForFirm, lockIntake, releaseStep, hash, json } from "./store";
 
 /** Explicit, review-only enrichment. Extraction/refresh never call this automatically. */
@@ -10,7 +10,8 @@ export async function analyzeVersion(db: Db, firmId: string, intakeId: string, v
   if (!version) throw new Error("Versi dokumen tidak ditemukan.");
   if (!version.extracted) throw new Error("Selesaikan pembacaan dokumen sebelum analisis AI.");
   if (!provider?.analyzeEvidence) return { facts: 0, cached: false, note: "AI tidak aktif. Dokumen tetap tersedia untuk ditinjau manual." };
-  const token = await claimStep(db, firmId, intakeId);
+  // The AI call may take EVIDENCE_TIMEOUT_MS; a lapsed lease would discard its paid answer at assertLease.
+  const token = await claimStep(db, firmId, intakeId, EVIDENCE_TIMEOUT_MS + 60_000);
   if (!token) throw new Error("Dokumen sedang diproses sesi lain. Tunggu sampai selesai.");
   try {
     const current = await db.evidenceVersion.findFirstOrThrow({ where: { id: versionId, firmId, document: { firmId, intakeId } } });
