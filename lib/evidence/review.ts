@@ -6,6 +6,7 @@ import { isCurrency } from "@/lib/fx/currency";
 import type { EvidenceUnit } from "./types";
 import { intakeForFirm, lockIntake, releaseStep } from "./store";
 import { entityForLabel, stageImport } from "@/lib/ledger-import/post";
+import type { CurrencyMode } from "@/lib/ledger-import/check";
 import { importStatement } from "@/lib/import/pipeline";
 import { parseStatementSections } from "@/lib/import/parsers";
 import { checkContinuity } from "@/lib/import/normalize";
@@ -147,12 +148,14 @@ export async function resolveConflict(db: Db, firmId: string, intakeId: string, 
   await db.evidenceConflict.update({ where: { id: conflict.id }, data: { resolved: true, note: note.trim() } });
 }
 
-async function prepare(db: Db, firmId: string, intakeId: string, versionId: string, unitKey: string, bankAccountId?: string, password?: string) {
+async function prepare(db: Db, firmId: string, intakeId: string, versionId: string, unitKey: string, bankAccountId?: string, password?: string, currencyMode: CurrencyMode = "FUNCTIONAL") {
   const { intake, version, unit } = await getUnit(db, firmId, intakeId, versionId, unitKey);
   const selection = await db.evidenceSelection.findFirst({ where: { versionId, unitKey, firmId, intakeId } });
   const byColumn = !selection?.entityId && unit.table?.mode === "LEDGER" && unit.table.entities.length > 0;
   if (!intake.clientId || !selection?.confirmed || selection.role !== "SOURCE" || (!selection.entityId && !byColumn) || !selection.periodStart || !selection.periodEnd || !selection.currency) throw new Error("Konfirmasi klien, entitas, dan peran Sumber pencatatan terlebih dahulu.");
   const used = await existingImport(db, firmId, versionId, unitKey);
+  // The linked draft was discarded: prepare a new one (e.g. to switch between as-written and converted foreign lines).
+  if (selection.importId && !used) selection.importId = null;
   if (selection.importId || used) {
     const importId = selection.importId ?? used!.id;
     await db.evidenceSelection.update({ where: { id: selection.id }, data: { importId } });
@@ -183,7 +186,7 @@ async function prepare(db: Db, firmId: string, intakeId: string, versionId: stri
     return { kind: "BANK", rows: st.rows.length, continuityOk: continuity.ok, bankAccountId: bank.id };
   }
   try {
-    const staged = await stageImport(db, { firmId, clientId: intake.clientId, fileName: version.name, data: Buffer.from(version.data), sheet: unit.label, entityId: entity?.id, date: new Date(selection.periodEnd), evidenceVersionId: versionId, evidenceUnitKey: unitKey, allowedPeriod: { start: selection.periodStart, end: selection.periodEnd, currency: selection.currency, entityIds: entities.map(e => e.id) } });
+    const staged = await stageImport(db, { firmId, clientId: intake.clientId, fileName: version.name, data: Buffer.from(version.data), sheet: unit.label, entityId: entity?.id, date: new Date(selection.periodEnd), evidenceVersionId: versionId, evidenceUnitKey: unitKey, currencyMode, allowedPeriod: { start: selection.periodStart, end: selection.periodEnd, currency: selection.currency, entityIds: entities.map(e => e.id) } });
     if (staged.status !== "STAGED") throw new Error("Tabel sumber belum dapat dipilih. Gunakan impor manual untuk memilih sheet.");
     await db.evidenceSelection.update({ where: { id: selection.id }, data: { importId: staged.importId } });
     return { kind: unit.kind, importId: staged.importId };
@@ -195,8 +198,9 @@ async function prepare(db: Db, firmId: string, intakeId: string, versionId: stri
     return { kind: unit.kind, importId: found.id, already: true };
   }
 }
-export async function prepareImport(db: Db, firmId: string, intakeId: string, versionId: string, unitKey: string, bankAccountId?: string, password?: string) {
-  return withImportLease(db, firmId, intakeId, () => prepare(db, firmId, intakeId, versionId, unitKey, bankAccountId, password));
+/** `currencyMode` as in the manual ledger import: foreign lines as written (default) or converted with the Kurs table. */
+export async function prepareImport(db: Db, firmId: string, intakeId: string, versionId: string, unitKey: string, bankAccountId?: string, password?: string, currencyMode: CurrencyMode = "FUNCTIONAL") {
+  return withImportLease(db, firmId, intakeId, () => prepare(db, firmId, intakeId, versionId, unitKey, bankAccountId, password, currencyMode));
 }
 export async function postEvidenceBank(db: Db, firmId: string, intakeId: string, versionId: string, unitKey: string, bankAccountId: string, password?: string) {
   return withImportLease(db, firmId, intakeId, async () => {

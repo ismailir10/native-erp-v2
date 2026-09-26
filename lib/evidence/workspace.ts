@@ -14,12 +14,15 @@ export async function loadWorkspace(db: Db, firmId: string, intakeId: string) {
     db.evidenceMessage.findMany({ where: { firmId, intakeId }, orderBy: { createdAt: "desc" }, take: 10 }),
     intake.clientId ? db.entity.findMany({ where: { firmId, clientId: intake.clientId }, select: { id: true, name: true, shortName: true, functionalCurrency: true, bankAccounts: { select: { id: true, label: true, number: true } } } }) : Promise.resolve([]),
   ]);
+  // A discarded ledger draft leaves no import behind: show the selection as ready to prepare again.
+  const linked = selections.flatMap(s => s.importId ? [s.importId] : []);
+  const live = new Set(linked.length ? [...(await db.ledgerImport.findMany({ where: { firmId, id: { in: linked } }, select: { id: true } })), ...(await db.statementImport.findMany({ where: { firmId, id: { in: linked } }, select: { id: true } }))].map(i => i.id) : []);
   const cursor = intake.cursor as { queue?: unknown[] };
   const hasPendingWork = documents.some(d => !d.excluded && d.status === "PENDING") || intake.status !== "PARTIAL" && Array.isArray(cursor.queue) && cursor.queue.length > 0;
   return {
     intake: { id: intake.id, name: intake.name, clientId: intake.clientId, sourceUrl: intake.sourceUrl, status: intake.status, issue: intake.issue, hasPendingWork },
     documents: documents.map(d => ({ ...d, versions: d.versions.map(v => { const current = versions.find(x => x.id === v.id); return { ...v, createdAt: v.createdAt.toISOString(), units: ((current?.units ?? []) as unknown as EvidenceUnit[]).map(u => ({ ...u, passages: u.passages.slice(0, 1), figures: u.figures.slice(0, 6) })), issues: (current?.issues ?? []) as string[] }; }) })),
-    facts: facts.map(f => ({ ...f, sourceWarning: activeIds.includes(f.versionId) ? null : "Konteks dikonfirmasi dari versi sumber sebelumnya; belum digantikan oleh versi baru." })), conflicts: conflicts.map(c => ({ ...c, versionIds: c.versionIds as string[] })), selections, entities,
+    facts: facts.map(f => ({ ...f, sourceWarning: activeIds.includes(f.versionId) ? null : "Konteks dikonfirmasi dari versi sumber sebelumnya; belum digantikan oleh versi baru." })), conflicts: conflicts.map(c => ({ ...c, versionIds: c.versionIds as string[] })), selections: selections.map(s => s.importId && !live.has(s.importId) ? { ...s, importId: null } : s), entities,
     messages: messages.map(m => ({ id: m.id, question: m.question, answer: m.answer, createdAt: m.createdAt.toISOString() })),
   };
 }
