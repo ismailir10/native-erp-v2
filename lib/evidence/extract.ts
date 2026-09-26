@@ -137,6 +137,38 @@ function numericCell(value: ExcelJS.CellValue): boolean {
   return typeof value === "number" || !!value && typeof value === "object" && ("formula" in value || "sharedFormula" in value) && typeof value.result === "number";
 }
 
+const MAX_ISSUES = 20;
+/** Per-cell issue shapes → one summary line per sheet: count, a few cell addresses, the fix. */
+const CELL_ISSUES: { re: RegExp; summary: (n: string, cells: string, rest: string) => string }[] = [
+  { re: /^Rumus (\S+) belum memiliki hasil tersimpan\. (.+)$/, summary: (n, cells, rest) => `${n} rumus belum memiliki hasil tersimpan (contoh: ${cells}). ${rest}` },
+  { re: /^Tanggal (\S+) tidak valid\. (.+)$/, summary: (n, cells, rest) => `${n} tanggal tidak valid (contoh: ${cells}). ${rest}` },
+  { re: /^Angka (\S+) melebihi presisi Excel; (.+)$/, summary: (n, cells, rest) => `${n} angka melebihi presisi Excel (contoh: ${cells}); ${rest}` },
+  { re: /^Sel (\S+) berisi kesalahan (.+)\.$/, summary: (n, cells, rest) => `${n} sel berisi kesalahan ${rest} (contoh: ${cells}).` },
+  { re: /^Pemisah nominal (\S+) ambigu; (.+)$/, summary: (n, cells, rest) => `${n} pemisah nominal ambigu (contoh: ${cells}); ${rest}` },
+  { re: /^Nominal (\S+) belum dapat dipastikan\.()$/, summary: (n, cells) => `${n} nominal belum dapat dipastikan (contoh: ${cells}).` },
+];
+
+/**
+ * One line per issue kind instead of one per cell: a sheet full of uncached formulas must not render thousands of lines.
+ * Sheet-level issues come first (processing limits are detected from them); at most 20 lines, then a count.
+ */
+function aggregateIssues(issues: string[]): string[] {
+  const general: string[] = [];
+  const groups = new Map<string, { index: number; rest: string; cells: string[]; original: string }>();
+  for (const issue of new Set(issues)) {
+    const index = CELL_ISSUES.findIndex((c) => c.re.test(issue));
+    if (index < 0) { general.push(issue); continue; }
+    const [, locator, rest] = issue.match(CELL_ISSUES[index].re)!;
+    const key = `${index}|${rest}`;
+    const group = groups.get(key) ?? { index, rest, cells: [], original: issue };
+    group.cells.push(locator.slice(locator.lastIndexOf("!") + 1));
+    groups.set(key, group);
+  }
+  const cells = [...groups.values()].map((g) => g.cells.length === 1 ? g.original : CELL_ISSUES[g.index].summary(g.cells.length.toLocaleString("id-ID"), g.cells.slice(0, 3).join(", "), g.rest));
+  const all = [...general, ...cells];
+  return all.length <= MAX_ISSUES ? all : [...all.slice(0, MAX_ISSUES - 1), `Dan ${(all.length - MAX_ISSUES + 1).toLocaleString("id-ID")} temuan lain.`];
+}
+
 /** Header words that are column titles or statuses, never a company name ("Source Type", "GL Entry ID", "PASS"). */
 const NOT_A_NAME = /\b(?:id|type|category|year|date|code|status|period|periode|opening|closing|pass|fail|ok|review|total|amount|debit|credit|balance|account|reference)\b/i;
 const NAME_LABEL = /^(?:nama perusahaan|company name|entitas|entity)$/i;
@@ -221,7 +253,7 @@ function buildUnit(key: string, label: string, rows: Row[], initialIssues: strin
       } catch { issues.push(`Nominal ${locator} belum dapat dipastikan.`); }
     }
   }
-  unit.issues = [...new Set(issues)];
+  unit.issues = aggregateIssues(issues);
   return unit;
 }
 

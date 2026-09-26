@@ -100,7 +100,7 @@ existing `units` JSON). No new dependency. No AI calls. Posting still runs only 
       2 engine sheets with formulas lacking cached results). Reuse ExcelJS as `tests/pdf-fixture.ts` does for PDFs — accept: fixture loads in `detectTables()` with 3 candidates.
 - [x] T2 Extraction: `table` on units via `readSheets`/`detectTables`/`readTable` (reuse `lib/ledger-import/read.ts`); role/kind rules; statement-shaped BANK;
       label/value entity rule — accept: unit test on the fixture shows 3 SOURCE units (NERACA, LEDGER×2), 0 other SOURCE, no header entity, no BANK.
-- [ ] T3 Issue aggregation (per sheet + kind, ≤20 lines) — accept: unit test shows the engine sheet's thousands of formula cells as one line with a count and 3 examples.
+- [x] T3 Issue aggregation (per sheet + kind, ≤20 lines) — accept: unit test shows the engine sheet's thousands of formula cells as one line with a count and 3 examples.
 - [ ] T4 Handoff: neraca date rule; entity-column selection (`entityId = null`), label matching helper shared with `stageImport`, per-entity overlap check;
       `allowedPeriod.entityIds` — depends T2 — accept: DB test intake → confirm 3 → prepare → `postImport` posts; journals per entity; OPENING dated as chosen; overlap and unmatched-label errors covered.
 - [ ] T5 UI: table summary, neraca date field, entity-column option, no bank field for tables, issue disclosure (≤5 + "+N lainnya") — depends T4 —
@@ -113,7 +113,9 @@ existing `units` JSON). No new dependency. No AI calls. Posting still runs only 
 - Plan: tasks T1–T8 sequential, done inline (T2–T5 share the unit/selection contract; each builds on the previous).
 - T1: `tests/evidence-workbook-fixture.ts`, `tests/unit/evidence-workbook.test.ts` — synthetic group workbook (HoldCo SGD + 4 IDR OpCos) with every failing shape.
 - T2: `lib/evidence/{extract,types}.ts`, `lib/ledger-import/read.ts` — units carry `table` from `detectTables`/`readTable`; LEDGER only for postable tables, BANK only with bank wording + statement header; coverage from table rows (no prose dates); company names only from label → value pairs, never header/status words. Fixed a latent crash: `cellText`/`cellDate` threw on Excel's Invalid Date (manual import too). Old mixed-workbook test now gives its bank/GL sheets real headers.
+- T3: `lib/evidence/extract.ts` — per-cell issues (uncached formula, invalid date, precision, cell error, ambiguous separator, unparsable amount) grouped per sheet with count + 3 cell examples; sheet-level issues first; ≤20 lines then "Dan N temuan lain." Single occurrences keep their original text.
 ## Verification
 - T1: fixture test 1/1; current extractor on it: 10_HC_GL_MASTER → BANK, entities "Source Type"/"GL Entry ID"/"PASS", 8/8 units SOURCE, neraca hint 2025-12-31..2026-01-01, 1,603 issues on the engine sheet (bugs reproduced). Gate: lint ✔, typecheck ✔, `Test Files 45 passed (45) · Tests 349 passed (349)`.
 - T2: fixture → sources exactly [04 NERACA, 10 LEDGER, 20 LEDGER], 0 BANK, 0 names. Local run on the private Chickin file: 3 sources (04 NERACA 11 rows no date; 10 LEDGER HOLDCO 2023-01-03..2025-12-31; 20 LEDGER SKP/SPN/CSP/CAH 2022-12-31..2025-12-31), `companyName` facts []. Gate: lint ✔, typecheck ✔, `Test Files 45 passed (45) · Tests 351 passed (351)`.
+- T3: fixture engine sheet → one line `1.600 rumus belum memiliki hasil tersimpan (contoh: D3, E3, F3)…`; 30 distinct cell errors → 20 lines ending "Dan 11 temuan lain." Private Chickin file: ~98k issue lines → 113 lines / 7,320 chars (max 5 per sheet). Gate: lint ✔, typecheck ✔, `Test Files 45 passed (45) · Tests 353 passed (353)`.
 ## Ship Notes

@@ -61,9 +61,7 @@ describe("evidence extraction", () => {
       ["Tanggal transaksi", new Date("2024-01-15T00:00:00Z")],
     ] });
     const { units: [unit] } = await extractEvidence("invalid-dates.xlsx", data);
-    for (const locator of ["FS!B5", "FS!B6"]) {
-      expect(unit.issues).toContain(`Tanggal ${locator} tidak valid. Periksa sel sumber, hitung ulang rumus jika ada, lalu simpan ulang di Excel.`);
-    }
+    expect(unit.issues).toContain("2 tanggal tidak valid (contoh: B5, B6). Periksa sel sumber, hitung ulang rumus jika ada, lalu simpan ulang di Excel.");
     expect(unit.passages).toContainEqual({ locator: "FS!5", text: "Kas | [tanggal tidak valid]" });
     expect(unit.passages).toContainEqual({ locator: "FS!6", text: "Piutang | [tanggal tidak valid]" });
     expect(unit.passages).toContainEqual({ locator: "FS!8", text: "Tanggal transaksi | 2024-01-15" });

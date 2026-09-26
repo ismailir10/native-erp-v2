@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { extractEvidence } from "@/lib/evidence/extract";
 import { detectTables, readSheets } from "@/lib/ledger-import/read";
-import { groupWorkbook, POSTABLE } from "../evidence-workbook-fixture";
+import { ENGINE_ROWS, groupWorkbook, POSTABLE } from "../evidence-workbook-fixture";
 
 describe("group reconciliation workbook fixture", () => {
   it("has exactly three postable tables for the manual ledger import", async () => {
@@ -22,6 +22,25 @@ describe("evidence extraction of a group workbook", () => {
     expect(byKey[POSTABLE.opco].table).toMatchObject({ mode: "LEDGER", rows: 8, entities: ["OPA", "OPB", "OPC", "OPD"], periodStart: "2026-01-10", periodEnd: "2026-01-10" });
     expect(byKey["11_HC_MOVEMENT_ENGINE"]).toMatchObject({ role: "CONTEXT" });
     expect(byKey["14_HC_TB_ENGINE"]).toMatchObject({ kind: "REPORT", role: "COMPARISON" });
+  });
+
+  it("summarises thousands of uncached formula cells as one line with a count and examples", async () => {
+    const { units } = await extractEvidence("group.xlsx", await groupWorkbook());
+    const engine = units.find((u) => u.key === "11_HC_MOVEMENT_ENGINE")!;
+    const formula = engine.issues.filter((i) => i.includes("rumus"));
+    expect(formula).toEqual([`${(ENGINE_ROWS * 4).toLocaleString("id-ID")} rumus belum memiliki hasil tersimpan (contoh: D3, E3, F3). Hitung ulang dan simpan di Excel.`]);
+    expect(engine.issues.length).toBeLessThanOrEqual(20);
+    expect(units.find((u) => u.key === POSTABLE.holdco)!.issues).toContain("4 rumus belum memiliki hasil tersimpan (contoh: M4, M5, M6). Hitung ulang dan simpan di Excel.");
+  });
+
+  it("caps a unit at 20 issue lines and counts the rest", async () => {
+    const ExcelJS = (await import("exceljs")).default;
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Errors");
+    for (let i = 0; i < 30; i++) ws.addRow([`Row ${i}`, { error: `#E${i}` }]);
+    const { units: [unit] } = await extractEvidence("errors.xlsx", Buffer.from(await wb.xlsx.writeBuffer()));
+    expect(unit.issues).toHaveLength(20);
+    expect(unit.issues.at(-1)).toMatch(/^Dan \d+ temuan lain\.$/);
   });
 
   it("never reads a column header or a status as a company name", async () => {
