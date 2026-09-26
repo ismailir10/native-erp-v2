@@ -5,7 +5,7 @@ import { createClient } from "@/lib/setup";
 import { isCurrency } from "@/lib/fx/currency";
 import type { EvidenceUnit } from "./types";
 import { intakeForFirm, lockIntake, releaseStep } from "./store";
-import { stageImport } from "@/lib/ledger-import/post";
+import { entityForLabel, stageImport } from "@/lib/ledger-import/post";
 import { importStatement } from "@/lib/import/pipeline";
 import { parseStatementSections } from "@/lib/import/parsers";
 import { checkContinuity } from "@/lib/import/normalize";
@@ -38,6 +38,26 @@ export async function getUnit(db: Db | Tx, firmId: string, intakeId: string, ver
   if (!unit) throw new Error("Bagian dokumen tidak ditemukan.");
   return { intake, version, unit };
 }
+/** Client entities a ledger's entity column names, all matched by short or full name and sharing one currency. */
+async function columnEntities(db: Db | Tx, clientId: string, unit: EvidenceUnit) {
+  const labels = unit.table?.mode === "LEDGER" ? unit.table.entities : [];
+  if (!labels.length) throw new Error("File tidak memiliki kolom entitas. Pilih entitasnya.");
+  const entities = await db.entity.findMany({ where: { clientId } });
+  const matched = labels.map(label => ({ label, entity: entityForLabel(entities, label) }));
+  const missing = matched.filter(m => !m.entity).map(m => m.label);
+  if (missing.length) throw new Error(`Entitas ${missing.join(", ")} di file belum ada di klien. Tambahkan entitasnya (nama singkat sama) atau gunakan impor manual.`);
+  const found = [...new Map(matched.map(m => [m.entity!.id, m.entity!])).values()];
+  if (new Set(found.map(e => e.functionalCurrency)).size > 1) throw new Error("Entitas di file memakai mata uang pembukuan berbeda. Gunakan impor manual.");
+  return found;
+}
+/** Entities a confirmed source covers: the chosen one, or every entity its ledger's entity column names. */
+async function selectionEntityIds(db: Db | Tx, clientId: string, selection: { entityId: string | null; versionId: string; unitKey: string }) {
+  if (selection.entityId) return [selection.entityId];
+  const version = await db.evidenceVersion.findUnique({ where: { id: selection.versionId }, select: { units: true } });
+  const unit = (version?.units as unknown as EvidenceUnit[] | undefined)?.find(u => u.key === selection.unitKey);
+  // Labels that no longer match any entity cover nothing here; that source's own import refuses them.
+  return unit ? await columnEntities(db, clientId, unit).then(es => es.map(e => e.id), () => []) : [];
+}
 const validDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(+new Date(s)) && new Date(s).toISOString().slice(0, 10) === s;
 export type SelectionInput = { role: string; entityId?: string; bankAccountId?: string; periodStart?: string; periodEnd?: string; currency?: string };
 export async function confirmSelection(db: Db, firmId: string, intakeId: string, versionId: string, unitKey: string, input: SelectionInput) {
@@ -56,20 +76,38 @@ export async function confirmSelection(db: Db, firmId: string, intakeId: string,
     const current = await tx.evidenceSelection.findUnique({ where: { versionId_unitKey: { versionId, unitKey } } });
     const used = await existingImport(tx, firmId, versionId, unitKey);
     if (current?.importId || used) throw new Error("Sumber sudah digunakan. Koreksi buku melalui jurnal penyesuaian.");
+    // A ledger with an entity column can post to every entity it names ("Sesuai kolom Entitas di file").
+    const byColumn = input.role === "SOURCE" && !entity && unit.table?.mode === "LEDGER" && unit.table.entities.length > 0;
+    let covered: string[] = [];
     if (input.role === "SOURCE") {
-      if (!entity || !validDate(input.periodStart ?? "") || !validDate(input.periodEnd ?? "") || input.periodStart! > input.periodEnd!) throw new Error("Pilih entitas dan rentang tanggal sumber pencatatan.");
+      if (!intake.clientId) throw new Error("Hubungkan klien sebelum memilih sumber pencatatan.");
+      if ((!entity && !byColumn) || !validDate(input.periodStart ?? "") || !validDate(input.periodEnd ?? "") || input.periodStart! > input.periodEnd!) throw new Error("Pilih entitas dan rentang tanggal sumber pencatatan.");
       if (!input.currency || !isCurrency(input.currency)) throw new Error("Pilih mata uang sumber.");
       if (!["BANK", "LEDGER", "REPORT"].includes(unit.kind)) throw new Error("Dokumen ini belum memiliki tabel yang dapat diimpor.");
-      if (unit.kind === "BANK" && !bank) throw new Error("Pilih rekening milik entitas sumber.");
+      if (unit.kind === "BANK" && !unit.table && !bank) throw new Error("Pilih rekening milik entitas sumber.");
       if (unit.kind !== "LEDGER" && unit.currency && unit.currency !== input.currency) throw new Error("Mata uang pilihan berbeda dengan dokumen sumber.");
-      if (entity.functionalCurrency !== input.currency) throw new Error("Mata uang sumber berbeda dengan mata uang entitas. Gunakan impor manual dengan pengaturan kurs.");
-      if (unit.periodStart && input.periodStart! > unit.periodStart || unit.periodEnd && input.periodEnd! < unit.periodEnd) throw new Error("Rentang sumber harus mencakup seluruh periode file.");
+      const entities = byColumn ? await columnEntities(tx, intake.clientId, unit) : [entity!];
+      if (entities.some(e => e.functionalCurrency !== input.currency)) throw new Error("Mata uang sumber berbeda dengan mata uang entitas. Gunakan impor manual dengan pengaturan kurs.");
+      if (entity && unit.table?.mode === "LEDGER") {
+        const others = unit.table.entities.filter(label => entityForLabel([entity], label) === undefined);
+        if (others.length && unit.table.entities.length > 1) throw new Error(`File juga memuat entitas ${others.join(", ")}. Pilih "Sesuai kolom Entitas di file".`);
+      }
+      if (unit.table?.mode === "NERACA") {
+        // A balance sheet has one date: typed by the accountant, and equal to the file's date when it states one.
+        if (input.periodStart !== input.periodEnd) throw new Error("Neraca memiliki satu tanggal. Isi tanggal neraca.");
+        if (unit.table.periodEnd && unit.table.periodEnd !== input.periodEnd) throw new Error(`Tanggal neraca di file ${unit.table.periodEnd}. Gunakan tanggal itu.`);
+      } else if (unit.periodStart && input.periodStart! > unit.periodStart || unit.periodEnd && input.periodEnd! < unit.periodEnd) throw new Error("Rentang sumber harus mencakup seluruh periode file.");
+      covered = entities.map(e => e.id);
       const intakes = await tx.evidenceIntake.findMany({ where: { firmId, clientId: intake.clientId }, select: { id: true } });
-      const overlaps = await tx.evidenceSelection.findMany({ where: { firmId, intakeId: { in: intakes.map(i => i.id) }, role: "SOURCE", confirmed: true, entityId: input.entityId, periodStart: { lte: input.periodEnd }, periodEnd: { gte: input.periodStart }, NOT: { versionId, unitKey } } });
-      // Two distinct bank accounts are independent sources. A ledger covers all accounts.
-      if (overlaps.some(other => !(unit.kind === "BANK" && bank && other.bankAccountId && other.bankAccountId !== bank.id))) throw new Error("Cakupan beririsan dengan sumber pencatatan yang sudah dipilih. Jadikan salah satu Pembanding atau pisahkan periodenya.");
+      const overlaps = await tx.evidenceSelection.findMany({ where: { firmId, intakeId: { in: intakes.map(i => i.id) }, role: "SOURCE", confirmed: true, periodStart: { lte: input.periodEnd }, periodEnd: { gte: input.periodStart }, NOT: { versionId, unitKey } } });
+      for (const other of overlaps) {
+        // Two distinct bank accounts are independent sources. A ledger covers all accounts.
+        if (unit.kind === "BANK" && !unit.table && bank && other.bankAccountId && other.bankAccountId !== bank.id) continue;
+        const theirs = await selectionEntityIds(tx, intake.clientId, other);
+        if (theirs.some(id => covered.includes(id))) throw new Error("Cakupan beririsan dengan sumber pencatatan yang sudah dipilih. Jadikan salah satu Pembanding atau pisahkan periodenya.");
+      }
     }
-    const data = { role: input.role, entityId: entity?.id ?? null, bankAccountId: unit.kind === "BANK" ? bank?.id ?? null : null, periodStart: input.periodStart || null, periodEnd: input.periodEnd || null, currency: input.currency || null, confirmed: true };
+    const data = { role: input.role, entityId: entity?.id ?? null, bankAccountId: unit.kind === "BANK" && !unit.table ? bank?.id ?? null : null, periodStart: input.periodStart || null, periodEnd: input.periodEnd || null, currency: input.currency || null, confirmed: true };
     const selection = await tx.evidenceSelection.upsert({ where: { versionId_unitKey: { versionId, unitKey } }, create: { firmId, intakeId, versionId, unitKey, ...data }, update: data });
     await tx.evidenceIntake.update({ where: { id: intakeId }, data: { contextVersion: { increment: 1 } } });
     return selection;
@@ -112,7 +150,8 @@ export async function resolveConflict(db: Db, firmId: string, intakeId: string, 
 async function prepare(db: Db, firmId: string, intakeId: string, versionId: string, unitKey: string, bankAccountId?: string, password?: string) {
   const { intake, version, unit } = await getUnit(db, firmId, intakeId, versionId, unitKey);
   const selection = await db.evidenceSelection.findFirst({ where: { versionId, unitKey, firmId, intakeId } });
-  if (!intake.clientId || !selection?.confirmed || selection.role !== "SOURCE" || !selection.entityId || !selection.periodStart || !selection.periodEnd || !selection.currency) throw new Error("Konfirmasi klien, entitas, dan peran Sumber pencatatan terlebih dahulu.");
+  const byColumn = !selection?.entityId && unit.table?.mode === "LEDGER" && unit.table.entities.length > 0;
+  if (!intake.clientId || !selection?.confirmed || selection.role !== "SOURCE" || (!selection.entityId && !byColumn) || !selection.periodStart || !selection.periodEnd || !selection.currency) throw new Error("Konfirmasi klien, entitas, dan peran Sumber pencatatan terlebih dahulu.");
   const used = await existingImport(db, firmId, versionId, unitKey);
   if (selection.importId || used) {
     const importId = selection.importId ?? used!.id;
@@ -120,11 +159,13 @@ async function prepare(db: Db, firmId: string, intakeId: string, versionId: stri
     return { kind: unit.kind, importId, already: true };
   }
   if (unit.scale !== "1") throw new Error("Skala angka sumber bukan satuan penuh atau belum pasti. Siapkan file dalam satuan penuh sebelum mengimpor; analisis dokumen tetap tersedia.");
-  const entity = await db.entity.findFirst({ where: { id: selection.entityId, firmId, clientId: intake.clientId } });
-  if (!entity || selection.currency !== entity.functionalCurrency) throw new Error("Entitas atau mata uang sumber tidak sesuai.");
+  const entities = byColumn ? await columnEntities(db, intake.clientId, unit) : (await db.entity.findMany({ where: { id: selection.entityId ?? "", firmId, clientId: intake.clientId } }));
+  if (!entities.length || entities.some(e => selection.currency !== e.functionalCurrency)) throw new Error("Entitas atau mata uang sumber tidak sesuai.");
+  const entity = byColumn ? null : entities[0];
   const conflicts = await db.evidenceConflict.findMany({ where: { firmId, intakeId, resolved: false } });
   if (conflicts.some(c => (c.versionIds as string[]).includes(versionId))) throw new Error("Selesaikan perbedaan sumber terkait sebelum menyiapkan impor.");
-  if (unit.kind === "BANK") {
+  // A postable table always goes through the ledger import, whatever its sheet mentions.
+  if (unit.kind === "BANK" && !unit.table && entity) {
     if (bankAccountId && bankAccountId !== selection.bankAccountId) throw new Error("Rekening berubah. Konfirmasi ulang pilihan sumber terlebih dahulu.");
     const bank = await db.bankAccount.findFirst({ where: { id: selection.bankAccountId ?? "", firmId, entityId: entity.id } });
     if (!bank) throw new Error("Pilih rekening milik entitas sumber.");
@@ -142,7 +183,7 @@ async function prepare(db: Db, firmId: string, intakeId: string, versionId: stri
     return { kind: "BANK", rows: st.rows.length, continuityOk: continuity.ok, bankAccountId: bank.id };
   }
   try {
-    const staged = await stageImport(db, { firmId, clientId: intake.clientId, fileName: version.name, data: Buffer.from(version.data), sheet: unit.label, entityId: entity.id, date: new Date(selection.periodEnd), evidenceVersionId: versionId, evidenceUnitKey: unitKey, allowedPeriod: { start: selection.periodStart, end: selection.periodEnd, currency: selection.currency, entityId: entity.id } });
+    const staged = await stageImport(db, { firmId, clientId: intake.clientId, fileName: version.name, data: Buffer.from(version.data), sheet: unit.label, entityId: entity?.id, date: new Date(selection.periodEnd), evidenceVersionId: versionId, evidenceUnitKey: unitKey, allowedPeriod: { start: selection.periodStart, end: selection.periodEnd, currency: selection.currency, entityIds: entities.map(e => e.id) } });
     if (staged.status !== "STAGED") throw new Error("Tabel sumber belum dapat dipilih. Gunakan impor manual untuk memilih sheet.");
     await db.evidenceSelection.update({ where: { id: selection.id }, data: { importId: staged.importId } });
     return { kind: unit.kind, importId: staged.importId };

@@ -65,6 +65,10 @@ no. bukti, mata uang, kurs, notes with `Rate: 1.31`). A Neraca needs kode/nama a
    after upload; *Minta saran AI* sends only account codes, names and types (never amounts). Nothing counts until you accept it.
 4. **Catat.** All journals post together, or none. Check **Neraca Saldo → Akun sumber** against the client's own TB.
 
+From Google Drive: **Dokumen → Tambahkan dokumen → Baca folder** reads the same sheets; confirm each postable sheet as
+Sumber pencatatan (multi-entity ledgers via *Sesuai kolom Entitas di file*, Neraca with its date) and **Siapkan impor** opens the
+same draft. Keep the folder small (one workbook) — see [evidence workspace](evidence-workspace.md).
+
 Currency: *Jumlah sudah dalam mata uang entitas* posts the amounts as written (default, faithful to the file).
 *Konversi dengan kurs* converts foreign lines with the rate in the file, else the **Kurs** page on that date.
 

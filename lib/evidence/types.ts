@@ -13,6 +13,16 @@ export type EvidenceFigure = {
   locator: string;
 };
 export type EvidenceFact = { key: string; value: string; locator: string };
+/** A table the ledger import can post (`detectTables`), read at extraction time. Absent on older extractions. */
+export type EvidenceTable = {
+  mode: "LEDGER" | "NERACA";
+  rows: number;
+  /** Distinct non-empty labels of the ledger's entity column. */
+  entities: string[];
+  /** Ledger: first/last row date. Neraca: the balance date written in the file, else null. */
+  periodStart: string | null;
+  periodEnd: string | null;
+};
 export type EvidenceUnit = {
   key: string;
   label: string;
@@ -28,5 +38,6 @@ export type EvidenceUnit = {
   figures: EvidenceFigure[];
   facts: EvidenceFact[];
   issues: string[];
+  table?: EvidenceTable;
 };
 export type Extraction = { units: EvidenceUnit[]; issues: string[] };

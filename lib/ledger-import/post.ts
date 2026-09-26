@@ -19,8 +19,15 @@ import type { TableCandidate } from "@/lib/ledger-import/types";
 
 export class LedgerImportError extends Error {}
 
+/** A file's entity label belongs to the client entity with that short or full name (case-insensitive). No fuzzy match. */
+export function entityForLabel<E extends { shortName: string; name: string }>(entities: E[], label: string): E | undefined {
+  const l = label.trim().toLowerCase();
+  return l ? entities.find((e) => [e.shortName, e.name].some((n) => n.toLowerCase() === l)) : undefined;
+}
+
 export type StageInput = {
-  allowedPeriod?: { start: string; end: string; currency?: string; entityId?: string };
+  /** Evidence handoff: the file must stay inside the confirmed dates, currency and entities. */
+  allowedPeriod?: { start: string; end: string; currency?: string; entityIds?: string[] };
   evidenceVersionId?: string;
   evidenceUnitKey?: string;
   firmId: string;
@@ -92,7 +99,7 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
       const id =
         input.entityMap?.[label] ??
         (label === "" ? input.entityId : undefined) ??
-        entities.find((e) => [e.shortName, e.name].some((n) => n.toLowerCase() === label.toLowerCase()))?.id ??
+        entityForLabel(entities, label)?.id ??
         (labels.length === 1 ? input.entityId : undefined);
       if (id) entityInfos.set(label, info(id));
     }
@@ -116,7 +123,7 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
 
   if (input.allowedPeriod && (periodStart.toISOString().slice(0, 10) < input.allowedPeriod.start || periodEnd.toISOString().slice(0, 10) > input.allowedPeriod.end)) throw new LedgerImportError("Rentang sumber harus mencakup seluruh periode file.");
 
-  if (input.allowedPeriod?.entityId && [...entityInfos.values()].some(e => e.entityId !== input.allowedPeriod!.entityId)) throw new LedgerImportError("File mencakup entitas lain di luar pilihan sumber. Pisahkan sheet atau gunakan impor manual.");
+  if (input.allowedPeriod?.entityIds && [...entityInfos.values()].some(e => !input.allowedPeriod!.entityIds!.includes(e.entityId))) throw new LedgerImportError("File mencakup entitas lain di luar pilihan sumber. Pisahkan sheet atau gunakan impor manual.");
   if (input.allowedPeriod?.currency && [...entityInfos.values()].some(e => e.currency !== input.allowedPeriod!.currency)) throw new LedgerImportError("Mata uang fungsional entitas berbeda dengan pilihan sumber.");
 
   // Rates written in the file (rate column or "Rate: 1.31" notes) are kept and saved to the Kurs table on post.

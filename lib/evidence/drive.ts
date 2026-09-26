@@ -120,6 +120,8 @@ async function checkedResponse(response: Response): Promise<Response> {
     const json = JSON.parse((await boundedBytes(response, 64 * 1024)).toString("utf8"));
     code = typeof json.error === "string" ? json.error : json.error?.errors?.[0]?.reason ?? "";
   } catch { /* Status alone still gives a safe actionable error. */ }
+  // Wrong client ID/secret or redirect URI is operator configuration, not revoked consent.
+  if (["invalid_client", "unauthorized_client", "redirect_uri_mismatch"].includes(code)) throw new DriveError("Konfigurasi Google di server tidak cocok (client ID, secret, atau alamat callback). Hubungi pengelola Buku.", "CONFIG", response.status);
   if (response.status === 401 || code === "invalid_grant") throw new DriveError("Izin Google kedaluwarsa atau dicabut. Hubungkan kembali Google Drive.", "RECONNECT", response.status);
   if (response.status === 429 || ["rateLimitExceeded", "userRateLimitExceeded"].includes(code)) throw new DriveError("Batas permintaan Google tercapai. Tunggu lalu lanjutkan pemindaian.", "RATE_LIMIT", response.status);
   if (code === "exportSizeLimitExceeded") throw new DriveError("Ekspor Google melebihi batas 10 MiB. Pecah dokumen lalu coba kembali.", "TOO_LARGE", response.status);
@@ -146,7 +148,7 @@ async function tokenRequest(body: Record<string, string>): Promise<GoogleTokens>
   if (!payload || typeof payload !== "object") throw new DriveError("Respons token Google tidak valid. Hubungkan kembali.", "INVALID_RESPONSE");
   const result = payload as Record<string, unknown>;
   if (typeof result.access_token !== "string" || !result.access_token || typeof result.expires_in !== "number" || result.expires_in <= 0 || !Number.isFinite(result.expires_in)) throw new DriveError("Respons token Google tidak valid. Hubungkan kembali.", "INVALID_RESPONSE");
-  if (typeof result.scope === "string" && !result.scope.split(" ").includes(DRIVE_SCOPE)) throw new DriveError("Izin membaca Google Drive belum diberikan. Hubungkan kembali dan izinkan akses baca.", "RECONNECT");
+  if (typeof result.scope === "string" && !result.scope.split(" ").includes(DRIVE_SCOPE)) throw new DriveError("Izin membaca Google Drive belum diberikan. Hubungkan kembali dan centang akses Google Drive.", "SCOPE");
   return { accessToken: result.access_token, expiresIn: result.expires_in, ...(typeof result.refresh_token === "string" ? { refreshToken: result.refresh_token } : {}), ...(typeof result.scope === "string" ? { scope: result.scope } : {}) };
 }
 

@@ -5,7 +5,7 @@ import { extractEvidence } from "./extract";
 import type { EvidenceUnit } from "./types";
 import { FILE_COUNT_LIMIT } from "./config";
 import { assertLease, capacity, claimStep, hash, intakeForFirm, json, lockIntake, releaseStep } from "./store";
-import { downloadDriveFile, DRIVE_FOLDER_MIME, DRIVE_SHORTCUT_MIME, getDriveFile, listDriveChildren, parseDriveFolderUrl, refreshAccessToken, type DriveFile } from "./drive";
+import { downloadDriveFile, DriveError, DRIVE_FOLDER_MIME, DRIVE_SHORTCUT_MIME, getDriveFile, listDriveChildren, parseDriveFolderUrl, refreshAccessToken, type DriveFile } from "./drive";
 
 type Folder = { id: string; path: string; resourceKey?: string; pageToken?: string; depth: number };
 type Cursor = { run: string; queue: Folder[]; visited: string[]; complete: boolean };
@@ -33,7 +33,10 @@ async function withLease<T>(db: Db, firmId: string, intakeId: string, token: str
 export async function driveToken(db: Db, firmId: string) {
   const connection = await db.driveConnection.findUnique({ where: { firmId } });
   if (!connection) throw new Error("Hubungkan Google sebelum membaca folder.");
-  return (await refreshAccessToken(decryptSecret(connection.refreshToken))).accessToken;
+  let refreshToken: string;
+  // A token saved under another SETTINGS_SECRET can't be read; only a new consent helps.
+  try { refreshToken = decryptSecret(connection.refreshToken); } catch { throw new DriveError("Koneksi Google perlu dihubungkan ulang oleh admin.", "RECONNECT"); }
+  return (await refreshAccessToken(refreshToken)).accessToken;
 }
 export async function attachDrive(db: Db, firmId: string, intakeId: string, url: string) {
   const intake = await intakeForFirm(db, firmId, intakeId);
