@@ -50,3 +50,15 @@ it("units known to be out of scope stay excluded", async () => {
   expect(byPeriod.rows?.map((r) => r.source)).toEqual(["Dec24!12"]);
   expect(byPeriod.limitations.join(" ")).not.toContain("belum dikonfirmasi");
 });
+
+it("a confirmed entity-column ledger is out of scope for an entity its column doesn't name", async () => {
+  const g = await collection();
+  const units = (await db.evidenceVersion.findUniqueOrThrow({ where: { id: g.version.id } })).units as unknown as EvidenceUnit[];
+  units[0] = { ...units[0], kind: "LEDGER", role: "SOURCE", table: { mode: "LEDGER", rows: 1, entities: ["PT Uji"], periodStart: null, periodEnd: null } };
+  await db.evidenceVersion.update({ where: { id: g.version.id }, data: { units: json(units) } });
+  await db.evidenceSelection.create({ data: { firmId: g.firm.id, intakeId: g.intake.id, versionId: g.version.id, unitKey: "PnL", role: "SOURCE", entityId: null, periodStart: "2024-12-01", periodEnd: "2024-12-31", currency: "IDR", confirmed: true } });
+  const owner = await askEvidence(db, g.firm.id, g.intake.id, { question: "Penjualan Minuman", entityId: g.owner.entity.id }, null);
+  expect(owner.rows?.map((r) => r.source).sort()).toEqual(["Dec23!12", "Dec24!12"]);
+  const pt = await askEvidence(db, g.firm.id, g.intake.id, { question: "Penjualan Minuman", entityId: g.pt.entity.id }, null);
+  expect(pt.rows?.map((r) => r.source).sort()).toEqual(["Dec23!12", "Dec24!12", "PnL!12"]);
+});

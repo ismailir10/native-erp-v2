@@ -10,6 +10,7 @@ import { incomeStatement, trialBalance } from "@/lib/reports/ledger";
 import { runControls } from "@/lib/controls";
 import { intakeForFirm, json, hash } from "./store";
 import type { EvidenceFigure, EvidenceUnit } from "./types";
+import { selectionEntityIds } from "./review";
 
 export type EvidenceQuestion = { question: string; entityId?: string; period?: string | { from: string; to: string } };
 export type EvidenceAnswer = {
@@ -64,7 +65,7 @@ type UnitRef = { versionId: string; unitKey: string };
  * known period (confirmed, else extracted) outside the range. Unconfirmed units stay in and are counted, so a freshly
  * uploaded collection answers dated questions instead of returning nothing.
  */
-async function sourceScope(db: Db, firmId: string, intakeId: string, versionIds: string[], entityId: string | undefined, range: { start: Date; end: Date } | null, intent: EvidenceAnswerPlan["intent"]) {
+async function sourceScope(db: Db, firmId: string, intakeId: string, clientId: string | null, versionIds: string[], entityId: string | undefined, range: { start: Date; end: Date } | null, intent: EvidenceAnswerPlan["intent"]) {
   if (!versionIds.length) return { excluded: [] as UnitRef[], unknown: 0 };
   const [selections, units] = await Promise.all([
     db.evidenceSelection.findMany({ where: { firmId, intakeId, versionId: { in: versionIds }, confirmed: true }, select: { versionId: true, unitKey: true, entityId: true, periodStart: true, periodEnd: true } }),
@@ -85,8 +86,12 @@ async function sourceScope(db: Db, firmId: string, intakeId: string, versionIds:
   for (const [key, unit] of refs) {
     const sel = confirmed.get(key);
     let known = true;
-    // A confirmed selection without an entity is "per entity column" (multi-entity ledger): it can hold the entity.
-    if (entityId && sel?.entityId && sel.entityId !== entityId) { excluded.push({ versionId: unit.versionId, unitKey: unit.unitKey }); continue; }
+    if (entityId && sel) {
+      // A confirmed selection without an entity is "per entity column" (multi-entity ledger): resolve its labels.
+      const covered = sel.entityId ? [sel.entityId] : clientId ? await selectionEntityIds(db, clientId, sel) : [];
+      if (covered.length && !covered.includes(entityId)) { excluded.push({ versionId: unit.versionId, unitKey: unit.unitKey }); continue; }
+      if (!covered.length) known = false;
+    }
     if (entityId && !sel) known = false;
     if (range) {
       const periodEnd = sel?.periodEnd ?? unit.periodEnd, periodStart = sel?.periodEnd ? sel.periodStart : unit.periodStart;
@@ -223,7 +228,7 @@ export async function askEvidence(db: Db, firmId: string, intakeId: string, inpu
       if (truncated.length) answer.limitations.push("Sebagian isi dokumen melewati batas ekstraksi; jawaban hanya mencakup bagian yang sudah dibaca. Pecah dokumen untuk hasil lengkap.");
     }
     const sourceRange = input.period || plan.from || plan.to ? rangeFor(input.period, plan, new Date()) : null;
-    const scope = entityId || sourceRange ? await sourceScope(db, firmId, intakeId, plan.intent === "CONTEXT" ? contextVersionIds : versionIds, entityId, sourceRange, plan.intent) : null;
+    const scope = entityId || sourceRange ? await sourceScope(db, firmId, intakeId, intake.clientId, plan.intent === "CONTEXT" ? contextVersionIds : versionIds, entityId, sourceRange, plan.intent) : null;
     const excludedKeys = new Set(scope?.excluded.map((s) => `${s.versionId}\0${s.unitKey}`) ?? []);
     const unitAllowed = (versionId: string, unitKey: string) => !excludedKeys.has(`${versionId}\0${unitKey}`);
     if (scope) {

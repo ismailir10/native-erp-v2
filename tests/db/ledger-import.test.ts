@@ -173,6 +173,20 @@ describe("ledger import: stage → map → post", () => {
     expect(kurs.map((k) => [k.date.toISOString().slice(0, 10), k.rate, k.source])).toEqual([["2025-12-30", "1.3669", "FILE"], ["2025-12-31", "1.2855", "FILE"]]);
   });
 
+  it("a differing row rate is flagged even when a later row on the same date matches the Kurs table", async () => {
+    const g = await makeGroup();
+    await db.entity.update({ where: { id: g.pt.entity.id }, data: { functionalCurrency: "SGD" } });
+    await upsertRate(db, g.firm.id, { currency: "USD", quote: "SGD", date: dateOnly(2025, 12, 31), kind: "SPOT", rate: "1.2855" });
+    const file = await xlsx([
+      H,
+      ["PT Uji", d(2025, 12, 31), "11000", "Account Receivable", "USD", 100, 0, "Rate: 1.3669"],
+      ["PT Uji", d(2025, 12, 31), "20000", "Loan Payable", "USD", 0, 100, "Rate: 1.2855"],
+    ]);
+    const staged = await stageImport(db, { firmId: g.firm.id, clientId: g.client.id, fileName: "hc.xlsx", data: file, currencyMode: "CONVERT" });
+    if (staged.status !== "STAGED") throw new Error("not staged");
+    expect(staged.checks.filter((c) => c.code === "FX_FILE_RATE_DIFFERS").map((c) => c.message)).toEqual(["Kurs USD→SGD di file berbeda dari tabel Kurs pada 1 tanggal (31 Des 2025: file 1,3669, Kurs 1,2855). Baris dikonversi dengan kurs file; tabel Kurs tidak diubah."]);
+  });
+
   it("CONVERT mode posts a conversion residue of a USD-balanced journal to 7190 instead of blocking", async () => {
     const g = await makeGroup();
     await db.entity.update({ where: { id: g.pt.entity.id }, data: { functionalCurrency: "SGD" } });

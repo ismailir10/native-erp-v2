@@ -128,6 +128,8 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
 
   // Rates written in the file (rate column or "Rate: 1.31" notes) are kept and saved to the Kurs table on post.
   const fileRates = new Map<string, FileRate>();
+  // Every distinct rate a row states, for the Kurs comparison; only one per date can be kept in the table.
+  const statedRates = new Map<string, FileRate>();
   if (read.mode === "LEDGER") {
     for (const r of read.rows) {
       const ei = entityInfos.get(r.entity ?? "");
@@ -135,13 +137,15 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
       try {
         const rate = formatRate(parseRate(r.rate));
         const date = r.date.toISOString().slice(0, 10);
-        fileRates.set(`${r.currency}|${ei.currency}|${date}`, { currency: r.currency, quote: ei.currency, date, rate, ref: r.ref });
+        const stated = { currency: r.currency, quote: ei.currency, date, rate, ref: r.ref };
+        fileRates.set(`${r.currency}|${ei.currency}|${date}`, stated);
+        if (!statedRates.has(`${r.currency}|${ei.currency}|${date}|${rate}`)) statedRates.set(`${r.currency}|${ei.currency}|${date}|${rate}`, stated);
       } catch {
         // an unreadable rate note is just not a rate
       }
     }
   }
-  plan.checks.push(...(await fileRateChecks(db, input.firmId, [...fileRates.values()], currencyMode)));
+  plan.checks.push(...(await fileRateChecks(db, input.firmId, [...statedRates.values()], currencyMode)));
   // All-zero groups are reported in the checks ("… jurnal bernilai nol dilewati") but not staged, so the draft's
   // "Catat N jurnal" is the number that will post.
   const entries = plan.entries.filter(willPost);
@@ -310,11 +314,12 @@ async function fileRateChecks(db: Db, firmId: string, rates: FileRate[], mode: C
     const sorted = list.sort((a, b) => b.r.date.localeCompare(a.r.date));
     const { r } = sorted[0];
     const sample = sorted.slice(0, 5).map((x) => `${formatDate(new Date(`${x.r.date}T00:00:00.000Z`))}: file ${formatRateId(x.r.rate)}, Kurs ${formatRateId(x.kurs)}`).join("; ");
-    const more = sorted.length > 5 ? ` dan ${sorted.length - 5} tanggal lain` : "";
+    const dates = new Set(sorted.map((x) => x.r.date)).size;
+    const more = sorted.length > 5 ? ` dan ${sorted.length - 5} lainnya` : "";
     return {
       severity: "REVIEW" as const,
       code: "FX_FILE_RATE_DIFFERS",
-      message: `Kurs ${r.currency}→${r.quote} di file berbeda dari tabel Kurs pada ${sorted.length} tanggal (${sample}${more}). ${mode === "CONVERT" ? "Baris dikonversi dengan kurs file; " : ""}tabel Kurs tidak diubah.`,
+      message: `Kurs ${r.currency}→${r.quote} di file berbeda dari tabel Kurs pada ${dates} tanggal (${sample}${more}). ${mode === "CONVERT" ? "Baris dikonversi dengan kurs file; " : ""}tabel Kurs tidak diubah.`,
       refs: sorted.slice(0, 20).map((x) => x.r.ref),
     };
   });

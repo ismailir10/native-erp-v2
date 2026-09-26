@@ -52,7 +52,7 @@ async function columnEntities(db: Db | Tx, clientId: string, unit: EvidenceUnit)
   return found;
 }
 /** Entities a confirmed source covers: the chosen one, or every entity its ledger's entity column names. */
-async function selectionEntityIds(db: Db | Tx, clientId: string, selection: { entityId: string | null; versionId: string; unitKey: string }) {
+export async function selectionEntityIds(db: Db | Tx, clientId: string, selection: { entityId: string | null; versionId: string; unitKey: string }) {
   if (selection.entityId) return [selection.entityId];
   const version = await db.evidenceVersion.findUnique({ where: { id: selection.versionId }, select: { units: true } });
   const unit = (version?.units as unknown as EvidenceUnit[] | undefined)?.find(u => u.key === selection.unitKey);
