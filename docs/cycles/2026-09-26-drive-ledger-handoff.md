@@ -107,7 +107,7 @@ existing `units` JSON). No new dependency. No AI calls. Posting still runs only 
       accept: e2e `evidence-workspace.spec.ts` uploads the fixture and reaches a multi-entity ledger draft; page text length < 50 kB.
 - [x] T6 Drive errors: RECONNECT on decrypt failure; callback reason codes, log line, alert copy — accept: unit tests in `evidence-oauth.test.ts` / `evidence-drive.test.ts` for each reason; no token/code in the redirect or logs.
 - [x] T7 Docs: `docs/evidence-workspace.md` (+ `docs/real-data.md` pointer) — accept: describes multi-entity handoff, neraca date, new-collection re-read.
-- [ ] T8 End-of-cycle gates: lint, typecheck, test, build, `verify:books` ALL PASS, `test:e2e` green — accept: all green.
+- [x] T8 End-of-cycle gates: lint, typecheck, test, build, `verify:books` ALL PASS, `test:e2e` green — accept: all green.
 
 ## Implementation
 - Plan: tasks T1–T8 sequential, done inline (T2–T5 share the unit/selection contract; each builds on the previous).
@@ -117,6 +117,7 @@ existing `units` JSON). No new dependency. No AI calls. Posting still runs only 
 - T4: `lib/evidence/review.ts`, `lib/ledger-import/post.ts` — `entityForLabel()` shared by `stageImport` and the handoff; `allowedPeriod.entityIds`; selection "Sesuai kolom Entitas di file" (`entityId = null`) resolves every label (unmatched listed, mixed currency refused); a chosen entity that is one of several labels is refused with the hint; NERACA takes one typed date (must equal a file date if any); overlap check intersects entity sets across all client intakes; table units never take the bank path. New `tests/db/evidence-handoff.test.ts`.
 - T5: `components/app/evidence-workspace.tsx`, `lib/evidence/workspace.ts`, `e2e/evidence-workspace.spec.ts` — table summary ("Buku besar · 8 baris · 4 entitas", "Neraca · 3 akun · tanggal belum tertulis"), one *Tanggal neraca* field, entity option "Sesuai kolom Entitas di file (…)" preselected for several labels, single label preselects that entity, currency prefilled from the entity, no Rekening for tables, issues ≤5 + "+N lainnya". Proposals ignore the unconfirmed selection rows extraction stores. New e2e: upload the fixture, create the 5-entity client in the proposal form, confirm + prepare neraca and the 4-entity ledger, open the draft.
 - T6: `lib/evidence/{drive,jobs}.ts`, `app/api/google/callback/route.ts`, `app/(app)/documents/page.tsx`, `components/app/evidence-workspace.tsx` — undecryptable token → `DriveError(RECONNECT)` "Koneksi Google perlu dihubungkan ulang oleh admin."; token endpoint `invalid_client`/`unauthorized_client`/`redirect_uri_mismatch` → `CONFIG`; missing Drive scope → `SCOPE`; callback redirects `?google=error&reason=<state|denied|exchange|no_refresh_token|scope|invalid_client|config>` and logs only `google oauth callback failed: <reason>`; `/documents` alert names the fix per reason.
+- T8: gates only.
 - T7: `docs/evidence-workspace.md`, `docs/real-data.md` — postable-sheet rule, entity-column option, neraca date, issue summaries, new collection to re-read, callback reasons, Drive path pointer from the real-data ledger section.
 ## Verification
 - T1: fixture test 1/1; current extractor on it: 10_HC_GL_MASTER → BANK, entities "Source Type"/"GL Entry ID"/"PASS", 8/8 units SOURCE, neraca hint 2025-12-31..2026-01-01, 1,603 issues on the engine sheet (bugs reproduced). Gate: lint ✔, typecheck ✔, `Test Files 45 passed (45) · Tests 349 passed (349)`.
@@ -125,4 +126,15 @@ existing `units` JSON). No new dependency. No AI calls. Posting still runs only 
 - T4: handoff DB test — neraca + HoldCo GL + 4-entity OpCo GL confirmed, prepared, mapped, posted; OPENING dated 2025-12-31 on HOLDCO; OpCo entries on OPA–OPD, Σdebit 10,000,000; every `sourceRef` = `sheet!row`; 3 imports POSTED with the evidence version. Gate: lint ✔, typecheck ✔, `Test Files 46 passed (46) · Tests 358 passed (358)`.
 - T5: `playwright test e2e/evidence-workspace.spec.ts` → 3 passed (26.6s); drafts in DB: `04_HC_FOUNDATION DRAFT NERACA [""]`, `20_OPCO_GL_MASTER DRAFT LEDGER [OPA, OPB, OPC, OPD]`; expanded workbook `main` text < 50 kB; screenshot checked. Gate: lint ✔, typecheck ✔, `Test Files 46 passed (46) · Tests 358 passed (358)`.
 - T6: oauth/drive/token unit tests 48 passed (reasons per path; warn line holds only the reason; `invalid_client` message hides provider text; decrypt failure → RECONNECT). Gate: lint ✔, typecheck ✔, `Test Files 47 passed (47) · Tests 361 passed (361)`, build ✔.
+- T8 end of cycle: lint ✔ · typecheck ✔ · `Test Files 47 passed (47) · Tests 361 passed (361)` · build ✔ · `verify:books` → `ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.` · `test:e2e` (AI_API_KEY='' AI_MODEL='') → `9 passed (37.3s)`.
 ## Ship Notes
+- **No migrations, env vars or dependencies. No AI calls.** Demo books unchanged (`verify:books` ALL PASS).
+- **Behaviour changes in Dokumen (new extractions only):**
+  - Only sheets the ledger import can read default to *Sumber pencatatan*; keyword-only "ledger"/"bank" sheets become Pembanding/Konteks. A bank statement needs a statement header (tanggal, keterangan, debit/kredit or jumlah, saldo) plus bank wording.
+  - Company names come only from label → value pairs, so header rows no longer propose junk clients/entities.
+  - Per-cell issues are summarised per sheet (≤20 lines stored, ≤5 shown).
+  - Ledger with an entity column → *Sesuai kolom Entitas di file*; Neraca → one *Tanggal neraca*; tables never take the bank path.
+- **Existing collections keep their old extraction.** To use this on a folder read before, add it as a new collection and link the client (e.g. production "Chickin (uji Drive)").
+- **Google:** failed callbacks now redirect `?google=error&reason=…` and log `google oauth callback failed: <reason>`; an unreadable stored token asks for a reconnect.
+- **Also fixed:** `cellText`/`cellDate` crashed on Excel's Invalid Date cells (manual ledger import too).
+- **Rollback:** revert the PR. No data migration; selections with `entityId = null` from this version would then be refused at *Siapkan impor* (no posting happens).
