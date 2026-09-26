@@ -9,13 +9,14 @@ vi.mock("@/lib/db", () => {
   return { prisma };
 });
 vi.mock("@/lib/tenant", () => ({ getCurrentFirm: mocks.firm }));
-vi.mock("@/lib/evidence/drive", () => ({ exchangeCode: mocks.exchange, oauthConfigured: () => true }));
+vi.mock("@/lib/evidence/drive", async (original) => ({ DriveError: (await original<typeof import("@/lib/evidence/drive")>()).DriveError, exchangeCode: mocks.exchange, oauthConfigured: () => true }));
 vi.mock("@/lib/settings/secret", () => ({
   encryptSecret: (value: string) => `encrypted:${value}`,
   settingsSecretConfigured: () => true,
 }));
 vi.mock("@/lib/evidence/config", () => ({ requireEvidenceEnabled: () => {} }));
 import { GET } from "@/app/api/google/callback/route";
+import { DriveError } from "@/lib/evidence/drive";
 
 const state = "s".repeat(43);
 const browser = "b".repeat(43);
@@ -49,7 +50,7 @@ it("consumes unexpired browser/firm bound state and only persists encrypted toke
 
 it("rejects replay or expired state without code exchange", async () => {
   mocks.find.mockResolvedValue(null);
-  expect((await GET(req())).headers.get("location")).toBe("/documents?google=error");
+  expect((await GET(req())).headers.get("location")).toBe("/documents?google=error&reason=state");
   expect(mocks.exchange).not.toHaveBeenCalled();
 });
 
@@ -60,21 +61,23 @@ it("rejects missing cookie before consuming state", async () => {
 });
 
 it("consumes declined consent without exchanging", async () => {
-  await GET(req(`state=${state}&error=access_denied`));
+  expect((await GET(req(`state=${state}&error=access_denied`))).headers.get("location")).toBe("/documents?google=error&reason=denied");
   expect(mocks.consume).toHaveBeenCalledOnce();
   expect(mocks.exchange).not.toHaveBeenCalled();
 });
 
 it("does not overwrite connection when refresh token missing", async () => {
   mocks.exchange.mockResolvedValue({ accessToken: "access" });
-  expect((await GET(req())).headers.get("location")).toBe("/documents?google=error");
+  expect((await GET(req())).headers.get("location")).toBe("/documents?google=error&reason=no_refresh_token");
   expect(mocks.upsert).not.toHaveBeenCalled();
 });
 
 it("does not expose provider failure or code in redirect", async () => {
   mocks.exchange.mockRejectedValue(new Error("provider secret"));
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
   const response = await GET(req());
-  expect(response.headers.get("location")).toBe("/documents?google=error");
+  expect(response.headers.get("location")).toBe("/documents?google=error&reason=exchange");
+  expect(warn.mock.calls).toEqual([["google oauth callback failed: exchange"]]);
   expect(response.headers.get("referrer-policy")).toBe("no-referrer");
 });
 
@@ -90,7 +93,7 @@ it("does not reconnect after disconnect cancels approval during code exchange", 
   expect(mocks.transaction).toHaveBeenCalledOnce();
   expect(mocks.consume).toHaveBeenCalledOnce();
   expect(mocks.upsert).not.toHaveBeenCalled();
-  expect(response.headers.get("location")).toBe("/documents?google=error");
+  expect(response.headers.get("location")).toBe("/documents?google=error&reason=state");
 });
 
 it("rechecks expiry when Google finishes exchanging the code", async () => {
@@ -106,6 +109,15 @@ it("rechecks expiry when Google finishes exchanging the code", async () => {
     });
     return { refreshToken: "new-refresh" };
   });
-  expect((await GET(req())).headers.get("location")).toBe("/documents?google=error");
+  expect((await GET(req())).headers.get("location")).toBe("/documents?google=error&reason=state");
   expect(mocks.upsert).not.toHaveBeenCalled();
+});
+
+it("names a missing Drive permission or a wrong client secret, and nothing else", async () => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  mocks.exchange.mockRejectedValue(new DriveError("Izin membaca Google Drive belum diberikan.", "SCOPE"));
+  expect((await GET(req())).headers.get("location")).toBe("/documents?google=error&reason=scope");
+  mocks.exchange.mockRejectedValue(new DriveError("Konfigurasi Google di server tidak cocok.", "CONFIG", 401));
+  expect((await GET(req())).headers.get("location")).toBe("/documents?google=error&reason=invalid_client");
+  expect(warn.mock.calls.flat().join(" ")).not.toMatch(/code|refresh|secret/);
 });

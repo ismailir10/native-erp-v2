@@ -2,6 +2,7 @@ import "dotenv/config";
 import { expect, test, type Route } from "@playwright/test";
 import { Pool } from "pg";
 import { makePdf } from "../tests/pdf-fixture";
+import { GROUP_ENTITIES, groupWorkbook, POSTABLE } from "../tests/evidence-workbook-fixture";
 
 /**
  * Synthetic evidence-only journey. The standard global setup seeds the disposable
@@ -172,5 +173,70 @@ test.describe("document evidence workspace", () => {
     expect(storedProfile.rows[0].data.toString("utf8")).toBe(profile);
     const messages = await db.query<{ count: number }>(`SELECT COUNT(*)::int AS count FROM "EvidenceMessage" WHERE "firmId" = $1 AND "intakeId" = $2`, [firm.id, intakeId]);
     expect(messages.rows[0].count).toBe(2);
+  });
+
+  test("a group workbook hands its neraca and a 4-entity ledger to the ledger import", async ({ page }, testInfo) => {
+    await page.goto("/documents");
+    await page.getByRole("button", { name: "Tambahkan dokumen" }).click();
+    await expect(page).toHaveURL(/\/documents\/[^/?]+(?:\?.*)?$/);
+    const intakeId = new URL(page.url()).pathname.split("/").at(-1)!;
+    await page.getByLabel("File dokumen").setInputFiles({ name: "grup-unggas.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: await groupWorkbook() });
+    await expect(page.getByRole("status").filter({ hasText: "Pemeriksaan selesai" })).toBeVisible({ timeout: 30_000 });
+
+    // Header rows never become company names: the proposal starts empty and the accountant types the group.
+    await page.getByRole("button", { name: "Periksa usulan klien baru" }).click();
+    await expect(page.locator("#e-name-0")).toHaveValue("");
+    await page.getByLabel("Nama klien").fill("Grup Unggas Uji");
+    for (let i = 0; i < GROUP_ENTITIES.length; i++) {
+      if (i > 0) {
+        // New entities start as the owner with a bank row; these companies keep books from the ledger file.
+        await page.getByRole("button", { name: "Tambah entitas" }).click();
+        await page.getByRole("combobox", { name: "Jenis entitas" }).nth(i).click();
+        await page.getByRole("option", { name: "PT", exact: true }).click();
+        await page.getByRole("button", { name: "Hapus rekening" }).first().click();
+      }
+      await page.locator(`#e-name-${i}`).fill(GROUP_ENTITIES[i].name);
+      await page.locator(`#e-short-${i}`).fill(GROUP_ENTITIES[i].shortName);
+      await page.getByRole("combobox", { name: "Mata uang pembukuan" }).nth(i).click();
+      await page.getByRole("option", { name: new RegExp(`^${GROUP_ENTITIES[i].currency} ·`) }).click();
+    }
+    await page.getByRole("button", { name: "Simpan klien" }).click();
+    await expect(page.getByText("Analisis dokumen tersedia sekarang. Konfirmasi perusahaan sebelum menyiapkan pencatatan.")).toHaveCount(0);
+
+    await page.locator("summary").filter({ hasText: "grup-unggas.xlsx" }).click();
+    // Only the three postable tables are proposed as sources; thousands of formula cells are one line.
+    const text = await page.locator("main").innerText();
+    expect(text.length).toBeLessThan(50_000);
+    await expect(page.getByTestId(`unit-${POSTABLE.opco}`)).toContainText("Buku besar · 8 baris · 4 entitas");
+    await expect(page.getByTestId("unit-11_HC_MOVEMENT_ENGINE")).toContainText("1.600 rumus belum memiliki hasil tersimpan");
+
+    const neraca = page.getByTestId(`unit-${POSTABLE.neraca}`);
+    await expect(neraca).toContainText("Neraca · 3 akun · tanggal belum tertulis");
+    await neraca.getByRole("combobox", { name: `Entitas ${POSTABLE.neraca}` }).click();
+    await page.getByRole("option", { name: GROUP_ENTITIES[0].name }).click();
+    await expect(neraca.getByLabel(`Mata uang ${POSTABLE.neraca}`)).toHaveValue("SGD");
+    await neraca.getByLabel(`Tanggal neraca ${POSTABLE.neraca}`).fill("2025-12-31");
+    await neraca.getByRole("button", { name: "Konfirmasi peran" }).click();
+    await neraca.getByRole("button", { name: "Siapkan impor" }).click();
+    await expect(neraca.getByRole("link", { name: "Buka hasil impor" })).toBeVisible();
+
+    // One entity label picks that entity; several pick the entity column.
+    await expect(page.getByTestId(`unit-${POSTABLE.holdco}`).getByRole("combobox", { name: `Entitas ${POSTABLE.holdco}` })).toContainText(GROUP_ENTITIES[0].name);
+    const opco = page.getByTestId(`unit-${POSTABLE.opco}`);
+    await expect(opco.getByRole("combobox", { name: `Entitas ${POSTABLE.opco}` })).toContainText("Sesuai kolom Entitas di file (OPA, OPB, OPC, OPD)");
+    await expect(opco.getByLabel(`Mata uang ${POSTABLE.opco}`)).toHaveValue("IDR");
+    await expect(opco.getByLabel(`Rekening ${POSTABLE.opco}`)).toHaveCount(0);
+    await opco.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath("evidence-group-workbook.png") });
+    await opco.getByRole("button", { name: "Konfirmasi peran" }).click();
+    await opco.getByRole("button", { name: "Siapkan impor" }).click();
+    await opco.getByRole("link", { name: "Buka hasil impor" }).click();
+    await expect(page).toHaveURL(/\/import\/ledger\//);
+
+    const drafts = await db.query<{ unit: string; status: string; mode: string; entities: string[] }>(`SELECT "evidenceUnitKey" AS unit, status, mode, ARRAY(SELECT jsonb_object_keys(data->'entities') ORDER BY 1) AS entities FROM "LedgerImport" li WHERE "evidenceVersionId" IN (SELECT v.id FROM "EvidenceVersion" v JOIN "EvidenceDocument" d ON d.id = v."documentId" WHERE d."intakeId" = $1) ORDER BY 1`, [intakeId]);
+    expect(drafts.rows).toEqual([
+      { unit: POSTABLE.neraca, status: "DRAFT", mode: "NERACA", entities: [""] },
+      { unit: POSTABLE.opco, status: "DRAFT", mode: "LEDGER", entities: ["OPA", "OPB", "OPC", "OPD"] },
+    ]);
   });
 });

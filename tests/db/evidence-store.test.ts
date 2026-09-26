@@ -116,6 +116,20 @@ describe("explicit source-cited AI enrichment", () => {
     expect(await db.evidenceSelection.count()).toBe(0);
     expect(await db.aiUsage.count()).toBe(1);
   });
+  it("holds the intake for longer than the 90-second AI call, and only during analysis", async () => {
+    const g = await fixture();
+    const leaseAhead = async () => ((await db.evidenceIntake.findUniqueOrThrow({ where: { id: g.intake.id } })).leaseUntil!.getTime() - Date.now()) / 1000;
+    let during = 0;
+    const provider: AiProvider = new MockProvider();
+    provider.analyzeEvidence = vi.fn(async () => { during = await leaseAhead(); return { model: "mock", promptTokens: 1, completionTokens: 1, analysis: { kind: "OTHER" as const, entity: null, currency: null, periodStart: null, periodEnd: null, facts: [] } }; });
+    await analyzeVersion(db, g.firm.id, g.intake.id, g.version.id, provider);
+    expect(during).toBeGreaterThan(145);
+    expect(during).toBeLessThanOrEqual(150);
+    expect((await db.evidenceIntake.findUniqueOrThrow({ where: { id: g.intake.id } })).leaseUntil).toBeNull();
+    const token = await claimStep(db, g.firm.id, g.intake.id);
+    expect(token).toBeTruthy();
+    expect(await leaseAhead()).toBeLessThanOrEqual(90);
+  });
   it("AI-disabled and failed requests retain documents without marking analysis complete", async () => {
     const g = await fixture();
     expect(await analyzeVersion(db, g.firm.id, g.intake.id, g.version.id, null)).toMatchObject({ cached: false, facts: 0 });

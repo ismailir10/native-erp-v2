@@ -61,7 +61,13 @@ describe("Drive links and OAuth boundaries", () => {
   });
   it("rejects missing read scope", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({ access_token: "a", expires_in: 3600, scope: "openid" })));
-    await expect(exchangeCode("c")).rejects.toMatchObject({ code: "RECONNECT" });
+    await expect(exchangeCode("c")).rejects.toMatchObject({ code: "SCOPE" });
+  });
+  it("reports a wrong client secret as server configuration, not revoked consent", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({ error: "invalid_client", error_description: "The OAuth client was not found." }, 401)));
+    const error = await exchangeCode("c").catch((e) => e);
+    expect(error).toMatchObject({ code: "CONFIG" });
+    expect(error.message).not.toMatch(/not found/i);
   });
   it("revokes with a form body", async () => {
     const fetcher = vi.fn().mockResolvedValue(new Response(""));

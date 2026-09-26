@@ -26,6 +26,9 @@ export type EvidenceAnswerPlan = { intent: EvidenceIntent; terms: string[]; acco
 export type EvidenceAnalysisResult = { analysis: EvidenceAnalysis; promptTokens: number; completionTokens: number; model: string };
 export type EvidencePlanResult = { plan: EvidenceAnswerPlan; promptTokens: number; completionTokens: number; model: string };
 export const EVIDENCE_MAX_TOKENS = 2000;
+/** Classification/mapping prompts are small; evidence prompts carry up to 24 passages and answer up to 2,000 tokens. */
+export const AI_TIMEOUT_MS = 30_000;
+export const EVIDENCE_TIMEOUT_MS = 90_000;
 export const ANSWER_PLAN_MAX_TOKENS = 1000;
 export const EVIDENCE_PROMPT_VERSION = "evidence-v1";
 
@@ -245,19 +248,19 @@ export class OpenAiCompatibleProvider implements AiProvider {
 
   async analyzeEvidence(input: EvidenceInput): Promise<EvidenceAnalysisResult> {
     const { system, user } = buildEvidencePrompt(input);
-    const r = await this.complete(system, user, EVIDENCE_MAX_TOKENS, false);
+    const r = await this.complete(system, user, EVIDENCE_MAX_TOKENS, false, EVIDENCE_TIMEOUT_MS);
     try { return { ...r, analysis: parseEvidenceAnalysis(r.text, input) }; }
     catch { throw new AiAnswerError("Analisis AI tidak valid; tinjau dokumen manual.", r.promptTokens, r.completionTokens, r.model); }
   }
 
   async planEvidenceAnswer(question: string, context: string): Promise<EvidencePlanResult> {
     const { system, user } = buildAnswerPlanPrompt(question, context);
-    const r = await this.complete(system, user, ANSWER_PLAN_MAX_TOKENS, false);
+    const r = await this.complete(system, user, ANSWER_PLAN_MAX_TOKENS, false, EVIDENCE_TIMEOUT_MS);
     try { return { ...r, plan: parseEvidenceAnswerPlan(r.text) }; }
     catch { throw new AiAnswerError("Rencana jawaban AI tidak valid; gunakan pencarian dokumen.", r.promptTokens, r.completionTokens, r.model); }
   }
 
-  private async complete(system: string, user: string, maxTokens: number, requireItems = true) {
+  private async complete(system: string, user: string, maxTokens: number, requireItems = true, timeoutMs = AI_TIMEOUT_MS) {
     const res = await this.fetchImpl(`${this.cfg.baseUrl}/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${this.cfg.apiKey}` },
@@ -270,7 +273,7 @@ export class OpenAiCompatibleProvider implements AiProvider {
           { role: "user", content: user },
         ],
       }),
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) {
       const text = (await res.text()).slice(0, 300);

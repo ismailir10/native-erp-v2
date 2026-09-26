@@ -78,7 +78,8 @@ export async function readSheets(fileName: string, data: Buffer): Promise<RawShe
 
 export function cellText(c: RawCell | undefined): string {
   if (c === null || c === undefined) return "";
-  if (c instanceof Date) return c.toISOString().slice(0, 10);
+  // Excel can store a date cell ExcelJS can't convert (Invalid Date); treat it as text that no reader matches.
+  if (c instanceof Date) return Number.isFinite(c.getTime()) ? c.toISOString().slice(0, 10) : "[tanggal tidak valid]";
   if (typeof c === "object") return c.error;
   return String(c).trim();
 }
@@ -100,7 +101,7 @@ function cellCents(c: RawCell | undefined): bigint | string {
 }
 
 function cellDate(c: RawCell | undefined): Date | null {
-  if (c instanceof Date) return dateOnly(c.getUTCFullYear(), c.getUTCMonth() + 1, c.getUTCDate());
+  if (c instanceof Date) return Number.isFinite(c.getTime()) ? dateOnly(c.getUTCFullYear(), c.getUTCMonth() + 1, c.getUTCDate()) : null;
   const t = cellText(c).replace(/^'/, "");
   let m = t.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
   if (m) return dateOnly(Number(m[3]), Number(m[2]), Number(m[1]));

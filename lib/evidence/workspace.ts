@@ -12,7 +12,7 @@ export async function loadWorkspace(db: Db, firmId: string, intakeId: string) {
     db.evidenceConflict.findMany({ where: { firmId, intakeId }, orderBy: [{ resolved: "asc" }, { id: "asc" }], take: 100 }),
     db.evidenceSelection.findMany({ where: { firmId, intakeId } }),
     db.evidenceMessage.findMany({ where: { firmId, intakeId }, orderBy: { createdAt: "desc" }, take: 10 }),
-    intake.clientId ? db.entity.findMany({ where: { firmId, clientId: intake.clientId }, select: { id: true, name: true, functionalCurrency: true, bankAccounts: { select: { id: true, label: true, number: true } } } }) : Promise.resolve([]),
+    intake.clientId ? db.entity.findMany({ where: { firmId, clientId: intake.clientId }, select: { id: true, name: true, shortName: true, functionalCurrency: true, bankAccounts: { select: { id: true, label: true, number: true } } } }) : Promise.resolve([]),
   ]);
   const cursor = intake.cursor as { queue?: unknown[] };
   const hasPendingWork = documents.some(d => !d.excluded && d.status === "PENDING") || intake.status !== "PARTIAL" && Array.isArray(cursor.queue) && cursor.queue.length > 0;

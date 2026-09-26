@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { aiCacheKey } from "@/lib/ai/classify";
 import { aiMapCacheKey } from "@/lib/ledger-import/mapping";
-import { parseEvidenceAnalysis, parseEvidenceAnswerPlan, OpenAiCompatibleProvider, AiAnswerError, buildEvidencePrompt } from "@/lib/ai/provider";
+import { parseEvidenceAnalysis, parseEvidenceAnswerPlan, OpenAiCompatibleProvider, AiAnswerError, buildEvidencePrompt, AI_TIMEOUT_MS, EVIDENCE_TIMEOUT_MS } from "@/lib/ai/provider";
 import { reservationTokens } from "@/lib/ai/budget";
 
 describe("evidence AI boundaries", () => {
@@ -62,5 +62,18 @@ describe("evidence AI boundaries", () => {
     expect(error).toBeInstanceOf(AiAnswerError);
     expect(error.promptTokens).toBe(200);
     expect(calls).toBe(1);
+  });
+
+  it("gives evidence calls 90 seconds and keeps classification and mapping at 30", async () => {
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+    const provider = new OpenAiCompatibleProvider({ baseUrl: "https://test.invalid", apiKey: "x", model: "m", maxCallsPerImport: 1, monthlyTokenBudget: 20_000 }, (async () =>
+      new Response(JSON.stringify({ usage: { prompt_tokens: 1, completion_tokens: 1 }, choices: [{ message: { content: '{"items":[]}' } }] }))) as typeof fetch);
+    const used = async (call: () => Promise<unknown>) => { timeout.mockClear(); await call().catch(() => {}); return timeout.mock.calls.map((c) => c[0]); };
+    expect(await used(() => provider.analyzeEvidence({ context: "", passages: [] }))).toEqual([EVIDENCE_TIMEOUT_MS]);
+    expect(await used(() => provider.planEvidenceAnswer("Bandingkan Revenue", ""))).toEqual([EVIDENCE_TIMEOUT_MS]);
+    expect(await used(() => provider.classify([], [], ""))).toEqual([AI_TIMEOUT_MS]);
+    expect(await used(() => provider.mapAccounts([], [], ""))).toEqual([AI_TIMEOUT_MS]);
+    expect([EVIDENCE_TIMEOUT_MS, AI_TIMEOUT_MS]).toEqual([90_000, 30_000]);
+    timeout.mockRestore();
   });
 });
