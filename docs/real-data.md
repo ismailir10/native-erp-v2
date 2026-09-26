@@ -5,7 +5,7 @@ file to a closed month.
 
 ## Rules
 1. There is **one workspace** ([ADR 0008](adrs/0008-one-workspace.md)). Real client work lives in production (https://native-erp-v2.vercel.app),
-   behind invitation-only login, on Neon branch `real-data` with `DEMO_MODE=false`. Staging is synthetic pre-production: never upload real files there.
+   behind invitation-only login, on Neon branch `main` with `DEMO_MODE=false`. Staging is synthetic pre-production: never upload real files there.
 2. Real data lives in exactly two places:
    - **Local**: Postgres on your machine. Files go in `data/private/` (gitignored).
    - **Production**: the workspace above. No demo firm and no reset. Never point `demo:reset` at its database.
@@ -96,12 +96,12 @@ Imports the files in `data/private/` into a fresh client and compares Buku with 
 | Where | How to open | Database |
 |---|---|---|
 | Local | `npm run dev` with `.env` → `postgresql://buku:buku@localhost:5432/buku` and `DEMO_MODE=false` | local `buku` |
-| Production (real workspace) | https://native-erp-v2.vercel.app (invitation login) | Neon `real-data` |
-| Staging (synthetic pre-production) | Vercel → Deployments → branch `staging` (Vercel login + invitation login) | Neon `preview` |
+| Production (real workspace) | https://native-erp-v2.vercel.app (invitation login) | Neon `main` |
+| Staging (synthetic pre-production) | Vercel → Deployments → branch `staging` (Vercel login + invitation login) | Neon `staging` |
 
 New work merges into `staging` first. Promote tested staging through a separate PR to `main` using a merge commit; do not push production into staging after every feature. See [Branch workflow](../README.md#branch-workflow).
 
 The `native-erp-v2-git-real-data-…vercel.app` domain still points at git branch `staging`; it no longer holds client data. Google OAuth for Drive must list the production callback URL.
 
 Neon connection strings for every branch are in `.env.neon.local` (gitignored, not auto-loaded). Never point `.env`
-at Neon `production` or `real-data`, because `npm run demo:reset` truncates whatever `DATABASE_URL` points at.
+at Neon `main`, because `npm run demo:reset` truncates whatever `DATABASE_URL` points at.

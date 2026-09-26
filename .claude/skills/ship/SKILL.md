@@ -21,11 +21,11 @@ description: Ship a completed Buku cycle — preflight the cycle doc, push the f
 Vercel project `native-erp-v2` (team "Ismail's projects", slug `ismails-projects-196d40d3`) + Neon project `long-voice-58936160`.
 The environment ↔ Neon branch map and the env var list are owned by [README → Deploy](../../../README.md#deploy-vercel--neon)
 and [ADR 0008](../../../docs/adrs/0008-one-workspace.md); check them, don't restate them. In short:
-- **Production (git `main`) is the one real workspace** → Neon branch **`real-data`**, `DEMO_MODE=false`, invitation login
+- **Production (git `main`) is the one real workspace** → Neon branch **`main`**, `DEMO_MODE=false`, invitation login
   (`https://native-erp-v2.vercel.app`). Real client files live here or locally, nowhere else.
-- **Preview (git `staging`, PR branches) is synthetic** → Neon branch `preview`, `DEMO_MODE=true`, invitation login + Vercel protection.
+- **Preview (git `staging`, PR branches) is synthetic** → Neon branch `staging`, `DEMO_MODE=true`, invitation login + Vercel protection.
   The `native-erp-v2-git-real-data-…vercel.app` domain is a leftover name pointing at `staging`; it holds no client data.
-- Neon branch `production` is a legacy demo copy that no environment should use. If a login says "Email atau kode akses tidak cocok"
+- Neon has exactly two branches, `main` and `staging` (the default). If a login says "Email atau kode akses tidak cocok"
   for a known invitation, check which branch `DATABASE_URL` points at first.
 
 Build: `npm run vercel-build` → `scripts/vercel-build.sh`: `prisma generate`, `prisma migrate deploy` on `DATABASE_URL_UNPOOLED`,

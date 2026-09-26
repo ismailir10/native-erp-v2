@@ -18,7 +18,7 @@ import { dateOnly } from "@/lib/format";
  *
  * LOCAL ONLY. Reads real client files from data/private/ (gitignored), imports them into a fresh client and compares
  * Buku with the files themselves. Writes a report to data/private/reports/. Never run in CI; never commit the output.
- * --into-app puts the client into the firm the app shows (for a demo on localhost or the real-data preview);
+ * --into-app puts the client into the firm the app shows (for a demo on localhost);
  * without it the client goes into a separate "Verifikasi data nyata" firm.
  *
  * Answer key: the Chickin workbook's TB/FS tabs hold formulas without saved values, so Buku is compared against an
