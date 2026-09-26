@@ -4,7 +4,8 @@ import { readCsv } from "@/lib/import/parsers/common";
 import { readLines } from "@/lib/import/parsers/pdf";
 import { centsToMinor, parseCents } from "@/lib/money";
 import { CURRENCY_CODES } from "@/lib/fx/currency";
-import type { EvidenceKind, EvidencePassage, EvidenceUnit, Extraction } from "./types";
+import { detectTables, readSheets, readTable } from "@/lib/ledger-import/read";
+import type { EvidenceKind, EvidencePassage, EvidenceTable, EvidenceUnit, Extraction } from "./types";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 const MAX_TEXT = 100_000;
@@ -80,9 +81,25 @@ function scaleOf(text: string): string {
   return scales.size > 1 ? "UNKNOWN" : [...scales][0] ?? "1";
 }
 
-function kindOf(text: string): EvidenceKind {
-  if (/rekening koran|bank statement|account activities|mutasi rekening/i.test(text)) return "BANK";
-  if (/general ledger|buku besar|\bjurnal umum\b/i.test(text) || /(?:account code|kode akun)[\s\S]*?(?:debit|debet)[\s\S]*?(?:credit|kredit)/i.test(text)) return "LEDGER";
+/** A statement's column header row: date, description, movement (debit+credit or one amount) and balance. */
+function statementHeader(rows: Row[]): boolean {
+  return rows.some((row) => {
+    const cells = row.cells.map((c) => c.text.trim().toLowerCase()).filter(Boolean);
+    const has = (re: RegExp) => cells.some((c) => re.test(c));
+    return has(/^(?:tanggal|tgl\.?|date|transaction date|tanggal transaksi|posting date|value date)$/) &&
+      has(/^(?:keterangan|deskripsi|description|uraian|remarks?|transaksi|transaction details?|particulars)$/) &&
+      (has(/^(?:debit|debet|db|withdrawals?)$/) && has(/^(?:kredit|credit|cr|deposits?)$/) || has(/^(?:mutasi|jumlah|amount|nominal)$/)) &&
+      has(/^(?:saldo|balance|saldo akhir|running balance)$/);
+  });
+}
+
+/**
+ * Only a table the ledger import can read is a ledger; only a statement-shaped header with bank wording is a bank
+ * statement. Keywords elsewhere ("Rekening koran" in a memo, "general ledger" in a title) never make a source.
+ */
+function kindOf(text: string, rows: Row[], table: boolean): EvidenceKind {
+  if (table) return "LEDGER";
+  if (/rekening koran|bank statement|account activities|mutasi rekening|no\.? rekening|account (?:no|number)/i.test(text) && statementHeader(rows)) return "BANK";
   if (/neraca|laba rugi|balance sheet|financial statements?|income statement|profit (?:and|&) loss|cash flow|arus kas|trial balance/i.test(text)) return "REPORT";
   if (/company profile|profil perusahaan|company name|nama perusahaan|business activity|kegiatan usaha|business overview/i.test(text)) return "CONTEXT";
   return "UNKNOWN";
@@ -120,7 +137,27 @@ function numericCell(value: ExcelJS.CellValue): boolean {
   return typeof value === "number" || !!value && typeof value === "object" && ("formula" in value || "sharedFormula" in value) && typeof value.result === "number";
 }
 
-function buildUnit(key: string, label: string, rows: Row[], initialIssues: string[] = []): EvidenceUnit {
+/** Header words that are column titles or statuses, never a company name ("Source Type", "GL Entry ID", "PASS"). */
+const NOT_A_NAME = /\b(?:id|type|category|year|date|code|status|period|periode|opening|closing|pass|fail|ok|review|total|amount|debit|credit|balance|account|reference)\b/i;
+const NAME_LABEL = /^(?:nama perusahaan|company name|entitas|entity)$/i;
+
+/** Company name from a label → value pair only: `Label: value` in one cell, or a row of exactly label and value. */
+function entityNames(rows: Row[]): string[] {
+  const names: string[] = [];
+  for (const row of rows) {
+    const cells = row.cells.map((c) => c.text.trim()).filter((t) => t && t !== ":");
+    let value: string | undefined;
+    if (cells.length === 1) {
+      value = cells[0].match(/^(?:nama perusahaan|company name|entitas|entity)\s*:\s*(.+)$/i)?.[1] ??
+        cells[0].match(/^((?:PT\.?|CV\.?)\s+.{2,120}|.{2,100}\b(?:Pte\.? Ltd\.?|Limited|Ltd\.?|LLC))$/i)?.[1];
+    } else if (cells.length === 2 && NAME_LABEL.test(cells[0].replace(/\s*:$/, ""))) value = cells[1];
+    value = value?.trim();
+    if (value && /[a-z]/i.test(value) && !NOT_A_NAME.test(value)) names.push(value);
+  }
+  return [...new Set(names)];
+}
+
+function buildUnit(key: string, label: string, rows: Row[], initialIssues: string[] = [], table?: EvidenceTable): EvidenceUnit {
   const issues = [...initialIssues];
   let chars = 0;
   const passages: EvidencePassage[] = [];
@@ -134,20 +171,19 @@ function buildUnit(key: string, label: string, rows: Row[], initialIssues: strin
     includedRows.push(row);
   }
   const heading = passages.slice(0, 40).map((p) => p.text).join("\n");
-  const kind = kindOf(heading);
+  const kind = kindOf(heading, includedRows.slice(0, 40), Boolean(table));
   const currency = currencyOf(heading);
   const scale = scaleOf(heading);
-  const { start: periodStart, end: periodEnd } = period(heading);
-  const entities = [...new Set(passages.slice(0, 15).flatMap((p) => {
-    const m = p.text.match(/(?:nama perusahaan|company name|entitas|entity)\s*[:|]\s*([^|]+)/i) ?? p.text.match(/^((?:PT\.?|CV\.?)\s+[^|]{2,120}|[^|]{2,100}\b(?:Pte\.? Ltd\.?|Limited|Ltd\.?|LLC))\s*$/i);
-    return m ? [m[1].trim()] : [];
-  }))];
+  // A postable table's coverage comes from its rows; prose such as "Closing … Opening …" is not a balance date.
+  const { start: periodStart, end: periodEnd } = table ? { start: table.periodStart, end: table.periodEnd } : period(heading);
+  const entities = entityNames(includedRows.slice(0, 15));
   const entity = entities.length === 1 ? entities[0] : null;
-  const unit: EvidenceUnit = { key, label, kind, role: kind === "BANK" || kind === "LEDGER" ? "SOURCE" : kind === "REPORT" ? "COMPARISON" : "CONTEXT", entity, periodStart, periodEnd, currency, scale, passages, figures: [], facts: [], issues };
-  if (!entity) issues.push(entities.length > 1 ? "Lebih dari satu entitas; pilih cakupan dokumen." : "Entitas belum dikenali; konfirmasi perusahaan.");
+  const unit: EvidenceUnit = { key, label, kind, role: kind === "BANK" || kind === "LEDGER" ? "SOURCE" : kind === "REPORT" ? "COMPARISON" : "CONTEXT", entity, periodStart, periodEnd, currency, scale, passages, figures: [], facts: [], issues, ...(table ? { table } : {}) };
+  if (!entity && !table?.entities.length) issues.push(entities.length > 1 ? "Lebih dari satu entitas; pilih cakupan dokumen." : "Entitas belum dikenali; konfirmasi perusahaan.");
   if (kind !== "CONTEXT") {
     if (!currency) issues.push("Mata uang belum pasti atau lebih dari satu; konfirmasi per bagian.");
-    if (!periodEnd) issues.push("Periode belum pasti; konfirmasi tanggal laporan.");
+    if (table?.mode === "NERACA" && !periodEnd) issues.push("Tanggal neraca tidak tertulis di file; isi tanggalnya saat konfirmasi.");
+    else if (!periodEnd) issues.push("Periode belum pasti; konfirmasi tanggal laporan.");
     if (scale === "UNKNOWN") issues.push("Skala nominal tidak pasti; konfirmasi satuan angka.");
   }
   for (const p of passages) {
@@ -252,6 +288,26 @@ function valueText(value: ExcelJS.CellValue, locator: string, issues: string[]):
   return "";
 }
 
+/** Sheets the ledger import itself would read (`detectTables` + `readTable`), keyed by sheet name. */
+async function postableTables(name: string, data: Buffer): Promise<Map<string, EvidenceTable>> {
+  const out = new Map<string, EvidenceTable>();
+  let sheets: Awaited<ReturnType<typeof readSheets>>;
+  try { sheets = await readSheets(name, data); } catch { return out; }
+  const iso = (d: Date | null | undefined) => d ? d.toISOString().slice(0, 10) : null;
+  let candidates: ReturnType<typeof detectTables>;
+  try { candidates = detectTables(sheets); } catch { return out; }
+  for (const candidate of candidates) {
+    try {
+      const read = readTable(sheets, candidate);
+      if (read.mode === "LEDGER") {
+        const dates = read.rows.flatMap((r) => r.date ? [iso(r.date)!] : []).sort();
+        out.set(candidate.sheet, { mode: "LEDGER", rows: read.rows.length, entities: [...new Set(read.rows.flatMap((r) => r.entity ? [r.entity] : []))], periodStart: dates[0] ?? null, periodEnd: dates.at(-1) ?? null });
+      } else out.set(candidate.sheet, { mode: "NERACA", rows: read.rows.length, entities: [], periodStart: iso(read.date), periodEnd: iso(read.date) });
+    } catch { /* Unreadable table stays evidence; the manual import explains why. */ }
+  }
+  return out;
+}
+
 export async function extractEvidence(name: string, data: Buffer, opts: { password?: string } = {}): Promise<Extraction> {
   if (data.length > MAX_BYTES) throw new Error("File melebihi batas 10 MiB; pecah file sebelum mengunggah.");
   if (/\.xls$/i.test(name)) throw new Error("File .xls belum didukung. Simpan sebagai .xlsx atau CSV.");
@@ -261,6 +317,7 @@ export async function extractEvidence(name: string, data: Buffer, opts: { passwo
     const workbook = new ExcelJS.Workbook();
     try { await workbook.xlsx.load(data as unknown as ArrayBuffer); } catch { throw new Error("File Excel tidak bisa dibuka. Simpan ulang sebagai .xlsx."); }
     const issues: string[] = workbook.worksheets.length > MAX_SHEETS ? [TRUNCATED] : [];
+    const tables = await postableTables(name, data);
     const units = workbook.worksheets.slice(0, MAX_SHEETS).map((sheet) => {
       const rows: Row[] = [], localIssues: string[] = [];
       if (sheet.rowCount > MAX_ROWS || sheet.columnCount > MAX_COLUMNS) localIssues.push(TRUNCATED);
@@ -274,7 +331,7 @@ export async function extractEvidence(name: string, data: Buffer, opts: { passwo
         });
         rows.push({ locator: `${sheet.name}!${index}`, cells });
       });
-      return buildUnit(sheet.name, sheet.name, rows, localIssues);
+      return buildUnit(sheet.name, sheet.name, rows, localIssues, tables.get(sheet.name));
     });
     if (!units.length) issues.push("File tidak memiliki lembar yang dapat dibaca.");
     return { units, issues };
@@ -291,5 +348,6 @@ export async function extractEvidence(name: string, data: Buffer, opts: { passwo
   const csv = /\.csv$/i.test(name);
   const rawRows = csv ? readCsv(text, text.split(/\r?\n/, 1)[0].includes(";") ? ";" : ",") : text.split(/\r?\n/).map((line) => [line]);
   const rows: Row[] = rawRows.slice(0, MAX_ROWS).map((row, i) => ({ locator: `baris ${i + 1}`, cells: row.slice(0, MAX_COLUMNS).map((text, j) => ({ text, locator: csv ? `CSV!R${i + 1}C${j + 1}` : `baris ${i + 1}` })) }));
-  return { units: [buildUnit("document", name, rows, rawRows.length > MAX_ROWS || rawRows.some((r) => r.length > MAX_COLUMNS) ? [TRUNCATED] : [])], issues: [] };
+  const table = csv ? (await postableTables(name, data)).get("CSV") : undefined;
+  return { units: [buildUnit("document", name, rows, rawRows.length > MAX_ROWS || rawRows.some((r) => r.length > MAX_COLUMNS) ? [TRUNCATED] : [], table)], issues: [] };
 }

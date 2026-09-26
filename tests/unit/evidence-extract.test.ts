@@ -31,12 +31,14 @@ describe("evidence extraction", () => {
   it("classifies mixed workbook sheets independently and preserves cached formula coordinates", async () => {
     const data = await workbook({
       Profile: [["Company profile"], ["Company name", "Citra Ternak Holdings Pte. Ltd."], ["Business activity", "Poultry farming"]],
-      Bank: [["PT Citra Ternak"], ["Rekening koran"], ["IDR"], ["Periode 2024-01-01 - 2024-01-31"]],
-      GL: [["General ledger"], ["Tanggal", "Kode akun", "Debit", "Kredit"]],
+      Bank: [["PT Citra Ternak"], ["Rekening koran"], ["IDR"], ["Periode 2024-01-01 - 2024-01-31"], ["Tanggal", "Keterangan", "Debit", "Kredit", "Saldo"], ["2024-01-02", "Setoran", "", "100", "100"]],
+      GL: [["General ledger"], ["Tanggal", "Kode akun", "Debit", "Kredit"], ["2024-01-02", "1101", "100", "0"], ["2024-01-02", "3100", "0", "100"]],
       FS: [["PT Citra Ternak"], ["Neraca"], ["IDR"], ["Per tanggal 2024-01-31"], ["Kas", { formula: "100+25", result: 125 }], ["Laba", { formula: "A1+2" }]],
     });
     const { units } = await extractEvidence("mixed.xlsx", data);
     expect(units.map((u) => u.kind)).toEqual(["CONTEXT", "BANK", "LEDGER", "REPORT"]);
+    expect(units.map((u) => u.role)).toEqual(["CONTEXT", "SOURCE", "SOURCE", "COMPARISON"]);
+    expect(units[2].table).toMatchObject({ mode: "LEDGER", rows: 2, periodStart: "2024-01-02", periodEnd: "2024-01-02" });
     expect(units[0].facts).toContainEqual({ key: "businessActivity", value: "Poultry farming", locator: "Profile!3" });
     expect(units[3].figures).toMatchObject([{ label: "Kas", amount: "125", locator: "FS!B5" }]);
     expect(units[3].issues).toContain("Rumus FS!B6 belum memiliki hasil tersimpan. Hitung ulang dan simpan di Excel.");
