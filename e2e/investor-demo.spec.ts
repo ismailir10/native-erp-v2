@@ -71,9 +71,8 @@ test("statement in → reviewed → traceable reports → combined → closed", 
   await expect(page.getByRole("heading", { name: "Jurnal Penyesuaian" })).toBeVisible();
   await expect(page.getByRole("combobox").first()).toContainText("PT Ayam Nusantara Digital");
   await page.getByRole("button", { name: "Penyusutan" }).click();
-  const amounts = page.locator("input[inputmode=numeric]");
-  await amounts.nth(0).fill("9.500.000");
-  await amounts.nth(3).fill("9.500.000");
+  await page.getByLabel("Debit baris 1").fill("9.500.000");
+  await page.getByLabel("Kredit baris 2").fill("9.500.000");
   await expect(page.getByText("Seimbang", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Simpan jurnal" }).click();
   await expect(page.getByText("Jurnal penyesuaian tersimpan")).toBeVisible();

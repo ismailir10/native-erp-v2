@@ -7,10 +7,11 @@ import { importStatement, type ImportSummary } from "@/lib/import/pipeline";
 import { resolveProvider } from "@/lib/settings/ai";
 import { acceptSimilar, reviewTransaction } from "@/lib/review";
 import { CloseError, lockPeriod } from "@/lib/controls";
-import { LedgerError, postJournal } from "@/lib/ledger/post";
+import { LedgerError } from "@/lib/ledger/post";
+import { postAdjustment } from "@/lib/ledger/adjustment";
 import { ParseError } from "@/lib/import/types";
 import { PdfPasswordError } from "@/lib/import/parsers/pdf";
-import { parseRupiah } from "@/lib/money";
+import { MoneyError } from "@/lib/money";
 import { dateOnly } from "@/lib/format";
 import { liveUploadFile } from "@/lib/demo/seed";
 import { addClient, OnboardingError, type NewClientInput } from "@/lib/onboarding";
@@ -31,7 +32,7 @@ type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string; needs
 
 function fail(e: unknown): { ok: false; error: string; needsPassword?: boolean } {
   if (e instanceof PdfPasswordError) return { ok: false, error: e.message, needsPassword: true };
-  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError || e instanceof RateError || e instanceof RevaluationError || e instanceof LedgerImportError || e instanceof MappingError) return { ok: false, error: e.message };
+  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError || e instanceof MoneyError || e instanceof RateError || e instanceof RevaluationError || e instanceof LedgerImportError || e instanceof MappingError) return { ok: false, error: e.message };
   console.error(e);
   return { ok: false, error: "Terjadi kesalahan tak terduga. Coba lagi." };
 }
@@ -169,19 +170,7 @@ export async function adjustmentAction(input: {
 }): Promise<Result<{ entryId: string }>> {
   try {
     const client = await getClientForFirm(input.clientId);
-    if (!client.entities.some((e) => e.id === input.entityId)) return { ok: false, error: "Pilih entitas." };
-    if (!input.memo.trim()) return { ok: false, error: "Isi keterangan jurnal." };
-    const accounts = await prisma.account.findMany({ where: { clientId: client.id } });
-    const lines = input.lines
-      .filter((l) => l.accountCode)
-      .map((l) => {
-        const a = accounts.find((x) => x.code === l.accountCode);
-        if (!a) throw new LedgerError(`Akun ${l.accountCode} tidak ditemukan`);
-        return { accountId: a.id, debit: parseRupiah(l.debit), credit: parseRupiah(l.credit) };
-      });
-    const entry = await prisma.$transaction((tx) =>
-      postJournal(tx, { entityId: input.entityId, date: new Date(`${input.date}T00:00:00Z`), kind: "ADJUSTMENT", memo: input.memo.trim(), lines }),
-    );
+    const entry = await postAdjustment(prisma, { clientId: client.id, entityId: input.entityId, date: new Date(`${input.date}T00:00:00Z`), memo: input.memo, lines: input.lines });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true, entryId: entry.id };
   } catch (e) {
