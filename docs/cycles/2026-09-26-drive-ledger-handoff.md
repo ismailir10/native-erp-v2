@@ -95,7 +95,7 @@ existing `units` JSON). No new dependency. No AI calls. Posting still runs only 
    3 drafts → Kurs → reports vs ground truth.
 
 ## Tasks
-- [ ] T1 Fixture: synthetic workbook builder in `tests/evidence-workbook-fixture.ts` (README, source register with "Rekening koran" memos,
+- [x] T1 Fixture: synthetic workbook builder in `tests/evidence-workbook-fixture.ts` (README, source register with "Rekening koran" memos,
       neraca without date plus a prose "Closing … Opening …" line, single-entity SGD GL with an `Entity | GL Entry ID | …` header, 4-entity IDR GL,
       2 engine sheets with formulas lacking cached results). Reuse ExcelJS as `tests/pdf-fixture.ts` does for PDFs — accept: fixture loads in `detectTables()` with 3 candidates.
 - [ ] T2 Extraction: `table` on units via `readSheets`/`detectTables`/`readTable` (reuse `lib/ledger-import/read.ts`); role/kind rules; statement-shaped BANK;
@@ -111,5 +111,7 @@ existing `units` JSON). No new dependency. No AI calls. Posting still runs only 
 
 ## Implementation
 - Plan: tasks T1–T8 sequential, done inline (T2–T5 share the unit/selection contract; each builds on the previous).
+- T1: `tests/evidence-workbook-fixture.ts`, `tests/unit/evidence-workbook.test.ts` — synthetic group workbook (HoldCo SGD + 4 IDR OpCos) with every failing shape.
 ## Verification
+- T1: fixture test 1/1; current extractor on it: 10_HC_GL_MASTER → BANK, entities "Source Type"/"GL Entry ID"/"PASS", 8/8 units SOURCE, neraca hint 2025-12-31..2026-01-01, 1,603 issues on the engine sheet (bugs reproduced). Gate: lint ✔, typecheck ✔, `Test Files 45 passed (45) · Tests 349 passed (349)`.
 ## Ship Notes
