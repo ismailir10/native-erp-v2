@@ -86,13 +86,14 @@ export async function finishUpload(db: Db, firmId: string, uploadId: string) {
     return doc;
   });
 }
-export async function claimStep(db: Db, firmId: string, intakeId: string) {
+/** One processing step at a time per intake; the lease must outlast the step's slowest external call. */
+export async function claimStep(db: Db, firmId: string, intakeId: string, leaseMs = 90_000) {
   const token = randomUUID();
   return db.$transaction(async tx => {
     // Serialize claims with exclusion and metadata decisions, not only other workers.
     await lockIntake(tx, intakeId);
     await intakeForFirm(tx, firmId, intakeId);
-    const claimed = await tx.evidenceIntake.updateMany({ where: { id: intakeId, firmId, OR: [{ leaseUntil: null }, { leaseUntil: { lt: new Date() } }] }, data: { leaseToken: token, leaseUntil: new Date(Date.now() + 90_000) } });
+    const claimed = await tx.evidenceIntake.updateMany({ where: { id: intakeId, firmId, OR: [{ leaseUntil: null }, { leaseUntil: { lt: new Date() } }] }, data: { leaseToken: token, leaseUntil: new Date(Date.now() + leaseMs) } });
     return claimed.count ? token : null;
   });
 }
