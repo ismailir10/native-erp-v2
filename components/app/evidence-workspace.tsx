@@ -25,14 +25,23 @@ const factNames: Record<string, string> = { companyName: "Nama perusahaan", busi
 const statusNames: Record<string, string> = { READY: "Siap diperiksa", PENDING: "Menunggu proses", ERROR: "Perlu tindakan", MISSING: "Tidak tersedia", DIRECTORY: "Folder", SHORTCUT: "Pintasan", IGNORED: "Dilewati", DONE: "Pemeriksaan selesai", PARTIAL: "Pemeriksaan belum lengkap" };
 type Clients = { id: string; name: string }[];
 
-export function EvidenceHome({ intakes, clients, clientId, connected, googleConfigured, googleResult, actions, note }: { intakes: { id: string; name: string; status: string; clientId: string | null }[]; clients: Clients; clientId?: string; connected: boolean; googleConfigured: boolean; googleResult?: "connected" | "error"; actions?: React.ReactNode; note?: React.ReactNode }) {
+/** What went wrong at Google's callback and what the admin does next. Unknown reasons get the general message. */
+const googleFailure: Record<string, string> = {
+  scope: "Google belum memberi izin membaca Drive. Hubungkan kembali dan centang akses Google Drive di layar persetujuan.",
+  invalid_client: "Konfigurasi Google di server tidak cocok (client ID, secret, atau alamat callback). Hubungi pengelola Buku.",
+  config: "Koneksi Google belum dikonfigurasi di server. Hubungi pengelola Buku.",
+  no_refresh_token: "Google tidak mengirim izin jangka panjang. Cabut akses Buku di akun Google Anda, lalu hubungkan kembali.",
+  denied: "Persetujuan dibatalkan di Google. Hubungkan kembali bila ingin membaca folder.",
+  state: "Sesi persetujuan kedaluwarsa atau dibuka di peramban lain. Masukkan kode admin lalu hubungkan kembali.",
+};
+export function EvidenceHome({ intakes, clients, clientId, connected, googleConfigured, googleResult, googleReason, actions, note }: { intakes: { id: string; name: string; status: string; clientId: string | null }[]; clients: Clients; clientId?: string; connected: boolean; googleConfigured: boolean; googleResult?: "connected" | "error"; googleReason?: string; actions?: React.ReactNode; note?: React.ReactNode }) {
   const router = useRouter(); const contextParams = useSearchParams(); const contextQuery = new URLSearchParams(); for (const key of ["scope", "period"]) { const value = contextParams.get(key); if (value) contextQuery.set(key, value); } const suffix = contextQuery.size ? `?${contextQuery}` : ""; const [busy, setBusy] = useState(false); const [passcode, setPasscode] = useState("");
   return <div className="space-y-6">
     <PageHeader title="Dokumen" description="Rekening koran, buku besar, laporan, dan konteks perusahaan dalam satu tempat." actions={actions} />
     {note}
     <NextStep>Unggah file atau tempel tautan Drive. Periksa hasil sebelum mencatat ke buku.</NextStep>
     {googleResult === "connected" && connected && <Alert role="status" className="border-pass/20 bg-pass-subtle text-pass"><CheckCircle2 /><AlertDescription className="text-pass">Google berhasil dihubungkan. Tambahkan dokumen lalu tempel tautan folder.</AlertDescription></Alert>}
-    {googleResult === "error" && <Alert className="border-review/30 bg-review-subtle"><AlertCircle /><AlertDescription>Google belum berhasil dihubungkan. Izin mungkin dibatalkan atau sesi kedaluwarsa. Masukkan kode admin lalu coba hubungkan kembali.</AlertDescription></Alert>}
+    {googleResult === "error" && <Alert className="border-review/30 bg-review-subtle"><AlertCircle /><AlertDescription>{(googleReason && googleFailure[googleReason]) || "Google belum berhasil dihubungkan. Izin mungkin dibatalkan atau sesi kedaluwarsa. Masukkan kode admin lalu coba hubungkan kembali."}</AlertDescription></Alert>}
     <Button disabled={busy} onClick={async () => { setBusy(true); const r = await createEvidenceAction(clientId); setBusy(false); if (r.ok) router.push(`/documents/${r.data.id}${suffix}`); else toast.error(r.error); }}><Upload className="size-4" /> Tambahkan dokumen</Button>
     <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
       <Card><CardHeader><CardTitle>Kumpulan dokumen</CardTitle></CardHeader><CardContent>
