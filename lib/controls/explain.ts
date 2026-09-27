@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { bankLineAccounts, citedBankIds } from "@/lib/controls/cited";
 import type { Db } from "@/lib/db";
 import { runControls } from "@/lib/controls";
 import { bankLineState, gather, snapshotOf, CLOSE_REVIEW_TOKEN_LIMIT, type ReviewLink } from "@/lib/controls/ai-review";
@@ -75,7 +76,7 @@ export async function explainControl(db: Db, firmId: string, clientId: string, y
  */
 export async function reclassedBankLine(db: Db, entityId: string, citedIds: string[], entry: NonNullable<ControlExplainAnswer["entry"]>, currency: string): Promise<string | null | "AMBIGUOUS"> {
   if (citedIds.length === 0) return null;
-  const txs = await db.bankTransaction.findMany({ where: { id: { in: citedIds }, entityId, accountCode: { not: null } }, orderBy: { id: "asc" } });
+  const txs = await db.bankTransaction.findMany({ where: { id: { in: await citedBankIds(db, entityId, citedIds) }, entityId, accountCode: { not: null } }, orderBy: { id: "asc" } });
   const offLine = (t: (typeof txs)[number]) => {
     const abs = t.amount < 0n ? -t.amount : t.amount;
     const reverse = t.amount > 0n ? "D" : "K"; // money in was credited to its account: moving it off debits that account
@@ -83,10 +84,12 @@ export async function reclassedBankLine(db: Db, entityId: string, citedIds: stri
   };
   // Conservative: any line on a cited bank line's current account moves that line (in one piece or split), so only the one
   // shape the reviewer's writer can post — the full amount off, the same amount onto one other account — gets a draft.
-  const touched = txs.filter((t) => entry.lines.some((l) => l.accountCode === t.accountCode));
+  // Any account a bank line's postings use (its classification, a tax split, suspense) counts: moving any part moves the line.
+  const parts = await bankLineAccounts(db, txs);
+  const touched = txs.filter((t) => entry.lines.some((l) => parts.get(t.id)!.has(l.accountCode)));
   if (touched.length === 0) return null;
   const [t] = touched;
   const { abs, from } = offLine(t);
-  const single = touched.length === 1 && entry.lines.length === 2 && !!from && entry.lines.some((l) => l !== from && l.accountCode !== t.accountCode && amountOf(l.amount, currency) === abs);
+  const single = touched.length === 1 && entry.lines.length === 2 && !!from && entry.lines.some((l) => l !== from && !parts.get(t.id)!.has(l.accountCode) && amountOf(l.amount, currency) === abs);
   return single ? t.id : "AMBIGUOUS";
 }

@@ -4,7 +4,10 @@ import { makePdf, table } from "../pdf-fixture";
 import { importStatement } from "@/lib/import/pipeline";
 import { reviewTransaction } from "@/lib/review";
 import { explainControl, reclassedBankLine } from "@/lib/controls/explain";
-import { postProposal, proposalViews } from "@/lib/adjust/proposals";
+import { postProposal, proposalViews, saveProposal } from "@/lib/adjust/proposals";
+import { controlSnapshot } from "@/lib/controls/ai-review";
+import { postJournal } from "@/lib/ledger/post";
+import { dateOnly } from "@/lib/format";
 import { runControls } from "@/lib/controls";
 import { MockProvider, parseControlExplain, type AiProvider } from "@/lib/ai/provider";
 
@@ -57,6 +60,31 @@ describe("close copilot — Jelaskan", () => {
     expect((await db.proposedEntry.findUniqueOrThrow({ where: { id: p.id } })).entryId).toBe(entry.id);
     expect((await runControls(db, g.client.id, 2026, 8)).find((c) => c.key === key)).toBeUndefined(); // revenue no longer holds the loan
     await expect(postProposal(db, { clientId: g.client.id, proposalId: p.id })).rejects.toThrow("sudah dicatat");
+  });
+
+  it("never posts a stored free draft that moves a bank line it cites through a journal row", async () => {
+    const { g, tx } = await loanInRevenue();
+    const pt = g.pt.entity.id;
+    // The same pair of lines entered again by hand two days later: the duplicate scan cites the bank line's own entry as `je:`.
+    const bankEntry = await db.journalEntry.findFirstOrThrow({ where: { bankTransactionId: tx.id, kind: { not: "RECLASS" } }, include: { lines: true } });
+    const acc = async (code: string) => (await db.account.findUniqueOrThrow({ where: { clientId_code: { clientId: g.client.id, code } } })).id;
+    await db.$transaction(async (t) => {
+      // A July to scale materiality by (the scans need a baseline month), then the hand-entered twin.
+      await postJournal(t, { entityId: pt, date: dateOnly(2026, 7, 31), kind: "ADJUSTMENT", memo: "Listrik Juli", lines: [{ accountId: await acc("6130"), debit: 10_000_000n }, { accountId: await acc("2110"), credit: 10_000_000n }] });
+      await postJournal(t, { entityId: pt, date: dateOnly(2026, 8, 6), kind: "ADJUSTMENT", memo: bankEntry.memo, lines: bankEntry.lines.map((l) => ({ accountId: l.accountId, debit: l.debit, credit: l.credit })) });
+    });
+    const key = `dup:${pt}`;
+    const snap = (await controlSnapshot(db, g.client.id, 2026, 8, key))!;
+    expect(snap.rows.map((r) => r.id)).toContain(`je:${bankEntry.id}`);
+    // A draft stored before journal-row citations resolved to their bank line: fresh, grounded, but with no bank line attached.
+    const p = await saveProposal(db, {
+      firmId: g.firm.id, clientId: g.client.id, entityId: pt, year: 2026, month: 8, source: "AI_CONTROL", controlKey: key, key: "AI:lama", memo: "Reklasifikasi pinjaman",
+      lines: [{ accountCode: "4100", debit: "100000000", credit: "0" }, { accountCode: "2210", debit: "0", credit: "100000000" }],
+      reason: "Pinjaman di pendapatan.", refs: [`je:${bankEntry.id}`], snapshot: snap.snapshot,
+    });
+    await expect(postProposal(db, { clientId: g.client.id, proposalId: p.id })).rejects.toThrow("harus lewat Review");
+    expect((await db.bankTransaction.findUniqueOrThrow({ where: { id: tx.id } })).accountCode).toBe("4100"); // untouched, and no free journal
+    expect(await db.journalEntry.count({ where: { entityId: pt, memo: "Reklasifikasi pinjaman" } })).toBe(0);
   });
 
   it("refuses a draft once its bank line's tax tag was re-reviewed, and keeps the new tag", async () => {
@@ -156,6 +184,21 @@ describe("close copilot — Jelaskan", () => {
     expect(await reclassedBankLine(db, g.pt.entity.id, [first.id], splitEntry, "IDR")).toBe("AMBIGUOUS");
     const oneLine = { memo: "Reklasifikasi", lines: [l("4100", "D", "Rp 100.000.000"), l("2210", "K", "Rp 100.000.000")] };
     expect(await reclassedBankLine(db, g.pt.entity.id, [first.id], oneLine, "IDR")).toBe(first.id);
+    // The ledger anomaly scans cite the journal line or entry behind a bank row: still that bank line, never a free journal.
+    const onRevenue = await db.journalLine.findFirstOrThrow({ where: { entry: { bankTransactionId: first.id }, account: { code: "4100" } } });
+    expect(await reclassedBankLine(db, g.pt.entity.id, [`jl:${onRevenue.id}`], oneLine, "IDR")).toBe(first.id);
+    expect(await reclassedBankLine(db, g.pt.entity.id, [`je:${onRevenue.entryId}`], oneLine, "IDR")).toBe(first.id);
+    expect(await reclassedBankLine(db, g.pt.entity.id, [`jl:${onRevenue.id}`], splitEntry, "IDR")).toBe("AMBIGUOUS");
+    // The taxed line posts a PPN component too: a draft moving only that component moves the bank line, so no draft (and no free
+    // journal) either, and a stored one citing it never posts.
+    const ppn = await db.journalLine.findFirstOrThrow({ where: { entry: { bankTransactionId: second.id }, account: { code: "2130" } } });
+    const ppnAmount = `Rp ${(ppn.credit - ppn.debit).toLocaleString("id-ID")}`;
+    const ppnOnly = { memo: "Pindah PPN", lines: [l("2130", "D", ppnAmount), l("2210", "K", ppnAmount)] };
+    expect(await reclassedBankLine(db, g.pt.entity.id, [`jl:${ppn.id}`], ppnOnly, "IDR")).toBe("AMBIGUOUS");
+    const tax = (ppn.credit - ppn.debit).toString();
+    const stored = await saveProposal(db, { firmId: g.firm.id, clientId: g.client.id, entityId: g.pt.entity.id, year: 2026, month: 8, source: "AI_CONTROL", controlKey: key, key: "AI:ppn", memo: "Pindah PPN", lines: [{ accountCode: "2130", debit: tax, credit: "0" }, { accountCode: "2210", debit: "0", credit: tax }], reason: "PPN pinjaman.", refs: [`jl:${ppn.id}`], snapshot: "lama" });
+    await expect(postProposal(db, { clientId: g.client.id, proposalId: stored.id })).rejects.toThrow("harus lewat Review");
+    await db.proposedEntry.delete({ where: { id: stored.id } });
 
     // One cited → that one, even though the other has the lower id. (Same books: clear the cached answer to ask again.)
     await db.evidenceAiCache.deleteMany();
