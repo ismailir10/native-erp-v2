@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Db } from "@/lib/db";
 import { runControls } from "@/lib/controls";
-import { gather, snapshotOf, CLOSE_REVIEW_TOKEN_LIMIT, type ReviewLink } from "@/lib/controls/ai-review";
+import { bankLineState, gather, snapshotOf, CLOSE_REVIEW_TOKEN_LIMIT, type ReviewLink } from "@/lib/controls/ai-review";
 import { formatPeriod } from "@/lib/format";
 import { runBudgetedAi } from "@/lib/ai/budget";
 import { AiAnswerError, amountOf, CONTROL_EXPLAIN_MAX_TOKENS, CONTROL_EXPLAIN_PROMPT_VERSION, buildControlExplainPrompt, parseControlExplain, type AiProvider, type ControlExplainAnswer, type ControlExplainInput } from "@/lib/ai/provider";
@@ -60,7 +60,7 @@ export async function explainControl(db: Db, firmId: string, clientId: string, y
     // Only the rows the answer cites can be the bank line it moves; two cited lines that both fit make the draft ambiguous.
     const bank = await reclassedBankLine(db, entity.id, answer.refs, answer.entry, input.currency);
     if (bank !== "AMBIGUOUS") {
-      const p = await saveProposal(db, { firmId, clientId, entityId: entity.id, year, month, source: "AI_CONTROL", controlKey, key: `AI:${key}`, memo: answer.entry.memo, lines, reason: answer.explanation, refs: answer.refs, bankTransactionId: bank, snapshot: snapshotOf(reviewed.rows) });
+      const p = await saveProposal(db, { firmId, clientId, entityId: entity.id, year, month, source: "AI_CONTROL", controlKey, key: `AI:${key}`, memo: answer.entry.memo, lines, reason: answer.explanation, refs: answer.refs, bankTransactionId: bank, snapshot: snapshotOf(reviewed.rows, await bankLineState(db, bank)) });
       proposal = { id: p.id, status: p.status };
     }
   }

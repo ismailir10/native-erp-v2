@@ -59,6 +59,15 @@ describe("close copilot — Jelaskan", () => {
     await expect(postProposal(db, { clientId: g.client.id, proposalId: p.id })).rejects.toThrow("sudah dicatat");
   });
 
+  it("refuses a draft once its bank line's tax tag was re-reviewed, and keeps the new tag", async () => {
+    const { g, tx, key } = await loanInRevenue();
+    const r = await explainControl(db, g.firm.id, g.client.id, 2026, 8, key, new MockProvider());
+    await reviewTransaction(db, { bankTxId: tx.id, accountCode: "4100", taxTag: "PPN_KELUARAN" }); // same account, a new PPN decision
+    const entries = await db.journalEntry.count();
+    await expect(postProposal(db, { clientId: g.client.id, proposalId: r.proposal!.id })).rejects.toThrow("Buku berubah sejak draf ini dibuat");
+    expect([(await db.bankTransaction.findUniqueOrThrow({ where: { id: tx.id } })).taxTag, await db.journalEntry.count()]).toEqual(["PPN_KELUARAN", entries]);
+  });
+
   it("gives a group-level control words only, and refuses a control that passes", async () => {
     const { g } = await loanInRevenue();
     const provider = new MockProvider();

@@ -89,7 +89,7 @@ export async function postProposal(db: Db, input: { clientId: string; proposalId
         if (p.source === "AI_CONTROL") {
           // An AI draft is only valid for the books it was made from; one without a snapshot can't be proven fresh.
           // The control readers only read (no nested transaction), so they run on this transaction.
-          const now = p.controlKey && p.snapshot ? await controlSnapshot(tx as unknown as Db, input.clientId, p.year, p.month, p.controlKey) : null;
+          const now = p.controlKey && p.snapshot ? await controlSnapshot(tx as unknown as Db, input.clientId, p.year, p.month, p.controlKey, p.bankTransactionId) : null;
           if (!now || now !== p.snapshot) throw new LedgerError("Buku berubah sejak draf ini dibuat. Minta Jelaskan lagi, atau abaikan draf ini.");
         }
         const entry = p.bankTransactionId
