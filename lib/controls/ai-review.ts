@@ -157,6 +157,28 @@ export async function gather(db: Db, clientId: string, year: number, month: numb
   return { input: { client: client.name, period: formatPeriod(year, month), accounts, controls: reviewed }, links, flagged };
 }
 
+/** What a reviewer can change on a bank line a draft moves (account, tax tag), or null for a draft that moves none. */
+export async function bankLineState(db: Db, bankTransactionId: string | null) {
+  if (!bankTransactionId) return null;
+  const t = await db.bankTransaction.findUnique({ where: { id: bankTransactionId }, select: { accountCode: true, taxTag: true } });
+  return { id: bankTransactionId, accountCode: t?.accountCode ?? null, taxTag: t?.taxTag ?? null };
+}
+
+/**
+ * Fingerprint of a control's rows (and of the bank line the draft moves): a draft made from them is only postable while
+ * they are unchanged — a re-review of that line, even of its tax tag alone, makes the draft stale.
+ */
+export const snapshotOf = (rows: CloseReviewRow[], line: Awaited<ReturnType<typeof bankLineState>> = null) =>
+  createHash("sha256").update(JSON.stringify(line ? [rows, line] : rows)).digest("hex");
+
+/** The current fingerprint of a still-flagged control, or null when it passes or no longer exists. */
+export async function controlSnapshot(db: Db, clientId: string, year: number, month: number, controlKey: string, bankTransactionId: string | null = null): Promise<string | null> {
+  const control = (await runControls(db, clientId, year, month)).find((c) => c.key === controlKey && c.status !== "PASS");
+  if (!control) return null;
+  const g = await gather(db, clientId, year, month, [control]);
+  return snapshotOf(g.input.controls[0].rows, await bankLineState(db, bankTransactionId));
+}
+
 const cacheKey = (firmId: string, clientId: string, input: CloseReviewInput, model: string) =>
   createHash("sha256").update(JSON.stringify([firmId, clientId, input, model, CLOSE_REVIEW_PROMPT_VERSION])).digest("hex");
 const scopeOf = (clientId: string, year: number, month: number) => `close:${clientId}:${year}-${String(month).padStart(2, "0")}`;

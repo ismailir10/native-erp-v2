@@ -153,7 +153,7 @@ export async function runControls(db: Db, clientId: string, year: number, month:
     }
     const key = `ledger:${imp.id}`;
     const parts = [
-      open ? `${open} selisih dari file sumber masih di 1999, koreksi dengan Jurnal Penyesuaian` : accepted.length ? `${accepted.length} selisih sumber sudah dikoreksi` : "",
+      open ? `${open} selisih dari file sumber masih di 1999, koreksi lewat Usulan jurnal koreksi di Tutup Buku` : accepted.length ? `${accepted.length} selisih sumber sudah dikoreksi` : "",
       reviews.length ? `${reviews.length} temuan perlu dicek` : "",
       imp.roundingTotal ? `pembulatan sen ke 7190 total ${formatMoney(imp.roundingTotal, "IDR")}` : "",
     ].filter(Boolean);

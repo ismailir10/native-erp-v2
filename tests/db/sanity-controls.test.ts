@@ -32,25 +32,27 @@ const post = async (entityId: string, clientId: string, date: Date, dr: string, 
 describe("sanity controls", () => {
   beforeEach(resetDb);
 
-  it("flags loan proceeds booked as revenue and guesses accepted as-is; a real reclass clears both", async () => {
+  it("flags loan proceeds booked as revenue and guesses accepted as-is; a real reclass clears the financing flag", async () => {
     const g = await makeGroup();
     await importStatement(db, { bankAccountId: g.pt.banks[1].id, fileName: "mandiri.pdf", data: statement, provider: null });
     const txs = await db.bankTransaction.findMany({ where: { entityId: g.pt.entity.id }, orderBy: { date: "asc" } });
-    expect(txs.map((t) => [t.method, t.suggestedCode])).toEqual([["HEURISTIC", "4100"], ["HEURISTIC", "6190"]]);
-    for (const t of txs) await reviewTransaction(db, { bankTxId: t.id, accountCode: t.suggestedCode!, taxTag: null });
+    // The classifier suggests the balance sheet for the loan and loan interest for its interest (both to review).
+    expect(txs.map((t) => [t.method, t.suggestedCode])).toEqual([["HEURISTIC", "2210"], ["HEURISTIC", "7110"]]);
+    // The accountant books the drawdown to revenue anyway (the mistake the control exists for) and accepts the interest guess as-is.
+    await reviewTransaction(db, { bankTxId: txs[0].id, accountCode: "4100", taxTag: null });
+    await reviewTransaction(db, { bankTxId: txs[1].id, accountCode: txs[1].suggestedCode!, taxTag: null });
 
     const find = async (key: string) => (await runControls(db, g.client.id, 2026, 8)).find((c) => c.key === `${key}:${g.pt.entity.id}`);
     const financing = await find("pl-financing");
     expect(financing?.status).toBe("REVIEW");
     expect(financing?.detail).toMatch(/^1 transaksi, total Rp 100\.000\.000: “PENCAIRAN PINJAMAN KMK” Rp 100\.000\.000 → 4100/);
     expect(financing?.detail).not.toMatch(/BUNGA/); // interest on a loan is P&L
-    expect((await find("guess"))?.detail).toBe("2 transaksi (Rp 101.000.000) disetujui persis seperti tebakan dengan keyakinan rendah");
+    expect((await find("guess"))?.detail).toBe("1 transaksi (Rp 1.000.000) disetujui persis seperti tebakan dengan keyakinan rendah");
     expect(await find("sanity")).toBeUndefined();
 
     await reviewTransaction(db, { bankTxId: txs[0].id, accountCode: "2210", taxTag: null }); // accountant: it's a bank loan
-    await reviewTransaction(db, { bankTxId: txs[1].id, accountCode: "7110", taxTag: null }); // and loan interest
     expect(await find("pl-financing")).toBeUndefined();
-    expect(await find("guess")).toBeUndefined();
+    expect(await find("guess")).toBeDefined(); // an accepted guess still needs its note
   });
 
   it("fails on negative total assets, lists balances against their nature, skips contra accounts, and blocks the lock", async () => {

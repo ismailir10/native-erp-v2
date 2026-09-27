@@ -2,7 +2,7 @@ import type { Classification, ClassifyInput } from "@/lib/classify/types";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
 
 /**
- * Transfer matcher. Pairs opposite amounts within ±2 days across a client's bank accounts,
+ * Transfer matcher. Pairs opposite amounts within 2 business days across a client's bank accounts,
  * but ONLY when the description carries a transfer hint — equal round amounts alone are
  * too common to trust. Same entity → 1199 clearing; different entity → 1190 intercompany.
  * A hinted line whose counterpart isn't imported still goes to 1199/1190 when the hint
@@ -10,6 +10,19 @@ import { ACCOUNT_CODES } from "@/lib/coa/template";
  */
 const TRANSFER_HINT = /TRSF|TRANSFER|PINDAH ?BUKU|PEMINDAHAN|OVERBOOK|SETOR TUNAI|TARIK TUNAI/i;
 const DAY = 86_400_000;
+/** A Friday transfer that lands on Tuesday (weekend, SKN clearing) is still the same transfer. */
+export const MATCH_BUSINESS_DAYS = 2;
+
+/** Weekdays after the earlier date up to and including the later one (Saturday and Sunday don't count; no holiday calendar). */
+export function businessDaysApart(a: Date, b: Date): number {
+  const [from, to] = +a <= +b ? [a, b] : [b, a];
+  let n = 0;
+  for (let t = +from + DAY; t <= +to; t += DAY) {
+    const day = new Date(t).getUTCDay();
+    if (day !== 0 && day !== 6) n++;
+  }
+  return n;
+}
 
 export type TransferCandidate = ClassifyInput & { matched?: boolean };
 
@@ -26,7 +39,7 @@ export function matchTransfers(
   for (const o of outs) {
     const partner = ins
       .filter((i) => !usedIns.has(i.id) && i.bankAccountId !== o.bankAccountId && i.amount === -o.amount)
-      .filter((i) => Math.abs(i.date.getTime() - o.date.getTime()) <= 2 * DAY)
+      .filter((i) => businessDaysApart(i.date, o.date) <= MATCH_BUSINESS_DAYS)
       .sort((a, b) => Math.abs(a.date.getTime() - o.date.getTime()) - Math.abs(b.date.getTime() - o.date.getTime()))[0];
     if (!partner) continue;
     usedIns.add(partner.id);

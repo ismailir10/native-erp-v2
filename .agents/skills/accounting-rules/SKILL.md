@@ -62,8 +62,11 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
 
 ## Import & classification (`lib/import/pipeline.ts`)
 12. Parse → continuity check (opening + Σ = every printed balance → closing) → dedupe by row hash → classify → post, all-or-nothing in one transaction.
-13. Order: **transfer matcher → rules (client before firm) → memory → AI → heuristic.** Transfer matching needs a
-    textual hint (TRSF/PINDAH BUKU/own entity name) — equal amounts alone are never enough.
+13. Order: **transfer matcher → rules (client before firm) → memory → financing suggestion → AI → heuristic.** Transfer matching
+    needs a textual hint (TRSF/PINDAH BUKU/own entity name) — equal amounts alone are never enough — and pairs within **2 business
+    days** (Sat/Sun don't count). Financing text (the sanity control's words, `lib/classify/financing`) gets a balance-sheet
+    suggestion (loan → 2210, interest → 7110, fees → 7100, capital → 3100, own-account move → 1199) without an AI call; it is a
+    HEURISTIC and goes to review.
 14. **Only deterministic methods (TRANSFER/RULE/MEMORY, confidence ≥ 0.9) auto-post.** AI and heuristic results
     post to **1999** with `NEEDS_REVIEW` and a prefilled suggestion. Reviewer accept → reclass + Memory upsert.
 15. Every bank-derived entry carries `bankTransactionId`; `BankTransaction` keeps `rawRow`, `rowNumber`, `importId`.
@@ -73,6 +76,9 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     `postJournal()` (kind `IMPORTED`, or `OPENING` for Neraca). Checks are deterministic and cite rows: BLOCK (non-numeric cell,
     missing date/account, unbalanced group, unknown currency, missing rate) stops posting; an unbalanced group may be **explicitly
     accepted**, which posts its difference to 1999 with memo "Selisih dari file sumber". Same file twice for the same entity is refused.
+    Each such 1999 line gets a deterministic correction proposal (`lib/adjust/suspense.ts`, rule 20b): reverse it on 1999 against a
+    counter account — prefilled only when one line of the same entry has exactly that amount — posted only by the accountant's click
+    (it can't be dismissed: the close FAILs until 1999 is cleared), keeping the group's `ledgerImportId` + `sourceRef`.
 16. Parsers detect format from **content**, not file name, and raise `ParseError` with a Bahasa message the UI shows verbatim.
 
 ## AI (credit is limited — treat every call as money)

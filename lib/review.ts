@@ -2,7 +2,15 @@ import type { Db, Tx } from "@/lib/db";
 import type { TaxTag } from "@/lib/generated/prisma/enums";
 import { postBankTransaction } from "@/lib/ledger/bank";
 
-type ReviewArgs = { bankTxId: string; accountCode: string; taxTag: TaxTag | null; createRule?: boolean; actorId?: string | null };
+type ReviewArgs = {
+  bankTxId: string;
+  accountCode: string;
+  taxTag: TaxTag | null;
+  createRule?: boolean;
+  actorId?: string | null;
+  /** false: a provisional decision (the line goes back to Review) — Memory learns only from the final one. */
+  learn?: boolean;
+};
 
 /**
  * Reviewer decision on a bank line. Posts a RECLASS (difference only), marks REVIEWED,
@@ -31,7 +39,7 @@ export async function reviewTransactionTx(tx: Tx, args: ReviewArgs) {
       reason: changed ? "Diubah oleh reviewer" : t.reason,
     },
   });
-  await tx.memory.upsert({
+  if (args.learn !== false) await tx.memory.upsert({
     where: { clientId_merchantKey_direction: { clientId, merchantKey: t.merchantKey, direction: t.direction } },
     create: { clientId, merchantKey: t.merchantKey, direction: t.direction, accountCode: args.accountCode, taxTag: args.taxTag },
     update: { accountCode: args.accountCode, taxTag: args.taxTag, hits: { increment: 1 } },

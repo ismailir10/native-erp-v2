@@ -64,7 +64,8 @@ export function ProposalsCard({ clientId, periodLabel, items, accounts, locked }
               <Button variant="outline" size="sm" disabled={locked || busy !== null} onClick={() => run(p.id, () => postProposalAction(clientId, p.id, codesOf(p)), "Jurnal koreksi dicatat")}>
                 {busy === p.id ? "Mencatat…" : "Catat jurnal"}
               </Button>
-              <Button variant="ghost" size="sm" disabled={locked || busy !== null} onClick={() => run(`x:${p.id}`, () => dismissProposalAction(clientId, p.id), "Usulan diabaikan")}>Abaikan</Button>
+              {/* A 1999 difference has to be corrected before the close, so its correction can't be dismissed. */}
+              {p.source !== "SUSPENSE" && <Button variant="ghost" size="sm" disabled={locked || busy !== null} onClick={() => run(`x:${p.id}`, () => dismissProposalAction(clientId, p.id), "Usulan diabaikan")}>Abaikan</Button>}
             </div>
           </div>
         ))}

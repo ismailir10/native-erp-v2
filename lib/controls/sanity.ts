@@ -2,16 +2,15 @@ import type { Db } from "@/lib/db";
 import { formatMoney } from "@/lib/money";
 import type { TbRow } from "@/lib/reports/ledger";
 import type { Control } from "@/lib/controls";
+import { FINANCING, FINANCING_COST } from "@/lib/classify/financing";
 
 /**
  * Sanity controls (accounting-rules 22a, ADR 0009): the books add up, but do they make sense?
  * Deterministic only. Each check is emitted only when it flags; `runControls` adds one PASS row for a clean entity.
  */
 
-/** Words that mark financing or own-money movements — balance-sheet, not Laba Rugi. */
-export const FINANCING = /\b(PINJAMAN|LOAN|PRK|PLAFON|ANGSURAN|POKOK|SETORAN MODAL|MODAL|DEPOSITO|PENEMPATAN|PINDAH ?BUKU|OVERBOOK\w*|ANTAR REKENING)\b/i;
-/** Interest, fees and taxes on those movements are legitimately P&L. */
-export const FINANCING_COST = /\b(BUNGA|INTEREST|BIAYA|FEE|ADM\w*|PAJAK|TAX|MATERAI|STAMP)\b/i;
+/** The same financing words the classifier uses (lib/classify/financing), so suggestion and control can't disagree. */
+export { FINANCING, FINANCING_COST };
 /** Below this, an AI answer is a guess; HEURISTIC always is. */
 export const GUESS_CONFIDENCE = 0.6;
 

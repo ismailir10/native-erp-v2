@@ -26,7 +26,7 @@ async function flaggedMonth() {
   const g = await makeGroup();
   await importStatement(db, { bankAccountId: g.pt.banks[1].id, fileName: "mandiri.pdf", data: statement, provider: null });
   const tx = await db.bankTransaction.findFirstOrThrow({ where: { entityId: g.pt.entity.id } });
-  await reviewTransaction(db, { bankTxId: tx.id, accountCode: tx.suggestedCode!, taxTag: null });
+  await reviewTransaction(db, { bankTxId: tx.id, accountCode: "4100", taxTag: null }); // booked to revenue by mistake: flagged
   return { g, tx };
 }
 

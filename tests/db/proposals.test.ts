@@ -8,8 +8,9 @@ const draft = (g: Awaited<ReturnType<typeof makeGroup>>, over: Partial<NewPropos
   entityId: g.pt.entity.id,
   year: 2026,
   month: 8,
-  source: "AI_CONTROL",
-  controlKey: `pl-financing:${g.pt.entity.id}`,
+  // The posting mechanics are the same for every source; AI drafts add a freshness check (tests/db/close-explain.test.ts).
+  source: "SUSPENSE",
+  controlKey: null,
   key: "uji-1",
   memo: "Reklasifikasi pencairan pinjaman KMK",
   lines: [{ accountCode: "4100", debit: "100000000", credit: "0" }, { accountCode: "2120", debit: "0", credit: "100000000" }],
@@ -66,4 +67,12 @@ describe("proposed entries", () => {
     await expect(postProposal(db, { clientId: g.client.id, proposalId: p.id })).rejects.toThrow("sudah diabaikan");
     expect(await openProposals(db, g.client.id, 2026, 8)).toEqual([]);
   });
+
+  it("refuses an AI draft that carries no snapshot of the rows it was made from", async () => {
+    const g = await makeGroup();
+    const p = await saveProposal(db, draft(g, { source: "AI_CONTROL", controlKey: `pl-financing:${g.pt.entity.id}`, key: "ai-lama" }));
+    await expect(postProposal(db, { clientId: g.client.id, proposalId: p.id })).rejects.toThrow("Buku berubah sejak draf ini dibuat");
+    expect(await db.journalEntry.count()).toBe(0);
+  });
 });
+

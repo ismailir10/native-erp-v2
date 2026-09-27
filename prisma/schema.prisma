@@ -863,6 +863,8 @@ model ProposedEntry {
   lines             Json
   reason            String
   refs              String[]         @default([])
+  /// AI drafts: hash of the control\'s rows when the draft was made; posting refuses if the books moved since.
+  snapshot          String?
   status            ProposalStatus   @default(PROPOSED)
   /// Set when the draft re-classifies one bank line: posting goes through the review writer (rule 3), not a free journal.
   bankTransactionId String?

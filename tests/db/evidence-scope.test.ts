@@ -2,6 +2,7 @@ import { beforeEach, expect, it } from "vitest";
 import { db, makeGroup, resetDb } from "../helpers";
 import { createIntake, hash, json } from "@/lib/evidence/store";
 import { askEvidence } from "@/lib/evidence/answers";
+import { planRejections } from "@/lib/evidence/plan-stats";
 import { MockProvider } from "@/lib/ai/provider";
 import type { EvidenceUnit } from "@/lib/evidence/types";
 
@@ -61,4 +62,19 @@ it("a confirmed entity-column ledger is out of scope for an entity its column do
   expect(owner.rows?.map((r) => r.source).sort()).toEqual(["Dec23!12", "Dec24!12"]);
   const pt = await askEvidence(db, g.firm.id, g.intake.id, { question: "Penjualan Minuman", entityId: g.pt.entity.id }, null);
   expect(pt.rows?.map((r) => r.source).sort()).toEqual(["Dec23!12", "Dec24!12", "PnL!12"]);
+});
+
+it("ignores a planned entity outside the chosen scope instead of failing, and counts rejected plans", async () => {
+  const g = await collection();
+  const provider = new MockProvider();
+  provider.planEvidenceAnswer = async () => ({ plan: { intent: "SEARCH", terms: ["Penjualan"], entityId: g.owner.entity.id }, promptTokens: 1, completionTokens: 1, model: provider.model });
+  const answer = await askEvidence(db, g.firm.id, g.intake.id, { question: "Penjualan Minuman PT", entityId: g.pt.entity.id }, provider);
+  expect(answer.limitations).toContain("Rencana AI menyebut entitas di luar cakupan yang dipilih; cakupan pilihan Anda yang digunakan.");
+  expect(answer.rows?.length).toBeGreaterThan(0);
+
+  provider.planEvidenceAnswer = async () => ({ plan: { intent: "DELETE", terms: [] } as never, promptTokens: 1, completionTokens: 1, model: provider.model });
+  const rejected = await askEvidence(db, g.firm.id, g.intake.id, { question: "Hapus semua penjualan" }, provider);
+  expect(rejected.limitations).toContain("AI tidak tersedia atau rencana tidak valid; pencarian deterministik digunakan.");
+  expect(await planRejections(db, g.firm.id)).toEqual({ days: 30, requested: 2, rejected: 1, rate: 0.5 });
+  expect((await db.aiUsage.findFirstOrThrow({ where: { ok: false } })).note).toMatch(/^Rencana jawaban — AI gagal: /);
 });
