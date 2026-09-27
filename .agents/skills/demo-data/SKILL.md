@@ -15,14 +15,14 @@ Shapes are modelled on them; names, numbers and account numbers are invented.
 - `lib/demo/writers.ts` — renders statements in the formats the parsers read (BCA CSV, Mandiri XLSX, BRI CSV).
 - `lib/demo/seed.ts` — truncates, creates firm/clients/COA/rules, posts openings, then **imports every file through
   `importStatement()`** month by month; reviews non-open lines with truth (trains Memory → AI calls fall to 0 after
-  month 1); posts monthly depreciation; locks months ≤ `closedThrough`. Pre-caches AI answers for the live file.
+  month 1); posts monthly depreciation through Grup Ayam's adjustment schedule (Rp 9,5 jt × 120 from Mar 2026); locks months ≤ `closedThrough`. Pre-caches AI answers for the live file.
 - `lib/demo/verify.ts` — recomputes every entity's TB at every month-end from truth, compares to the app.
 - `public/demo/<file>` — the held-back statement for the live upload (written by `npm run demo:reset`).
 
 ## The planted story (August 2026)
 - **Grup Ayam Nusantara** (PT + owner Budi): owner's BRI Simpedes August file is held back → controls show
   BRI recon REVIEW, 1199 open, 1190 residual Rp 31 jt. Uploading it clears all three. 4 + 1 lines to review,
-  one where AI is wrong (machine → should be 1210 Aset Tetap). August depreciation not yet booked (adjusting JE moment).
+  one where AI is wrong (machine → should be 1210 Aset Tetap). August depreciation installment (6/120) proposed, not yet posted (one-click moment); after the machine is reviewed to 1210 it is a fixed-asset candidate for a new schedule.
 - **CV Sinar Retail**: 2 lines to review. **PT Jasa Kreatif Digital**: fully closed.
 
 ## Changing it
