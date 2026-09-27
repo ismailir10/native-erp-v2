@@ -68,7 +68,7 @@ type UnitRef = { versionId: string; unitKey: string };
  * uploaded collection answers dated questions instead of returning nothing.
  */
 async function sourceScope(db: Db, firmId: string, intakeId: string, clientId: string | null, versionIds: string[], entityId: string | undefined, range: { start: Date; end: Date } | null, intent: EvidenceAnswerPlan["intent"]) {
-  if (!versionIds.length) return { excluded: [] as UnitRef[], unknown: 0 };
+  if (!versionIds.length) return { excluded: [] as UnitRef[], unknown: 0, versionOut: (_: string) => false };
   const [selections, units] = await Promise.all([
     db.evidenceSelection.findMany({ where: { firmId, intakeId, versionId: { in: versionIds }, confirmed: true }, select: { versionId: true, unitKey: true, entityId: true, periodStart: true, periodEnd: true } }),
     db.$queryRaw<{ versionId: string; unitKey: string; periodStart: string | null; periodEnd: string | null }[]>(Prisma.sql`
@@ -102,7 +102,12 @@ async function sourceScope(db: Db, firmId: string, intakeId: string, clientId: s
     }
     if (!known) unknown++;
   }
-  return { excluded, unknown };
+  // A version is known to be out of scope when it has units and every one of them is excluded.
+  const total = new Map<string, number>(), out = new Map<string, number>();
+  for (const u of refs.values()) total.set(u.versionId, (total.get(u.versionId) ?? 0) + 1);
+  for (const u of excluded) out.set(u.versionId, (out.get(u.versionId) ?? 0) + 1);
+  const versionOut = (versionId: string) => (total.get(versionId) ?? 0) > 0 && out.get(versionId) === total.get(versionId);
+  return { excluded, unknown, versionOut };
 }
 
 /** All arithmetic is deterministic; the model chooses from bounded read tools only. */
@@ -249,8 +254,11 @@ export async function askEvidence(db: Db, firmId: string, intakeId: string, inpu
       if (!answer.citations.some((c) => c.versionId === versionId && c.locator === locator)) answer.citations.push({ versionId, locator, label: names.get(versionId)! });
     };
     if (plan.intent === "MISSING") {
-      const conflicts = await db.evidenceConflict.findMany({ where: { firmId, intakeId, resolved: false }, take: MAX_RESULTS, orderBy: { id: "asc" } });
-      answer.rows = documents.filter((d) => !d.excluded && d.status !== "DIRECTORY" && (d.issue || !d.currentVersionId)).slice(0, MAX_RESULTS).map((d) => ({ label: d.name, value: d.issue || "Belum selesai diperiksa", source: "Kumpulan dokumen" }));
+      // A scoped question leaves out documents and conflicts whose versions are known to be outside the scope; unknown stays in.
+      const versionOut = scope?.versionOut ?? (() => false);
+      const conflictOut = (versionIds: unknown) => Array.isArray(versionIds) && versionIds.length > 0 && versionIds.every((v) => typeof v === "string" && versionOut(v));
+      const conflicts = (await db.evidenceConflict.findMany({ where: { firmId, intakeId, resolved: false }, take: 500, orderBy: { id: "asc" } })).filter((c) => !conflictOut(c.versionIds)).slice(0, MAX_RESULTS);
+      answer.rows = documents.filter((d) => !d.excluded && d.status !== "DIRECTORY" && (d.issue || !d.currentVersionId) && !(d.currentVersionId && versionOut(d.currentVersionId))).slice(0, MAX_RESULTS).map((d) => ({ label: d.name, value: d.issue || "Belum selesai diperiksa", source: "Kumpulan dokumen" }));
       answer.rows.push(...conflicts.map((c) => ({ label: c.kind, value: c.message, source: "Pengecualian dokumen" })));
       answer.text = answer.rows.length ? "Dokumen dan keputusan yang masih perlu ditangani:" : "Tidak ada pengecualian terbuka yang tercatat.";
       answer.limitations.push("Daftar ini bukan jaminan dokumen lengkap; kelengkapan bergantung rekening, entitas, dan periode yang dikonfirmasi.");

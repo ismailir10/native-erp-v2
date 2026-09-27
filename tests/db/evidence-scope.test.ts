@@ -78,3 +78,19 @@ it("ignores a planned entity outside the chosen scope instead of failing, and co
   expect(await planRejections(db, g.firm.id)).toEqual({ days: 30, requested: 2, rejected: 1, rate: 0.5 });
   expect((await db.aiUsage.findFirstOrThrow({ where: { ok: false } })).note).toMatch(/^Rencana jawaban — AI gagal: /);
 });
+
+it("a scoped missing-documents question leaves out exceptions known to be outside the scope", async () => {
+  const g = await collection();
+  const text = "catatan 2023";
+  const doc = await db.evidenceDocument.create({ data: { firmId: g.firm.id, intakeId: g.intake.id, sourceKey: "old", name: "tb-2023.xlsx", path: "tb-2023.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", status: "READY", issue: "Sheet kedua kosong" } });
+  const version = await db.evidenceVersion.create({ data: { firmId: g.firm.id, documentId: doc.id, hash: hash(text), name: doc.name, size: text.length, data: Buffer.from(text), extracted: true, units: json([unit("TB23", "2023-12-31")]) } });
+  await db.evidenceDocument.update({ where: { id: doc.id }, data: { currentVersionId: version.id } });
+  await db.evidenceConflict.create({ data: { firmId: g.firm.id, intakeId: g.intake.id, key: "tb23", kind: "PERIODE", message: "Dua saldo 2023 berbeda", versionIds: json([version.id]) } });
+  await db.evidenceConflict.create({ data: { firmId: g.firm.id, intakeId: g.intake.id, key: "pl", kind: "ENTITAS", message: "Entitas belum jelas", versionIds: json([g.version.id]) } });
+
+  const all = await askEvidence(db, g.firm.id, g.intake.id, { question: "Dokumen apa yang kurang?" }, null);
+  expect(all.rows?.map((r) => r.label)).toEqual(["tb-2023.xlsx", "PERIODE", "ENTITAS"]);
+  // December 2024: the 2023-only file and its conflict are known to be out of scope; the file with an unknown-period sheet stays.
+  const dec24 = await askEvidence(db, g.firm.id, g.intake.id, { question: "Dokumen apa yang kurang?", period: "2024-12" }, null);
+  expect(dec24.rows?.map((r) => r.label)).toEqual(["ENTITAS"]);
+});

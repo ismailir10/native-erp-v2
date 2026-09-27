@@ -52,6 +52,17 @@ describe("rate table", () => {
     expect((await db.exchangeRate.findFirstOrThrow({ where: { date: dateOnly(2023, 1, 4) } })).rate).toBe("1.31");
   });
 
+  it("two imports racing for the same empty date keep one rate, never overwrite each other", async () => {
+    const g = await makeGroup();
+    const row = R("USD", "SGD", 2023, 2, 1, "SPOT", "1.30");
+    for (let i = 0; i < 5; i++) {
+      const date = dateOnly(2023, 2, i + 1);
+      const [a, b] = await Promise.all([upsertFileRate(db, g.firm.id, { ...row, date, rate: "1.31" }), upsertFileRate(db, g.firm.id, { ...row, date, rate: "1.35" })]);
+      const stored = await db.exchangeRate.findFirstOrThrow({ where: { date } });
+      expect([a.rate, b.rate]).toEqual([stored.rate, stored.rate]); // both callers see the one rate that landed
+    }
+  });
+
   it("lists what the Gabungan needs for a non-IDR entity", async () => {
     const g = await makeGroup();
     await db.entity.update({ where: { id: g.pt.entity.id }, data: { functionalCurrency: "SGD" } });
