@@ -14,7 +14,14 @@ export default async function setup(config: FullConfig) {
     await page.getByLabel("Email").fill(email);
     await page.getByLabel("Kata sandi").fill(password);
     await page.getByRole("button", { name: "Masuk", exact: true }).click();
-    await page.getByRole("heading", { name: "Beranda", exact: true }).waitFor({ timeout: 30_000 });
+    try {
+      await page.getByRole("heading", { name: "Beranda", exact: true }).waitFor({ timeout: 30_000 });
+    } catch (error) {
+      // Say what the login page showed instead of a bare timeout (CI runs a throwaway Supabase stack).
+      const shown = await page.locator("#login-error, [role=alert], [role=status]").allTextContents().catch(() => []);
+      console.error(`e2e login failed at ${page.url()} — page said: ${shown.join(" | ") || "(nothing)"}`);
+      throw error;
+    }
     writeFileSync(".playwright/auth.json", JSON.stringify(await page.context().storageState()), { mode: 0o600 });
   } finally { await browser.close(); }
 }
