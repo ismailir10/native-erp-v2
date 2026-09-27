@@ -59,7 +59,7 @@ export async function revaluationProposals(db: Db, clientId: string, year: numbe
 }
 
 /** The accountant's click: post one ADJUSTMENT per entity with every difference against 7200. */
-export async function postRevaluation(db: Db, clientId: string, entityId: string, year: number, month: number) {
+export async function postRevaluation(db: Db, clientId: string, entityId: string, year: number, month: number, actorId?: string | null) {
   const proposal = (await revaluationProposals(db, clientId, year, month)).find((p) => p.entityId === entityId);
   if (!proposal || !proposal.lines.length) throw new RevaluationError("Tidak ada selisih kurs yang perlu dicatat.");
   if (proposal.missingRates.length) throw new RevaluationError(`Isi dulu ${proposal.missingRates.join(", ")} di halaman Kurs.`);
@@ -74,6 +74,6 @@ export async function postRevaluation(db: Db, clientId: string, entityId: string
   // Gain (total > 0) credits 7200, loss debits it.
   lines.push({ accountId: fx.id, debit: total < 0n ? -total : 0n, credit: total > 0n ? total : 0n, memo: "Laba/rugi selisih kurs belum direalisasi" });
   return db.$transaction((tx) =>
-    postJournal(tx, { entityId, date: proposal.date, kind: "ADJUSTMENT", memo: `Revaluasi kurs ${formatPeriod(year, month)}`, lines }),
+    postJournal(tx, { entityId, date: proposal.date, kind: "ADJUSTMENT", memo: `Revaluasi kurs ${formatPeriod(year, month)}`, lines, actorId }),
   );
 }

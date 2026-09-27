@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 
 /**
  * Encryption for secrets stored in AppSetting (AES-256-GCM). The key is derived from the
@@ -31,17 +31,4 @@ export function decryptSecret(value: string): string {
   const decipher = createDecipheriv("aes-256-gcm", key(), buf.subarray(0, 12));
   decipher.setAuthTag(buf.subarray(12, 28));
   return Buffer.concat([decipher.update(buf.subarray(28)), decipher.final()]).toString("utf8");
-}
-
-export function adminPasscodeConfigured() {
-  return (process.env.ADMIN_PASSCODE ?? "").length > 0;
-}
-
-/** Constant-time passcode check. Hashing first makes the comparison length-independent. */
-export function passcodeMatches(input: string): boolean {
-  const expected = process.env.ADMIN_PASSCODE ?? "";
-  if (!expected) return false;
-  const a = createHash("sha256").update(input).digest();
-  const b = createHash("sha256").update(expected).digest();
-  return timingSafeEqual(a, b);
 }

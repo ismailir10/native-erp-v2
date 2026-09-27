@@ -7,26 +7,24 @@ import { prisma } from "@/lib/db";
 import { getCurrentFirm } from "@/lib/tenant";
 import { requireEvidenceEnabled } from "@/lib/evidence/config";
 import { DriveError, oauthAuthorizationUrl, revokeToken } from "@/lib/evidence/drive";
-import { adminPasscodeConfigured, decryptSecret, passcodeMatches, settingsSecretConfigured } from "@/lib/settings/secret";
+import { requireMember } from "@/lib/auth/session";
+import { decryptSecret, settingsSecretConfigured } from "@/lib/settings/secret";
 
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 const COOKIE = "buku_drive_oauth";
 
-async function guard(passcode: string): Promise<string | null> {
-  await getCurrentFirm();
+/** Admin-only; connecting Google grants Buku read access to the firm's Drive. */
+async function guard(): Promise<string | null> {
+  try { await requireMember("ADMIN"); }
+  catch (e) { return e instanceof Error ? e.message : "Masuk terlebih dahulu."; }
   requireEvidenceEnabled();
-  if (!adminPasscodeConfigured()) return "ADMIN_PASSCODE belum diatur. Hubungi admin untuk mengaktifkan koneksi Google.";
-  if (typeof passcode !== "string" || !passcodeMatches(passcode)) {
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    return "Kode admin salah.";
-  }
   return null;
 }
 
 /** Admin approval is carried to the callback through a browser-bound, single-use state. */
-export async function startGoogleAction(passcode: string): Promise<Result<{ url: string }>> {
+export async function startGoogleAction(): Promise<Result<{ url: string }>> {
   try {
-    const denied = await guard(passcode);
+    const denied = await guard();
     if (denied) return { ok: false, error: denied };
     if (!settingsSecretConfigured()) return { ok: false, error: "SETTINGS_SECRET belum diatur. Koneksi Google belum dapat disimpan." };
     const state = randomBytes(32).toString("base64url");
@@ -57,9 +55,9 @@ export async function startGoogleAction(passcode: string): Promise<Result<{ url:
 }
 
 /** Delete local credentials first so a failed remote revoke never keeps the connection active. */
-export async function disconnectGoogleAction(passcode: string): Promise<Result<{ note?: string }>> {
+export async function disconnectGoogleAction(): Promise<Result<{ note?: string }>> {
   try {
-    const denied = await guard(passcode);
+    const denied = await guard();
     if (denied) return { ok: false, error: denied };
     const firm = await getCurrentFirm();
     const connection = await prisma.$transaction(async (tx) => {

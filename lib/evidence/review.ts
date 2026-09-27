@@ -148,7 +148,7 @@ export async function resolveConflict(db: Db, firmId: string, intakeId: string, 
   await db.evidenceConflict.update({ where: { id: conflict.id }, data: { resolved: true, note: note.trim() } });
 }
 
-async function prepare(db: Db, firmId: string, intakeId: string, versionId: string, unitKey: string, bankAccountId?: string, password?: string, currencyMode: CurrencyMode = "FUNCTIONAL") {
+async function prepare(db: Db, firmId: string, intakeId: string, versionId: string, unitKey: string, bankAccountId?: string, password?: string, currencyMode: CurrencyMode = "FUNCTIONAL", actorId?: string | null) {
   const { intake, version, unit } = await getUnit(db, firmId, intakeId, versionId, unitKey);
   const selection = await db.evidenceSelection.findFirst({ where: { versionId, unitKey, firmId, intakeId } });
   const byColumn = !selection?.entityId && unit.table?.mode === "LEDGER" && unit.table.entities.length > 0;
@@ -186,7 +186,7 @@ async function prepare(db: Db, firmId: string, intakeId: string, versionId: stri
     return { kind: "BANK", rows: st.rows.length, continuityOk: continuity.ok, bankAccountId: bank.id };
   }
   try {
-    const staged = await stageImport(db, { firmId, clientId: intake.clientId, fileName: version.name, data: Buffer.from(version.data), sheet: unit.label, entityId: entity?.id, date: new Date(selection.periodEnd), evidenceVersionId: versionId, evidenceUnitKey: unitKey, currencyMode, allowedPeriod: { start: selection.periodStart, end: selection.periodEnd, currency: selection.currency, entityIds: entities.map(e => e.id) } });
+    const staged = await stageImport(db, { firmId, clientId: intake.clientId, fileName: version.name, data: Buffer.from(version.data), sheet: unit.label, entityId: entity?.id, date: new Date(selection.periodEnd), actorId, evidenceVersionId: versionId, evidenceUnitKey: unitKey, currencyMode, allowedPeriod: { start: selection.periodStart, end: selection.periodEnd, currency: selection.currency, entityIds: entities.map(e => e.id) } });
     if (staged.status !== "STAGED") throw new Error("Tabel sumber belum dapat dipilih. Gunakan impor manual untuk memilih sheet.");
     await db.evidenceSelection.update({ where: { id: selection.id }, data: { importId: staged.importId } });
     return { kind: unit.kind, importId: staged.importId };
@@ -199,20 +199,20 @@ async function prepare(db: Db, firmId: string, intakeId: string, versionId: stri
   }
 }
 /** `currencyMode` as in the manual ledger import: foreign lines as written (default) or converted with the Kurs table. */
-export async function prepareImport(db: Db, firmId: string, intakeId: string, versionId: string, unitKey: string, bankAccountId?: string, password?: string, currencyMode: CurrencyMode = "FUNCTIONAL") {
-  return withImportLease(db, firmId, intakeId, () => prepare(db, firmId, intakeId, versionId, unitKey, bankAccountId, password, currencyMode));
+export async function prepareImport(db: Db, firmId: string, intakeId: string, versionId: string, unitKey: string, bankAccountId?: string, password?: string, currencyMode: CurrencyMode = "FUNCTIONAL", actorId?: string | null) {
+  return withImportLease(db, firmId, intakeId, () => prepare(db, firmId, intakeId, versionId, unitKey, bankAccountId, password, currencyMode, actorId));
 }
-export async function postEvidenceBank(db: Db, firmId: string, intakeId: string, versionId: string, unitKey: string, bankAccountId: string, password?: string) {
+export async function postEvidenceBank(db: Db, firmId: string, intakeId: string, versionId: string, unitKey: string, bankAccountId: string, password?: string, actorId?: string | null) {
   return withImportLease(db, firmId, intakeId, async () => {
     if ((await getUnit(db, firmId, intakeId, versionId, unitKey)).unit.kind !== "BANK") throw new Error("Sumber bukan rekening koran.");
-    const preview = await prepare(db, firmId, intakeId, versionId, unitKey, bankAccountId, password);
+    const preview = await prepare(db, firmId, intakeId, versionId, unitKey, bankAccountId, password, "FUNCTIONAL", actorId);
     if (preview.kind !== "BANK") throw new Error("Sumber bukan rekening koran.");
     if (preview.already) return preview.importId!;
     const { version } = await getUnit(db, firmId, intakeId, versionId, unitKey);
     let importId: string;
     try {
       // Existing deterministic pipeline remains the sole writer; AI suggestions are reviewed later.
-      const result = await importStatement(db, { bankAccountId: preview.bankAccountId!, fileName: version.name, data: Buffer.from(version.data), provider: null, password, evidenceVersionId: versionId, evidenceUnitKey: unitKey });
+      const result = await importStatement(db, { bankAccountId: preview.bankAccountId!, fileName: version.name, data: Buffer.from(version.data), provider: null, password, actorId, evidenceVersionId: versionId, evidenceUnitKey: unitKey });
       importId = result.importId;
     } catch (error) {
       const found = await db.statementImport.findFirst({ where: { firmId, evidenceVersionId: versionId, evidenceUnitKey: unitKey } });

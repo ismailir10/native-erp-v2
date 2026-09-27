@@ -48,7 +48,7 @@ Checks
 ## Implementation
 - Plan: T1 → T2 sequential, inline.
 - T1: `app/globals.css` `:root` rewritten (navy ink, blue primary, `--brand` = blue fill with white text, white sidebar with blue-tint active item, re-tuned status, new chart order); header comment updated. `.agents/skills/ui-rules/SKILL.md` Look section + description, AGENTS.md §4 row. `--sidebar-foreground` is `#2A3547` (not `#3B4658`) so the 70%-opacity firm name and email stay ≥ 4.5:1. No component edits needed: every surface reads tokens.
-- T2: `app/login/page.tsx` page background `bg-sidebar` → `bg-background` (the sidebar is white now; the login keeps a white card on the light canvas). No other component change needed; sidebar keeps its hairline `border-r`.
+- T2: login page background `bg-sidebar` → `bg-background` (the sidebar is white now; the login keeps a white card on the light canvas). After merging staging (Supabase auth) the change lives in `app/login/shell.tsx` (`AuthShell`), so login, forgot-password and set-password all use the light canvas. No other component change needed; sidebar keeps its hairline `border-r`.
 
 ## Verification
 - T1 contrast (WCAG, computed): foreground on canvas 16.08 · on card 17.25 · muted-fg on card 7.34 / canvas 6.84 / muted 6.53 · primary on card 5.93 / canvas 5.53 / primary-subtle 5.29 · white on primary/brand 5.93 · sidebar fg on white 12.36 (at 75% 5.64, at 70% 4.86) · active nav text on tint 7.30 · hover text 15.64 · pass/review/fail on their tints 4.77/5.74/5.04, on card 5.37/6.33/5.79 · input edge 3.15.

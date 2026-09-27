@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { loadClientPage } from "@/lib/client-page";
 import type { SearchParams } from "@/lib/scope";
 import { CLOSE_SIGNOFFS, closeReadiness, runControls } from "@/lib/controls";
-import { formatDate, formatPeriod } from "@/lib/format";
+import { formatDateTime, formatPeriod } from "@/lib/format";
 import { NextStep, PageHeader } from "@/components/app/page-header";
 import { ScopeBar } from "@/components/app/scope-bar";
 import { ClosePanel } from "@/components/app/close-panel";
@@ -16,7 +16,7 @@ import { createHash } from "node:crypto";
 export default async function ClosePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, period, periodOptions, base } = await loadClientPage(params, searchParams);
   const controls = await runControls(prisma, client.id, period.year, period.month);
-  const p = await prisma.period.findUnique({ where: { clientId_year_month: { clientId: client.id, year: period.year, month: period.month } }, include: { signoffs: true } });
+  const p = await prisma.period.findUnique({ where: { clientId_year_month: { clientId: client.id, year: period.year, month: period.month } }, include: { signoffs: { include: { doneBy: { select: { name: true } } } }, lockedBy: { select: { name: true } } } });
   const done = p?.signoffs.map((s) => s.key) ?? [];
   const r = closeReadiness(controls, done);
   // One line per kind of blocker, not one per control — the list on the left already has the detail.
@@ -76,9 +76,9 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
         month={period.month}
         periodLabel={label}
         controls={controls}
-        signoffs={CLOSE_SIGNOFFS.map((s) => ({ key: s.key, label: s.label, done: done.includes(s.key) }))}
+        signoffs={CLOSE_SIGNOFFS.map((s) => { const row = p?.signoffs.find((x) => x.key === s.key); return { key: s.key, label: s.label, done: Boolean(row), by: row ? `${row.doneBy?.name ?? "Sistem"} · ${formatDateTime(row.doneAt)}` : null }; })}
         locked={locked}
-        lockedAt={p?.lockedAt ? formatDate(p.lockedAt) : null}
+        lockedAt={p?.lockedAt ? `${formatDateTime(p.lockedAt)} oleh ${p.lockedBy?.name ?? "Sistem"}` : null}
         blockers={blockers}
       />
     </div>

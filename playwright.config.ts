@@ -5,9 +5,8 @@ import { defineConfig } from "@playwright/test";
  * Locally: reuses a running `npm run dev` on :3100 if BASE_URL is set; CI: builds and starts.
  */
 const port = 3200;
-// These defaults exist only in the local test runner; production auth has no fallback secret.
-process.env.BETTER_AUTH_URL ??= process.env.BASE_URL ?? `http://localhost:${port}`;
-process.env.BETTER_AUTH_SECRET ??= "synthetic-local-e2e-secret-not-for-deployments";
+// Auth needs a Supabase project: CI starts a local stack (`supabase start`); a laptop points at staging via .env.
+process.env.APP_URL ??= process.env.BASE_URL ?? `http://localhost:${port}`;
 process.env.EVIDENCE_ENABLED ??= "true";
 export default defineConfig({
   testDir: "e2e",

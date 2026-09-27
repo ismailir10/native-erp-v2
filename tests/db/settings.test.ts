@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db, resetDb } from "../helpers";
-import { decryptSecret, encryptSecret, passcodeMatches } from "@/lib/settings/secret";
+import { decryptSecret, encryptSecret } from "@/lib/settings/secret";
 import { AI_KEY, clearAiKey, resolveAiConfig, resolveProvider, saveAiSettings } from "@/lib/settings/ai";
 import { truncateAll } from "@/lib/demo/seed";
 
@@ -29,14 +29,6 @@ describe("settings secret", () => {
   it("refuses a short or missing SETTINGS_SECRET", () => {
     vi.stubEnv("SETTINGS_SECRET", "short");
     expect(() => encryptSecret("x")).toThrow(/SETTINGS_SECRET/);
-  });
-
-  it("checks the passcode, and nothing matches when ADMIN_PASSCODE is unset", () => {
-    vi.stubEnv("ADMIN_PASSCODE", "kopi-tubruk-42");
-    expect(passcodeMatches("kopi-tubruk-42")).toBe(true);
-    expect(passcodeMatches("kopi-tubruk-4")).toBe(false);
-    vi.stubEnv("ADMIN_PASSCODE", "");
-    expect(passcodeMatches("")).toBe(false);
   });
 });
 

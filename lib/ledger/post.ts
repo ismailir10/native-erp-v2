@@ -33,6 +33,8 @@ export type PostInput = {
   bankTransactionId?: string;
   ledgerImportId?: string;
   sourceRef?: string;
+  /** Member doing the posting; null/undefined = system (seed, migration). Attribution only, never a rule. */
+  actorId?: string | null;
   lines: PostLine[];
 };
 
@@ -115,6 +117,7 @@ export async function postJournal(tx: Tx, input: PostInput) {
       bankTransactionId: input.bankTransactionId,
       ledgerImportId: input.ledgerImportId,
       sourceRef: input.sourceRef,
+      postedById: input.actorId ?? null,
       lines: {
         create: lines.map((l) => ({
           firmId: entity.firmId,

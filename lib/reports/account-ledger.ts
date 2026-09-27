@@ -1,7 +1,7 @@
 import type { Db } from "@/lib/db";
 import type { NormalBalance } from "@/lib/generated/prisma/enums";
 import type { LedgerRow } from "@/components/app/ledger-table";
-import { dateOnly, formatDate } from "@/lib/format";
+import { dateOnly, formatDate, formatDateTime } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
 import { formatRateId } from "@/lib/fx/currency";
 
@@ -29,6 +29,7 @@ export async function accountLedger(
           lines: { include: { account: true } },
           bankTransaction: { include: { import: true, bankAccount: true } },
           ledgerImport: { select: { fileName: true } },
+          postedBy: { select: { name: true } },
         },
       },
       sourceAccount: { select: { code: true, name: true } },
@@ -46,6 +47,7 @@ export async function accountLedger(
       entity: l.entry.entity.shortName,
       memo: l.entry.memo,
       kind: l.entry.kind,
+      postedBy: `${l.entry.postedBy?.name ?? "Sistem"} · ${formatDateTime(l.entry.createdAt)}`,
       debit: l.debit.toString(),
       credit: l.credit.toString(),
       balance: balances[idx].toString(),

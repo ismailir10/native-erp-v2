@@ -127,68 +127,68 @@ enum Direction {
 }
 
 model Firm {
-  id        String   @id @default(cuid())
+  id        String         @id @default(cuid())
   name      String
-  createdAt DateTime @default(now())
+  createdAt DateTime       @default(now())
   clients   Client[]
   rules     Rule[]
   aiUsage   AiUsage[]
   rates     ExchangeRate[]
-  users     AuthUser[]
+  members   FirmMember[]
 }
 
 model Client {
-  id           String        @id @default(cuid())
-  firmId       String
-  firm         Firm          @relation(fields: [firmId], references: [id])
-  name         String
-  industry     String?
-  createdAt    DateTime      @default(now())
-  entities     Entity[]
-  accounts     Account[]
-  periods      Period[]
-  rules        Rule[]
-  memories     Memory[]
+  id            String         @id @default(cuid())
+  firmId        String
+  firm          Firm           @relation(fields: [firmId], references: [id])
+  name          String
+  industry      String?
+  createdAt     DateTime       @default(now())
+  entities      Entity[]
+  accounts      Account[]
+  periods       Period[]
+  rules         Rule[]
+  memories      Memory[]
   ledgerImports LedgerImport[]
-  coaVersion   Int           @default(1)
+  coaVersion    Int            @default(1)
 
   @@index([firmId])
 }
 
 model Entity {
-  id           String         @id @default(cuid())
-  firmId       String
-  clientId     String
-  client       Client         @relation(fields: [clientId], references: [id])
-  name         String
-  shortName    String
-  kind         EntityKind
-  npwp         String?
+  id                 String          @id @default(cuid())
+  firmId             String
+  clientId           String
+  client             Client          @relation(fields: [clientId], references: [id])
+  name               String
+  shortName          String
+  kind               EntityKind
+  npwp               String?
   /// ISO 4217 code; journal amounts of this entity are minor units of it (ADR 0006). Registry: lib/fx/currency.ts.
-  functionalCurrency String   @default("IDR")
-  bankAccounts BankAccount[]
-  entries      JournalEntry[]
-  sourceAccounts SourceAccount[]
+  functionalCurrency String          @default("IDR")
+  bankAccounts       BankAccount[]
+  entries            JournalEntry[]
+  sourceAccounts     SourceAccount[]
 
   @@index([clientId])
 }
 
 /// Chart of accounts is per Client (shared by its entities) so combined reports line up by code.
 model Account {
-  id             String        @id @default(cuid())
+  id             String          @id @default(cuid())
   firmId         String
   clientId       String
-  client         Client        @relation(fields: [clientId], references: [id])
+  client         Client          @relation(fields: [clientId], references: [id])
   code           String
   name           String
   type           AccountType
   normalBalance  NormalBalance
   fsLine         String
-  isBank         Boolean       @default(false)
-  isIntercompany Boolean       @default(false)
-  isClearing     Boolean       @default(false)
-  isSuspense     Boolean       @default(false)
-  isRetained     Boolean       @default(false)
+  isBank         Boolean         @default(false)
+  isIntercompany Boolean         @default(false)
+  isClearing     Boolean         @default(false)
+  isSuspense     Boolean         @default(false)
+  isRetained     Boolean         @default(false)
   taxTag         TaxTag?
   lines          JournalLine[]
   bankAccounts   BankAccount[]
@@ -217,72 +217,77 @@ model BankAccount {
 }
 
 model Period {
-  id        String         @id @default(cuid())
-  firmId    String
-  clientId  String
-  client    Client         @relation(fields: [clientId], references: [id])
-  year      Int
-  month     Int
-  status    PeriodStatus   @default(OPEN)
-  lockedAt  DateTime?
-  lockNote  String?
-  entries   JournalEntry[]
-  acks      ControlAck[]
-  signoffs  CloseSignoff[]
+  id         String         @id @default(cuid())
+  firmId     String
+  clientId   String
+  client     Client         @relation(fields: [clientId], references: [id])
+  year       Int
+  month      Int
+  status     PeriodStatus   @default(OPEN)
+  lockedAt   DateTime?
+  lockNote   String?
+  lockedById String?
+  lockedBy   FirmMember?    @relation("PeriodLockedBy", fields: [lockedById], references: [id])
+  entries    JournalEntry[]
+  acks       ControlAck[]
+  signoffs   CloseSignoff[]
 
   @@unique([clientId, year, month])
 }
 
 model StatementImport {
-  @@unique([evidenceVersionId, evidenceUnitKey])
   evidenceVersionId String?
   evidenceUnitKey   String?
-  id             String            @id @default(cuid())
-  firmId         String
-  bankAccountId  String
-  bankAccount    BankAccount       @relation(fields: [bankAccountId], references: [id])
-  fileName       String
-  format         BankCode
-  periodStart    DateTime          @db.Date
-  periodEnd      DateTime          @db.Date
-  openingBalance BigInt
-  closingBalance BigInt
-  rowCount       Int
-  duplicateCount Int               @default(0)
-  continuityOk   Boolean
-  continuityNote String?
-  createdAt      DateTime          @default(now())
-  transactions   BankTransaction[]
+  id                String            @id @default(cuid())
+  firmId            String
+  bankAccountId     String
+  bankAccount       BankAccount       @relation(fields: [bankAccountId], references: [id])
+  fileName          String
+  format            BankCode
+  periodStart       DateTime          @db.Date
+  periodEnd         DateTime          @db.Date
+  openingBalance    BigInt
+  closingBalance    BigInt
+  rowCount          Int
+  duplicateCount    Int               @default(0)
+  continuityOk      Boolean
+  continuityNote    String?
+  importedById      String?
+  importedBy        FirmMember?       @relation("StatementImportedBy", fields: [importedById], references: [id])
+  createdAt         DateTime          @default(now())
+  transactions      BankTransaction[]
+
+  @@unique([evidenceVersionId, evidenceUnitKey])
 }
 
 model BankTransaction {
-  id                 String          @id @default(cuid())
-  firmId             String
-  importId           String
-  import             StatementImport @relation(fields: [importId], references: [id])
-  bankAccountId      String
-  bankAccount        BankAccount     @relation(fields: [bankAccountId], references: [id])
-  entityId           String
-  date               DateTime        @db.Date
-  description        String
-  merchantKey        String
-  direction          Direction
+  id            String          @id @default(cuid())
+  firmId        String
+  importId      String
+  import        StatementImport @relation(fields: [importId], references: [id])
+  bankAccountId String
+  bankAccount   BankAccount     @relation(fields: [bankAccountId], references: [id])
+  entityId      String
+  date          DateTime        @db.Date
+  description   String
+  merchantKey   String
+  direction     Direction
   /// Signed: positive = money in, negative = money out.
-  amount             BigInt
-  balance            BigInt?
-  rowNumber          Int
-  rawRow             String
-  hash               String
-  status             TxStatus
-  method             ClassifyMethod
-  confidence         Float
-  reason             String
-  accountCode        String?
-  suggestedCode      String?
-  taxTag             TaxTag?
-  matchedTxId        String?
-  entries            JournalEntry[]
-  createdAt          DateTime        @default(now())
+  amount        BigInt
+  balance       BigInt?
+  rowNumber     Int
+  rawRow        String
+  hash          String
+  status        TxStatus
+  method        ClassifyMethod
+  confidence    Float
+  reason        String
+  accountCode   String?
+  suggestedCode String?
+  taxTag        TaxTag?
+  matchedTxId   String?
+  entries       JournalEntry[]
+  createdAt     DateTime        @default(now())
 
   @@unique([bankAccountId, hash])
   @@index([entityId, date])
@@ -305,6 +310,9 @@ model JournalEntry {
   ledgerImport      LedgerImport?    @relation(fields: [ledgerImportId], references: [id])
   /// Source rows of a ledger-derived entry, e.g. "20_OPCO_GL_MASTER!5-87".
   sourceRef         String?
+  /// Member who posted it; null for seeds and system postings ("Sistem").
+  postedById        String?
+  postedBy          FirmMember?      @relation("EntryPostedBy", fields: [postedById], references: [id])
   createdAt         DateTime         @default(now())
   lines             JournalLine[]
 
@@ -315,24 +323,24 @@ model JournalEntry {
 
 /// DB CHECK constraints (see migration): debit >= 0, credit >= 0, exactly one side non-zero.
 model JournalLine {
-  id        String       @id @default(cuid())
-  firmId    String
-  entryId   String
-  entry     JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
-  entityId  String
-  accountId String
-  account   Account      @relation(fields: [accountId], references: [id])
-  date      DateTime     @db.Date
-  debit     BigInt       @default(0)
-  credit    BigInt       @default(0)
-  memo      String?
+  id              String         @id @default(cuid())
+  firmId          String
+  entryId         String
+  entry           JournalEntry   @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  entityId        String
+  accountId       String
+  account         Account        @relation(fields: [accountId], references: [id])
+  date            DateTime       @db.Date
+  debit           BigInt         @default(0)
+  credit          BigInt         @default(0)
+  memo            String?
   sourceAccountId String?
   sourceAccount   SourceAccount? @relation(fields: [sourceAccountId], references: [id])
-  sourceRef String?
+  sourceRef       String?
   /// Foreign-currency line: original currency, amount in its minor units, rate = functional per 1 unit (decimal string).
-  currency  String?
-  fxAmount  BigInt?
-  fxRate    String?
+  currency        String?
+  fxAmount        BigInt?
+  fxRate          String?
 
   @@index([entityId, accountId, date])
   @@index([accountId])
@@ -371,8 +379,8 @@ model Memory {
 
 /// Persistent LLM answer cache — the same merchant pattern is never paid for twice.
 model AiSuggestion {
-  id          String   @id @default(cuid())
-  cacheKey    String   @unique
+  id          String    @id @default(cuid())
+  cacheKey    String    @unique
   merchantKey String
   direction   Direction
   accountCode String
@@ -380,7 +388,7 @@ model AiSuggestion {
   taxTag      TaxTag?
   reason      String
   model       String
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 }
 
 model AiUsage {
@@ -399,22 +407,26 @@ model AiUsage {
 }
 
 model ControlAck {
-  id         String   @id @default(cuid())
+  id         String      @id @default(cuid())
   periodId   String
-  period     Period   @relation(fields: [periodId], references: [id])
+  period     Period      @relation(fields: [periodId], references: [id])
   controlKey String
   note       String
-  createdAt  DateTime @default(now())
+  ackedById  String?
+  ackedBy    FirmMember? @relation("AckDoneBy", fields: [ackedById], references: [id])
+  createdAt  DateTime    @default(now())
 
   @@unique([periodId, controlKey])
 }
 
 model CloseSignoff {
-  id       String   @id @default(cuid())
+  id       String      @id @default(cuid())
   periodId String
-  period   Period   @relation(fields: [periodId], references: [id])
+  period   Period      @relation(fields: [periodId], references: [id])
   key      String
-  doneAt   DateTime @default(now())
+  doneAt   DateTime    @default(now())
+  doneById String?
+  doneBy   FirmMember? @relation("SignoffDoneBy", fields: [doneById], references: [id])
 
   @@unique([periodId, key])
 }
@@ -429,32 +441,34 @@ model AppSetting {
 
 /// An entity's own account as it appears in the client's files, mapped to one client Account (ADR 0006, rule 9a).
 model SourceAccount {
-  id            String        @id @default(cuid())
-  firmId        String
-  clientId      String
-  entityId      String
-  entity        Entity        @relation(fields: [entityId], references: [id])
-  code          String
-  name          String
+  id             String        @id @default(cuid())
+  firmId         String
+  clientId       String
+  entityId       String
+  entity         Entity        @relation(fields: [entityId], references: [id])
+  code           String
+  name           String
   /// Names this code had in earlier files (code reused / chart migrated).
-  previousNames String[]      @default([])
-  typeHint      AccountType?
+  previousNames  String[]      @default([])
+  typeHint       AccountType?
   /// Neraca files: the section's term ("Long-term Liability" → NON_CURRENT). Only steers mapping suggestions.
-  termHint      AccountTerm?
+  termHint       AccountTerm?
   /// Set for monetary foreign-currency accounts (revaluation, rule 6b).
-  currency      String?
+  currency       String?
   /// Accepted mapping (set only by the accountant's click, rule 9a).
-  accountId     String?
-  account       Account?      @relation(fields: [accountId], references: [id])
-  mappedBy      MapMethod?
+  accountId      String?
+  account        Account?      @relation(fields: [accountId], references: [id])
+  mappedBy       MapMethod?
+  mappedById     String?
+  mappedByMember FirmMember?   @relation("MappingAcceptedBy", fields: [mappedById], references: [id])
   /// Pending suggestion (rules or AI) — never used for posting until accepted.
-  suggestedCode String?
-  suggestedBy   MapMethod?
-  mapConfidence Float?
-  mapReason     String?
-  lines         JournalLine[]
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  suggestedCode  String?
+  suggestedBy    MapMethod?
+  mapConfidence  Float?
+  mapReason      String?
+  lines          JournalLine[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   @@unique([entityId, code])
   @@index([clientId])
@@ -462,32 +476,36 @@ model SourceAccount {
 
 /// A ledger or Neraca file: staged as DRAFT (rows + checks + mapping), then POSTED all-or-nothing.
 model LedgerImport {
-  @@unique([evidenceVersionId, evidenceUnitKey])
   evidenceVersionId String?
   evidenceUnitKey   String?
-  id            String             @id @default(cuid())
-  firmId        String
-  clientId      String
-  client        Client             @relation(fields: [clientId], references: [id])
-  fileName      String
-  fileHash      String
-  sheetName     String
-  mode          LedgerMode
-  currencyMode  CurrencyMode       @default(FUNCTIONAL)
-  status        LedgerImportStatus @default(DRAFT)
+  id                String             @id @default(cuid())
+  firmId            String
+  clientId          String
+  client            Client             @relation(fields: [clientId], references: [id])
+  fileName          String
+  fileHash          String
+  sheetName         String
+  mode              LedgerMode
+  currencyMode      CurrencyMode       @default(FUNCTIONAL)
+  status            LedgerImportStatus @default(DRAFT)
   /// Neraca mode: balance date. Ledger mode: first row date.
-  periodStart   DateTime           @db.Date
-  periodEnd     DateTime           @db.Date
-  rowCount      Int
-  groupCount    Int                @default(0)
-  roundingTotal BigInt             @default(0)
+  periodStart       DateTime           @db.Date
+  periodEnd         DateTime           @db.Date
+  rowCount          Int
+  groupCount        Int                @default(0)
+  roundingTotal     BigInt             @default(0)
   /// Staged rows + entity mapping while DRAFT (JSON, bigint as string).
-  data          Json
-  createdAt     DateTime           @default(now())
-  postedAt      DateTime?
-  entries       JournalEntry[]
-  checks        ImportCheck[]
+  data              Json
+  createdAt         DateTime           @default(now())
+  importedById      String?
+  importedBy        FirmMember?        @relation("LedgerImportedBy", fields: [importedById], references: [id])
+  postedAt          DateTime?
+  postedById        String?
+  postedBy          FirmMember?        @relation("LedgerPostedBy", fields: [postedById], references: [id])
+  entries           JournalEntry[]
+  checks            ImportCheck[]
 
+  @@unique([evidenceVersionId, evidenceUnitKey])
   @@index([clientId, fileHash])
 }
 
@@ -539,243 +557,220 @@ model AiAccountMap {
 }
 
 model AiReservation {
-  id String @id @default(cuid())
-  firmId String
-  scope String
-  tokens Int
-  at DateTime @default(now())
-  settled Boolean @default(false)
+  id      String   @id @default(cuid())
+  firmId  String
+  scope   String
+  tokens  Int
+  at      DateTime @default(now())
+  settled Boolean  @default(false)
+
   @@index([firmId, at])
 }
 
 model DriveConnection {
-  id String @id @default(cuid())
-  firmId String @unique
+  id           String   @id @default(cuid())
+  firmId       String   @unique
   refreshToken String
-  createdAt DateTime @default(now())
+  createdAt    DateTime @default(now())
 }
 
 model DriveOAuthState {
-  id String @id
-  firmId String
+  id          String   @id
+  firmId      String
   browserHash String
-  expiresAt DateTime
+  expiresAt   DateTime
 }
 
 model EvidenceIntake {
-  id String @id @default(cuid())
-  firmId String
-  clientId String?
-  name String
-  sourceUrl String?
-  status String @default("READY")
-  cursor Json @default("{}")
-  issue String?
-  leaseToken String?
-  leaseUntil DateTime?
-  contextVersion Int @default(1)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  documents EvidenceDocument[]
-  facts EvidenceFact[]
-  conflicts EvidenceConflict[]
-  messages EvidenceMessage[]
+  id             String             @id @default(cuid())
+  firmId         String
+  clientId       String?
+  name           String
+  sourceUrl      String?
+  status         String             @default("READY")
+  cursor         Json               @default("{}")
+  issue          String?
+  leaseToken     String?
+  leaseUntil     DateTime?
+  contextVersion Int                @default(1)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  documents      EvidenceDocument[]
+  facts          EvidenceFact[]
+  conflicts      EvidenceConflict[]
+  messages       EvidenceMessage[]
+
   @@index([firmId, clientId])
 }
 
 model EvidenceDocument {
   approvedShortcutTarget String?
-  id String @id @default(cuid())
-  firmId String
-  intakeId String
-  intake EvidenceIntake @relation(fields:[intakeId], references:[id], onDelete:Cascade)
-  sourceKey String
-  name String
-  path String
-  mimeType String
-  sourceUrl String?
-  remote Json @default("{}")
-  fingerprint String?
-  currentVersionId String?
-  excluded Boolean @default(false)
-  status String @default("PENDING")
-  issue String?
-  seenRun String?
-  versions EvidenceVersion[]
+  id                     String            @id @default(cuid())
+  firmId                 String
+  intakeId               String
+  intake                 EvidenceIntake    @relation(fields: [intakeId], references: [id], onDelete: Cascade)
+  sourceKey              String
+  name                   String
+  path                   String
+  mimeType               String
+  sourceUrl              String?
+  remote                 Json              @default("{}")
+  fingerprint            String?
+  currentVersionId       String?
+  excluded               Boolean           @default(false)
+  status                 String            @default("PENDING")
+  issue                  String?
+  seenRun                String?
+  versions               EvidenceVersion[]
+
   @@unique([intakeId, sourceKey])
   @@index([firmId, intakeId])
 }
 
 model EvidenceVersion {
-  id String @id @default(cuid())
-  firmId String
+  id         String            @id @default(cuid())
+  firmId     String
   documentId String
-  document EvidenceDocument @relation(fields:[documentId], references:[id], onDelete:Cascade)
-  hash String
-  data Bytes
-  name String
-  size Int
-  units Json @default("[]")
-  issues Json @default("[]")
-  extracted Boolean @default(false)
-  analyzed Boolean @default(false)
-  createdAt DateTime @default(now())
-  passages EvidencePassage[]
+  document   EvidenceDocument  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  hash       String
+  data       Bytes
+  name       String
+  size       Int
+  units      Json              @default("[]")
+  issues     Json              @default("[]")
+  extracted  Boolean           @default(false)
+  analyzed   Boolean           @default(false)
+  createdAt  DateTime          @default(now())
+  passages   EvidencePassage[]
+
   @@unique([documentId, hash])
   @@index([firmId])
 }
 
 model EvidencePassage {
-  id String @id @default(cuid())
-  firmId String
+  id        String          @id @default(cuid())
+  firmId    String
   versionId String
-  version EvidenceVersion @relation(fields:[versionId], references:[id], onDelete:Cascade)
-  unitKey String
-  locator String
-  text String
+  version   EvidenceVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  unitKey   String
+  locator   String
+  text      String
+
   @@index([firmId, versionId])
 }
 
 model EvidenceFact {
-  id String @id @default(cuid())
-  firmId String
-  intakeId String
-  intake EvidenceIntake @relation(fields:[intakeId], references:[id], onDelete:Cascade)
-  versionId String
-  unitKey String
-  locator String
-  key String
-  value String
+  id            String         @id @default(cuid())
+  firmId        String
+  intakeId      String
+  intake        EvidenceIntake @relation(fields: [intakeId], references: [id], onDelete: Cascade)
+  versionId     String
+  unitKey       String
+  locator       String
+  key           String
+  value         String
   effectiveDate String?
-  status String @default("PROPOSED")
+  status        String         @default("PROPOSED")
+
   @@unique([intakeId, versionId, unitKey, key, value])
 }
 
 model EvidenceConflict {
-  id String @id @default(cuid())
-  firmId String
-  intakeId String
-  intake EvidenceIntake @relation(fields:[intakeId], references:[id], onDelete:Cascade)
-  key String
-  kind String
-  message String
+  id         String         @id @default(cuid())
+  firmId     String
+  intakeId   String
+  intake     EvidenceIntake @relation(fields: [intakeId], references: [id], onDelete: Cascade)
+  key        String
+  kind       String
+  message    String
   versionIds Json
-  resolved Boolean @default(false)
-  note String?
+  resolved   Boolean        @default(false)
+  note       String?
+
   @@unique([intakeId, key])
 }
 
 model EvidenceSelection {
   bankAccountId String?
-  id String @id @default(cuid())
-  firmId String
-  intakeId String
-  versionId String
-  unitKey String
-  role String
-  entityId String?
-  periodStart String?
-  periodEnd String?
-  currency String?
-  confirmed Boolean @default(false)
-  importId String?
+  id            String  @id @default(cuid())
+  firmId        String
+  intakeId      String
+  versionId     String
+  unitKey       String
+  role          String
+  entityId      String?
+  periodStart   String?
+  periodEnd     String?
+  currency      String?
+  confirmed     Boolean @default(false)
+  importId      String?
+
   @@unique([versionId, unitKey])
   @@index([firmId, intakeId])
 }
 
 model EvidenceUpload {
-  id String @id @default(cuid())
-  firmId String
-  intakeId String
-  name String
-  totalBytes Int
-  receivedBytes Int @default(0)
-  data Bytes
-  createdAt DateTime @default(now())
+  id            String   @id @default(cuid())
+  firmId        String
+  intakeId      String
+  name          String
+  totalBytes    Int
+  receivedBytes Int      @default(0)
+  data          Bytes
+  createdAt     DateTime @default(now())
+
   @@index([firmId, intakeId])
 }
 
 model EvidenceMessage {
-  id String @id @default(cuid())
-  firmId String
-  intakeId String
-  intake EvidenceIntake @relation(fields:[intakeId], references:[id], onDelete:Cascade)
-  question String
-  answer Json
-  scope Json
-  createdAt DateTime @default(now())
+  id        String         @id @default(cuid())
+  firmId    String
+  intakeId  String
+  intake    EvidenceIntake @relation(fields: [intakeId], references: [id], onDelete: Cascade)
+  question  String
+  answer    Json
+  scope     Json
+  createdAt DateTime       @default(now())
 }
 
 model EvidenceAiCache {
-  key String @id
-  firmId String
-  scope String
-  payload Json
+  key       String   @id
+  firmId    String
+  scope     String
+  payload   Json
   createdAt DateTime @default(now())
+
   @@index([firmId, scope])
 }
 
-// Authentication data is separate from accounting Account and Journal models.
-model AuthUser {
-  id String @id @default(cuid())
-  name String
-  email String @unique
-  emailVerified Boolean @default(false)
-  image String?
-  firmId String
-  firm Firm @relation(fields: [firmId], references: [id])
-  disabled Boolean @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  sessions AuthSession[]
-  accounts AuthAccount[]
+/// A person who may open this firm's workspace. Identity (email + password) lives in Supabase Auth;
+/// `userId` is `auth.users.id` (no FK: that schema is Supabase-managed, and DB tests run on plain Postgres).
+/// Members are disabled, never deleted, so attribution on journals and sign-offs stays resolvable.
+model FirmMember {
+  id        String     @id @default(cuid())
+  firmId    String
+  firm      Firm       @relation(fields: [firmId], references: [id])
+  userId    String     @unique @db.Uuid
+  email     String     @unique
+  name      String
+  role      MemberRole @default(AKUNTAN)
+  disabled  Boolean    @default(false)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  postedEntries    JournalEntry[]    @relation("EntryPostedBy")
+  signoffs         CloseSignoff[]    @relation("SignoffDoneBy")
+  lockedPeriods    Period[]          @relation("PeriodLockedBy")
+  acks             ControlAck[]      @relation("AckDoneBy")
+  statementImports StatementImport[] @relation("StatementImportedBy")
+  ledgerImports    LedgerImport[]    @relation("LedgerImportedBy")
+  ledgerPostings   LedgerImport[]    @relation("LedgerPostedBy")
+  mappings         SourceAccount[]   @relation("MappingAcceptedBy")
+
   @@index([firmId])
 }
 
-model AuthSession {
-  id String @id @default(cuid())
-  expiresAt DateTime
-  token String @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  ipAddress String?
-  userAgent String?
-  userId String
-  user AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
-  @@index([userId])
-}
-
-model AuthAccount {
-  id String @id @default(cuid())
-  accountId String
-  providerId String
-  userId String
-  user AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
-  accessToken String?
-  refreshToken String?
-  idToken String?
-  accessTokenExpiresAt DateTime?
-  refreshTokenExpiresAt DateTime?
-  scope String?
-  password String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  @@index([userId])
-}
-
-model AuthVerification {
-  id String @id @default(cuid())
-  identifier String
-  value String
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  @@index([identifier])
-}
-
-model AuthRateLimit {
-  id String @id @default(cuid())
-  key String @unique
-  count Int
-  lastRequest BigInt
+enum MemberRole {
+  ADMIN
+  AKUNTAN
 }

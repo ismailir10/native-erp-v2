@@ -41,7 +41,7 @@ export async function postBankTransaction(
   tx: Tx,
   bankTxId: string,
   target: Target,
-  opts: { codeToId?: Map<string, string> } = {},
+  opts: { codeToId?: Map<string, string>; actorId?: string | null } = {},
 ) {
   const bankTx = await tx.bankTransaction.findUniqueOrThrow({
     where: { id: bankTxId },
@@ -75,6 +75,7 @@ export async function postBankTransaction(
       kind: "BANK",
       memo: bankTx.description,
       bankTransactionId: bankTx.id,
+      actorId: opts.actorId,
       lines: toLines(nets),
     });
   }
@@ -93,6 +94,7 @@ export async function postBankTransaction(
     kind: "RECLASS",
     memo: `Reklasifikasi: ${bankTx.description}`,
     bankTransactionId: bankTx.id,
+    actorId: opts.actorId,
     lines: toLines(diff),
   });
 }

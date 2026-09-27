@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { getClientForFirm, getCurrentFirm } from "@/lib/tenant";
+import { getClientForFirm, getCurrentFirm, getCurrentMember } from "@/lib/tenant";
 import { importStatement, type ImportSummary } from "@/lib/import/pipeline";
 import { resolveProvider } from "@/lib/settings/ai";
 import { acceptSimilar, reviewTransaction } from "@/lib/review";
@@ -52,7 +52,7 @@ export async function importAction(formData: FormData): Promise<Result<{ summary
     if (!client.entities.some((e) => e.bankAccounts.some((b) => b.id === bankAccountId))) return { ok: false, error: "Pilih rekening bank dulu." };
     if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Pilih file rekening koran (PDF, CSV, atau XLSX)." };
     if (file.size > MAX_UPLOAD) return { ok: false, error: "File terlalu besar (maks. 5 MB)." };
-    const summary = await importStatement(prisma, { bankAccountId, fileName: file.name, data: Buffer.from(await file.arrayBuffer()), provider: await resolveProvider(prisma), password });
+    const summary = await importStatement(prisma, { bankAccountId, fileName: file.name, data: Buffer.from(await file.arrayBuffer()), provider: await resolveProvider(prisma), password, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${clientId}`, "layout");
     return { ok: true, summary };
   } catch (e) {
@@ -66,7 +66,7 @@ export async function importSampleAction(clientId: string, bankAccountId: string
     const client = await getClientForFirm(clientId);
     if (!client.entities.some((e) => e.bankAccounts.some((b) => b.id === bankAccountId))) return { ok: false, error: "Rekening tidak ditemukan." };
     const f = await liveUploadFile();
-    const summary = await importStatement(prisma, { bankAccountId, fileName: f.fileName, data: f.data, provider: await resolveProvider(prisma) });
+    const summary = await importStatement(prisma, { bankAccountId, fileName: f.fileName, data: f.data, provider: await resolveProvider(prisma), actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${clientId}`, "layout");
     return { ok: true, summary };
   } catch (e) {
@@ -83,7 +83,7 @@ async function assertTxInFirm(bankTxId: string) {
 export async function reviewAction(input: { bankTxId: string; accountCode: string; taxTag: TaxTag | null; createRule?: boolean }): Promise<Result> {
   try {
     const clientId = await assertTxInFirm(input.bankTxId);
-    await reviewTransaction(prisma, input);
+    await reviewTransaction(prisma, { ...input, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${clientId}`, "layout");
     return { ok: true };
   } catch (e) {
@@ -99,7 +99,7 @@ export async function acceptSimilarAction(bankTxId: string, scope: { entityIds: 
     if (!scope || !/^(19|20|21)\d{2}-(0[1-9]|1[0-2])$/.test(scope.period) || !scope.entityIds.length || scope.entityIds.some(id => !client.entities.some(e => e.id === id)) || !scope.entityIds.includes(source.entityId)) return { ok: false, error: "Cakupan review tidak valid. Muat ulang halaman." };
     const through = new Date(Date.UTC(Number(scope.period.slice(0, 4)), Number(scope.period.slice(5)), 0));
     if (source.date > through) return { ok: false, error: "Transaksi berada di luar periode review." };
-    const count = await acceptSimilar(prisma, bankTxId, { entityIds: scope.entityIds, through });
+    const count = await acceptSimilar(prisma, bankTxId, { entityIds: scope.entityIds, through }, (await getCurrentMember()).id);
     revalidatePath(`/clients/${clientId}`, "layout");
     return { ok: true, count };
   } catch (e) {
@@ -122,7 +122,8 @@ export async function ackControlAction(clientId: string, year: number, month: nu
   try {
     if (note.trim().length < 5) return { ok: false, error: "Tulis catatan singkat (min. 5 karakter)." };
     const period = await periodFor(clientId, year, month, { mustBeOpen: true });
-    await prisma.controlAck.upsert({ where: { periodId_controlKey: { periodId: period.id, controlKey } }, create: { periodId: period.id, controlKey, note }, update: { note } });
+    const ackedById = (await getCurrentMember()).id;
+    await prisma.controlAck.upsert({ where: { periodId_controlKey: { periodId: period.id, controlKey } }, create: { periodId: period.id, controlKey, note, ackedById }, update: { note, ackedById } });
     revalidatePath(`/clients/${clientId}`, "layout");
     return { ok: true };
   } catch (e) {
@@ -133,7 +134,8 @@ export async function ackControlAction(clientId: string, year: number, month: nu
 export async function signoffAction(clientId: string, year: number, month: number, key: string, done: boolean): Promise<Result> {
   try {
     const period = await periodFor(clientId, year, month, { mustBeOpen: true });
-    if (done) await prisma.closeSignoff.upsert({ where: { periodId_key: { periodId: period.id, key } }, create: { periodId: period.id, key }, update: {} });
+    const doneById = (await getCurrentMember()).id;
+    if (done) await prisma.closeSignoff.upsert({ where: { periodId_key: { periodId: period.id, key } }, create: { periodId: period.id, key, doneById }, update: { doneById, doneAt: new Date() } });
     else await prisma.closeSignoff.deleteMany({ where: { periodId: period.id, key } });
     revalidatePath(`/clients/${clientId}/close`);
     return { ok: true };
@@ -145,7 +147,7 @@ export async function signoffAction(clientId: string, year: number, month: numbe
 export async function lockAction(clientId: string, year: number, month: number): Promise<Result> {
   try {
     await getClientForFirm(clientId);
-    await lockPeriod(prisma, clientId, year, month, "Ditutup dari halaman Tutup Buku");
+    await lockPeriod(prisma, clientId, year, month, "Ditutup dari halaman Tutup Buku", (await getCurrentMember()).id);
     revalidatePath("/", "layout");
     return { ok: true };
   } catch (e) {
@@ -156,7 +158,7 @@ export async function lockAction(clientId: string, year: number, month: number):
 export async function unlockAction(clientId: string, year: number, month: number): Promise<Result> {
   try {
     const period = await periodFor(clientId, year, month);
-    await prisma.period.update({ where: { id: period.id }, data: { status: "OPEN", lockedAt: null } });
+    await prisma.period.update({ where: { id: period.id }, data: { status: "OPEN", lockedAt: null, lockedById: null } });
     revalidatePath("/", "layout");
     return { ok: true };
   } catch (e) {
@@ -173,7 +175,7 @@ export async function adjustmentAction(input: {
 }): Promise<Result<{ entryId: string }>> {
   try {
     const client = await getClientForFirm(input.clientId);
-    const entry = await postAdjustment(prisma, { clientId: client.id, entityId: input.entityId, date: new Date(`${input.date}T00:00:00Z`), memo: input.memo, lines: input.lines });
+    const entry = await postAdjustment(prisma, { clientId: client.id, entityId: input.entityId, date: new Date(`${input.date}T00:00:00Z`), memo: input.memo, lines: input.lines, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true, entryId: entry.id };
   } catch (e) {
@@ -198,7 +200,7 @@ export async function openingAction(input: { clientId: string; entityId: string;
     const client = await getClientForFirm(input.clientId);
     const m = input.date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (!m) return { ok: false, error: "Isi tanggal saldo awal." };
-    await postOpening(prisma, { clientId: client.id, entityId: input.entityId, date: dateOnly(Number(m[1]), Number(m[2]), Number(m[3])), lines: input.lines });
+    await postOpening(prisma, { clientId: client.id, entityId: input.entityId, date: dateOnly(Number(m[1]), Number(m[2]), Number(m[3])), lines: input.lines, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
   } catch (e) {
@@ -242,7 +244,7 @@ export async function revaluationAction(clientId: string, entityId: string, year
   try {
     const client = await getClientForFirm(clientId);
     if (!client.entities.some((e) => e.id === entityId)) return { ok: false, error: "Entitas tidak ditemukan." };
-    await postRevaluation(prisma, client.id, entityId, year, month);
+    await postRevaluation(prisma, client.id, entityId, year, month, (await getCurrentMember()).id);
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
   } catch (e) {
@@ -290,6 +292,7 @@ export async function stageLedgerAction(
       entityId,
       date: m ? dateOnly(Number(m[1]), Number(m[2]), Number(m[3])) : undefined,
       currencyMode: formData.get("currencyMode") === "CONVERT" ? "CONVERT" : "FUNCTIONAL",
+      actorId: (await getCurrentMember()).id,
     });
     if (res.status === "CHOOSE_SHEET") return { ok: true, candidates: res.candidates.map((c) => ({ sheet: c.sheet, mode: c.mode, dataRows: c.dataRows })) };
     // Rule-based suggestions right away (no AI, no credit); AI only when the accountant asks on the mapping step.
@@ -336,6 +339,7 @@ export async function acceptMappingsAction(
       prisma,
       client.id,
       items.map((i) => ({ sourceAccountId: i.sourceAccountId, accountCode: i.accountCode, newAccount: i.newAccount ? { fsLine: i.newAccount.fsLine as FsLine, name: i.newAccount.name } : undefined, method: i.method as MapMethod })),
+      (await getCurrentMember()).id,
     );
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true, mapped: r.mapped };
@@ -347,7 +351,7 @@ export async function acceptMappingsAction(
 export async function postLedgerImportAction(clientId: string, importId: string): Promise<Result<{ entries: number }>> {
   try {
     const client = await getClientForFirm(clientId);
-    const r = await postImport(prisma, client.id, importId);
+    const r = await postImport(prisma, client.id, importId, (await getCurrentMember()).id);
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true, entries: r.entries };
   } catch (e) {

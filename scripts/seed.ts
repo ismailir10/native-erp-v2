@@ -2,12 +2,14 @@ import { writeFileSync, mkdirSync } from "node:fs";
 import "dotenv/config";
 import { createPrisma } from "@/lib/db";
 import { liveUploadFile, seedDemo } from "@/lib/demo/seed";
+import { seedDemoAdmin } from "@/lib/demo/admin";
 
 /** npm run demo:reset — rebuild the demo firm through the real pipeline (0 real AI calls). */
 async function main() {
   const db = createPrisma();
   const t0 = Date.now();
   await seedDemo(db, { log: console.log, liveAi: process.env.DEMO_LIVE_AI === "1" });
+  await seedDemoAdmin(db, console.log);
   const f = await liveUploadFile();
   mkdirSync("public/demo", { recursive: true });
   writeFileSync(`public/demo/${f.fileName}`, f.data);
