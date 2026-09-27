@@ -199,7 +199,7 @@ export function SchedulePanel(props: { clientId: string; entities: { id: string;
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Hentikan {stopping?.memo}?</DialogTitle>
-            <DialogDescription>Angsuran berikutnya tidak diusulkan lagi. Yang sudah dicatat tetap di buku besar; koreksi dengan jurnal penyesuaian bila perlu.</DialogDescription>
+            <DialogDescription>Angsuran setelah bulan ini tidak diusulkan lagi. Angsuran yang sudah jatuh tempo sampai bulan ini tetap diusulkan sampai dicatat. Yang sudah dicatat tetap di buku besar; koreksi dengan jurnal penyesuaian bila perlu.</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setStopping(null)}>Batal</Button>

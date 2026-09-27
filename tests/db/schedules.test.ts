@@ -45,11 +45,25 @@ describe("adjustment schedules", () => {
     const net = await db.journalLine.aggregate({ where: { entry: { scheduleId: s.id }, account: { code: "2150" } }, _sum: { debit: true, credit: true } });
     expect((net._sum.credit ?? 0n) - (net._sum.debit ?? 0n)).toBe(0n);
 
-    // A stopped depreciation proposes and posts nothing more.
+    // A depreciation stopped before it started proposes and posts nothing.
     const d = await createSchedule(db, { clientId: g.client.id, entityId: g.pt.entity.id, kind: "DEPRECIATION", memo: "Penyusutan", debitCode: "6180", creditCode: "1219", amount: "1.200.000", months: 12, startYear: 2026, startMonth: 8 });
-    await stopSchedule(db, { clientId: g.client.id, scheduleId: d.id });
+    await stopSchedule(db, { clientId: g.client.id, scheduleId: d.id, at: new Date("2026-07-15T00:00:00Z") });
     expect((await dueProposals(db, g.client.id, 2026, 8)).map((p) => p.schedule.id)).not.toContain(d.id);
     await expect(postInstallment(db, { clientId: g.client.id, scheduleId: d.id, k: 1 })).rejects.toThrow("sudah dihentikan");
+  });
+
+  it("a stop keeps what was already due: installments through the stop month stay proposed until posted, later ones are dropped", async () => {
+    const g = await makeGroup();
+    const d = await createSchedule(db, { clientId: g.client.id, entityId: g.pt.entity.id, kind: "DEPRECIATION", memo: "Penyusutan", debitCode: "6180", creditCode: "1219", amount: "1.200.000", months: 12, startYear: 2026, startMonth: 8 });
+    // Stopped in September with August still unposted: August and September stay owed, October onwards is gone.
+    await stopSchedule(db, { clientId: g.client.id, scheduleId: d.id, at: new Date("2026-09-10T00:00:00Z") });
+    expect((await dueProposals(db, g.client.id, 2026, 12)).map((p) => p.memo)).toEqual(["Penyusutan (1/12)", "Penyusutan (2/12)"]);
+    expect((await runControls(db, g.client.id, 2026, 10)).find((c) => c.key === `sched:${g.pt.entity.id}`)?.status).toBe("REVIEW");
+    await postInstallment(db, { clientId: g.client.id, scheduleId: d.id, k: 1 });
+    await expect(postInstallment(db, { clientId: g.client.id, scheduleId: d.id, k: 3 })).rejects.toThrow("sudah dihentikan");
+    await postAllDue(db, { clientId: g.client.id, year: 2026, month: 12 });
+    expect(await dueProposals(db, g.client.id, 2026, 12)).toEqual([]);
+    expect(await db.journalEntry.count({ where: { scheduleId: d.id } })).toBe(2);
   });
 
   it("a posting click that races a stop waits for it and then refuses", async () => {
@@ -58,7 +72,7 @@ describe("adjustment schedules", () => {
     let post: Promise<unknown> = Promise.resolve();
     // The stop is written but not yet committed when the click arrives; the click must not post past it.
     await db.$transaction(async (tx) => {
-      await tx.adjustmentSchedule.update({ where: { id: d.id }, data: { stoppedAt: new Date() } });
+      await tx.adjustmentSchedule.update({ where: { id: d.id }, data: { stoppedAt: new Date("2026-07-15T00:00:00Z") } }); // before August
       post = postInstallment(db, { clientId: g.client.id, scheduleId: d.id, k: 1 });
       post.catch(() => {});
       await new Promise((r) => setTimeout(r, 300));
@@ -179,7 +193,7 @@ describe("adjustment schedules", () => {
     await db.period.upsert({ where: { clientId_year_month: { clientId: g.client.id, year: 2026, month: 9 } }, create: { firmId: g.firm.id, clientId: g.client.id, year: 2026, month: 9, status: "LOCKED" }, update: { status: "LOCKED" } });
     await expect(postInstallment(db, { clientId: g.client.id, scheduleId: rent.id, k: 2 })).rejects.toThrow("sudah ditutup");
 
-    await stopSchedule(db, { clientId: g.client.id, scheduleId: rent.id });
+    await stopSchedule(db, { clientId: g.client.id, scheduleId: rent.id, at: new Date("2026-09-15T00:00:00Z") });
     expect((await dueProposals(db, g.client.id, 2026, 10)).map((p) => p.schedule.memo)).toEqual(["Penyusutan kendaraan"]);
     await expect(postInstallment(db, { clientId: g.client.id, scheduleId: rent.id, k: 3 })).rejects.toThrow("sudah dihentikan");
     expect(await db.journalEntry.count({ where: { scheduleId: rent.id } })).toBe(1); // what was posted stays
@@ -214,7 +228,7 @@ describe("adjustment schedules", () => {
     expect((await sched())?.detail).toMatch(/^4 angsuran: Penyusutan aset tetap \(2\/120\)/);
     await postAllDue(db, { clientId: g.client.id, year: 2026, month: 8 });
     expect(await sched()).toBeUndefined();
-    await stopSchedule(db, { clientId: g.client.id, scheduleId: s.id });
+    await stopSchedule(db, { clientId: g.client.id, scheduleId: s.id, at: new Date("2026-08-31T00:00:00Z") });
     expect((await runControls(db, g.client.id, 2026, 9)).some((c) => c.key.startsWith("sched:"))).toBe(false);
   });
 });
