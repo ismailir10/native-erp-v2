@@ -4,7 +4,7 @@ import ExcelJS from "exceljs";
 import { createPrisma, type Db } from "@/lib/db";
 import { createClient, createFirm } from "@/lib/setup";
 import { acceptCheck, importSourceAccounts, postImport, stageImport } from "@/lib/ledger-import/post";
-import { acceptMappings, suggestMappings } from "@/lib/ledger-import/mapping";
+import { acceptMappings, inferType, learnScheme, newFsLineOf, normName, suggestMappings } from "@/lib/ledger-import/mapping";
 import { upsertRate } from "@/lib/fx/rates";
 import { balanceSheet, combinedWorksheet } from "@/lib/reports/ledger";
 import { FxMissingError } from "@/lib/reports/fx";
@@ -62,13 +62,46 @@ async function runImport(db: Db, firmId: string, clientId: string, file: string,
   const src = await importSourceAccounts(db, st.importId);
   const todo = src.filter((s) => !s.accountId);
   const fallback = todo.filter((s) => !s.suggestedCode);
+  const created = todo.filter((s) => newFsLineOf(s.suggestedCode)).length;
   await acceptMappings(
     db,
     clientId,
     todo.map((s) => (s.suggestedCode ? { sourceAccountId: s.id, accountCode: s.suggestedCode, method: s.suggestedBy! } : { sourceAccountId: s.id, accountCode: FALLBACK[s.typeHint ?? ""] ?? "6190", method: "MANUAL" as const })),
   );
   const posted = await postImport(db, clientId, st.importId);
-  return { importId: st.importId, checks, posted: posted.entries, sources: src.length, byRules: sug.deterministic, fallback: fallback.map((s) => `${s.code} ${s.name}`) };
+  return { importId: st.importId, checks, posted: posted.entries, sources: src.length, byRules: sug.deterministic, created, fallback: fallback.map((s) => `${s.code} ${s.name}`) };
+}
+
+// ─── Mapping quality (cycle 2026-09-27-mapping-quality) ──────────────────────
+
+const CATCH_ALLS = new Set(["1140", "2120", "4110", "4910", "6190"]);
+const CATCH_ALL_NAME = /(lain ?lain|lainnya|\bother\b|others|misc|sundry|\bumum\b|general|serba ?serbi)/;
+/** A catch-all reached through a generic word only ("payable", "expense"); specific rules like "short term" or APIC are fine. */
+const GENERIC_REASON = /Kata kunci "(expense|beban|biaya|payable|utang|hutang|piutang|receivable|loan to|income|revenue|pendapatan)"/;
+/** Gain/loss and rounding accounts are the right target from either side of the books. */
+const EITHER_SIDE = new Set(["7190", "7200"]);
+
+/**
+ * How the client's chart landed: suggestion methods, catch-all suggestions whose name isn't itself a catch-all
+ * (target 0), accounts whose Buku type disagrees with the type inferred from the file's own scheme (target 0), new
+ * accounts proposed. Counts a failure for either target being missed.
+ */
+async function mappingQuality(db: Db, clientId: string, label: string) {
+  const src = await db.sourceAccount.findMany({ where: { clientId }, include: { account: true } });
+  const by: Record<string, number> = {};
+  for (const s of src) by[s.mappedBy ?? "-"] = (by[s.mappedBy ?? "-"] ?? 0) + 1;
+  const scheme = learnScheme(src);
+  const catchAll = src.filter((s) => s.account && CATCH_ALLS.has(s.account.code) && !CATCH_ALL_NAME.test(normName(s.name)) && s.mappedBy === "KEYWORD" && GENERIC_REASON.test(s.mapReason ?? ""));
+  const wrongSide = src.filter((s) => {
+    const t = inferType(s.code, s.name, scheme);
+    return s.account && t && s.account.type !== t && s.mappedBy !== "MANUAL" && !EITHER_SIDE.has(s.account.code);
+  });
+  const created = src.filter((s) => s.mappedBy === "NEW").length;
+  log(`\n## Kualitas pemetaan — ${label}`);
+  log(`- ${src.length} akun klien · ${Object.entries(by).map(([k, n]) => `${k} ${n}`).join(", ")} · ${created} akun Buku baru dibuat dari nama klien`);
+  log(`- ${catchAll.length === 0 ? "✓" : "✗"} saran ke akun penampung untuk nama yang bukan penampung: ${catchAll.length}${catchAll.length ? ` — ${catchAll.slice(0, 8).map((s) => `${s.code} ${s.name} → ${s.account!.code}`).join("; ")}` : ""}`);
+  log(`- ${wrongSide.length === 0 ? "✓" : "✗"} sisi akun berbeda dari tipe menurut skema kode file: ${wrongSide.length}${wrongSide.length ? ` — ${wrongSide.slice(0, 10).map((s) => `${s.code} ${s.name} → ${s.account!.code} ${s.account!.name}`).join("; ")}` : ""}`);
+  if (catchAll.length || wrongSide.length) failures++;
 }
 
 // ─── Independent recompute (not Buku's reader) ────────────────────────────────
@@ -161,9 +194,11 @@ async function chickin(db: Db, intoApp: boolean) {
     const imp = imports[i];
     const by: Record<string, number> = {};
     for (const c of imp.checks) by[`${c.severity} ${c.code}`] = (by[`${c.severity} ${c.code}`] ?? 0) + 1;
-    log(`- ${name}: ${imp.posted} jurnal, ${imp.sources} akun sumber (${imp.byRules} dipetakan aturan, ${imp.fallback.length} fallback per jenis)`);
+    log(`- ${name}: ${imp.posted} jurnal, ${imp.sources} akun sumber (${imp.byRules} dipetakan aturan, ${imp.created} akun Buku baru, ${imp.fallback.length} fallback per jenis)`);
     log(`  temuan: ${Object.entries(by).map(([k, n]) => `${k} ×${n}`).join(", ")}`);
   }
+
+  await mappingQuality(db, client.id, "Chickin");
 
   // Buku vs independent recompute, per entity × account × year.
   log("\n## Buku vs rekalkulasi independen buku besar workbook (per entitas × akun klien × bulan)");
@@ -250,6 +285,7 @@ async function goers(db: Db, intoApp: boolean) {
   log(`\n# Goers — ${client.name}`);
   const imp = await runImport(db, firm.id, client.id, file, { entityId: entities[0].entity.id });
   log(`- Neraca 31 Mei 2026 → saldo awal: ${imp.sources} akun (${imp.byRules} dipetakan aturan, fallback: ${imp.fallback.join(", ") || "-"})`);
+  await mappingQuality(db, client.id, "Goers");
   const totals = imp.checks.filter((c) => c.code === "TOTAL_OK" || c.code === "TOTAL_MISMATCH");
   for (const t of totals) {
     if (t.code === "TOTAL_MISMATCH") failures++;

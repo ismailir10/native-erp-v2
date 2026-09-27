@@ -295,8 +295,6 @@ export async function stageLedgerAction(
       actorId: (await getCurrentMember()).id,
     });
     if (res.status === "CHOOSE_SHEET") return { ok: true, candidates: res.candidates.map((c) => ({ sheet: c.sheet, mode: c.mode, dataRows: c.dataRows })) };
-    // Rule-based suggestions right away (no AI, no credit); AI only when the accountant asks on the mapping step.
-    await suggestMappings(prisma, { firmId: client.firmId, clientId: client.id, provider: null, useAi: false });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true, importId: res.importId };
   } catch (e) {
