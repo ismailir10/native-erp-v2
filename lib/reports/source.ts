@@ -1,6 +1,7 @@
 import type { Db } from "@/lib/db";
 import type { AccountType } from "@/lib/generated/prisma/enums";
 import { dateOnly } from "@/lib/format";
+import { postedBasis } from "@/lib/reports/account-ledger";
 
 /**
  * Neraca Saldo in the entity's own accounts (rule 9a): lines grouped by source account, in the entity's functional currency.
@@ -73,6 +74,23 @@ export async function sourceTrialBalance(db: Db, entityId: string, asOf: Date, s
     row.periodCredit += m?._sum.credit ?? 0n;
     row.periodLines += m?._count ?? 0;
     rows.set(key, row);
+  }
+  // A client account posted to several Buku accounts is presented under the same one its ledger reads by (never whichever group
+  // came first): the earliest posted account of the file's type, else the earliest posted.
+  const mixed = [...rows.values()].filter((r) => r.sourceAccountId && lines.filter((l) => l.sourceAccountId === r.sourceAccountId).length > 1);
+  if (mixed.length) {
+    const posted = await db.journalLine.findMany({
+      where: { entityId, sourceAccountId: { in: mixed.map((r) => r.sourceAccountId!) } },
+      distinct: ["sourceAccountId", "accountId"],
+      orderBy: [{ date: "asc" }, { id: "asc" }],
+      select: { sourceAccountId: true, accountId: true, date: true, id: true },
+    });
+    posted.sort((x, y) => +x.date - +y.date || x.id.localeCompare(y.id));
+    for (const r of mixed) {
+      const mine = posted.filter((p) => p.sourceAccountId === r.sourceAccountId).map((p) => accounts.get(p.accountId)!);
+      const a = postedBasis(mine, sources.get(r.sourceAccountId!)?.typeHint ?? null);
+      if (a) Object.assign(r, { type: a.type, accountCode: a.code, clientAccount: { code: a.code, name: a.name } });
+    }
   }
   for (const r of rows.values()) r.opening = r.net - (r.periodDebit - r.periodCredit);
   const out = [...rows.values()]

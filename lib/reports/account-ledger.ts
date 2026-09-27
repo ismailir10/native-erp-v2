@@ -72,6 +72,9 @@ export async function accountLedger(
 
 const defaultNormal = (type: AccountType | null | undefined): NormalBalance => (type === "ASET" || type === "BEBAN" ? "DEBIT" : "CREDIT");
 
+/** The one posted account a client account reads by: the earliest of the file's type, else the earliest (`posted` oldest first). */
+export const postedBasis = <T extends { type: AccountType }>(posted: T[], typeHint: AccountType | null): T | undefined => posted.find((a) => a.type === typeHint) ?? posted[0];
+
 /**
  * How a client account's ledger reads (normal side; whether it restarts on 1 January), taken from a Buku account its lines were
  * actually posted to: a later remap moves no posted line, so it must not reinterpret their history. That account is the earliest
@@ -87,7 +90,7 @@ export async function sourceLedgerBasis(
     orderBy: [{ date: "asc" }, { id: "asc" }],
     select: { account: { select: { type: true, normalBalance: true } } },
   })).map((l) => l.account);
-  const basis = posted.find((a) => a.type === src.typeHint) ?? posted[0];
+  const basis = postedBasis(posted, src.typeHint);
   const type = basis?.type ?? src.account?.type ?? src.typeHint;
   const normalBalance = basis?.normalBalance ?? src.account?.normalBalance ?? defaultNormal(type);
   return { normalBalance, isPL: type === "PENDAPATAN" || type === "BEBAN" };

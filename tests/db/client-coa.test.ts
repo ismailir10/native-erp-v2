@@ -5,6 +5,7 @@ import { importSourceAccounts, postImport, stageImport } from "@/lib/ledger-impo
 import { acceptMappings, suggestMappings } from "@/lib/ledger-import/mapping";
 import { balanceSheet, trialBalanceMovement } from "@/lib/reports/ledger";
 import { clientAccountsByAccount, sourceTrialBalance } from "@/lib/reports/source";
+import { postJournal } from "@/lib/ledger/post";
 import { accountLedger, sourceLedgerBasis } from "@/lib/reports/account-ledger";
 import { dateOnly } from "@/lib/format";
 
@@ -99,6 +100,29 @@ describe("client COA-first reports", () => {
     // A client account with nothing posted follows its current mapping.
     const empty = await db.sourceAccount.create({ data: { firmId: g.firm.id, clientId: g.client.id, entityId: g.pt.entity.id, code: "41000", name: "Pendapatan Lain", typeHint: "PENDAPATAN" } });
     expect(await sourceLedgerBasis(db, { ...empty, account: null })).toEqual({ normalBalance: "CREDIT", isPL: true });
+  });
+
+  it("presents a client account posted to several Buku accounts under the one its ledger reads by", async () => {
+    const { g } = await postedGl();
+    const pt = g.pt.entity.id;
+    const acc = async (code: string) => (await db.account.findUniqueOrThrow({ where: { clientId_code: { clientId: g.client.id, code } } })).id;
+    const src = (code: string) => db.sourceAccount.create({ data: { firmId: g.firm.id, clientId: g.client.id, entityId: pt, code, name: `Rupa-rupa ${code}` } });
+    // Two client accounts, each posted first to one Buku account and later to another, in opposite orders.
+    const [x, y] = [await src("19001"), await src("19002")];
+    await db.$transaction(async (tx) => {
+      const line = async (sourceAccountId: string, code: string, date: Date, amount: bigint) =>
+        postJournal(tx, { entityId: pt, date, kind: "ADJUSTMENT", memo: "uji", lines: [{ accountId: await acc(code), debit: amount, sourceAccountId }, { accountId: await acc("3100"), credit: amount }] });
+      await line(x.id, "2110", dateOnly(2025, 12, 1), 10n);
+      await line(x.id, "1110", dateOnly(2026, 1, 5), 20n);
+      await line(y.id, "1110", dateOnly(2025, 12, 1), 10n);
+      await line(y.id, "2110", dateOnly(2026, 1, 5), 20n);
+    });
+    const tb = await sourceTrialBalance(db, pt, dateOnly(2026, 1, 31));
+    const row = (id: string) => tb.find((r) => r.sourceAccountId === id)!;
+    expect([row(x.id).accountCode, row(x.id).type, row(x.id).net]).toEqual(["2110", "LIABILITAS", 30n]);
+    expect([row(y.id).accountCode, row(y.id).type, row(y.id).net]).toEqual(["1110", "ASET", 30n]);
+    // The same basis as its ledger.
+    expect((await sourceLedgerBasis(db, { ...x, account: null })).normalBalance).toBe("CREDIT");
   });
 
   it("breaks each Buku account into the client accounts behind it", async () => {
