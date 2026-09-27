@@ -74,6 +74,19 @@ describe("close copilot — Jelaskan", () => {
     expect((await db.bankTransaction.findUniqueOrThrow({ where: { id: tx.id } })).accountCode).toBe("2210");
   });
 
+  it("re-checks grounding when posting: a stored draft whose amount no cited row carries never posts", async () => {
+    const { g, key } = await loanInRevenue();
+    const r = await explainControl(db, g.firm.id, g.client.id, 2026, 8, key, new MockProvider());
+    const entries = await db.journalEntry.count();
+    // A draft stored under an older, looser rule: same snapshot, but an amount no cited row has — or no row cited at all.
+    await db.proposedEntry.update({ where: { id: r.proposal!.id }, data: { lines: [{ accountCode: "4100", debit: "1000000", credit: "0" }, { accountCode: "2210", debit: "0", credit: "1000000" }] } });
+    await expect(postProposal(db, { clientId: g.client.id, proposalId: r.proposal!.id })).rejects.toThrow("tidak berasal dari baris yang dirujuknya");
+    const good = [{ accountCode: "4100", debit: "100000000", credit: "0" }, { accountCode: "2210", debit: "0", credit: "100000000" }];
+    await db.proposedEntry.update({ where: { id: r.proposal!.id }, data: { lines: good, refs: [] } });
+    await expect(postProposal(db, { clientId: g.client.id, proposalId: r.proposal!.id })).rejects.toThrow("tidak berasal dari baris yang dirujuknya");
+    expect(await db.journalEntry.count()).toBe(entries);
+  });
+
   it("gives a group-level control words only, and refuses a control that passes", async () => {
     const { g } = await loanInRevenue();
     const provider = new MockProvider();

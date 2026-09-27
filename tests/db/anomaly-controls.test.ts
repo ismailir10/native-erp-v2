@@ -68,6 +68,15 @@ describe("ledger anomaly controls", () => {
     expect((await byKind(c, pt)).flux).toBeUndefined();
   });
 
+  it("needs two baseline months on the account itself, not just on the entity", async () => {
+    const { pt, c } = await baseline(); // entity active May–Jul
+    await post(pt, c, dateOnly(2026, 7, 22), "6150", "1130", 2_000_000n); // 6150 moved once, in July only
+    await post(pt, c, dateOnly(2026, 8, 10), "1130", "4100", 100_000_000n);
+    await post(pt, c, dateOnly(2026, 8, 20), "6130", "1130", 5_000_000n);
+    await post(pt, c, dateOnly(2026, 8, 22), "6150", "1130", 6_000_000n); // vs a zero-padded "average" of 667 rb
+    expect((await byKind(c, pt)).flux).toBeUndefined();
+  });
+
   it("flags P&L movement against its nature, but not rounding or FX", async () => {
     const { pt, c } = await baseline();
     await post(pt, c, dateOnly(2026, 8, 10), "1130", "4100", 100_000_000n);

@@ -205,18 +205,19 @@ export function parseControlExplain(text: string, input: ControlExplainInput): C
   const note = typeof value.note === "string" ? value.note.trim().slice(0, 300) : "";
   const own = new Set(input.control.rows.map((r) => r.id));
   const refs = Array.isArray(value.refs) ? [...new Set(value.refs.filter((x): x is string => typeof x === "string" && own.has(x)))].slice(0, 10) : [];
-  return { explanation, suggestion, refs, note, entry: input.canDraft ? groundedEntry(value.entry, input) : null };
+  return { explanation, suggestion, refs, note, entry: input.canDraft ? groundedEntry(value.entry, input, new Set(refs)) : null };
 }
 
 /** A draft journal survives only if every account is in the chart, it balances, and every amount is a cited row's amount. */
-function groundedEntry(raw: unknown, input: ControlExplainInput): ControlExplainEntry | null {
+function groundedEntry(raw: unknown, input: ControlExplainInput, cited: Set<string>): ControlExplainEntry | null {
   if (!raw || typeof raw !== "object") return null;
   const e = raw as Record<string, unknown>;
   const memo = typeof e.memo === "string" ? e.memo.trim().slice(0, 120) : "";
   if (!memo || !Array.isArray(e.lines) || e.lines.length < 2 || e.lines.length > 10) return null;
   const chart = new Set(input.accounts.map((a) => a.code));
   // Cited amounts by value → the row's own text (sign dropped), so a stored answer re-validates identically in any currency.
-  const allowed = new Map(input.control.rows.flatMap((r) => { const v = amountOf(r.amount, input.currency); return v && v > 0n ? [[v, r.amount.replace(/^-/, "")] as const] : []; }));
+  // Only rows the answer cites (and that are this control's own) ground an amount; an uncited row's amount has no source.
+  const allowed = new Map(input.control.rows.filter((r) => cited.has(r.id)).flatMap((r) => { const v = amountOf(r.amount, input.currency); return v && v > 0n ? [[v, r.amount.replace(/^-/, "")] as const] : []; }));
   let dr = 0n;
   let cr = 0n;
   const lines: ControlExplainEntry["lines"] = [];

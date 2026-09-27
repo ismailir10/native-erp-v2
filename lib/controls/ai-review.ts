@@ -171,12 +171,12 @@ export async function bankLineState(db: Db, bankTransactionId: string | null) {
 export const snapshotOf = (rows: CloseReviewRow[], line: Awaited<ReturnType<typeof bankLineState>> = null) =>
   createHash("sha256").update(JSON.stringify(line ? [rows, line] : rows)).digest("hex");
 
-/** The current fingerprint of a still-flagged control, or null when it passes or no longer exists. */
-export async function controlSnapshot(db: Db, clientId: string, year: number, month: number, controlKey: string, bankTransactionId: string | null = null): Promise<string | null> {
+/** A still-flagged control's current rows and fingerprint, or null when it passes or no longer exists. */
+export async function controlSnapshot(db: Db, clientId: string, year: number, month: number, controlKey: string, bankTransactionId: string | null = null): Promise<{ snapshot: string; rows: CloseReviewRow[] } | null> {
   const control = (await runControls(db, clientId, year, month)).find((c) => c.key === controlKey && c.status !== "PASS");
   if (!control) return null;
-  const g = await gather(db, clientId, year, month, [control]);
-  return snapshotOf(g.input.controls[0].rows, await bankLineState(db, bankTransactionId));
+  const rows = (await gather(db, clientId, year, month, [control])).input.controls[0].rows;
+  return { snapshot: snapshotOf(rows, await bankLineState(db, bankTransactionId)), rows };
 }
 
 const cacheKey = (firmId: string, clientId: string, input: CloseReviewInput, model: string) =>

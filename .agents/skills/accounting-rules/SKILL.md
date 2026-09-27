@@ -93,7 +93,7 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     (≤ 40 rows). It explains and proposes; it never posts, acks, ticks or locks. Items citing keys/ids it wasn't given are dropped.
 20b. **Close copilot / proposed entries** (`lib/controls/explain.ts`, `lib/adjust/proposals.ts`): *Jelaskan* sends one flagged control's
     rows (20a caps) and gets an explanation, an optional note (a prefill the accountant saves) and an optional draft journal —
-    kept only if every account is in the chart (never a bank account), it balances, and **every amount equals a cited row's amount**.
+    kept only if every account is in the chart (never a bank account), it balances, and **every amount equals the amount of a row the answer cites** (checked again when it posts).
     Drafts are `ProposedEntry` rows, posted only by the accountant's click (accounts editable, amounts never) through `postJournal()`;
     a draft that moves one cited **bank line** posts through the reviewer's writer instead (RECLASS + Memory, rule 3). Group-level
     controls get words only. Deterministic proposals (e.g. 1999 corrections) use the same table.
@@ -112,7 +112,7 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
 22b. **Ledger anomaly scans** (`lib/controls/anomaly.ts`, ADR 0009 amendment) read journal lines, not bank rows, so ledger-fed
     clients get the same scrutiny. Movement excludes OPENING entries; baseline = the months with activity among the 3 before the
     period; materiality = 1 % of the baseline's average monthly P&L volume (all movement when the baseline has no P&L, e.g. a holding). **Flux** (P&L account differs from its baseline average by
-    ≥ materiality and ≥ 50 %, ≥ 2 baseline months), **flip** (P&L month movement against its `normalBalance`), **dormant** (movement on an
+    ≥ materiality and ≥ 50 %; the account itself moved in ≥ 2 baseline months), **flip** (P&L month movement against its `normalBalance`), **dormant** (movement on an
     account with none in 3 active prior months: *akun baru* or *bergerak lagi*), **dup** (identical entries ≤ 3 days apart; two
     bank-derived entries never pair, two rows of one ledger file only with the same memo, OPENING/RECLASS never). All REVIEW, never FAIL;
     7190/7200 exempt from flux/flip. The AI close review may send the flagged accounts' month series and the month's journal lines behind
