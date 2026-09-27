@@ -9,7 +9,7 @@ import { formatRate, formatRateId, isCurrency, parseRate } from "@/lib/fx/curren
 import { ParseError } from "@/lib/import/types";
 import { detectTables, readSheets, readTable } from "@/lib/ledger-import/read";
 import { accountKey, planLedger, planNeraca, type Check, type CurrencyMode, type EntityInfo, type Plan, type PlanEntry } from "@/lib/ledger-import/check";
-import { inferType } from "@/lib/ledger-import/mapping";
+import { inferType, learnScheme } from "@/lib/ledger-import/mapping";
 import type { NeracaRow, TableCandidate } from "@/lib/ledger-import/types";
 
 /**
@@ -152,6 +152,8 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
   // "Catat N jurnal" is the number that will post.
   const entries = plan.entries.filter(willPost);
   const neracaHints = read.mode === "NERACA" ? new Map(read.rows.map((r) => [r.code, r.typeHint])) : new Map();
+  // The file's own numbering (learned from its unambiguous names) beats weak name words like "bank" or "deposit".
+  const scheme = learnScheme([...plan.accounts.values()]);
   const termHints = read.mode === "NERACA" ? new Map(read.rows.map((r) => [r.code, r.termHint])) : new Map<string, NeracaRow["termHint"]>();
   const imp = await db.$transaction(
     async (tx) => {
@@ -160,11 +162,11 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
         const ei = entityInfos.get(a.entityKey);
         if (!ei) continue;
         const found = existing.find((s) => s.entityId === ei.entityId && s.code === a.code);
-        const typeHint = neracaHints.get(a.code) ?? inferType(a.code, a.name);
+        const typeHint = neracaHints.get(a.code) ?? inferType(a.code, a.name, scheme);
         if (!found) {
           await tx.sourceAccount.create({ data: { firmId: input.firmId, clientId: input.clientId, entityId: ei.entityId, code: a.code, name: a.name, previousNames: a.previousNames, typeHint, termHint: termHints.get(a.code) ?? null } });
         } else {
-          const data: { name?: string; previousNames?: string[]; termHint?: NeracaRow["termHint"] } = {};
+          const data: { name?: string; previousNames?: string[]; termHint?: NeracaRow["termHint"]; typeHint?: NeracaRow["typeHint"] } = {};
           if (found.name !== a.name || a.previousNames.some((p) => !found.previousNames.includes(p))) {
             data.name = a.name;
             data.previousNames = [...new Set([...found.previousNames, ...a.previousNames])].filter((p) => p !== a.name);
@@ -172,6 +174,8 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
           // A Neraca states the account's term even when an earlier file created the code; it is only a mapping hint.
           const term = termHints.get(a.code) ?? null;
           if (term && term !== found.termHint) data.termHint = term;
+          // An unmapped code keeps the freshest type evidence (this file's scheme or section); accepted mappings are untouched.
+          if (!found.accountId && typeHint && typeHint !== found.typeHint) data.typeHint = typeHint;
           if (Object.keys(data).length) await tx.sourceAccount.update({ where: { id: found.id }, data });
         }
       }

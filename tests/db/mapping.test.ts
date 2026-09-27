@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { db, makeGroup, resetDb } from "../helpers";
 import { AiAnswerError, MockProvider, type AiProvider } from "@/lib/ai/provider";
-import { acceptMappings, deterministicSuggestion, inferType, MappingError, suggestMappings } from "@/lib/ledger-import/mapping";
+import { acceptMappings, deterministicSuggestion, inferType, learnScheme, MappingError, suggestMappings } from "@/lib/ledger-import/mapping";
 import { COA_TEMPLATE } from "@/lib/coa/template";
 
 const chart = COA_TEMPLATE.map((a) => ({ code: a.code, name: a.name, type: a.type, fsLine: a.fsLine, isBank: false, isSuspense: !!a.isSuspense, isClearing: !!a.isClearing }));
@@ -46,6 +46,33 @@ describe("deterministic mapping", () => {
     expect(inferType("2-2744", "Others Payables-Related Parties")).toBe("LIABILITAS");
     expect(inferType("1-1000", "BANK")).toBe("ASET");
     expect(inferType("5-5016", "Cloud - AWS")).toBe("BEBAN");
+  });
+
+  it("learns the file's code scheme from unambiguous names and lets it beat weak words", () => {
+    // Chickin-shaped chart: 6xxxx/7xxxx are expenses, 1xxxx assets, 2xxxx liabilities.
+    const file = [
+      ["11101", "Trade Receivable - Third Parties"], ["11102", "Trade Receivable - Related Parties"], ["13001", "Prepaid - Income Tax Article 21"],
+      ["20104", "Trade Payable - Smart Farm"], ["21002", "Other Payable"], ["21003", "Accrued Expenses"],
+      ["61001", "Salary Expense"], ["66001", "Marketing Expense"], ["64003", "Depreciation - Office Equipments"],
+    ].map(([code, name]) => ({ code, name }));
+    const scheme = learnScheme(file);
+    expect([...scheme]).toEqual([["1", "ASET"], ["2", "LIABILITAS"], ["6", "BEBAN"]]);
+    expect(inferType("76024", "Bank Charges", scheme)).toBe("BEBAN"); // strong: a fee, never the bank asset
+    expect(inferType("62015", "Religious Festivity Allowance (THR)", scheme)).toBe("BEBAN"); // "allowance" is weak; the scheme wins
+    expect(inferType("63008", "Low Value Asset", scheme)).toBe("BEBAN"); // "asset" is weak; the scheme wins
+    expect(inferType("13001", "Prepaid - Income Tax Article 21", scheme)).toBe("ASET"); // "income" inside a prepaid tax
+    expect(inferType("15001", "Deferred Expense", scheme)).toBe("ASET"); // deferred = prepaid, scheme digit 1
+    expect(inferType("21001", "Customer Deposits", scheme)).toBe("LIABILITAS");
+    expect(inferType("41000", "Expense Bank Administration", scheme)).toBe("BEBAN"); // strong word beats a 4 digit
+    expect(inferType("1-1000", "BANK")).toBe("ASET"); // no scheme: weak word still counts
+    expect(learnScheme([{ code: "10001", name: "Kas" }, { code: "10002", name: "Bank" }]).size).toBe(0); // < 3 strong votes: no opinion
+    const sugWith = (code: string, name: string) => deterministicSuggestion({ code, name, typeHint: inferType(code, name, scheme) }, { accounts: chart, priorByName: new Map() })?.accountCode ?? null;
+    expect(sugWith("76024", "Bank Charges")).toBe("7100");
+    expect(sugWith("64003", "Depreciation - Office Equipments")).toBe("6180");
+    expect(sugWith("13001", "Prepaid - Income Tax Article 21")).toBe("1180");
+    expect(sugWith("21001", "Customer Deposits")).toBe("2160");
+    expect(sugWith("15001", "Deferred Expense")).toBe("1170");
+    expect(sugWith("62015", "Religious Festivity Allowance (THR)")).toBe("6100");
   });
 
   it("prefers an exact client-account name and prior mappings", () => {
