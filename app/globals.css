@@ -109,11 +109,13 @@
   --sidebar-border: #2D4F18;
   --sidebar-ring: #9FE870;
 
-  /* Forest-led chart palette (validated in the cycle doc) */
-  --chart-1: #163300;
-  --chart-2: #2F7D1E;
-  --chart-3: #8A6100;
-  --chart-4: #0F5F73;
+  /* Categorical chart order from Wise ramps (green-dark, brand purple, orange-dark, blue-dark), validated with the
+     dataviz validator on white: lightness band, chroma, CVD ΔE ≥ 22, contrast ≥ 3:1. Fixed order, never cycled.
+     chart-5 is the neutral "Lainnya" slot, not a fifth hue. */
+  --chart-1: #008026;
+  --chart-2: #485CC7;
+  --chart-3: #9A6500;
+  --chart-4: #0097C7;
   --chart-5: #6A6C6A;
 
   /* Wise sentiments */
