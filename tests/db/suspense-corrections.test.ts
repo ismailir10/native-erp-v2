@@ -4,7 +4,7 @@ import { db, makeGroup, resetDb } from "../helpers";
 import { acceptCheck, importSourceAccounts, postImport, stageImport } from "@/lib/ledger-import/post";
 import { acceptMappings, suggestMappings } from "@/lib/ledger-import/mapping";
 import { runControls } from "@/lib/controls";
-import { correctionViews, dismissSuspenseCorrection, postSuspenseCorrection, suspenseCorrections } from "@/lib/adjust/suspense";
+import { correctionViews, postSuspenseCorrection, suspenseCorrections } from "@/lib/adjust/suspense";
 
 /** One ledger group that doesn't balance, accepted: its difference goes to 1999 (rule 15a). */
 async function unbalanced(rows: [string, string, number, number][]) {
@@ -54,7 +54,7 @@ describe("1999 corrections for ledger-file differences", () => {
     await expect(postSuspenseCorrection(db, { firmId: g.firm.id, clientId: g.client.id, lineId: c.lineId, accounts: c.lines.map((l) => l.accountCode) })).rejects.toThrow("sudah diputuskan");
   });
 
-  it("leaves the counter account to the accountant when no single line explains it, and a dismissal keeps the FAIL", async () => {
+  it("leaves the counter account to the accountant when no single line explains it, and the FAIL stays until it is corrected", async () => {
     const { g, control, suspenseNet } = await unbalanced([["21001", "Income Tax Payable - Art 21", 0, 100], ["10000", "Kas", 90, 0], ["21002", "Smartfarm Payable", 0, 5]]);
     const [c] = await suspenseCorrections(db, g.client.id, 2026, 1);
     expect([c.lines[1].accountCode, c.lines[1].debit, c.reason]).toEqual(["", "15", "Pilih akun lawan untuk selisih grup GL!2-4"]);
@@ -64,8 +64,10 @@ describe("1999 corrections for ledger-file differences", () => {
     await expect(postSuspenseCorrection(db, { firmId: g.firm.id, clientId: g.client.id, lineId: c.lineId, accounts: ["1999", "2120"] })).rejects.toThrow("sudah ditutup");
     expect((await correctionViews(db, g.client.id, 2026, 1)).map((v) => v.id)).toEqual([`suspense:${c.lineId}`]);
     await db.period.update({ where: { clientId_year_month: { clientId: g.client.id, year: 2026, month: 1 } }, data: { status: "OPEN" } });
-    await dismissSuspenseCorrection(db, { firmId: g.firm.id, clientId: g.client.id, lineId: c.lineId });
-    expect(await suspenseCorrections(db, g.client.id, 2026, 1)).toEqual([]);
-    expect([await suspenseNet(), (await control()).status]).toEqual([15n, "FAIL"]); // dismissing a draft fixes nothing
+    // Nothing but a posted correction hides it (a 1999 difference can't be dismissed), and the close keeps failing till then.
+    expect([await suspenseNet(), (await control()).status]).toEqual([15n, "FAIL"]);
+    expect((await suspenseCorrections(db, g.client.id, 2026, 1)).map((x) => x.lineId)).toEqual([c.lineId]);
+    await postSuspenseCorrection(db, { firmId: g.firm.id, clientId: g.client.id, lineId: c.lineId, accounts: ["1999", "2120"] });
+    expect([await suspenseNet(), (await control()).status === "FAIL"]).toEqual([0n, false]);
   });
 });

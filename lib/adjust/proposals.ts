@@ -1,4 +1,4 @@
-import type { Db } from "@/lib/db";
+import type { Db, Tx } from "@/lib/db";
 import type { ProposalSource } from "@/lib/generated/prisma/enums";
 import { LedgerError, postJournal } from "@/lib/ledger/post";
 import { periodBounds } from "@/lib/format";
@@ -69,11 +69,6 @@ export async function postProposal(db: Db, input: { clientId: string; proposalId
   const p = await db.proposedEntry.findFirst({ where: { id: input.proposalId, clientId: input.clientId } });
   if (!p) throw new LedgerError("Usulan tidak ditemukan.");
   if (p.status !== "PROPOSED") throw new LedgerError(p.status === "POSTED" ? "Usulan ini sudah dicatat." : "Usulan ini sudah diabaikan.");
-  // An AI draft is only valid for the books it was made from: the control must still flag the same rows.
-  // A draft without a snapshot (made before snapshots existed) can't be proven fresh, so it can't post either.
-  if (p.source === "AI_CONTROL" && (!p.controlKey || !p.snapshot || (await controlSnapshot(db, input.clientId, p.year, p.month, p.controlKey)) !== p.snapshot)) {
-    throw new LedgerError("Buku berubah sejak draf ini dibuat. Minta Jelaskan lagi, atau abaikan draf ini.");
-  }
   const lines = readLines(p.lines);
   if (input.accounts && input.accounts.length !== lines.length) throw new LedgerError("Jumlah akun tidak sesuai dengan baris usulan.");
   const codes = lines.map((l, i) => (input.accounts?.[i] ?? l.accountCode).trim());
@@ -85,41 +80,54 @@ export async function postProposal(db: Db, input: { clientId: string; proposalId
     if (a.isBank) throw new LedgerError("Usulan tidak boleh mengubah akun bank; sisi bank hanya berubah lewat mutasi.");
     return { accountId: a.id, debit: BigInt(l.debit), credit: BigInt(l.credit) };
   });
-  if (p.bankTransactionId) return postBankReclass(db, p, lines, codes, input.actorId);
   const date = periodBounds(p.year, p.month).end;
-  return db.$transaction(async (tx) => {
-    // `origin` keeps the rule-15 chain when the draft corrects an imported row (its file and sheet!row).
-    const entry = await postJournal(tx, { entityId: p.entityId, date, kind: "ADJUSTMENT", memo: p.memo, lines: posting, actorId: input.actorId, ...input.origin });
-    // Only a still-open proposal can be decided: a concurrent click rolls this transaction back.
-    const done = await tx.proposedEntry.updateMany({ where: { id: p.id, status: "PROPOSED" }, data: { status: "POSTED", entryId: entry.id, decidedById: input.actorId ?? null, decidedAt: new Date() } });
-    if (done.count !== 1) throw new LedgerError("Usulan ini sudah diputuskan.");
-    return entry;
-  });
+  try {
+    // Freshness check and write in one SERIALIZABLE transaction: a correction someone makes meanwhile either commits first
+    // (the snapshot then differs) or makes this one fail — a stale draft never posts on top of it.
+    return await db.$transaction(
+      async (tx) => {
+        if (p.source === "AI_CONTROL") {
+          // An AI draft is only valid for the books it was made from; one without a snapshot can't be proven fresh.
+          // The control readers only read (no nested transaction), so they run on this transaction.
+          const now = p.controlKey && p.snapshot ? await controlSnapshot(tx as unknown as Db, input.clientId, p.year, p.month, p.controlKey) : null;
+          if (!now || now !== p.snapshot) throw new LedgerError("Buku berubah sejak draf ini dibuat. Minta Jelaskan lagi, atau abaikan draf ini.");
+        }
+        const entry = p.bankTransactionId
+          ? await bankReclass(tx, p, lines, codes, input.actorId)
+          : // `origin` keeps the rule-15 chain when the draft corrects an imported row (its file and sheet!row).
+            await postJournal(tx, { entityId: p.entityId, date, kind: "ADJUSTMENT", memo: p.memo, lines: posting, actorId: input.actorId, ...input.origin });
+        // Only a still-open proposal can be decided: a concurrent click rolls this transaction back.
+        const done = await tx.proposedEntry.updateMany({ where: { id: p.id, status: "PROPOSED" }, data: { status: "POSTED", entryId: entry.id, decidedById: input.actorId ?? null, decidedAt: new Date() } });
+        if (done.count !== 1) throw new LedgerError("Usulan ini sudah diputuskan.");
+        return entry;
+      },
+      { isolationLevel: "Serializable", timeout: 60_000 },
+    );
+  } catch (e) {
+    if ((e as { code?: string }).code === "P2034") throw new LedgerError("Buku sedang diubah bersamaan; coba catat lagi.");
+    throw e;
+  }
 }
 
 /**
  * A draft that moves one bank line to another account: the bank side never changes, so it goes through the reviewer's own
  * writer (a RECLASS of the difference, Memory learns it) instead of a free journal that would leave the line mis-coded.
  */
-async function postBankReclass(db: Db, p: { id: string; entityId: string; bankTransactionId: string | null }, lines: ProposalLine[], codes: string[], actorId?: string | null) {
-  const t = await db.bankTransaction.findFirst({ where: { id: p.bankTransactionId!, entityId: p.entityId } });
+async function bankReclass(tx: Tx, p: { entityId: string; bankTransactionId: string | null }, lines: ProposalLine[], codes: string[], actorId?: string | null) {
+  const t = await tx.bankTransaction.findFirst({ where: { id: p.bankTransactionId!, entityId: p.entityId } });
   if (!t || !t.accountCode) throw new LedgerError("Transaksi bank usulan ini tidak ditemukan.");
   const from = lines.findIndex((l) => l.accountCode === t.accountCode);
   if (from < 0 || lines.length !== 2) throw new LedgerError("Usulan ini tidak lagi cocok dengan transaksinya.");
   if (codes[from] !== t.accountCode) throw new LedgerError(`Baris ${t.accountCode} adalah akun transaksi saat ini; ganti akun tujuan saja.`);
   const target = codes[1 - from];
   if (target === t.accountCode) throw new LedgerError("Akun tujuan sama dengan akun saat ini.");
-  return db.$transaction(async (tx) => {
-    const before = new Set((await tx.journalEntry.findMany({ where: { bankTransactionId: t.id }, select: { id: true } })).map((e) => e.id));
-    // The approved draft moves the full amount: a tax split on the line would post something else, so it is released
-    // (the card says so); a PPN split that still applies is set again in Review.
-    await reviewTransactionTx(tx, { bankTxId: t.id, accountCode: target, taxTag: null, actorId });
-    const entry = await tx.journalEntry.findFirst({ where: { bankTransactionId: t.id, kind: "RECLASS", id: { notIn: [...before] } } });
-    if (!entry) throw new LedgerError("Tidak ada selisih untuk direklasifikasi.");
-    const done = await tx.proposedEntry.updateMany({ where: { id: p.id, status: "PROPOSED" }, data: { status: "POSTED", entryId: entry.id, decidedById: actorId ?? null, decidedAt: new Date() } });
-    if (done.count !== 1) throw new LedgerError("Usulan ini sudah diputuskan.");
-    return entry;
-  });
+  const before = new Set((await tx.journalEntry.findMany({ where: { bankTransactionId: t.id }, select: { id: true } })).map((e) => e.id));
+  // The approved draft moves the full amount: a tax split on the line would post something else, so it is released
+  // (the card says so); a PPN split that still applies is set again in Review.
+  await reviewTransactionTx(tx, { bankTxId: t.id, accountCode: target, taxTag: null, actorId });
+  const entry = await tx.journalEntry.findFirst({ where: { bankTransactionId: t.id, kind: "RECLASS", id: { notIn: [...before] } } });
+  if (!entry) throw new LedgerError("Tidak ada selisih untuk direklasifikasi.");
+  return entry;
 }
 
 export async function dismissProposal(db: Db, input: { clientId: string; proposalId: string; actorId?: string | null }) {

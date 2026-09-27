@@ -12,6 +12,8 @@ describe("financing suggestions", () => {
     expect(code("BIAYA PROVISI PLAFON KREDIT", "OUT")).toBe("7100");
     expect(code("SETORAN MODAL PEMEGANG SAHAM", "IN")).toBe("3100");
     expect(code("PENCAIRAN PINJAMAN MODAL KERJA", "IN")).toBe("2210"); // working-capital loan, not equity
+    expect(code("PENCAIRAN KREDIT KMK 08/26", "IN")).toBe("2210");
+    expect(code("PELUNASAN KREDIT INVESTASI", "OUT")).toBe("2210");
     expect(code("PINDAH BUKU KE REK 123", "OUT")).toBe("1199");
     expect(financingSuggestion("PENCAIRAN PINJAMAN KMK", "IN")).toMatchObject({ method: "HEURISTIC", confidence: 0.5, taxTag: null });
   });
@@ -21,6 +23,8 @@ describe("financing suggestions", () => {
     expect(code("BUNGA JASA GIRO", "IN")).toBeNull(); // interest income, no financing word
     expect(code("BUNGA PINJAMAN", "IN")).toBeNull();
     expect(code("PENEMPATAN DEPOSITO", "OUT")).toBeNull(); // no template account for deposits
+    expect(code("PELUNASAN INV 2026-0815 PT MITRA", "OUT")).toBeNull(); // settling an invoice is not a loan
+    expect(code("PENCAIRAN DEPOSITO", "IN")).toBeNull();
   });
 });
 

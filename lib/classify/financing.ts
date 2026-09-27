@@ -9,15 +9,16 @@ import type { Classification } from "@/lib/classify/types";
  */
 
 /** Words that mark financing or own-money movements — balance-sheet, not Laba Rugi. */
-export const FINANCING = /\b(PINJAMAN|LOAN|PRK|PLAFON|ANGSURAN|POKOK|SETORAN MODAL|MODAL|DEPOSITO|PENEMPATAN|PINDAH ?BUKU|OVERBOOK\w*|ANTAR REKENING)\b/i;
+export const FINANCING = /\b(PINJAMAN|LOAN|PRK|PLAFON|ANGSURAN|POKOK|PENCAIRAN (?:KREDIT|KMK|KI)|PELUNASAN (?:KREDIT|KMK|KI)|SETORAN MODAL|MODAL|DEPOSITO|PENEMPATAN|PINDAH ?BUKU|OVERBOOK\w*|ANTAR REKENING)\b/i;
 /** Interest, fees and taxes on those movements are legitimately P&L. */
 export const FINANCING_COST = /\b(BUNGA|INTEREST|BIAYA|FEE|ADM\w*|PAJAK|TAX|MATERAI|STAMP)\b/i;
 
 const INTEREST = /\b(BUNGA|INTEREST)\b/i;
 const FEES = /\b(BIAYA|FEE|ADM\w*|MATERAI|STAMP|PROVISI)\b/i;
 const CAPITAL = /\b(SETORAN MODAL|MODAL)\b/i;
-const LOAN_IN = /\b(PENCAIRAN|PINJAMAN|LOAN|PLAFON|PRK)\b/i;
-const LOAN_OUT = /\b(ANGSURAN|POKOK|PELUNASAN|PINJAMAN|LOAN)\b/i;
+// PENCAIRAN / PELUNASAN alone also mean a deposit or an invoice being settled: they count only with a loan word next to them.
+const LOAN_IN = /\b(PINJAMAN|LOAN|PLAFON|PRK|PENCAIRAN (?:KREDIT|KMK|KI))\b/i;
+const LOAN_OUT = /\b(ANGSURAN|POKOK|PINJAMAN|LOAN|PELUNASAN (?:KREDIT|KMK|KI))\b/i;
 const OWN_MOVE = /\b(PINDAH ?BUKU|OVERBOOK\w*|ANTAR REKENING)\b/i;
 
 export const FINANCING_CONFIDENCE = 0.5;

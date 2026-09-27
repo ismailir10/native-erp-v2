@@ -23,7 +23,7 @@ import { postRevaluation, RevaluationError } from "@/lib/fx/revalue";
 import { reviewClose, type CloseReviewView } from "@/lib/controls/ai-review";
 import { explainControl, ExplainError, type ControlExplanation } from "@/lib/controls/explain";
 import { dismissProposal, postProposal } from "@/lib/adjust/proposals";
-import { dismissSuspenseCorrection, postSuspenseCorrection, SUSPENSE_PREFIX } from "@/lib/adjust/suspense";
+import { postSuspenseCorrection, SUSPENSE_NOT_DISMISSABLE, SUSPENSE_PREFIX } from "@/lib/adjust/suspense";
 import { AiBudgetError } from "@/lib/ai/budget";
 import { AiAnswerError } from "@/lib/ai/provider";
 import { acceptCheck, LedgerImportError, postImport, stageImport } from "@/lib/ledger-import/post";
@@ -355,8 +355,8 @@ export async function dismissProposalAction(clientId: string, proposalId: string
   try {
     const client = await getClientForFirm(clientId);
     const actorId = (await getCurrentMember()).id;
-    if (proposalId.startsWith(SUSPENSE_PREFIX)) await dismissSuspenseCorrection(prisma, { firmId: client.firmId, clientId: client.id, lineId: proposalId.slice(SUSPENSE_PREFIX.length), actorId });
-    else await dismissProposal(prisma, { clientId: client.id, proposalId, actorId });
+    if (proposalId.startsWith(SUSPENSE_PREFIX)) return { ok: false, error: SUSPENSE_NOT_DISMISSABLE };
+    await dismissProposal(prisma, { clientId: client.id, proposalId, actorId });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
   } catch (e) {

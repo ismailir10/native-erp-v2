@@ -77,7 +77,8 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     missing date/account, unbalanced group, unknown currency, missing rate) stops posting; an unbalanced group may be **explicitly
     accepted**, which posts its difference to 1999 with memo "Selisih dari file sumber". Same file twice for the same entity is refused.
     Each such 1999 line gets a deterministic correction proposal (`lib/adjust/suspense.ts`, rule 20b): reverse it on 1999 against a
-    counter account — prefilled only when one line of the same entry has exactly that amount — posted only by the accountant's click.
+    counter account — prefilled only when one line of the same entry has exactly that amount — posted only by the accountant's click
+    (it can't be dismissed: the close FAILs until 1999 is cleared), keeping the group's `ledgerImportId` + `sourceRef`.
 16. Parsers detect format from **content**, not file name, and raise `ParseError` with a Bahasa message the UI shows verbatim.
 
 ## AI (credit is limited — treat every call as money)

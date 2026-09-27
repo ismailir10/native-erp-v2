@@ -2,7 +2,7 @@ import type { Db } from "@/lib/db";
 import { LedgerError } from "@/lib/ledger/post";
 import { formatDate, periodBounds } from "@/lib/format";
 import { SOURCE_DIFFERENCE_MEMO } from "@/lib/ledger-import/post";
-import { dismissProposal, postProposal, proposalViews, saveProposal, type ProposalLine } from "@/lib/adjust/proposals";
+import { postProposal, proposalViews, saveProposal, type ProposalLine } from "@/lib/adjust/proposals";
 
 /**
  * 1999 corrections (accounting-rules 15a / 20b): an accepted unbalanced ledger group left its difference on 1999. Each such line
@@ -32,8 +32,9 @@ async function candidates(db: Db, clientId: string, where: { year: number; month
     include: { account: true, entry: { include: { entity: true, lines: { include: { account: true } } } } },
     orderBy: [{ date: "asc" }, { id: "asc" }],
   });
-  // Only a decision hides a line; an open draft (a post that failed, e.g. locked period) is reused on the next click.
-  const decided = new Set((await db.proposedEntry.findMany({ where: { key: { in: lines.map((l) => `SUSPENSE:${l.id}`) }, status: { not: "PROPOSED" } }, select: { key: true } })).map((p) => p.key));
+  // Only a posted correction hides a line; an open draft (a post that failed, e.g. locked period) is reused on the next click.
+  // A 1999 difference can't be waved away (the close FAILs until 1999 is cleared), so there is no dismissed state to hide.
+  const decided = new Set((await db.proposedEntry.findMany({ where: { key: { in: lines.map((l) => `SUSPENSE:${l.id}`) }, status: "POSTED" }, select: { key: true } })).map((p) => p.key));
   return lines.flatMap((l) => {
     if (decided.has(`SUSPENSE:${l.id}`)) return [];
     const amount = l.debit > 0n ? l.debit : l.credit;
@@ -79,11 +80,8 @@ export async function postSuspenseCorrection(db: Db, input: { firmId: string; cl
   return postProposal(db, { clientId: input.clientId, proposalId: p.id, accounts: input.accounts, actorId: input.actorId, origin: c.origin });
 }
 
-export async function dismissSuspenseCorrection(db: Db, input: { firmId: string; clientId: string; lineId: string; actorId?: string | null }) {
-  const c = await one(db, input.clientId, input.lineId);
-  const p = await store(db, input.firmId, input.clientId, c);
-  await dismissProposal(db, { clientId: input.clientId, proposalId: p.id, actorId: input.actorId });
-}
+/** A 1999 difference must be corrected before the close: its only correction can't be dismissed (there'd be no way to clear it). */
+export const SUSPENSE_NOT_DISMISSABLE = "Selisih di 1999 harus dikoreksi sebelum tutup buku: pilih akun lawan lalu catat.";
 
 /** Everything the *Usulan jurnal koreksi* card shows: stored drafts, then this period's undecided 1999 corrections. */
 export async function correctionViews(db: Db, clientId: string, year: number, month: number) {
