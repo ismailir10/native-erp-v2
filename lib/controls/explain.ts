@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { citedBankIds } from "@/lib/controls/cited";
 import type { Db } from "@/lib/db";
 import { runControls } from "@/lib/controls";
 import { bankLineState, gather, snapshotOf, CLOSE_REVIEW_TOKEN_LIMIT, type ReviewLink } from "@/lib/controls/ai-review";
@@ -65,20 +66,6 @@ export async function explainControl(db: Db, firmId: string, clientId: string, y
     }
   }
   return { controlKey, explanation: answer.explanation, suggestion: answer.suggestion, note: control.status === "REVIEW" ? answer.note : "", links: answer.refs.flatMap((r) => (g.links.has(r) ? [g.links.get(r)!] : [])), proposal };
-}
-
-/**
- * The bank lines a draft's citations point at: bank rows cited directly, and the bank line behind a cited journal line (`jl:`) or
- * entry (`je:`), as the ledger anomaly scans cite them, so a bank-derived row is never mistaken for a free journal.
- */
-async function citedBankIds(db: Db, entityId: string, citedIds: string[]): Promise<string[]> {
-  const ids = (prefix: string) => citedIds.filter((r) => r.startsWith(prefix)).map((r) => r.slice(prefix.length));
-  const [lines, entries] = await Promise.all([
-    db.journalLine.findMany({ where: { id: { in: ids("jl:") }, entityId }, select: { entry: { select: { bankTransactionId: true } } } }),
-    db.journalEntry.findMany({ where: { id: { in: ids("je:") }, entityId }, select: { bankTransactionId: true } }),
-  ]);
-  const behind = [...lines.map((l) => l.entry.bankTransactionId), ...entries.map((e) => e.bankTransactionId)];
-  return [...new Set([...citedIds, ...behind.filter((id): id is string => !!id)])];
 }
 
 /**

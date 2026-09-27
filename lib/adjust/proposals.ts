@@ -5,6 +5,7 @@ import { periodBounds } from "@/lib/format";
 import { reviewTransactionTx } from "@/lib/review";
 import { controlSnapshot } from "@/lib/controls/ai-review";
 import { amountOf } from "@/lib/ai/provider";
+import { citedBankIds } from "@/lib/controls/cited";
 
 /**
  * Proposed entries (accounting-rules 20b): draft journals from the close copilot or a deterministic check. Nothing posts until
@@ -100,6 +101,14 @@ export async function postProposal(db: Db, input: { clientId: string; proposalId
     return await db.$transaction(
       async (tx) => {
         await input.guard?.(tx); // a caller's own precondition, checked on the same serializable snapshot as the write
+        if (p.source === "AI_CONTROL" && !p.bankTransactionId) {
+          // A free draft must not touch the account of a bank line it cites (directly or through its journal row): that line only
+          // moves through the reviewer's writer (rule 3). Catches drafts stored before `jl:`/`je:` citations resolved to bank lines.
+          const bankIds = await citedBankIds(tx, p.entityId, p.refs);
+          const touched = new Set([...lines.map((l) => l.accountCode), ...codes]);
+          const moved = await tx.bankTransaction.count({ where: { id: { in: bankIds }, entityId: p.entityId, accountCode: { in: [...touched] } } });
+          if (moved) throw new LedgerError("Draf ini memindahkan transaksi bank, jadi harus lewat Review. Minta Jelaskan lagi, atau abaikan draf ini.");
+        }
         if (p.source === "AI_CONTROL") {
           // An AI draft is only valid for the books it was made from; one without a snapshot can't be proven fresh.
           // The control readers only read (no nested transaction), so they run on this transaction.
