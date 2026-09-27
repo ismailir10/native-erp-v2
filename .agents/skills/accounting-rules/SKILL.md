@@ -18,6 +18,12 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
    which posts a **RECLASS of the difference** on the classification side only; the bank side never changes.
 4. **Locked periods reject every write** — imports, reclasses, adjustments. Unlock is explicit (`unlockAction`).
 5. **Opening balances** are `OPENING` entries; the plug goes to 3200 Saldo Laba. Prior-year P&L folds into 3200 in the TB.
+5a. **Adjustment schedules** (`lib/adjust`): depreciation, amortisation and accruals are an `AdjustmentSchedule` (entity, debit / credit
+    account, total in minor units, months, start). Installments are exact (⌊total/n⌋, remainder on the last); an accrual is one month
+    and reverses on the 1st of the next. Each month's installment is **proposed at read time and posted only by the accountant's click**
+    through `postJournal()` (kind `ADJUSTMENT`), carrying `scheduleId` + `installment` (unique: posts once). Never edited after posting —
+    stop and create a new one. Candidates (fixed-asset purchase, prepayment, deferred revenue, recurring cost missing this month) are
+    deterministic suggestions only. A due, unposted installment is a REVIEW control `sched:`.
 
 ## Money
 6. `bigint` **minor units of the entity's functional currency** everywhere in the domain (ADR 0006). IDR has exponent 0,

@@ -32,3 +32,9 @@ same ≤ 40-row cap, budget and cache: the flagged accounts' movement per baseli
 on them with their memo cut to 80 characters and their source (bank row, ledger `sheet!row`, adjustment). A ledger-file memo is the
 client's own GL description, the ledger counterpart of a bank description; nothing else from the file (other rows, other accounts,
 evidence passages) is sent.
+
+**Note (27 Sep 2026, cycle adjustment-schedules).** The first "proposed entries" (decision 2) are deterministic, not AI: adjustment
+schedules propose each month's depreciation, amortisation and accrual installment, and ledger candidates suggest new schedules. They
+follow the same rule — nothing posts until the accountant clicks, and posting goes through `postJournal()` (accounting-rules 5a).
+AI-drafted entries remain a later cycle and will reuse this path.
+

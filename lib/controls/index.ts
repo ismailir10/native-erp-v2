@@ -7,6 +7,7 @@ import { revaluationProposals } from "@/lib/fx/revalue";
 import { balanceSheet, combinedWorksheet, trialBalance } from "@/lib/reports/ledger";
 import { sanityControls } from "@/lib/controls/sanity";
 import { anomalyControls } from "@/lib/controls/anomaly";
+import { dueProposals } from "@/lib/adjust/schedules";
 
 /**
  * Close controls (analog of belifi 16_CONTROLS). PASS / REVIEW / FAIL.
@@ -116,6 +117,22 @@ export async function runControls(db: Db, clientId: string, year: number, month:
         ? sane
         : [{ key: `sanity:${e.id}`, title: "Kewajaran pembukuan", scope: e.shortName, status: "PASS" as const, detail: "Tidak ada saldo janggal, pembiayaan di Laba Rugi, bulan kosong, tebakan yang diterima begitu saja, fluktuasi atau jurnal ganda" }]),
     );
+
+    // Adjustment schedules (rule 5a): an installment of this month not yet posted needs the click or a note.
+    const due = await dueProposals(db, clientId, year, month, e.id);
+    if (due.length) {
+      const sKey = `sched:${e.id}`;
+      const list = due.slice(0, 3).map((p) => `${p.memo} ${fmt(p.installment.amount)}`);
+      controls.push({
+        key: sKey,
+        title: "Jurnal terjadwal belum dicatat",
+        scope: e.shortName,
+        status: "REVIEW",
+        detail: `${due.length} angsuran: ${list.join("; ")}${due.length > 3 ? `; +${due.length - 3} lainnya` : ""}`,
+        href: `${base}/journals/new?period=${year}-${String(month).padStart(2, "0")}`,
+        ack: acks.get(sKey),
+      });
+    }
   }
 
   // Ledger / Neraca imports (rule 15a): accepted source differences stay FAIL until 1999 is cleared; REVIEW checks need a note.

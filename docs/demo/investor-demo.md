@@ -39,10 +39,14 @@ Automated end to end by `e2e/investor-demo.spec.ts` — if you change this scrip
 - Tab **Kertas Kerja Gabungan** → PT + owner side by side, **intercompany eliminated** (Rp 197 jt), *Antar entitas cocok*.
   Hover the ⓘ: it's a management combined view, not SAK consolidation — honesty that auditors appreciate.
 
-### 5. Jurnal Penyesuaian — beyond cash basis (30 s)
-- Template **Penyusutan** → 9.500.000 debit / credit → *Seimbang* → Simpan.
+### 5. Jurnal Penyesuaian — beyond cash basis (45 s)
+- **Jurnal terjadwal Agustus 2026**: *Penyusutan aset tetap (garis lurus) (6/120) Rp 9.500.000* — the depreciation schedule
+  proposes this month's installment → **Catat**. No typing; March–July were posted the same way.
+- **Kandidat dari buku besar**: the Rp 166.666.667 *mesin pakan* reviewed in step 3 shows up as a fixed-asset purchase →
+  **Buat jadwal** (prefilled: 6180 / 1219, 48 bulan from September, ± Rp 3.472.222 a month) → **Simpan jadwal**.
 
-> Talking point: *bank data gives cash basis; adjusting entries make it accrual-ready.*
+> Talking point: *bank data gives cash basis; schedules make it accrual-ready — Buku proposes each month's depreciation,
+> amortisation and accruals, spots new assets and prepayments in the ledger, and the accountant posts with one click.*
 
 ### 6. Tutup Buku — the controlled close (60 s)
 - **Arithmetic all Lolos**: TB balanced, A = L + E, each bank reconciled to the statement, continuity,

@@ -138,61 +138,65 @@ model Firm {
 }
 
 model Client {
-  id            String         @id @default(cuid())
+  id            String               @id @default(cuid())
   firmId        String
-  firm          Firm           @relation(fields: [firmId], references: [id])
+  firm          Firm                 @relation(fields: [firmId], references: [id])
   name          String
   industry      String?
-  createdAt     DateTime       @default(now())
+  createdAt     DateTime             @default(now())
   entities      Entity[]
   accounts      Account[]
   periods       Period[]
   rules         Rule[]
   memories      Memory[]
   ledgerImports LedgerImport[]
-  coaVersion    Int            @default(1)
+  schedules     AdjustmentSchedule[]
+  coaVersion    Int                  @default(1)
 
   @@index([firmId])
 }
 
 model Entity {
-  id                 String          @id @default(cuid())
+  id                 String               @id @default(cuid())
   firmId             String
   clientId           String
-  client             Client          @relation(fields: [clientId], references: [id])
+  client             Client               @relation(fields: [clientId], references: [id])
   name               String
   shortName          String
   kind               EntityKind
   npwp               String?
   /// ISO 4217 code; journal amounts of this entity are minor units of it (ADR 0006). Registry: lib/fx/currency.ts.
-  functionalCurrency String          @default("IDR")
+  functionalCurrency String               @default("IDR")
   bankAccounts       BankAccount[]
   entries            JournalEntry[]
   sourceAccounts     SourceAccount[]
+  schedules          AdjustmentSchedule[]
 
   @@index([clientId])
 }
 
 /// Chart of accounts is per Client (shared by its entities) so combined reports line up by code.
 model Account {
-  id             String          @id @default(cuid())
-  firmId         String
-  clientId       String
-  client         Client          @relation(fields: [clientId], references: [id])
-  code           String
-  name           String
-  type           AccountType
-  normalBalance  NormalBalance
-  fsLine         String
-  isBank         Boolean         @default(false)
-  isIntercompany Boolean         @default(false)
-  isClearing     Boolean         @default(false)
-  isSuspense     Boolean         @default(false)
-  isRetained     Boolean         @default(false)
-  taxTag         TaxTag?
-  lines          JournalLine[]
-  bankAccounts   BankAccount[]
-  sourceAccounts SourceAccount[]
+  id              String               @id @default(cuid())
+  firmId          String
+  clientId        String
+  client          Client               @relation(fields: [clientId], references: [id])
+  code            String
+  name            String
+  type            AccountType
+  normalBalance   NormalBalance
+  fsLine          String
+  isBank          Boolean              @default(false)
+  isIntercompany  Boolean              @default(false)
+  isClearing      Boolean              @default(false)
+  isSuspense      Boolean              @default(false)
+  isRetained      Boolean              @default(false)
+  taxTag          TaxTag?
+  lines           JournalLine[]
+  bankAccounts    BankAccount[]
+  sourceAccounts  SourceAccount[]
+  scheduleDebits  AdjustmentSchedule[] @relation("ScheduleDebit")
+  scheduleCredits AdjustmentSchedule[] @relation("ScheduleCredit")
 
   @@unique([clientId, code])
 }
@@ -295,27 +299,34 @@ model BankTransaction {
 }
 
 model JournalEntry {
-  id                String           @id @default(cuid())
+  id                String               @id @default(cuid())
   firmId            String
   entityId          String
-  entity            Entity           @relation(fields: [entityId], references: [id])
+  entity            Entity               @relation(fields: [entityId], references: [id])
   periodId          String
-  period            Period           @relation(fields: [periodId], references: [id])
-  date              DateTime         @db.Date
+  period            Period               @relation(fields: [periodId], references: [id])
+  date              DateTime             @db.Date
   kind              EntryKind
   memo              String
   bankTransactionId String?
-  bankTransaction   BankTransaction? @relation(fields: [bankTransactionId], references: [id])
+  bankTransaction   BankTransaction?     @relation(fields: [bankTransactionId], references: [id])
   ledgerImportId    String?
-  ledgerImport      LedgerImport?    @relation(fields: [ledgerImportId], references: [id])
+  ledgerImport      LedgerImport?        @relation(fields: [ledgerImportId], references: [id])
   /// Source rows of a ledger-derived entry, e.g. "20_OPCO_GL_MASTER!5-87".
   sourceRef         String?
+  /// Installment of an adjustment schedule (C4); unique per schedule so a double click posts once.
+  scheduleId        String?
+  schedule          AdjustmentSchedule?  @relation("ScheduleEntries", fields: [scheduleId], references: [id], onDelete: Restrict)
+  installment       Int?
+  /// Schedules created from this entry (a fixed-asset purchase, a prepayment).
+  schedulesFrom     AdjustmentSchedule[] @relation("ScheduleSource")
   /// Member who posted it; null for seeds and system postings ("Sistem").
   postedById        String?
-  postedBy          FirmMember?      @relation("EntryPostedBy", fields: [postedById], references: [id])
-  createdAt         DateTime         @default(now())
+  postedBy          FirmMember?          @relation("EntryPostedBy", fields: [postedById], references: [id])
+  createdAt         DateTime             @default(now())
   lines             JournalLine[]
 
+  @@unique([scheduleId, installment])
   @@index([entityId, date])
   @@index([bankTransactionId])
   @@index([ledgerImportId])
@@ -758,14 +769,15 @@ model FirmMember {
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 
-  postedEntries    JournalEntry[]    @relation("EntryPostedBy")
-  signoffs         CloseSignoff[]    @relation("SignoffDoneBy")
-  lockedPeriods    Period[]          @relation("PeriodLockedBy")
-  acks             ControlAck[]      @relation("AckDoneBy")
-  statementImports StatementImport[] @relation("StatementImportedBy")
-  ledgerImports    LedgerImport[]    @relation("LedgerImportedBy")
-  ledgerPostings   LedgerImport[]    @relation("LedgerPostedBy")
-  mappings         SourceAccount[]   @relation("MappingAcceptedBy")
+  postedEntries    JournalEntry[]       @relation("EntryPostedBy")
+  signoffs         CloseSignoff[]       @relation("SignoffDoneBy")
+  lockedPeriods    Period[]             @relation("PeriodLockedBy")
+  acks             ControlAck[]         @relation("AckDoneBy")
+  statementImports StatementImport[]    @relation("StatementImportedBy")
+  ledgerImports    LedgerImport[]       @relation("LedgerImportedBy")
+  ledgerPostings   LedgerImport[]       @relation("LedgerPostedBy")
+  mappings         SourceAccount[]      @relation("MappingAcceptedBy")
+  schedules        AdjustmentSchedule[] @relation("ScheduleCreatedBy")
 
   @@index([firmId])
 }
@@ -773,4 +785,44 @@ model FirmMember {
 enum MemberRole {
   ADMIN
   AKUNTAN
+}
+
+enum ScheduleKind {
+  DEPRECIATION
+  AMORTIZATION
+  ACCRUAL
+}
+
+/// Recurring adjusting entry (accounting-rules 5a): each month's installment is proposed at read time and posted only by the
+/// accountant's click through postJournal(). Amount is the total in minor units of the entity's functional currency.
+model AdjustmentSchedule {
+  id              String         @id @default(cuid())
+  firmId          String
+  clientId        String
+  client          Client         @relation(fields: [clientId], references: [id])
+  entityId        String
+  entity          Entity         @relation(fields: [entityId], references: [id])
+  kind            ScheduleKind
+  memo            String
+  debitAccountId  String
+  debitAccount    Account        @relation("ScheduleDebit", fields: [debitAccountId], references: [id])
+  creditAccountId String
+  creditAccount   Account        @relation("ScheduleCredit", fields: [creditAccountId], references: [id])
+  amount          BigInt
+  months          Int
+  startYear       Int
+  startMonth      Int
+  /// ACCRUAL: one reversal (sides swapped, dated the 1st) in the month after the last installment.
+  reverse         Boolean        @default(false)
+  /// The entry it came from (fixed-asset purchase, prepayment) — the rule 15 chain.
+  sourceEntryId   String?
+  sourceEntry     JournalEntry?  @relation("ScheduleSource", fields: [sourceEntryId], references: [id])
+  stoppedAt       DateTime?
+  createdById     String?
+  createdBy       FirmMember?    @relation("ScheduleCreatedBy", fields: [createdById], references: [id])
+  createdAt       DateTime       @default(now())
+  entries         JournalEntry[] @relation("ScheduleEntries")
+
+  @@index([clientId])
+  @@index([entityId])
 }
