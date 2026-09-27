@@ -1,5 +1,5 @@
 import type { Db } from "@/lib/db";
-import type { NormalBalance } from "@/lib/generated/prisma/enums";
+import type { AccountType, NormalBalance } from "@/lib/generated/prisma/enums";
 import type { LedgerRow } from "@/components/app/ledger-table";
 import { dateOnly, formatDate, formatDateTime } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
@@ -68,4 +68,28 @@ export async function accountLedger(
     };
   });
   return { opening, rows };
+}
+
+const defaultNormal = (type: AccountType | null | undefined): NormalBalance => (type === "ASET" || type === "BEBAN" ? "DEBIT" : "CREDIT");
+
+/**
+ * How a client account's ledger reads (normal side; whether it restarts on 1 January), taken from the Buku accounts its lines were
+ * actually posted to: a later remap moves no posted line, so it must not reinterpret their history. Posted accounts that disagree
+ * fall back to the type in the client's file, then to the earliest posted line. With nothing posted, the current mapping decides.
+ */
+export async function sourceLedgerBasis(
+  db: Db,
+  src: { id: string; typeHint: AccountType | null; account: { type: AccountType; normalBalance: NormalBalance } | null },
+): Promise<{ normalBalance: NormalBalance; isPL: boolean }> {
+  const posted = (await db.journalLine.findMany({
+    where: { sourceAccountId: src.id },
+    distinct: ["accountId"],
+    orderBy: [{ date: "asc" }, { id: "asc" }],
+    select: { account: { select: { type: true, normalBalance: true } } },
+  })).map((l) => l.account);
+  const types = new Set(posted.map((a) => a.type));
+  const type = posted.length ? (types.size === 1 ? posted[0].type : src.typeHint ?? posted[0].type) : (src.account?.type ?? src.typeHint);
+  const sides = new Set(posted.filter((a) => a.type === type).map((a) => a.normalBalance));
+  const normalBalance = sides.size === 1 ? [...sides][0] : !posted.length && src.account ? src.account.normalBalance : defaultNormal(type);
+  return { normalBalance, isPL: type === "PENDAPATAN" || type === "BEBAN" };
 }

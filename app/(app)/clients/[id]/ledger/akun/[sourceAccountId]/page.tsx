@@ -9,7 +9,7 @@ import { NextStep, PageHeader } from "@/components/app/page-header";
 import { ScopeBar } from "@/components/app/scope-bar";
 import { LedgerTable } from "@/components/app/ledger-table";
 import { Card, CardContent } from "@/components/ui/card";
-import { accountLedger } from "@/lib/reports/account-ledger";
+import { accountLedger, sourceLedgerBasis } from "@/lib/reports/account-ledger";
 
 /** Ledger of one of the client's own accounts (from their ledger or Neraca file), every line down to its source row. */
 export default async function ClientAccountLedger({ params, searchParams }: { params: Promise<{ id: string; sourceAccountId: string }>; searchParams: SearchParams }) {
@@ -17,9 +17,8 @@ export default async function ClientAccountLedger({ params, searchParams }: { pa
   const { client, period, periodOptions, base } = await loadClientPage(params, searchParams);
   const src = await prisma.sourceAccount.findFirst({ where: { id: sourceAccountId, clientId: client.id }, include: { account: true, entity: true } });
   if (!src) notFound();
-  const type = src.account?.type ?? src.typeHint;
-  const isPL = type === "PENDAPATAN" || type === "BEBAN";
-  const normalBalance = src.account?.normalBalance ?? (type === "ASET" || type === "BEBAN" ? "DEBIT" : "CREDIT");
+  // Read by the accounts its lines were posted to, so a later remap doesn't reinterpret history.
+  const { normalBalance, isPL } = await sourceLedgerBasis(prisma, src);
   const { opening, rows } = await accountLedger(prisma, { sourceAccountId: src.id, entityIds: [src.entityId], start: period.start, end: period.end, normalBalance, isPL });
   const q = { period: period.key, entity: src.entityId };
   return (
