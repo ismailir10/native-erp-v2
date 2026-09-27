@@ -83,9 +83,11 @@ export const postedBasis = <T extends { type: AccountType }>(posted: T[], typeHi
 export async function sourceLedgerBasis(
   db: Db,
   src: { id: string; typeHint: AccountType | null; account: { type: AccountType; normalBalance: NormalBalance } | null },
+  asOf?: Date,
 ): Promise<{ normalBalance: NormalBalance; isPL: boolean }> {
+  // Only lines up to the report date count, the same horizon as the client-account TB row it drills from.
   const posted = (await db.journalLine.findMany({
-    where: { sourceAccountId: src.id },
+    where: { sourceAccountId: src.id, ...(asOf ? { date: { lte: asOf } } : {}) },
     distinct: ["accountId"],
     orderBy: [{ date: "asc" }, { id: "asc" }],
     select: { account: { select: { type: true, normalBalance: true } } },

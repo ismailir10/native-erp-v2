@@ -124,6 +124,21 @@ describe("client COA-first reports", () => {
     expect([row(y.id).accountCode, row(y.id).type, row(y.id).net]).toEqual(["1110", "ASET", 30n]);
     // The same basis as its ledger.
     expect((await sourceLedgerBasis(db, { ...x, account: null })).normalBalance).toBe("CREDIT");
+
+    // A client account typed ASET in its file, posted to 2110 before the report date and to 1110 only after it: the January TB row
+    // and the January ledger both read by 2110, never by the later account.
+    const z = await db.sourceAccount.create({ data: { firmId: g.firm.id, clientId: g.client.id, entityId: pt, code: "19003", name: "Rupa-rupa 19003", typeHint: "ASET" } });
+    await db.$transaction(async (tx) => {
+      const line = async (code: string, date: Date) =>
+        postJournal(tx, { entityId: pt, date, kind: "ADJUSTMENT", memo: "uji", lines: [{ accountId: await acc(code), debit: 7n, sourceAccountId: z.id }, { accountId: await acc("3100"), credit: 7n }] });
+      await line("2110", dateOnly(2025, 12, 2));
+      await line("2110", dateOnly(2026, 1, 6));
+      await line("1110", dateOnly(2026, 2, 4));
+    });
+    const jan = (await sourceTrialBalance(db, pt, dateOnly(2026, 1, 31))).find((r) => r.sourceAccountId === z.id)!;
+    expect([jan.accountCode, jan.type]).toEqual(["2110", "LIABILITAS"]);
+    expect(await sourceLedgerBasis(db, { ...z, account: null }, dateOnly(2026, 1, 31))).toEqual({ normalBalance: "CREDIT", isPL: false });
+    expect(await sourceLedgerBasis(db, { ...z, account: null }, dateOnly(2026, 2, 28))).toEqual({ normalBalance: "DEBIT", isPL: false }); // by then 1110 matches the file's type
   });
 
   it("breaks each Buku account into the client accounts behind it", async () => {
