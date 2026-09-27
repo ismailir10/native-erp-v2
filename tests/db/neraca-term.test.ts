@@ -56,6 +56,27 @@ describe("Neraca sub-headings steer mapping", () => {
     expect(by("Others Payables-Related Parties").mapReason).toMatch(/bagian liabilitas jangka panjang/);
   });
 
+  it("an asset sub-heading opening the Neraca types its rows as assets, so a 2-coded fixed asset is never suggested as a liability", async () => {
+    const g = await makeGroup();
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Balance Sheet");
+    for (const r of [
+      ["PT CONTOH"], ["Balance Sheet"], ["Date", null, "31/05/2026"],
+      ["Current Assets"], ["1-1000", "Bank", 700],
+      ["Fixed Assets"], ["2-1500", "Inventaris XYZ", 300],
+      ["Total Assets", null, 1000],
+      ["Liability & Equity"], ["2-2000", "Accounts Payable", 750], ["Equity"], ["3-3000", "Share Capital", 250],
+      ["Total Liability & Equity", null, 1000],
+    ] as (string | number | null)[][]) ws.addRow(r);
+    const st = await stageImport(db, { firmId: g.firm.id, clientId: g.client.id, fileName: "neraca.xlsx", data: Buffer.from(await wb.xlsx.writeBuffer()), entityId: g.pt.entity.id, date: dateOnly(2026, 5, 31) });
+    if (st.status !== "STAGED") throw new Error("not staged");
+    await suggestMappings(db, { firmId: g.firm.id, clientId: g.client.id, provider: null, useAi: false });
+    const fixed = await db.sourceAccount.findFirstOrThrow({ where: { code: "2-1500" } });
+    expect([fixed.typeHint, fixed.termHint]).toEqual(["ASET", "NON_CURRENT"]);
+    const suggested = fixed.suggestedCode ? await db.account.findFirst({ where: { clientId: g.client.id, code: fixed.suggestedCode } }) : null;
+    expect(suggested?.type ?? "ASET").toBe("ASET"); // never 2300 or another liability from the 2- numbering
+  });
+
   it("stores the term on a code an earlier file already created", async () => {
     const g = await makeGroup();
     const gl = new ExcelJS.Workbook();

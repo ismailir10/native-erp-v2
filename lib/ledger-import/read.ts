@@ -226,6 +226,8 @@ export function readLedger(sheet: RawSheet, t: TableCandidate): LedgerRow[] {
 }
 
 const SECTION_ASSET = /^(assets?|aset|aktiva|harta)\b/i;
+/** Asset sub-headings that can open a Neraca on their own ("Current Assets" with no "Assets" row above): they are ASET too. */
+const SECTION_ASSET_SUB = /^(current|fixed|other|non.?current|intangible|tangible)\s+(assets?)\b/i;
 const SECTION_LIAB = /^(liabilit|kewajiban|utang|hutang|current liabilit|long-term liabilit)/i;
 const SECTION_EQUITY = /^(equity|ekuitas|modal)\b/i;
 const SECTION_LIAB_EQUITY = /(liabilit.*(equity|ekuitas)|kewajiban.*(ekuitas|modal)|pasiva)/i;
@@ -266,7 +268,7 @@ export function readNeraca(sheet: RawSheet, t: TableCandidate): { date: Date | n
       const headingTerm = TERM_NON_CURRENT.test(label) ? "NON_CURRENT" : TERM_CURRENT.test(label) ? "CURRENT" : null;
       if (SECTION_LIAB_EQUITY.test(label) || SECTION_LIAB.test(label)) section = "LIABILITAS";
       else if (SECTION_EQUITY.test(label)) section = "EKUITAS";
-      else if (SECTION_ASSET.test(label)) section = "ASET";
+      else if (SECTION_ASSET.test(label) || SECTION_ASSET_SUB.test(label)) section = "ASET";
       if (section !== before) term = headingTerm;
       else if (headingTerm) term = headingTerm;
       continue;

@@ -113,4 +113,37 @@ describe("Neraca reader (Jurnal-style export)", () => {
       ["LIAB_EQUITY", 140_060n],
     ]);
   });
+
+  it("types rows under asset sub-headings as ASET when the Neraca starts without an Assets row", async () => {
+    const buf = await workbook({
+      "31-05-2026": [
+        ["PT CONTOH"],
+        ["Balance Sheet"],
+        ["Date", "", "31/05/2026", ""],
+        ["Current Assets"],
+        ["1-1000", "BANK", 1000, ""],
+        ["Fixed Assets"],
+        ["2-1500", "Kendaraan", 800, ""],
+        ["Other Assets"],
+        ["9-0001", "Deposit", 200, ""],
+        ["Total Assets", null, 2000, ""],
+        ["Liability & Equity"],
+        ["2-2000", "Accounts Payable", 1000, ""],
+        ["Equity"],
+        ["3-3000", "Share Capital", 1000, ""],
+        ["Total Liability & Equity", null, 2000, ""],
+      ],
+    });
+    const sheets = await readSheets("balance_sheet.xlsx", buf);
+    const res = readTable(sheets, detectTables(sheets)[0]);
+    if (res.mode !== "NERACA") throw new Error("mode");
+    // A 2-prefixed code under Fixed Assets is still an asset, never a liability guessed from its numbering.
+    expect(res.rows.map((r) => [r.code, r.amount, r.typeHint, r.termHint])).toEqual([
+      ["1-1000", 100_000n, "ASET", "CURRENT"],
+      ["2-1500", 80_000n, "ASET", "NON_CURRENT"],
+      ["9-0001", 20_000n, "ASET", "NON_CURRENT"],
+      ["2-2000", -100_000n, "LIABILITAS", null],
+      ["3-3000", -100_000n, "EKUITAS", null],
+    ]);
+  });
 });
