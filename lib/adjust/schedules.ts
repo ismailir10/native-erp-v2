@@ -78,6 +78,14 @@ export async function createSchedule(db: Db, input: ScheduleInput) {
   // Every installment must carry an amount; a zero one could never post (postJournal needs two non-zero lines).
   if (amount < BigInt(months)) throw new LedgerError(`Nominal terlalu kecil untuk dibagi ${months} bulan.`);
   if (!(input.startMonth >= 1 && input.startMonth <= 12) || !Number.isInteger(input.startYear)) throw new LedgerError("Bulan mulai tidak valid.");
+  // Every installment (and an accrual's reversal) must still be postable: one in a locked month could never post, and later months
+  // would close without it (rule 5a). Unlock that month or start later.
+  const planned = installments({ amount, months, startYear: input.startYear, startMonth: input.startMonth, reverse: accrual, debitAccountId: debit.id, creditAccountId: credit.id });
+  const locked = await db.period.findFirst({
+    where: { clientId: input.clientId, status: "LOCKED", OR: planned.map((i) => ({ year: i.year, month: i.month })) },
+    orderBy: [{ year: "asc" }, { month: "asc" }],
+  });
+  if (locked) throw new LedgerError(`${formatPeriod(locked.year, locked.month)} sudah dikunci, jadi cicilan di bulan itu tidak bisa dicatat. Buka kunci bulan itu atau mulai jadwal setelahnya.`);
   if (input.sourceEntryId) {
     const src = await db.journalEntry.findFirst({ where: { id: input.sourceEntryId, entityId: entity.id } });
     if (!src) throw new LedgerError("Jurnal sumber tidak termasuk entitas ini.");

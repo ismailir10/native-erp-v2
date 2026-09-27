@@ -80,6 +80,22 @@ describe("adjustment schedules", () => {
     await expect(createSchedule(db, { ...base, entityId: "bukan" })).rejects.toThrow("Pilih entitas");
   });
 
+  it("refuses a schedule with an installment or reversal in a locked month", async () => {
+    const g = await makeGroup();
+    const lock = (month: number) => db.period.upsert({ where: { clientId_year_month: { clientId: g.client.id, year: 2026, month } }, create: { firmId: g.firm.id, clientId: g.client.id, year: 2026, month, status: "LOCKED" }, update: { status: "LOCKED" } });
+    await lock(8);
+    const base = { clientId: g.client.id, entityId: g.pt.entity.id, kind: "DEPRECIATION" as const, memo: "Penyusutan", debitCode: "6180", creditCode: "1219", amount: "1.200.000", months: 2, startYear: 2026, startMonth: 8 };
+    // A two-month schedule starting in locked August would expose only September, leaving August unrecognised forever.
+    await expect(createSchedule(db, base)).rejects.toThrow("Agustus 2026 sudah dikunci");
+    // An accrual in open October whose reversal (1 November) lands in a locked month is refused too.
+    await lock(11);
+    await expect(createSchedule(db, { ...base, kind: "ACCRUAL", months: 1, startMonth: 10 })).rejects.toThrow("November 2026 sudah dikunci");
+    expect(await db.adjustmentSchedule.count()).toBe(0);
+    // Between the locked months is fine.
+    await createSchedule(db, { ...base, startMonth: 9 });
+    expect(await db.adjustmentSchedule.count()).toBe(1);
+  });
+
   it("proposes the month's installment, posts it once even when clicked twice, and tracks progress", async () => {
     const g = await makeGroup();
     const s = await createSchedule(db, { clientId: g.client.id, entityId: g.pt.entity.id, kind: "DEPRECIATION", memo: "Penyusutan mesin pakan", debitCode: "6180", creditCode: "1219", amount: "166.666.667", months: 48, startYear: 2026, startMonth: 9 });
