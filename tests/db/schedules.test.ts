@@ -26,8 +26,8 @@ describe("adjustment schedules", () => {
       [1, "2026-08-31", false, true],
       [2, "2026-09-01", true, false],
     ]);
-    // The reversal waits for the accrual: nothing to reverse while August's installment is unposted.
-    expect(await dueProposals(db, g.client.id, 2026, 9)).toEqual([]);
+    // The reversal waits for the accrual: September shows only the overdue August accrual, never its reversal first.
+    expect((await dueProposals(db, g.client.id, 2026, 9)).map((p) => p.memo)).toEqual(["Akrual listrik Agustus (1/1)"]);
     await expect(postInstallment(db, { clientId: g.client.id, scheduleId: s.id, k: 2 })).rejects.toThrow("Catat dulu Akrual listrik Agustus (1/1) sebelum pembaliknya");
     await postInstallment(db, { clientId: g.client.id, scheduleId: s.id, k: 1 });
     const [sep] = await dueProposals(db, g.client.id, 2026, 9);
@@ -136,8 +136,14 @@ describe("adjustment schedules", () => {
     const pt = g.pt.entity.id;
     const s = await createSchedule(db, { clientId: g.client.id, entityId: pt, kind: "DEPRECIATION", memo: "Penyusutan aset tetap", debitCode: "6180", creditCode: "1219", amount: "1.140.000.000", months: 120, startYear: 2026, startMonth: 3 });
     const sched = async () => (await runControls(db, g.client.id, 2026, 8)).find((c) => c.key === `sched:${pt}`);
-    expect(await sched()).toMatchObject({ status: "REVIEW", title: "Jurnal terjadwal belum dicatat", detail: "1 angsuran: Penyusutan aset tetap (6/120) Rp 9.500.000", href: `/clients/${g.client.id}/journals/new?period=2026-08` });
+    // March–August are all due and unposted: an earlier month's installment stays visible until posted.
+    expect(await sched()).toMatchObject({ status: "REVIEW", title: "Jurnal terjadwal belum dicatat", detail: "6 angsuran: Penyusutan aset tetap (1/120) Rp 9.500.000; Penyusutan aset tetap (2/120) Rp 9.500.000; Penyusutan aset tetap (3/120) Rp 9.500.000; +3 lainnya", href: `/clients/${g.client.id}/journals/new?period=2026-08` });
     await postInstallment(db, { clientId: g.client.id, scheduleId: s.id, k: 6 });
+    expect((await sched())?.detail).toMatch(/^5 angsuran/); // posting August alone doesn't clear March–July
+    // A locked month's installment can't post any more and is left out.
+    await db.period.upsert({ where: { clientId_year_month: { clientId: g.client.id, year: 2026, month: 3 } }, create: { firmId: g.firm.id, clientId: g.client.id, year: 2026, month: 3, status: "LOCKED" }, update: { status: "LOCKED" } });
+    expect((await sched())?.detail).toMatch(/^4 angsuran: Penyusutan aset tetap \(2\/120\)/);
+    await postAllDue(db, { clientId: g.client.id, year: 2026, month: 8 });
     expect(await sched()).toBeUndefined();
     await stopSchedule(db, { clientId: g.client.id, scheduleId: s.id });
     expect((await runControls(db, g.client.id, 2026, 9)).some((c) => c.key.startsWith("sched:"))).toBe(false);

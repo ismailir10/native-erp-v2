@@ -104,8 +104,13 @@ export async function createSchedule(db: Db, input: ScheduleInput) {
 
 export type Proposal = { schedule: AdjustmentSchedule & { entity: { id: string; shortName: string; functionalCurrency: string }; debitAccount: { code: string; name: string }; creditAccount: { code: string; name: string } }; installment: Installment; memo: string };
 
-/** Installments that fall in the period and aren't posted yet, for running schedules. Nothing is stored. */
+/**
+ * Installments due in or before the period and not posted yet (an overdue one stays visible until posted, so a later month can't
+ * close without it), for running schedules. One in a locked month can't post any more and is left out. Nothing is stored.
+ */
 export async function dueProposals(db: Db, clientId: string, year: number, month: number, entityId?: string): Promise<Proposal[]> {
+  const locked = new Set((await db.period.findMany({ where: { clientId, status: "LOCKED" }, select: { year: true, month: true } })).map((p) => p.year * 12 + p.month));
+  const upTo = year * 12 + month;
   // A stopped accrual still owes the reversal of an accrual it already posted; a stopped schedule proposes nothing else.
   const schedules = await db.adjustmentSchedule.findMany({
     where: { clientId, OR: [{ stoppedAt: null }, { reverse: true }], ...(entityId ? { entityId } : {}) },
@@ -119,7 +124,8 @@ export async function dueProposals(db: Db, clientId: string, year: number, month
       // A reversal only follows the accrual it reverses: never propose it while that installment is unposted.
       if (i.reversal && !posted.has(s.months)) continue;
       if (s.stoppedAt && !i.reversal) continue;
-      if (i.year === year && i.month === month && !posted.has(i.k)) out.push({ schedule: s, installment: i, memo: installmentMemo(s, i) });
+      const at = i.year * 12 + i.month;
+      if (at <= upTo && !locked.has(at) && !posted.has(i.k)) out.push({ schedule: s, installment: i, memo: installmentMemo(s, i) });
     }
   }
   return out;

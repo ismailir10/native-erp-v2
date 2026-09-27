@@ -37,6 +37,61 @@ describe("invitation-only membership", () => {
     expect((await listMembers(db)).map((m) => m.email)).toEqual([email]);
   });
 
+  it("takes over an address left in Auth without a member, and never leaves a new Auth user without one", async () => {
+    const firm = await db.firm.create({ data: { name: "Kantor" } });
+    const { auth, calls } = fakeAdmin();
+    // An earlier invitation created the Auth user, then the member insert failed: Supabase now refuses a second invitation.
+    const orphanId = randomUUID();
+    auth.admin.inviteUserByEmail = vi.fn(async () => ({ data: { user: null }, error: { message: "A user with this email address has already been registered" } })) as never;
+    auth.admin.listUsers = vi.fn(async () => ({ data: { users: [{ id: orphanId, email }] }, error: null })) as never;
+    const member = await inviteUser(db, auth, { email, name: "Member", firmId: firm.id });
+    expect(member.userId).toBe(orphanId);
+    expect(calls.map((c) => c.method)).toEqual(["update", "reset"]); // unbanned and sent a password link
+
+    // A fresh Auth user whose member insert fails is deleted again, so a retry starts clean.
+    const fresh = randomUUID();
+    auth.admin.inviteUserByEmail = vi.fn(async () => ({ data: { user: { id: fresh } }, error: null })) as never;
+    const deleteUser = vi.fn(async () => ({ data: {}, error: null }));
+    auth.admin.deleteUser = deleteUser as never;
+    const failing = (insert: () => Promise<unknown>) =>
+      ({ firm: db.firm, firmMember: { findUnique: (a: never) => db.firmMember.findUnique(a), create: async () => { await insert(); throw new Error("insert failed"); } } }) as unknown as typeof db;
+    await expect(inviteUser(failing(async () => undefined), auth, { email: "third@example.test", name: "Third", firmId: firm.id })).rejects.toThrow("insert failed");
+    expect(deleteUser).toHaveBeenCalledWith(fresh);
+    expect(await db.firmMember.count()).toBe(1);
+  });
+
+  it("finds the orphan past the first page of Auth users, and keeps an Auth user a concurrent invitation adopted", async () => {
+    const firm = await db.firm.create({ data: { name: "Kantor" } });
+    const { auth } = fakeAdmin();
+    const orphanId = randomUUID();
+    auth.admin.inviteUserByEmail = vi.fn(async () => ({ data: { user: null }, error: { message: "already registered" } })) as never;
+    const listUsers = vi.fn(async ({ page }: { page: number }) => ({
+      data: { users: page === 1 ? Array.from({ length: 1000 }, (_, i) => ({ id: randomUUID(), email: `u${i}@example.test` })) : [{ id: orphanId, email }] },
+      error: null,
+    }));
+    auth.admin.listUsers = listUsers as never;
+    expect((await inviteUser(db, auth, { email, name: "Member", firmId: firm.id })).userId).toBe(orphanId);
+    expect(listUsers).toHaveBeenCalledTimes(2);
+
+    // Our insert lost to a concurrent invitation that took over the same fresh Auth user: it is theirs now, never deleted.
+    const adopted = randomUUID();
+    auth.admin.inviteUserByEmail = vi.fn(async () => ({ data: { user: { id: adopted } }, error: null })) as never;
+    const deleteUser = vi.fn(async () => ({ data: {}, error: null }));
+    auth.admin.deleteUser = deleteUser as never;
+    const racing = ({
+      firm: db.firm,
+      firmMember: {
+        findUnique: (a: never) => db.firmMember.findUnique(a),
+        create: async () => {
+          await db.firmMember.create({ data: { userId: adopted, email: "second@example.test", name: "Second", firmId: firm.id } });
+          throw new Error("Unique constraint failed on userId");
+        },
+      },
+    }) as unknown as typeof db;
+    await expect(inviteUser(racing, auth, { email: "second@example.test", name: "Second", firmId: firm.id })).rejects.toThrow("Unique constraint");
+    expect(deleteUser).not.toHaveBeenCalled();
+  });
+
   it("refuses to move an address to another firm and refuses unknown firms", async () => {
     const firm = await db.firm.create({ data: { name: "Kantor" } });
     const other = await db.firm.create({ data: { name: "Lain" } });
