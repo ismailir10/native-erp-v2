@@ -65,7 +65,7 @@ npm run dev                     # http://localhost:3000/login
 ```
 Before sign-in, set `BETTER_AUTH_URL` and a random `BETTER_AUTH_SECRET` of at least 32 characters. Choose `AUTH_MODE=email` with `RESEND_API_KEY` and a verified `AUTH_EMAIL_FROM`, or temporary `AUTH_MODE=shared-code` with a randomly generated 12-digit `AUTH_SHARED_CODE` stored only as a server secret. The invite command provisions access and sends no email. Shared-code mode requires an invited email plus the operator-provided code; it never sends mail. For an empty non-demo database, use `npm run access -- init --name "Your firm"` instead of seeding.
 
-Claude Code sessions run `scripts/session-start.sh` automatically (Postgres, deps, migrate, seed).
+Agents with a session-start hook run `scripts/session-start.sh` automatically (Postgres, deps, migrate, seed); otherwise run it first.
 
 ## Commands
 | | |
@@ -138,7 +138,7 @@ E2E uses a disposable localhost database, the real invitation/session flow in bo
 ## Branch workflow
 
 Only `staging` and `main` are permanent branches. `staging` is the repository default and the base for new work.
-Create a temporary `codex/<task>` branch from current staging, open its PR against `staging`, and merge after CI passes.
+Create a temporary `task/<slug>` branch from current staging, open its PR against `staging`, and merge after CI passes.
 GitHub automatically deletes the merged task branch; remove its local copy after returning to staging.
 Promote tested staging to production with a separate `staging` → `main` PR using a **merge commit** to preserve ancestry.
 Both permanent branches are protected from deletion and force-push, and require the CI `check` result.
@@ -148,7 +148,7 @@ Neon branch copies demo data, never client data). Nothing else. Staging keeps th
 domain for saved links; it serves the synthetic `staging` database.
 
 ## For contributors (humans and agents)
-Read [CLAUDE.md](CLAUDE.md) (= `AGENTS.md`): the spec → build → ship loop, gates, and which skill governs which folder.
+Read [AGENTS.md](AGENTS.md) (also reachable as `CLAUDE.md`): the spec → build → ship loop, gates, and which skill (`.agents/skills/`) governs which folder.
 Decisions live in [docs/adrs](docs/adrs/README.md). Demo data is synthetic — never commit real client statements.
 
 ## Document evidence workspace

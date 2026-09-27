@@ -3,7 +3,7 @@ import type { Direction, TaxTag } from "@/lib/generated/prisma/enums";
 /**
  * LLM provider port. Default implementation targets any OpenAI-compatible
  * /chat/completions endpoint (OpenCode Zen by default). No vendor SDK on purpose:
- * swapping gateway/model is an env change. Credit rules: .claude/skills/accounting-rules §AI.
+ * swapping gateway/model is an env change. Credit rules: .agents/skills/accounting-rules §AI.
  */
 export type AiItem = { key: string; direction: Direction; sample: string };
 export type AiAnswer = { key: string; accountCode: string; confidence: number; taxTag: TaxTag | null; reason: string };

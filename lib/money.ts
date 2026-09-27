@@ -2,7 +2,7 @@ import { CURRENCIES, divRound, exponentOf } from "@/lib/fx/currency";
 
 /**
  * Money = bigint minor units of a currency (IDR: whole Rupiah). Never route amounts through Number.
- * See .claude/skills/accounting-rules/SKILL.md §Money (rules 6, 6a, 6b).
+ * See .agents/skills/accounting-rules/SKILL.md §Money (rules 6, 6a, 6b).
  */
 
 /** Effective PPN rate since 2025: 12% × DPP 11/12 = 11% of the gross-up base. */

@@ -14,7 +14,7 @@ Output: exactly one file, `docs/cycles/$(date +%Y-%m-%d)-<slug>.md`. No PLAN.md 
 
 ## Steps
 1. **Understand.** If the request is vague, ask 1–3 sharp questions first (AskUserQuestion). Don't guess at scope.
-2. **Explore.** Read the code you'll touch and the skills that govern it (CLAUDE.md §4). Look for existing
+2. **Explore.** Read the code you'll touch and the skills that govern it (AGENTS.md §4). Look for existing
    helpers to reuse (`lib/money.ts`, `postJournal`, `postBankTransaction`, `runControls`, `loadClientPage`, `NextStep`, `Money`…).
    Read prior cycle docs that touched the same area.
 3. **Write the cycle doc** from the template below.

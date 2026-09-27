@@ -43,7 +43,7 @@ for `Preview (staging)` does not exist in Production. Never copy staging secrets
   `/api/google/callback` URL, and the connecting Google account must be a test user.
 - `SETTINGS_SECRET` encrypts the Drive refresh token and the Pengaturan AI key. Changing it (or pointing at a DB written under
   another secret) means reconnect Google and re-save the AI key.
-- The Claude cloud sandbox cannot reach Neon (proxy blocks it) — never migrate/seed Neon from the sandbox; let the build do it.
+- Cloud agent sandboxes may not reach Neon (proxy) — never migrate/seed Neon from a sandbox; let the build do it.
 
 Verify a production deployment: `/login` shows the email + 12-digit code form (not "Akses belum siap"); the build log says
 "No pending migrations to apply" or lists the new ones; Beranda shows the real firm's clients, not "KJA Demo & Rekan".

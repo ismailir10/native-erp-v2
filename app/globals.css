@@ -8,7 +8,7 @@
 /*
  * Buku design tokens — 9fin structure (dark app chrome, hairlines, sharp corners, mono micro-labels)
  * in Wise colours (@transferwise/neptune-tokens 8.26, personal theme). Forest Green is the text/interactive
- * colour; Bright Green is a fill only, always with Forest text. Rules: .claude/skills/ui-rules/SKILL.md
+ * colour; Bright Green is a fill only, always with Forest text. Rules: .agents/skills/ui-rules/SKILL.md
  */
 @theme inline {
   --color-background: var(--background);
