@@ -37,6 +37,27 @@ describe("invitation-only membership", () => {
     expect((await listMembers(db)).map((m) => m.email)).toEqual([email]);
   });
 
+  it("takes over an address left in Auth without a member, and never leaves a new Auth user without one", async () => {
+    const firm = await db.firm.create({ data: { name: "Kantor" } });
+    const { auth, calls } = fakeAdmin();
+    // An earlier invitation created the Auth user, then the member insert failed: Supabase now refuses a second invitation.
+    const orphanId = randomUUID();
+    auth.admin.inviteUserByEmail = vi.fn(async () => ({ data: { user: null }, error: { message: "A user with this email address has already been registered" } })) as never;
+    auth.admin.listUsers = vi.fn(async () => ({ data: { users: [{ id: orphanId, email }] }, error: null })) as never;
+    const member = await inviteUser(db, auth, { email, name: "Member", firmId: firm.id });
+    expect(member.userId).toBe(orphanId);
+    expect(calls.map((c) => c.method)).toEqual(["update", "reset"]); // unbanned and sent a password link
+
+    // A fresh Auth user whose member insert fails is deleted again, so a retry starts clean.
+    const taken = randomUUID();
+    await db.firmMember.create({ data: { userId: taken, email: "other@example.test", name: "Other", firmId: firm.id } });
+    auth.admin.inviteUserByEmail = vi.fn(async () => ({ data: { user: { id: taken } }, error: null })) as never;
+    const deleteUser = vi.fn(async () => ({ data: {}, error: null }));
+    auth.admin.deleteUser = deleteUser as never;
+    await expect(inviteUser(db, auth, { email: "third@example.test", name: "Third", firmId: firm.id })).rejects.toThrow();
+    expect(deleteUser).toHaveBeenCalledWith(taken);
+  });
+
   it("refuses to move an address to another firm and refuses unknown firms", async () => {
     const firm = await db.firm.create({ data: { name: "Kantor" } });
     const other = await db.firm.create({ data: { name: "Lain" } });

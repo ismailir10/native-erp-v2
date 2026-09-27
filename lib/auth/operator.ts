@@ -9,7 +9,7 @@ const BAN_FOREVER = "876600h";
 
 /** The slice of the Supabase Auth API these operations need (`supabase.auth` of a service-role client); tests pass a fake. */
 export type AuthApi = {
-  admin: Pick<SupabaseAdmin["auth"]["admin"], "inviteUserByEmail" | "updateUserById" | "createUser"> & { listUsers?: SupabaseAdmin["auth"]["admin"]["listUsers"] };
+  admin: Pick<SupabaseAdmin["auth"]["admin"], "inviteUserByEmail" | "updateUserById" | "createUser"> & { listUsers?: SupabaseAdmin["auth"]["admin"]["listUsers"]; deleteUser?: SupabaseAdmin["auth"]["admin"]["deleteUser"] };
   /** Public endpoint: Supabase sends the recovery email itself. */
   resetPasswordForEmail: SupabaseAdmin["auth"]["resetPasswordForEmail"];
 };
@@ -41,8 +41,26 @@ export async function inviteUser(db: Db, auth: AuthApi, input: { email: string; 
     return db.firmMember.update({ where: { id: existing.id }, data: { name, role, disabled: false } });
   }
   const invited = await auth.admin.inviteUserByEmail(email, { data: { name }, ...redirect });
-  if (invited.error || !invited.data.user) fail(invited.error, "Undangan belum terkirim.");
-  return db.firmMember.create({ data: { userId: invited.data.user.id, email, name, role, firmId: input.firmId } });
+  let userId = invited.data?.user?.id;
+  const fresh = !!userId;
+  if (!userId) {
+    // The address may already be in Auth without a member (an earlier invitation whose member insert failed): take it over and
+    // send a password link, instead of leaving the person impossible to provision.
+    const orphan = auth.admin.listUsers ? (await auth.admin.listUsers({ page: 1, perPage: 1000 })).data?.users.find((u) => u.email?.toLowerCase() === email) : undefined;
+    if (!orphan) fail(invited.error, "Undangan belum terkirim.");
+    const unbanned = await auth.admin.updateUserById(orphan.id, { ban_duration: "none" });
+    if (unbanned.error) fail(unbanned.error, "Akun yang sudah ada tidak bisa dipulihkan.");
+    const sent = await auth.resetPasswordForEmail(email, redirect);
+    if (sent.error) fail(sent.error, "Tautan kata sandi belum terkirim.");
+    userId = orphan.id;
+  }
+  try {
+    return await db.firmMember.create({ data: { userId, email, name, role, firmId: input.firmId } });
+  } catch (e) {
+    // Never leave a just-created Auth user without its member; a retry then starts clean.
+    if (fresh) await auth.admin.deleteUser?.(userId).catch(() => undefined);
+    throw e;
+  }
 }
 
 /** Disabling the member closes the workspace at once (checked on every request); the ban stops new logins. */

@@ -22,7 +22,7 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     account, total in minor units, months, start). Installments are exact (⌊total/n⌋, remainder on the last); an accrual is one month
     and reverses on the 1st of the next. Each month's installment is **proposed at read time and posted only by the accountant's click**
     through `postJournal()` (kind `ADJUSTMENT`), carrying `scheduleId` + `installment` (unique: posts once). Never edited after posting —
-    stop and create a new one (a stop is checked under a row lock when posting; a stopped accrual still reverses what it posted). Candidates (fixed-asset purchase, prepayment, deferred revenue, recurring cost missing this month) are
+    stop and create a new one (a stop is checked under a row lock when posting; a stopped accrual still reverses what it posted). An installment stays proposed from its month until posted, in every later month too, unless its month is locked. Candidates (fixed-asset purchase, prepayment, deferred revenue, recurring cost missing this month) are
     deterministic suggestions only. A due, unposted installment is a REVIEW control `sched:`.
 
 ## Money
