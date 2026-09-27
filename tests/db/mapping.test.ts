@@ -13,7 +13,7 @@ describe("deterministic mapping", () => {
     expect(sug("Bank OCBC - 601459993201 - USD")).toBe("1120");
     expect(sug("Long Term Non-Bank - Chickin PTE LTD")).toBe("2300");
     expect(sug("Short Term Non-Bank Payable - P2P")).toBe("2120");
-    expect(sug("Loan to Subsidiary")).toBe("1140");
+    expect(sug("Loan to Subsidiary")).toBe("new:PIUTANG_LAIN"); // generic "loan to": keep the client's detail
     expect(sug("Capital Placement - PT Chickin Ayam Hidup")).toBe("1260");
     expect(sug("Accumulated Depreciation Mini Kitchen - Machine")).toBe("1219");
     expect(sug("Depreciation Expense Smart Farm - Equipment")).toBe("6180");
@@ -27,15 +27,15 @@ describe("deterministic mapping", () => {
     expect(sug("Kas")).toBe("1110");
     expect(sug("Platform Fee - Gofood")).toBeNull();
     // Found in the Goers/Chickin walk: staff loans are other receivables; rent is an expense whatever was rented.
-    expect(sug("Account Receivable - Employee Loan", "1-1303")).toBe("1140");
-    expect(sug("Piutang Karyawan")).toBe("1140");
+    expect(sug("Account Receivable - Employee Loan", "1-1303")).toBe("new:PIUTANG_LAIN");
+    expect(sug("Piutang Karyawan")).toBe("new:PIUTANG_LAIN");
     expect(sug("Account Receivable", "1-1200")).toBe("1130");
     expect(sug("Sewa Peralatan Tata Suara", "9106")).toBe("6120");
     expect(sug("Sewa Dibayar Dimuka")).toBe("1170");
     expect(sug("Jaminan Sewa Gedung Konser", "9102")).toBe("1170");
     expect(sug("Rental Deposit")).toBe("1170");
     expect(sug("Salary Advance")).toBe("1170");
-    expect(sug("Piutang Sewa")).toBe("1140");
+    expect(sug("Piutang Sewa")).toBe("new:PIUTANG_LAIN");
     expect(sug("Pendapatan Sewa")).not.toBe("6120");
     expect(sug("Utang Gaji")).not.toBe("6100");
   });
@@ -75,6 +75,19 @@ describe("deterministic mapping", () => {
     expect(sugWith("62015", "Religious Festivity Allowance (THR)")).toBe("6100");
   });
 
+  it("proposes a new account for generic matches, keeps catch-alls for catch-all names and specific rules as they are", () => {
+    expect(sug("Platform Subscription Expense")).toBe("new:BEBAN_UMUM_ADM");
+    expect(sug("Beban Penyisihan Piutang CKP")).toBe("new:BEBAN_UMUM_ADM");
+    expect(sug("Payable to Event")).toBe("new:UTANG_LAIN");
+    expect(sug("Event Revenue")).toBe("new:PENDAPATAN_USAHA");
+    expect(sug("Beban Umum Lain-lain")).toBe("6190"); // the name is the catch-all
+    expect(sug("Other Payables")).toBe("2120");
+    expect(sug("Other Incomes")).toBe("4910");
+    expect(sug("Short Term Non-Bank Payable - P2P")).toBe("2120"); // "short term" is a specific rule
+    expect(sug("Trade Payable - Smart Farm")).toBe("2110");
+    expect(deterministicSuggestion({ code: "63001", name: "Platform Subscription Expense", typeHint: "BEBAN" }, { accounts: chart, priorByName: new Map() })).toMatchObject({ method: "NEW", reason: expect.stringMatching(/akun baru di Beban umum/) });
+  });
+
   it("prefers an exact client-account name and prior mappings", () => {
     expect(deterministicSuggestion({ code: "X", name: "Piutang Usaha", typeHint: null }, { accounts: chart, priorByName: new Map() })).toMatchObject({ method: "NAME", accountCode: "1130" });
     expect(deterministicSuggestion({ code: "X", name: "Cloud - AWS", typeHint: null }, { accounts: chart, priorByName: new Map([["cloud aws", "5110"]]) })).toMatchObject({ method: "PRIOR", accountCode: "5110" });
@@ -84,8 +97,8 @@ describe("deterministic mapping", () => {
 describe("suggestMappings + acceptMappings", () => {
   beforeEach(resetDb);
 
-  async function sources(g: Awaited<ReturnType<typeof makeGroup>>, names: string[]) {
-    return Promise.all(names.map((name, i) => db.sourceAccount.create({ data: { firmId: g.firm.id, clientId: g.client.id, entityId: g.pt.entity.id, code: `S${i}`, name } })));
+  async function sources(g: Awaited<ReturnType<typeof makeGroup>>, names: string[], prefix = "S") {
+    return Promise.all(names.map((name, i) => db.sourceAccount.create({ data: { firmId: g.firm.id, clientId: g.client.id, entityId: g.pt.entity.id, code: `${prefix}${i}`, name } })));
   }
 
   it("suggests without mapping, uses AI only for leftovers, caches, and never applies on its own", async () => {
@@ -140,6 +153,17 @@ describe("suggestMappings + acceptMappings", () => {
       ["6191", "NEW"],
     ]);
     expect((await db.client.findUniqueOrThrow({ where: { id: g.client.id } })).coaVersion).toBe(2);
+    // A `new:` suggestion accepted as-is creates the account under that line with the client's name.
+    const [c] = await sources(g, ["Payable to Event"], "P");
+    await acceptMappings(db, g.client.id, [{ sourceAccountId: c.id, accountCode: "new:UTANG_LAIN", method: "NEW" }]);
+    const ev = await db.sourceAccount.findUniqueOrThrow({ where: { id: c.id }, include: { account: true } });
+    expect([ev.account?.code, ev.account?.name, ev.account?.fsLine, ev.mappedBy]).toEqual(["2121", "Payable to Event", "UTANG_LAIN", "NEW"]);
+    await expect(acceptMappings(db, g.client.id, [{ sourceAccountId: c.id, accountCode: "new:NOPE", method: "NEW" }])).rejects.toThrow(MappingError);
+    // Past the 9 four-digit slots of PIUTANG_LAIN the codes continue under the anchor (114001…).
+    const many = await sources(g, Array.from({ length: 11 }, (_, i) => `Piutang Khusus ${i}`), "K");
+    await acceptMappings(db, g.client.id, many.map((m) => ({ sourceAccountId: m.id, newAccount: { fsLine: "PIUTANG_LAIN" as const, name: m.name }, method: "NEW" as const })));
+    const codes = (await db.account.findMany({ where: { clientId: g.client.id, fsLine: "PIUTANG_LAIN", code: { startsWith: "114" } }, orderBy: { code: "asc" } })).map((a) => a.code); // 1190/1199 share the line
+    expect(codes).toEqual(["1140", "114001", "114002", "1141", "1142", "1143", "1144", "1145", "1146", "1147", "1148", "1149"]); // text order: the overflow codes sit right after their anchor
     await expect(acceptMappings(db, g.client.id, [{ sourceAccountId: a.id, accountCode: "1999", method: "MANUAL" }])).rejects.toThrow(MappingError);
     await expect(acceptMappings(db, g.client.id, [{ sourceAccountId: a.id, accountCode: "1101", method: "MANUAL" }])).rejects.toThrow(MappingError);
   });

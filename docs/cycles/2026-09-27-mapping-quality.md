@@ -34,14 +34,14 @@ Type inference (`inferType` → `inferTypeWith(scheme)`)
 - [x] Existing rule type guards then do the rest: the seven wrong-side examples above map to 7100, 1180, 6180, 2160, 6190→(new), 1170, 6190→(new).
 
 No catch-all suggestions
-- [ ] A match on a **generic** rule only (`expense|beban|biaya`, `payable|utang|hutang`, `piutang|receivable|loan to`,
+- [x] A match on a **generic** rule only (`expense|beban|biaya`, `payable|utang|hutang`, `piutang|receivable|loan to`,
       `income|revenue|pendapatan`, `other income`) suggests a **new Buku account** named after the client account under
       the matching FS line (BEBAN_UMUM_ADM, UTANG_LAIN, PIUTANG_LAIN, PENDAPATAN_USAHA / PENDAPATAN_LAIN), method `NEW`,
       instead of 6190/2120/1140/4110/4910 — unless the client's name itself says *lain-lain / other / misc / sundry / lainnya*.
-- [ ] Suggestion storage without a migration: `suggestedCode = "new:<FS_LINE>"`, `suggestedBy = NEW`; the whitelist accepts
+- [x] Suggestion storage without a migration: `suggestedCode = "new:<FS_LINE>"`, `suggestedBy = NEW`; the whitelist accepts
       only FS lines from `FS_LINES`; `acceptMappings` already handles `newAccount`. A name already created for another
       entity is reused by the existing PRIOR rule (one shared client chart, ADR 0006).
-- [ ] `createClientAccount` ranges hold ≥ 200 accounts per FS line (5-digit codes under the line's 4-digit prefix, e.g.
+- [x] `createClientAccount` ranges hold ≥ 200 accounts per FS line (5-digit codes under the line's 4-digit prefix, e.g.
       6190 → 61901–61999 then 6191–6199), never a template or special code.
 
 Suggestions always ready
@@ -80,13 +80,15 @@ the AI prompt or budget; a rules editor per client; automatic merging of similar
 
 ## Tasks
 - [x] T1 Type inference with a learned code scheme + tests — accept: the seven Chickin examples resolve in a unit test; `tests/db/mapping.test.ts` green (`inferType` expectations kept). Reuse `normName`, `inferType`.
-- [ ] T2 Generic rules → NEW suggestions, `new:<FS_LINE>` whitelist, wider `RANGES` + tests — accept: `suggestMappings` returns NEW for "Religious Festivity Allowance (THR)" and keeps 7100 for "Bank Charges"; `acceptMappings` creates the account. Depends T1.
+- [x] T2 Generic rules → NEW suggestions, `new:<FS_LINE>` whitelist, wider `RANGES` + tests — accept: `suggestMappings` returns NEW for "Religious Festivity Allowance (THR)" and keeps 7100 for "Bank Charges"; `acceptMappings` creates the account. Depends T1.
 - [ ] T3 Suggestions at staging for both paths + panel counts/warnings/NEW pre-selection — accept: DB test on the evidence handoff draft; browser check on local real Chickin draft at desktop + 390 px; e2e green. Depends T2. Load `ui-rules`.
 - [ ] T4 `verify-real` mapping-quality report, run on real files; end-of-cycle gates — accept: 0 catch-all suggestions, none of the seven on the wrong side; `build`, `verify:books`, `test:e2e` green.
 
 ## Implementation
 - Plan: T1–T4 sequential, inline in worktree `../native-erp-v2-mapping` (branch `task/mapping-quality`) — the main checkout is in use by another session.
-- T1: `lib/ledger-import/mapping.ts` — `STRONG` / `WEAK` name evidence, `strongType`, `codeDigit`, `learnScheme` (majority type per leading digit, ≥ 3 votes ≥ 80 %), `inferType(code, name, scheme?)` in the order strong → scheme → weak → digit. Strong order: expense (excl. prepaid/accrued/payable/deferred), depreciation (excl. accumulated), payable (+ customer deposits), receivable/prepaid, revenue (excl. article/pph/prepaid), rent/pay, capital. Bare `utang` in exclusions had matched inside "pi**utang**" — word-bounded now. Rules: prepaid-tax matches "Prepaid … Tax/Article", "deferred expense" → 1170. `lib/ledger-import/post.ts` learns the scheme per staged file, stores the type on new source accounts and refreshes it on unmapped existing ones (accepted mappings untouched). Tests: `tests/db/mapping.test.ts` (scheme + the seven Chickin examples; all prior expectations kept).
+- T1: `lib/ledger-import/mapping.ts` — `STRONG` / `WEAK` name evidence, `strongType`, `codeDigit`, `learnScheme` (majority type per leading digit, ≥ 3 votes ≥ 80 %), `inferType(code, name, scheme?)` in the order strong → scheme → weak → digit. Strong order: expense (excl. prepaid/accrued/payable/deferred), depreciation (excl. accumulated), payable (+ customer deposits), receivable/prepaid, revenue (excl. article/pph/prepaid), rent/pay, capital. Bare `utang` in exclusions had matched inside "pi**utang**" — word-bounded now. Rules: prepaid-tax matches "Prepaid … Tax/Article", "deferred expense" → 1170. `lib/ledger-import/post.ts` learns the scheme per staged file, stores the type on new source accounts and refreshes it on unmapped existing ones (accepted mappings untouched). Tests: `tests/db/mapping.test.ts` (scheme + the seven Chickin examples; all prior expectations kept).- T2: `lib/ledger-import/mapping.ts` — `generic` marker on the five catch-all rules (1140 → PIUTANG_LAIN, 2120 → UTANG_LAIN, 4110 → PENDAPATAN_USAHA, 4910 → PENDAPATAN_LAIN, 6190 → BEBAN_UMUM_ADM); a generic-only match returns `new:<FS_LINE>` / method `NEW` / 0.7 unless the name is itself a catch-all (`lain-lain`, `other`, `misc`, `sundry`, `umum`, `general`); `NEW_PREFIX`, `newFsLineOf()` whitelist against `FS_LINES` + `RANGES`; `acceptMappings` turns an accepted `new:` code into a created account named after the client's account; `createClientAccount` continues past a full 4-digit range with `<anchor>01…99` (1140 → 114001…, text-sorted right after the anchor). Tests updated (four `1140` expectations → `new:PIUTANG_LAIN`) + new cases (generic → NEW, catch-all names stay, `new:` accept, invalid line refused, 11 accounts past the 9-slot range).
+
 ## Verification
 - T1: lint + typecheck clean; `npm test` → Test Files 52 passed (52), Tests 382 passed (382).
+- T2: lint + typecheck clean; `npm test` → Test Files 52 passed (52), Tests 383 passed (383).
 ## Ship Notes

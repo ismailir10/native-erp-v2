@@ -91,7 +91,17 @@ export function inferType(code: string, name: string, scheme?: CodeScheme): Acco
 }
 
 /** Keyword rules → template codes. First match wins; `type` guards against e.g. "interest income" hitting a bank rule. */
-const KEYWORDS: { re: RegExp; code: string; types?: AccountType[]; not?: RegExp }[] = [
+/**
+ * A `generic` rule only says which side of the books a name is on ("expense", "payable"). Instead of piling the client's
+ * detail into one catch-all, it proposes a new Buku account named after the client's account under that FS line —
+ * unless the name itself is a catch-all ("lain-lain", "other", "misc"). Encoded as `new:<FS_LINE>` in `suggestedCode`.
+ */
+export const NEW_PREFIX = "new:";
+export const newFsLineOf = (code: string | null | undefined): FsLine | null =>
+  code?.startsWith(NEW_PREFIX) && (code.slice(NEW_PREFIX.length) as FsLine) in FS_LINES ? (code.slice(NEW_PREFIX.length) as FsLine) : null;
+const CATCH_ALL_NAME = /(lain ?lain|lainnya|\bother\b|others|misc|sundry|\bumum\b|general|serba ?serbi)/;
+
+const KEYWORDS: { re: RegExp; code: string; types?: AccountType[]; not?: RegExp; generic?: FsLine }[] = [
   { re: /(akumulasi|accumulated|accumulation).*(penyusutan|depreciation|amortization|amortisasi)/, code: "1219" },
   { re: /(penyusutan|depreciation|amortisasi|amortization)/, code: "6180", types: ["BEBAN"] },
   { re: /(rounding|pembulatan)/, code: ACCOUNT_CODES.ROUNDING },
@@ -112,7 +122,7 @@ const KEYWORDS: { re: RegExp; code: string; types?: AccountType[]; not?: RegExp 
   { re: /(trade receivable|piutang usaha|accounts? receivable)/, code: "1130", types: ["ASET"], not: /(employee|karyawan|pegawai|staff|related|berelasi|afiliasi|affiliat|\bloan\b|pinjaman)/ },
   { re: /(persediaan|inventory|supplies|perlengkapan|finished goods|barang jadi|raw material)/, code: "1160", types: ["ASET"] },
   { re: /(prepaid|dibayar di ?muka|uang muka|advance|deposit|jaminan|guarantee|deferred (expense|charge|cost)|(beban|biaya) ditangguhkan)/, code: "1170", types: ["ASET"] },
-  { re: /(piutang|receivable|loan to)/, code: "1140", types: ["ASET"] },
+  { re: /(piutang|receivable|loan to)/, code: "1140", types: ["ASET"], generic: "PIUTANG_LAIN" },
   { re: /(intangible|tak berwujud|software|right of use|hak guna|goodwill)/, code: "1250", types: ["ASET"] },
   { re: /(investment|investasi|penyertaan|placement|penempatan)/, code: "1260", types: ["ASET"] },
   { re: /(fixed asset|asset in progress|aset dalam penyelesaian|construction in progress|aset tetap|equipment|peralatan|kendaraan|vehicle|building|bangunan|renovation|renovasi|furniture|machine|mesin|\bland\b|tanah|inventaris|\bppe\b|\biot\b)/, code: "1210", types: ["ASET"] },
@@ -127,16 +137,16 @@ const KEYWORDS: { re: RegExp; code: string; types?: AccountType[]; not?: RegExp 
   { re: /(short ?term|jangka pendek)/, code: "2120", types: ["LIABILITAS"] },
   { re: /(long ?term|jangka panjang|non ?bank|lease|sewa pembiayaan|loan payable|\bloan\b|pinjaman)/, code: "2300", types: ["LIABILITAS"] },
   { re: /(trade payable|utang usaha|hutang usaha|accounts? payable)/, code: "2110", types: ["LIABILITAS"] },
-  { re: /(payable|\butang\b|\bhutang\b|current liabilit|kewajiban lancar)/, code: "2120", types: ["LIABILITAS"] },
+  { re: /(payable|\butang\b|\bhutang\b|current liabilit|kewajiban lancar)/, code: "2120", types: ["LIABILITAS"], generic: "UTANG_LAIN" },
   { re: /(additional paid|agio|premium|tambahan modal|\bapic\b)/, code: "3110", types: ["EKUITAS"] },
   { re: /(share capital|modal saham|modal disetor|ordinary shares?|pref+er+ed shares?|paid ?up|capital stock)/, code: "3100", types: ["EKUITAS"] },
   { re: /(retained|saldo laba|laba ditahan|accumulated (loss|deficit)|earnings|laba tahun berjalan)/, code: ACCOUNT_CODES.RETAINED, types: ["EKUITAS"] },
   { re: /(prive|dividen|dividend|drawing)/, code: "3300", types: ["EKUITAS"] },
   { re: /(income tax expense|beban pajak|pph badan|tax expense|corporate tax)/, code: "8100", types: ["BEBAN"], not: /final/ },
   { re: /(final tax|pph final|4\(2\))/, code: "8200", types: ["BEBAN"] },
-  { re: /(other income|pendapatan lain|other revenue|\bgain\b|miscellaneous income)/, code: "4910", types: ["PENDAPATAN"] },
+  { re: /(other income|pendapatan lain|other revenue|\bgain\b|miscellaneous income)/, code: "4910", types: ["PENDAPATAN"], generic: "PENDAPATAN_LAIN" },
   { re: /(sales|penjualan)/, code: "4100", types: ["PENDAPATAN"] },
-  { re: /(revenue|pendapatan|service income|fee income|income)/, code: "4110", types: ["PENDAPATAN"] },
+  { re: /(revenue|pendapatan|service income|fee income|income)/, code: "4110", types: ["PENDAPATAN"], generic: "PENDAPATAN_USAHA" },
   { re: /(purchase|pembelian|material|bahan baku|raw material)/, code: "5100", types: ["BEBAN"] },
   { re: /(cost of|hpp|harga pokok|beban pokok)/, code: "5110", types: ["BEBAN"] },
   { re: /(salary|salaries|gaji|wages|upah|tunjangan|\bthr\b|bonus|payroll|intern)/, code: "6100", types: ["BEBAN"] },
@@ -147,7 +157,7 @@ const KEYWORDS: { re: RegExp; code: string; types?: AccountType[]; not?: RegExp 
   { re: /(marketing|advertis|iklan|promosi|promotion|\bads\b|sponsor)/, code: "6150", types: ["BEBAN"] },
   { re: /(office|kantor|stationer|stationary|\batk\b|printing|alat tulis)/, code: "6160", types: ["BEBAN"] },
   { re: /(professional|legal|audit|consultant|konsultan|notaris|jasa profesional|\bagent\b)/, code: "6170", types: ["BEBAN"] },
-  { re: /(expense|beban|biaya)/, code: "6190", types: ["BEBAN"] },
+  { re: /(expense|beban|biaya)/, code: "6190", types: ["BEBAN"], generic: "BEBAN_UMUM_ADM" },
 ];
 
 export function deterministicSuggestion(
@@ -193,6 +203,9 @@ function keywordSuggestion(
     if (k.types && type && !k.types.includes(type)) continue;
     const acc = ctx.accounts.find((a) => a.code === k.code);
     if (!acc) continue;
+    if (k.generic && !CATCH_ALL_NAME.test(n) && RANGES[k.generic]) {
+      return { accountCode: `${NEW_PREFIX}${k.generic}`, method: "NEW", confidence: 0.7, reason: `Hanya kata umum "${n.match(k.re)?.[0]}" yang cocok; usulkan akun baru di ${FS_LINES[k.generic].label} dengan nama dari file` };
+    }
     return { accountCode: acc.code, method: "KEYWORD", confidence: 0.8, reason: `Kata kunci "${n.match(k.re)?.[0]}" → ${acc.code} ${acc.name}` };
   }
   return null;
@@ -314,13 +327,16 @@ export async function acceptMappings(
     let created = 0;
     for (const it of items) {
       let code = it.accountCode;
-      if (it.newAccount) {
-        code = await createClientAccount(tx, clientId, it.newAccount.fsLine, it.newAccount.name);
+      // A `new:<FS_LINE>` suggestion accepted as-is creates the account under that line, named after the client's account.
+      const suggestedLine = it.newAccount ? null : newFsLineOf(it.accountCode);
+      const newAccount = it.newAccount ?? (suggestedLine ? { fsLine: suggestedLine, name: sources.find((x) => x.id === it.sourceAccountId)!.name } : null);
+      if (newAccount) {
+        code = await createClientAccount(tx, clientId, newAccount.fsLine, newAccount.name);
         created++;
       }
       const acc = code ? await tx.account.findFirst({ where: { clientId, code } }) : null;
       if (!acc || acc.isBank || acc.isSuspense || acc.isClearing) throw new MappingError(`Akun ${code ?? "(kosong)"} tidak bisa dipakai untuk pemetaan`);
-      await tx.sourceAccount.update({ where: { id: it.sourceAccountId }, data: { accountId: acc.id, mappedBy: it.newAccount ? "NEW" : it.method, mappedById: actorId ?? null } });
+      await tx.sourceAccount.update({ where: { id: it.sourceAccountId }, data: { accountId: acc.id, mappedBy: newAccount ? "NEW" : it.method, mappedById: actorId ?? null } });
     }
     return { mapped: items.length, created };
   });
@@ -365,7 +381,12 @@ export async function createClientAccount(tx: Tx, clientId: string, fsLine: FsLi
   const used = new Set((await tx.account.findMany({ where: { clientId }, select: { code: true } })).map((a) => a.code));
   let code: string | null = null;
   for (let c = range[0]; c <= range[1]; c++) if (!used.has(String(c)) && !SPECIAL.has(String(c))) (code ??= String(c));
-  if (!code) throw new MappingError(`Rentang kode ${range[0]}–${range[1]} sudah penuh`);
+  // Past the 4-digit range, keep going under the line's anchor: 1140 → 114001 … 114099 (sorts right after 1140 as text).
+  for (let i = 1; !code && i <= 99; i++) {
+    const c = `${range[0] - 1}${String(i).padStart(2, "0")}`;
+    if (!used.has(c)) code = c;
+  }
+  if (!code) throw new MappingError(`Rentang kode untuk ${FS_LINES[fsLine].label} sudah penuh`);
   const section = FS_LINES[fsLine].section;
   const type: AccountType =
     SECTION_TYPE[section] ?? (fsLine === "PENDAPATAN_USAHA" || fsLine === "PENDAPATAN_LAIN" ? "PENDAPATAN" : "BEBAN");
