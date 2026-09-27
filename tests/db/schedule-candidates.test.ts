@@ -46,7 +46,7 @@ describe("schedule candidates from the ledger", () => {
       ["ACCRUAL", "6120", "2150", 3_000_000n, 1, "2026-8"],
       // depreciation (1 jt a month, missing too) is below materiality Rp 1.090.000
     ]);
-    expect(found[0]).toMatchObject({ sourceEntryId: machine.id, reason: "Pembelian 1210 Aset Tetap 19 Agu 2026: Mesin pakan otomatis", memo: "Penyusutan Mesin pakan otomatis" });
+    expect(found[0]).toMatchObject({ sourceEntryId: machine.id, reason: "Pembelian 1210 Aset Tetap 19 Agu 2026: Mesin pakan otomatis", memo: "Penyusutan Aset Tetap 19 Agu 2026" });
     expect(found[3].reason).toBe("6120 Beban Sewa tercatat tiap bulan (2026-05, 2026-06, 2026-07), bulan ini belum");
   });
 

@@ -169,7 +169,7 @@ export async function stopSchedule(db: Db, input: { clientId: string; scheduleId
 export async function listSchedules(db: Db, clientId: string) {
   const schedules = await db.adjustmentSchedule.findMany({
     where: { clientId },
-    include: { entity: { select: { id: true, shortName: true, functionalCurrency: true } }, debitAccount: { select: { code: true, name: true } }, creditAccount: { select: { code: true, name: true } }, entries: { select: { installment: true, lines: { select: { debit: true } } } } },
+    include: { entity: { select: { id: true, shortName: true, functionalCurrency: true } }, debitAccount: { select: { code: true, name: true } }, creditAccount: { select: { code: true, name: true } }, sourceEntry: { select: { memo: true, date: true, bankTransaction: { select: { description: true } } } }, entries: { select: { installment: true, lines: { select: { debit: true } } } } },
     orderBy: [{ stoppedAt: { sort: "asc", nulls: "first" } }, { createdAt: "desc" }, { id: "asc" }],
   });
   return schedules.map((s) => {

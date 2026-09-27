@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { db, makeGroup, resetDb } from "../helpers";
 import { createSchedule, dueProposals, installments, listSchedules, postAllDue, postInstallment, stopSchedule } from "@/lib/adjust/schedules";
 import { dateOnly } from "@/lib/format";
+import { runControls } from "@/lib/controls";
 
 describe("adjustment schedules", () => {
   beforeEach(resetDb);
@@ -92,4 +93,17 @@ describe("adjustment schedules", () => {
     await expect(postInstallment(db, { clientId: other.client.id, scheduleId: s.id, k: 1 })).rejects.toThrow("Jadwal tidak ditemukan");
     await expect(stopSchedule(db, { clientId: other.client.id, scheduleId: s.id })).rejects.toThrow("Jadwal tidak ditemukan");
   });
+
+  it("flags a due, unposted installment on the close until it is posted", async () => {
+    const g = await makeGroup();
+    const pt = g.pt.entity.id;
+    const s = await createSchedule(db, { clientId: g.client.id, entityId: pt, kind: "DEPRECIATION", memo: "Penyusutan aset tetap", debitCode: "6180", creditCode: "1219", amount: "1.140.000.000", months: 120, startYear: 2026, startMonth: 3 });
+    const sched = async () => (await runControls(db, g.client.id, 2026, 8)).find((c) => c.key === `sched:${pt}`);
+    expect(await sched()).toMatchObject({ status: "REVIEW", title: "Jurnal terjadwal belum dicatat", detail: "1 angsuran: Penyusutan aset tetap (6/120) Rp 9.500.000", href: `/clients/${g.client.id}/journals/new?period=2026-08` });
+    await postInstallment(db, { clientId: g.client.id, scheduleId: s.id, k: 6 });
+    expect(await sched()).toBeUndefined();
+    await stopSchedule(db, { clientId: g.client.id, scheduleId: s.id });
+    expect((await runControls(db, g.client.id, 2026, 9)).some((c) => c.key.startsWith("sched:"))).toBe(false);
+  });
 });
+

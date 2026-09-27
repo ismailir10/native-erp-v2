@@ -7,6 +7,8 @@ import { NextStep, PageHeader } from "@/components/app/page-header";
 import { ScopeBar } from "@/components/app/scope-bar";
 import { ClosePanel } from "@/components/app/close-panel";
 import { RevaluationCard } from "@/components/app/revaluation-card";
+import { ScheduleProposals } from "@/components/app/schedule-proposals";
+import { proposalViews } from "@/lib/adjust/view";
 import { revaluationProposals } from "@/lib/fx/revalue";
 import { CloseReviewCard } from "@/components/app/close-review-card";
 import { cachedCloseReview } from "@/lib/controls/ai-review";
@@ -30,6 +32,7 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
   const missing = controls.find((c) => c.key.startsWith("bank:") && c.detail.includes("belum diimpor"));
   const locked = p?.status === "LOCKED";
   const reval = await revaluationProposals(prisma, client.id, period.year, period.month);
+  const scheduled = locked ? [] : await proposalViews(prisma, client.id, period.year, period.month);
   const flagged = controls.filter((c) => c.status !== "PASS").length;
   const ai = await resolveAiConfig(prisma);
   const aiModel = ai.apiKey && ai.model ? ai.model : null;
@@ -69,6 +72,7 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
           }))}
         />
       )}
+      {scheduled.length > 0 && <ScheduleProposals clientId={client.id} year={period.year} month={period.month} periodLabel={label} items={scheduled} locked={locked} />}
       {!locked && flagged > 0 && <CloseReviewCard key={`${period.key}:${reviewKey}`} clientId={client.id} year={period.year} month={period.month} flagged={flagged} aiReady={aiModel !== null} initial={review} />}
       <ClosePanel
         clientId={client.id}

@@ -9,6 +9,7 @@ import { acceptSimilar, reviewTransaction } from "@/lib/review";
 import { CloseError, lockPeriod } from "@/lib/controls";
 import { LedgerError } from "@/lib/ledger/post";
 import { postAdjustment } from "@/lib/ledger/adjustment";
+import { createSchedule, postAllDue, postInstallment, stopSchedule, type ScheduleInput } from "@/lib/adjust/schedules";
 import { ParseError } from "@/lib/import/types";
 import { PdfPasswordError } from "@/lib/import/parsers/pdf";
 import { MoneyError } from "@/lib/money";
@@ -178,6 +179,51 @@ export async function adjustmentAction(input: {
     const entry = await postAdjustment(prisma, { clientId: client.id, entityId: input.entityId, date: new Date(`${input.date}T00:00:00Z`), memo: input.memo, lines: input.lines, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true, entryId: entry.id };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Adjustment schedules (accounting-rules 5a): create, post an installment or every due one, stop. */
+export async function createScheduleAction(input: Omit<ScheduleInput, "actorId">): Promise<Result<{ scheduleId: string }>> {
+  try {
+    const client = await getClientForFirm(input.clientId);
+    const s = await createSchedule(prisma, { ...input, clientId: client.id, actorId: (await getCurrentMember()).id });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, scheduleId: s.id };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function postInstallmentAction(clientId: string, scheduleId: string, k: number): Promise<Result> {
+  try {
+    const client = await getClientForFirm(clientId);
+    await postInstallment(prisma, { clientId: client.id, scheduleId, k, actorId: (await getCurrentMember()).id });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function postAllDueAction(clientId: string, year: number, month: number): Promise<Result<{ posted: number }>> {
+  try {
+    const client = await getClientForFirm(clientId);
+    const posted = await postAllDue(prisma, { clientId: client.id, year, month, actorId: (await getCurrentMember()).id });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, posted };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function stopScheduleAction(clientId: string, scheduleId: string): Promise<Result> {
+  try {
+    const client = await getClientForFirm(clientId);
+    await stopSchedule(prisma, { clientId: client.id, scheduleId });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
   } catch (e) {
     return fail(e);
   }

@@ -57,7 +57,7 @@ export async function scheduleCandidates(db: Db, clientId: string, year: number,
         entry: { kind: { not: "OPENING" }, scheduleId: null, schedulesFrom: { none: {} } },
         OR: [{ account: { fsLine: { in: ["ASET_TETAP", "BIAYA_DIBAYAR_DIMUKA"] } } }, { account: { code: DEFERRED_REVENUE } }, ...["diterima di muka", "unearned", "deferred revenue"].map((w) => ({ account: { type: "LIABILITAS" as const, name: { contains: w, mode: "insensitive" as const } } }))],
       },
-      include: { account: true, entry: { select: { id: true, memo: true, date: true } } },
+      include: { account: true, entry: { select: { id: true, memo: true, date: true, bankTransaction: { select: { description: true } } } } },
       orderBy: [{ date: "asc" }, { id: "asc" }],
     });
     // One candidate per source entry and account, on the net movement of that entry.
@@ -70,14 +70,16 @@ export async function scheduleCandidates(db: Db, clientId: string, year: number,
     }
     for (const { line: l, net } of groups.values()) {
       const when = formatDate(l.entry.date);
-      const what = (l.memo ?? l.entry.memo).slice(0, 60);
+      // What happened, in the source's words: the bank description for a reviewed bank line, else the journal memo.
+      const what = (l.entry.bankTransaction?.description ?? l.memo ?? l.entry.memo).replace(/^Reklasifikasi:\s*/i, "").slice(0, 90);
+      const label = `${l.account.name} ${when}`;
       const base = { entity: ent, sourceEntryId: l.entry.id, startYear: nm.year, startMonth: nm.month };
       if (l.account.fsLine === "ASET_TETAP" && net >= floor && codes.has(DEPRECIATION_EXPENSE) && codes.has(ACCUMULATED_DEPRECIATION)) {
-        out.push({ ...base, key: `DEPRECIATION:${e.id}:${l.entry.id}:${l.account.code}`, kind: "DEPRECIATION", reason: `Pembelian ${l.account.code} ${l.account.name} ${when}: ${what}`, memo: `Penyusutan ${what}`.slice(0, 80), debitCode: DEPRECIATION_EXPENSE, creditCode: ACCUMULATED_DEPRECIATION, amount: net, months: DEFAULT_MONTHS.DEPRECIATION });
+        out.push({ ...base, key: `DEPRECIATION:${e.id}:${l.entry.id}:${l.account.code}`, kind: "DEPRECIATION", reason: `Pembelian ${l.account.code} ${l.account.name} ${when}: ${what}`, memo: `Penyusutan ${label}`.slice(0, 80), debitCode: DEPRECIATION_EXPENSE, creditCode: ACCUMULATED_DEPRECIATION, amount: net, months: DEFAULT_MONTHS.DEPRECIATION });
       } else if (l.account.fsLine === "BIAYA_DIBAYAR_DIMUKA" && net >= floor) {
-        out.push({ ...base, key: `AMORTIZATION:${e.id}:${l.entry.id}:${l.account.code}`, kind: "AMORTIZATION", reason: `Dibayar di muka ke ${l.account.code} ${when}: ${what}`, memo: `Amortisasi ${what}`.slice(0, 80), debitCode: null, creditCode: l.account.code, amount: net, months: DEFAULT_MONTHS.AMORTIZATION });
+        out.push({ ...base, key: `AMORTIZATION:${e.id}:${l.entry.id}:${l.account.code}`, kind: "AMORTIZATION", reason: `Dibayar di muka ke ${l.account.code} ${when}: ${what}`, memo: `Amortisasi ${label}`.slice(0, 80), debitCode: null, creditCode: l.account.code, amount: net, months: DEFAULT_MONTHS.AMORTIZATION });
       } else if (l.account.type === "LIABILITAS" && (l.account.code === DEFERRED_REVENUE || DEFERRED_NAME.test(l.account.name)) && -net >= floor && codes.has(SERVICE_REVENUE)) {
-        out.push({ ...base, key: `AMORTIZATION:${e.id}:${l.entry.id}:${l.account.code}`, kind: "AMORTIZATION", reason: `Diterima di muka ke ${l.account.code} ${when}: ${what}`, memo: `Pengakuan pendapatan ${what}`.slice(0, 80), debitCode: l.account.code, creditCode: SERVICE_REVENUE, amount: -net, months: DEFAULT_MONTHS.AMORTIZATION });
+        out.push({ ...base, key: `AMORTIZATION:${e.id}:${l.entry.id}:${l.account.code}`, kind: "AMORTIZATION", reason: `Diterima di muka ke ${l.account.code} ${when}: ${what}`, memo: `Pengakuan ${label}`.slice(0, 80), debitCode: l.account.code, creditCode: SERVICE_REVENUE, amount: -net, months: DEFAULT_MONTHS.AMORTIZATION });
       }
     }
 
