@@ -54,7 +54,7 @@ Verification
       PASS text.
 - [x] `tests/db/close-review.test.ts`: MockProvider review of a flux + dup case returns items citing `akun:`/`jl:`/`je:`
       ids; ids it wasn't given are dropped; cache hit on second call (0 extra `AiUsage`).
-- [ ] Demo: `demo:reset && verify:books` ALL PASS (no number changes). The investor walk expects August to close with
+- [x] Demo: `demo:reset && verify:books` ALL PASS (no number changes). The investor walk expects August to close with
       no "Perlu dicek"; if a scan flags on the synthetic August it is inspected — a genuine scenario pattern is acknowledged
       in the walk with a note (script + `docs/demo/investor-demo.md` updated), never hidden by tuning a threshold to the demo.
 - [x] `scripts/verify-real.ts` prints per client the anomaly flags of the last month of each file (counts + top lines),
@@ -81,7 +81,7 @@ flagged controls in one call).
 - [x] T1 `lib/controls/anomaly.ts` scans + wiring into `runControls` + DB tests — accept: `tests/db/anomaly-controls.test.ts` green; demo August inspected (`demo:reset`, controls listed). Reuse `periodBounds`, `formatMoney`, `Control`, sanity's `control()` shape.
 - [x] T2 AI review rows + prompt v2 + tests — accept: `tests/db/close-review.test.ts` new cases green with MockProvider. Depends T1. Reuse `gather()`'s `take`/`bySize`/`links`.
 - [x] T3 Docs + real-data report: ADR 0009 amendment, accounting-rules 22b, `verify-real` anomaly section, demo walk/doc if T1 found a flag — accept: typecheck; e2e green.
-- [ ] T4 End-of-cycle gates — accept: `build`, `demo:reset`, `verify:books` ALL PASS, `test:e2e` green.
+- [x] T4 End-of-cycle gates — accept: `build`, `demo:reset`, `verify:books` ALL PASS, `test:e2e` green.
 
 ## Implementation
 - Plan: T1–T4 sequential, inline (each task builds on the previous one's control keys; small enough to review as one diff).
@@ -95,4 +95,12 @@ flagged controls in one call).
 - T2: lint + typecheck clean; `npm test` → Test Files 53 passed (53), Tests 393 passed (393).
 - T3: lint + typecheck clean; `npm test` → Test Files 53 passed (53), Tests 393 passed (393); `npm run build` ✓; walk before the e2e change → `Locator: getByText('Perlu dicek') Expected: 0 Received: 3` (the one dormant row: pill + next-step + blocker line); after → `e2e/investor-demo.spec.ts` 2 passed (22.1s).
 
+- End of cycle: lint + typecheck clean; `npm test` → Test Files 53 passed (53), Tests 393 passed (393); `npm run build` ✓ Compiled successfully; `npm run demo:reset && npm run verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.; `npm run test:e2e` → 10 passed (53.7s); with `EVIDENCE_ENABLED=true` (CI's second pass) → 10 passed (52.2s).
+- Not run here: `npm run verify:real` (real files live only on the owner's machine). Run it locally to see how noisy the scans are on Chickin/Goers before relying on them in a real close.
+
 ## Ship Notes
+- **No migration, env var or dependency.** Four new REVIEW controls per entity (`flux:` `flip:` `dormant:` `dup:`), computed at read time from `JournalLine`; no number on any report changes.
+- **Behaviour change:** a month can now show *Perlu dicek* for a P&L swing, a P&L account running backwards, an account that moves for the first time in 3 months, or a possible double entry; each needs a note before Tutup Buku (never FAIL). Periods already locked stay locked; reopening one re-runs the controls and may show new flags.
+- **AI close review:** prompt `close-review-v2` (cached v1 reviews miss once, then cache again). For the new controls it also sends the flagged accounts' month series and the month's journal lines on them (memo ≤ 80 chars) — ADR 0009 amendment; same ≤ 40-row cap, budget and cache. Firms without an AI key see only the deterministic controls.
+- **Investor walk:** the close now has one flag to note (1210 Aset Tetap after the machine purchase); `docs/demo/investor-demo.md` §6 has the line to type.
+- Rollback: revert the merge; nothing persisted except notes the accountant wrote on the new controls (ordinary `ControlAck` rows).
