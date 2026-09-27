@@ -29,6 +29,8 @@ export function financingSuggestion(description: string, direction: Direction): 
   const guess = (accountCode: string, reason: string): Classification => ({ method: "HEURISTIC", accountCode, taxTag: null, confidence: FINANCING_CONFIDENCE, reason });
   if (INTEREST.test(description)) return direction === "OUT" ? guess("7110", "Bunga pinjaman: beban bunga, bukan pokok") : null;
   if (FEES.test(description)) return direction === "OUT" ? guess("7100", "Biaya atas pinjaman/rekening: beban administrasi bank") : null;
+  // Any other cost word (a tax on the loan) is never principal: leave it to rules, memory or AI rather than guess 2210.
+  if (FINANCING_COST.test(description)) return null;
   // Loan markers win over a bare MODAL ("PENCAIRAN PINJAMAN MODAL KERJA" is working-capital debt, not equity).
   if (direction === "IN" && LOAN_IN.test(description)) return guess("2210", "Pencairan pinjaman: utang bank, bukan penjualan");
   if (direction === "IN" && CAPITAL.test(description)) return guess("3100", "Setoran modal: ekuitas, bukan penjualan");

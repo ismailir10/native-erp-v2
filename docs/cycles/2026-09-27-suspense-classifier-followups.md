@@ -31,7 +31,7 @@ Loan lines (`lib/classify/financing.ts`)
       (ANGSURAN / POKOK / PELUNASAN / PINJAMAN / LOAN) → 2210; interest on it (BUNGA / INTEREST) → 7110; bank fees on it
       (BIAYA / ADM / FEE / MATERAI / PROVISI) → 7100; capital paid in (SETORAN MODAL / MODAL) → 3100; an unpaired own-account move
       (PINDAH BUKU / OVERBOOK / ANTAR REKENING) → 1199. Method HEURISTIC (review, never auto-posts), confidence 0.5, reason
-      says why. No AI call for these lines.
+      says why. No AI call for these lines. Any other cost word on a loan line (PAJAK / TAX) gets no suggestion — never principal.
 
 Transfer window (`lib/classify/transfer.ts`)
 - [x] Pairs match within **2 business days** (Saturday/Sunday don't count) instead of 2 calendar days; the pipeline reads open
@@ -83,6 +83,7 @@ allowed.
 - Review fixes on PR #36: loan markers win over a bare MODAL ("PENCAIRAN PINJAMAN MODAL KERJA" → 2210, not 3100); an AI draft without a snapshot (made before the column existed) can't be proven fresh and is refused; a 1999 correction keeps the imported group's `ledgerImportId` and `sourceRef` (`postProposal` takes an `origin`), so its report impact still drills to the file's rows. Each has a test that fails on the previous code.
 - Second review round on PR #36 (`@codex review` on 69e80d8): a 1999 correction can no longer be dismissed (it was the only way to clear that 1999 line — the free-form journal excludes suspense accounts — so dismissing it left the close stuck); the card hides *Abaikan* for them and the action refuses. `postProposal` now checks the AI draft's snapshot and writes in **one SERIALIZABLE transaction** (a concurrent fix either commits first and changes the snapshot, or makes this post fail with "coba catat lagi"); the bank-reclass path runs inside it. "PENCAIRAN / PELUNASAN KREDIT|KMK|KI" joined the shared financing words (suggestion and control), while a bare PELUNASAN (an invoice) or PENCAIRAN DEPOSITO stays out. Tests updated/added (financing phrases fail on the previous code).
 - Third review round (85dd0a5): PROVISI joined the financing-cost words, so the classifier's own 7100 suggestion for "PROVISI PINJAMAN" isn't then flagged by the sanity control as financing in Laba Rugi; a unit test keeps every 7100/7110 financing suggestion inside the cost words (fails on the previous code).
+- Fourth review round (609f11a): a tax on a loan ("PAJAK PINJAMAN") fell through to the principal pattern and got 2210, which would understate the loan and escape the control (PAJAK is a cost word); any cost word that isn't interest or a fee now makes the classifier step aside (rules, memory or AI decide). Unit test fails on the previous code.
 
 ## Verification
 - T1: lint + typecheck clean; `npm test` → Test Files 59 passed (59), Tests 418 passed (418).
@@ -93,6 +94,7 @@ allowed.
 - PR #36 review fixes: the three new cases fail on the previous code (3 failed | 8 passed) and pass after; lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 427 passed (427); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.; `npm run test:e2e` → 10 passed (55.0s).
 - PR #36 second review round: new financing cases fail on the previous code (2 failed | 2 passed) and pass after; lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 427 passed (427); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.; `npm run test:e2e` → 10 passed (56.3s).
 - PR #36 third review round: new consistency test fails on the previous code (1 failed | 4 passed) and passes after; lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 428 passed (428); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.; `npm run test:e2e` → 10 passed (53.9s).
+- Fourth review round: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 429 passed (429); `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
 
 ## Ship Notes
 - **Migration** `20260927190000_proposal_snapshot`: one nullable column `ProposedEntry.snapshot`. Additive; applied by `vercel-build`.

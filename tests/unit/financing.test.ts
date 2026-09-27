@@ -25,6 +25,16 @@ describe("financing suggestions", () => {
     }
   });
 
+  it("never books a cost on a loan (a tax, say) as principal", () => {
+    for (const d of ["PAJAK PINJAMAN", "PAJAK BUNGA PINJAMAN KMK", "TAX ON LOAN", "PPH PAJAK PELUNASAN KREDIT KMK"]) {
+      for (const dir of ["IN", "OUT"] as const) {
+        const s = financingSuggestion(d, dir);
+        expect(s === null || ["7100", "7110"].includes(s.accountCode)).toBe(true);
+      }
+    }
+    expect(code("PAJAK PINJAMAN", "OUT")).toBeNull();
+  });
+
   it("stays out of ordinary lines and of combinations it can't read", () => {
     expect(code("TRSF E-BANKING CR PT MITRA UNGGAS", "IN")).toBeNull();
     expect(code("BUNGA JASA GIRO", "IN")).toBeNull(); // interest income, no financing word
