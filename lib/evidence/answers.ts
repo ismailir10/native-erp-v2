@@ -67,8 +67,10 @@ type UnitRef = { versionId: string; unitKey: string };
  * known period (confirmed, else extracted) outside the range. Unconfirmed units stay in and are counted, so a freshly
  * uploaded collection answers dated questions instead of returning nothing.
  */
+const unknownNote = (n: number) => `${n} bagian belum dikonfirmasi entitas/periodenya; ikut dicari.`;
+
 async function sourceScope(db: Db, firmId: string, intakeId: string, clientId: string | null, versionIds: string[], entityId: string | undefined, range: { start: Date; end: Date } | null, intent: EvidenceAnswerPlan["intent"]) {
-  if (!versionIds.length) return { excluded: [] as UnitRef[], unknown: 0 };
+  if (!versionIds.length) return { excluded: [] as UnitRef[], unknown: 0, versionOut: ((): boolean => false) as (versionId: string) => boolean };
   const [selections, units] = await Promise.all([
     db.evidenceSelection.findMany({ where: { firmId, intakeId, versionId: { in: versionIds }, confirmed: true }, select: { versionId: true, unitKey: true, entityId: true, periodStart: true, periodEnd: true } }),
     db.$queryRaw<{ versionId: string; unitKey: string; periodStart: string | null; periodEnd: string | null }[]>(Prisma.sql`
@@ -102,7 +104,12 @@ async function sourceScope(db: Db, firmId: string, intakeId: string, clientId: s
     }
     if (!known) unknown++;
   }
-  return { excluded, unknown };
+  // A version is known to be out of scope when it has units and every one of them is excluded.
+  const total = new Map<string, number>(), out = new Map<string, number>();
+  for (const u of refs.values()) total.set(u.versionId, (total.get(u.versionId) ?? 0) + 1);
+  for (const u of excluded) out.set(u.versionId, (out.get(u.versionId) ?? 0) + 1);
+  const versionOut = (versionId: string) => (total.get(versionId) ?? 0) > 0 && out.get(versionId) === total.get(versionId);
+  return { excluded, unknown, versionOut };
 }
 
 /** All arithmetic is deterministic; the model chooses from bounded read tools only. */
@@ -239,7 +246,7 @@ export async function askEvidence(db: Db, firmId: string, intakeId: string, inpu
     const unitAllowed = (versionId: string, unitKey: string) => !excludedKeys.has(`${versionId}\0${unitKey}`);
     if (scope) {
       answer.limitations.push("Cakupan sumber memakai entitas yang dikonfirmasi dan periode dokumen; bagian yang diketahui di luar cakupan tidak disertakan.");
-      if (scope.unknown) answer.limitations.push(`${scope.unknown} bagian belum dikonfirmasi entitas/periodenya; ikut dicari.`);
+      if (scope.unknown) answer.limitations.push(unknownNote(scope.unknown));
     }
     if (documents.length > 500) answer.limitations.push("Pencarian dibatasi 500 dokumen pertama.");
     const partial = documents.some((d) => !d.excluded && d.status !== "DIRECTORY" && (d.issue || !d.currentVersionId || ["REMOVED", "INACCESSIBLE", "ERROR", "MISSING"].includes(d.status)));
@@ -249,8 +256,23 @@ export async function askEvidence(db: Db, firmId: string, intakeId: string, inpu
       if (!answer.citations.some((c) => c.versionId === versionId && c.locator === locator)) answer.citations.push({ versionId, locator, label: names.get(versionId)! });
     };
     if (plan.intent === "MISSING") {
-      const conflicts = await db.evidenceConflict.findMany({ where: { firmId, intakeId, resolved: false }, take: MAX_RESULTS, orderBy: { id: "asc" } });
-      answer.rows = documents.filter((d) => !d.excluded && d.status !== "DIRECTORY" && (d.issue || !d.currentVersionId)).slice(0, MAX_RESULTS).map((d) => ({ label: d.name, value: d.issue || "Belum selesai diperiksa", source: "Kumpulan dokumen" }));
+      // A scoped question leaves out documents and conflicts whose versions are known to be outside the scope; unknown stays in.
+      // Their versions (a problem document keeps its last one; a conflict may cite older ones) are scoped here, never searched.
+      const fetched = await db.evidenceConflict.findMany({ where: { firmId, intakeId, resolved: false }, take: 501, orderBy: { id: "asc" } });
+      const allConflicts = fetched.slice(0, 500);
+      if (fetched.length > 500) answer.limitations.push("Pengecualian terbuka lebih dari 500; hanya 500 pertama yang diperiksa.");
+      const idsOf = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+      const extra = [...new Set([...documents.slice(0, 500).flatMap((d) => (d.currentVersionId && !d.excluded ? [d.currentVersionId] : [])), ...allConflicts.flatMap((c) => idsOf(c.versionIds))])].filter((v) => !versionIds.includes(v));
+      const missingScope = scope && extra.length ? await sourceScope(db, firmId, intakeId, intake.clientId, [...versionIds, ...extra], entityId, sourceRange, plan.intent) : scope;
+      if (missingScope && missingScope !== scope) {
+        // The note counts what this answer actually looked at, retained and conflict versions included.
+        answer.limitations = answer.limitations.filter((l) => l !== unknownNote(scope!.unknown));
+        if (missingScope.unknown) answer.limitations.push(unknownNote(missingScope.unknown));
+      }
+      const versionOut = missingScope?.versionOut ?? (() => false);
+      const conflictOut = (versionIds: unknown) => idsOf(versionIds).length > 0 && idsOf(versionIds).every(versionOut);
+      const conflicts = allConflicts.filter((c) => !conflictOut(c.versionIds)).slice(0, MAX_RESULTS);
+      answer.rows = documents.slice(0, 500).filter((d) => !d.excluded && d.status !== "DIRECTORY" && (d.issue || !d.currentVersionId) && !(d.currentVersionId && versionOut(d.currentVersionId))).slice(0, MAX_RESULTS).map((d) => ({ label: d.name, value: d.issue || "Belum selesai diperiksa", source: "Kumpulan dokumen" }));
       answer.rows.push(...conflicts.map((c) => ({ label: c.kind, value: c.message, source: "Pengecualian dokumen" })));
       answer.text = answer.rows.length ? "Dokumen dan keputusan yang masih perlu ditangani:" : "Tidak ada pengecualian terbuka yang tercatat.";
       answer.limitations.push("Daftar ini bukan jaminan dokumen lengkap; kelengkapan bergantung rekening, entitas, dan periode yang dikonfirmasi.");

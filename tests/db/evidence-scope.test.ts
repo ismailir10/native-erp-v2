@@ -78,3 +78,47 @@ it("ignores a planned entity outside the chosen scope instead of failing, and co
   expect(await planRejections(db, g.firm.id)).toEqual({ days: 30, requested: 2, rejected: 1, rate: 0.5 });
   expect((await db.aiUsage.findFirstOrThrow({ where: { ok: false } })).note).toMatch(/^Rencana jawaban — AI gagal: /);
 });
+
+it("a scoped missing-documents question leaves out exceptions known to be outside the scope", async () => {
+  const g = await collection();
+  const text = "catatan 2023";
+  const doc = await db.evidenceDocument.create({ data: { firmId: g.firm.id, intakeId: g.intake.id, sourceKey: "old", name: "tb-2023.xlsx", path: "tb-2023.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", status: "ERROR", issue: "Gagal dibaca ulang" } }); // processed once, then failed: it keeps its last version
+  const version = await db.evidenceVersion.create({ data: { firmId: g.firm.id, documentId: doc.id, hash: hash(text), name: doc.name, size: text.length, data: Buffer.from(text), extracted: true, units: json([unit("TB23", "2023-12-31")]) } });
+  await db.evidenceDocument.update({ where: { id: doc.id }, data: { currentVersionId: version.id } });
+  await db.evidenceConflict.create({ data: { firmId: g.firm.id, intakeId: g.intake.id, key: "tb23", kind: "PERIODE", message: "Dua saldo 2023 berbeda", versionIds: json([version.id]) } });
+  await db.evidenceConflict.create({ data: { firmId: g.firm.id, intakeId: g.intake.id, key: "pl", kind: "ENTITAS", message: "Entitas belum jelas", versionIds: json([g.version.id]) } });
+
+  const all = await askEvidence(db, g.firm.id, g.intake.id, { question: "Dokumen apa yang kurang?" }, null);
+  expect(all.rows?.map((r) => r.label)).toEqual(["tb-2023.xlsx", "PERIODE", "ENTITAS"]);
+  // December 2024: the 2023-only file and its conflict are known to be out of scope; the file with an unknown-period sheet stays.
+  const dec24 = await askEvidence(db, g.firm.id, g.intake.id, { question: "Dokumen apa yang kurang?", period: "2024-12" }, null);
+  expect(dec24.rows?.map((r) => r.label)).toEqual(["ENTITAS"]);
+
+  // A failed file whose kept sheet has no known period stays in, and the note counts it with the collection's own unknown sheet.
+  const undated = await db.evidenceDocument.create({ data: { firmId: g.firm.id, intakeId: g.intake.id, sourceKey: "x", name: "lain.xlsx", path: "lain.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", status: "ERROR", issue: "Gagal dibaca ulang" } });
+  const undatedVersion = await db.evidenceVersion.create({ data: { firmId: g.firm.id, documentId: undated.id, hash: hash("lain"), name: undated.name, size: 4, data: Buffer.from("lain"), extracted: true, units: json([unit("Lain", null)]) } });
+  await db.evidenceDocument.update({ where: { id: undated.id }, data: { currentVersionId: undatedVersion.id } });
+  const again = await askEvidence(db, g.firm.id, g.intake.id, { question: "Dokumen apa yang kurang?", period: "2024-12" }, null);
+  expect(again.rows?.map((r) => r.label)).toEqual(["lain.xlsx", "ENTITAS"]);
+  expect(again.limitations.filter((l) => l.includes("belum dikonfirmasi"))).toEqual(["2 bagian belum dikonfirmasi entitas/periodenya; ikut dicari."]);
+});
+
+it("a missing-documents answer looks at the same first 500 documents it scopes", async () => {
+  const g = await collection();
+  await db.evidenceDocument.createMany({ data: Array.from({ length: 499 }, (_, i) => ({ firmId: g.firm.id, intakeId: g.intake.id, sourceKey: `dir-${i}`, name: `folder ${i}`, path: `folder ${i}`, mimeType: "folder", status: "DIRECTORY" })) });
+  // The 501st document: past the limit, so it is neither scoped nor listed.
+  const late = await db.evidenceDocument.create({ data: { firmId: g.firm.id, intakeId: g.intake.id, sourceKey: "late", name: "late.xlsx", path: "late.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", status: "ERROR", issue: "Gagal dibaca ulang" } });
+  const version = await db.evidenceVersion.create({ data: { firmId: g.firm.id, documentId: late.id, hash: hash("late"), name: late.name, size: 4, data: Buffer.from("late"), extracted: true, units: json([unit("Late", "2023-12-31")]) } });
+  await db.evidenceDocument.update({ where: { id: late.id }, data: { currentVersionId: version.id } });
+  expect((await db.evidenceDocument.findMany({ where: { intakeId: g.intake.id }, orderBy: { id: "asc" }, select: { id: true } }))[500].id).toBe(late.id);
+  const answer = await askEvidence(db, g.firm.id, g.intake.id, { question: "Dokumen apa yang kurang?", period: "2024-12" }, null);
+  expect(answer.rows?.map((r) => r.label)).not.toContain("late.xlsx");
+  expect(answer.limitations).toContain("Pencarian dibatasi 500 dokumen pertama.");
+});
+
+it("says so when there are more open conflicts than a missing-documents answer checks", async () => {
+  const g = await collection();
+  await db.evidenceConflict.createMany({ data: Array.from({ length: 501 }, (_, i) => ({ firmId: g.firm.id, intakeId: g.intake.id, key: `k${i}`, kind: "PERIODE", message: `Konflik ${i}`, versionIds: json([g.version.id]) })) });
+  const answer = await askEvidence(db, g.firm.id, g.intake.id, { question: "Dokumen apa yang kurang?", period: "2024-12" }, null);
+  expect(answer.limitations).toContain("Pengecualian terbuka lebih dari 500; hanya 500 pertama yang diperiksa.");
+});
