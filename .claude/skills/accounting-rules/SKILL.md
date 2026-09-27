@@ -74,6 +74,8 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
 18. All paid paths reserve the shared monthly allowance atomically through `lib/ai/budget.ts` before network calls. Evidence context proposals and read-only query plans use bounded source passages, versioned citations, and scope/model/prompt caches; monetary answers are deterministic tool results (ADR 0007). Existing classification/mapping payload restrictions still apply. Hard caps: `AI_MAX_CALLS_PER_IMPORT`, `AI_MONTHLY_TOKEN_BUDGET`; every call logged in `AiUsage`. No retry loops.
 19. Bank text is untrusted: output codes must be in the client's COA whitelist (`parseAiResponse`), else dropped.
 20. Tests and the seed **never** call a real model (`MockProvider`, pre-cached answers). `npm run ai:smoke` is the only live call.
+20a. **AI close review** (ADR 0009) may send amounts and ≤ 80-char bank descriptions of the rows behind flagged controls only
+    (≤ 40 rows). It explains and proposes; it never posts, acks, ticks or locks. Items citing keys/ids it wasn't given are dropped.
 21. Provider is OpenAI-compatible `fetch` (OpenCode Zen default) behind `AiProvider`; swap by config, not code.
     Key + model: **Pengaturan (DB, encrypted) overrides env** — resolve via `resolveAiConfig()` (`lib/settings/ai.ts`).
     `AI_BASE_URL` stays **env-only** so a visitor can't redirect the stored key. *Cek koneksi* hits `GET /models` (no tokens).
@@ -82,6 +84,10 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
 22. Controls (`lib/controls`): TB balanced, A = L + E, bank statement balance = GL per account, continuity,
     1199 = 0, 1999 empty, 1190 eliminated, ledger-import checks (accepted BLOCK = FAIL, REVIEW = REVIEW),
     FX revaluation posted when a foreign-currency balance exists. **REVIEW ≠ bug** — it needs a human note. **FAIL blocks** Tutup Buku.
+22a. **Sanity controls** (`lib/controls/sanity.ts`, ADR 0009) check that the books make sense, not only that they add up:
+    negative total assets = **FAIL**; balance-sheet balances against their `normalBalance`, financing text (loan, PRK, deposit,
+    own-account transfer) classified to the P&L, a month without data between active months, and accepted guesses
+    (HEURISTIC, or AI < 0.6 unchanged) = REVIEW. Deterministic only — AI never decides a control.
 23. Tutup Buku requires: no FAIL, every REVIEW acknowledged with a note, all sign-offs ticked.
 
 ## Tenancy
