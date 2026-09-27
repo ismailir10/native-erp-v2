@@ -34,6 +34,39 @@ describe("adjustment schedules", () => {
     expect(sep.memo).toBe("Pembalikan: Akrual listrik Agustus");
   });
 
+  it("a stopped accrual still reverses what it posted, and posts nothing else", async () => {
+    const g = await makeGroup();
+    const s = await createSchedule(db, { clientId: g.client.id, entityId: g.pt.entity.id, kind: "ACCRUAL", memo: "Akrual listrik Agustus", debitCode: "6130", creditCode: "2150", amount: "4.500.000", months: 1, startYear: 2026, startMonth: 8 });
+    await postInstallment(db, { clientId: g.client.id, scheduleId: s.id, k: 1 });
+    await stopSchedule(db, { clientId: g.client.id, scheduleId: s.id });
+    // The accrual stays on the books until reversed: September still proposes the reversal and it posts.
+    expect((await dueProposals(db, g.client.id, 2026, 9)).map((p) => p.memo)).toEqual(["Pembalikan: Akrual listrik Agustus"]);
+    await postInstallment(db, { clientId: g.client.id, scheduleId: s.id, k: 2 });
+    const net = await db.journalLine.aggregate({ where: { entry: { scheduleId: s.id }, account: { code: "2150" } }, _sum: { debit: true, credit: true } });
+    expect((net._sum.credit ?? 0n) - (net._sum.debit ?? 0n)).toBe(0n);
+
+    // A stopped depreciation proposes and posts nothing more.
+    const d = await createSchedule(db, { clientId: g.client.id, entityId: g.pt.entity.id, kind: "DEPRECIATION", memo: "Penyusutan", debitCode: "6180", creditCode: "1219", amount: "1.200.000", months: 12, startYear: 2026, startMonth: 8 });
+    await stopSchedule(db, { clientId: g.client.id, scheduleId: d.id });
+    expect((await dueProposals(db, g.client.id, 2026, 8)).map((p) => p.schedule.id)).not.toContain(d.id);
+    await expect(postInstallment(db, { clientId: g.client.id, scheduleId: d.id, k: 1 })).rejects.toThrow("sudah dihentikan");
+  });
+
+  it("a posting click that races a stop waits for it and then refuses", async () => {
+    const g = await makeGroup();
+    const d = await createSchedule(db, { clientId: g.client.id, entityId: g.pt.entity.id, kind: "DEPRECIATION", memo: "Penyusutan", debitCode: "6180", creditCode: "1219", amount: "1.200.000", months: 12, startYear: 2026, startMonth: 8 });
+    let post: Promise<unknown> = Promise.resolve();
+    // The stop is written but not yet committed when the click arrives; the click must not post past it.
+    await db.$transaction(async (tx) => {
+      await tx.adjustmentSchedule.update({ where: { id: d.id }, data: { stoppedAt: new Date() } });
+      post = postInstallment(db, { clientId: g.client.id, scheduleId: d.id, k: 1 });
+      post.catch(() => {});
+      await new Promise((r) => setTimeout(r, 300));
+    });
+    await expect(post).rejects.toThrow("sudah dihentikan");
+    expect(await db.journalEntry.count({ where: { scheduleId: d.id } })).toBe(0);
+  });
+
   it("refuses the same account twice, bank or suspense accounts, a zero amount and zero months", async () => {
     const g = await makeGroup();
     const base = { clientId: g.client.id, entityId: g.pt.entity.id, kind: "DEPRECIATION" as const, memo: "Penyusutan", debitCode: "6180", creditCode: "1219", amount: "1.200.000", months: 12, startYear: 2026, startMonth: 9 };
