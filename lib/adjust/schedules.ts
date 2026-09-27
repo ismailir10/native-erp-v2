@@ -106,8 +106,9 @@ export type Proposal = { schedule: AdjustmentSchedule & { entity: { id: string; 
 
 /** Installments that fall in the period and aren't posted yet, for running schedules. Nothing is stored. */
 export async function dueProposals(db: Db, clientId: string, year: number, month: number, entityId?: string): Promise<Proposal[]> {
+  // A stopped accrual still owes the reversal of an accrual it already posted; a stopped schedule proposes nothing else.
   const schedules = await db.adjustmentSchedule.findMany({
-    where: { clientId, stoppedAt: null, ...(entityId ? { entityId } : {}) },
+    where: { clientId, OR: [{ stoppedAt: null }, { reverse: true }], ...(entityId ? { entityId } : {}) },
     include: { entity: { select: { id: true, shortName: true, functionalCurrency: true } }, debitAccount: { select: { code: true, name: true } }, creditAccount: { select: { code: true, name: true } }, entries: { select: { installment: true } } },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   });
@@ -117,6 +118,7 @@ export async function dueProposals(db: Db, clientId: string, year: number, month
     for (const i of installments(s)) {
       // A reversal only follows the accrual it reverses: never propose it while that installment is unposted.
       if (i.reversal && !posted.has(s.months)) continue;
+      if (s.stoppedAt && !i.reversal) continue;
       if (i.year === year && i.month === month && !posted.has(i.k)) out.push({ schedule: s, installment: i, memo: installmentMemo(s, i) });
     }
   }
@@ -129,15 +131,18 @@ const isUniqueViolation = (e: unknown) => typeof e === "object" && e !== null &&
 export async function postInstallment(db: Db, input: { clientId: string; scheduleId: string; k: number; actorId?: string | null }) {
   const s = await db.adjustmentSchedule.findFirst({ where: { id: input.scheduleId, clientId: input.clientId } });
   if (!s) throw new LedgerError("Jadwal tidak ditemukan.");
-  if (s.stoppedAt) throw new LedgerError("Jadwal ini sudah dihentikan.");
   const i = installments(s).find((x) => x.k === input.k);
   if (!i) throw new LedgerError("Angsuran tidak ada di jadwal ini.");
   if (i.reversal && !(await db.journalEntry.findFirst({ where: { scheduleId: s.id, installment: s.months }, select: { id: true } }))) {
     throw new LedgerError(`Catat dulu ${installmentMemo(s, { k: s.months, reversal: false })} sebelum pembaliknya.`);
   }
   try {
-    return await db.$transaction((tx) =>
-      postJournal(tx, {
+    return await db.$transaction(async (tx) => {
+      // Lock the schedule and read its stop inside the posting transaction: a stop racing this click either commits first (and is
+      // seen here) or waits until this installment is recorded. The reversal of a posted accrual is still owed after a stop.
+      const [row] = await tx.$queryRaw<{ stoppedAt: Date | null }[]>`SELECT "stoppedAt" FROM "AdjustmentSchedule" WHERE id = ${s.id} FOR UPDATE`;
+      if (row?.stoppedAt && !i.reversal) throw new LedgerError("Jadwal ini sudah dihentikan.");
+      return postJournal(tx, {
         entityId: s.entityId,
         date: i.date,
         kind: "ADJUSTMENT",
@@ -149,8 +154,8 @@ export async function postInstallment(db: Db, input: { clientId: string; schedul
           { accountId: i.debitAccountId, debit: i.amount },
           { accountId: i.creditAccountId, credit: i.amount },
         ],
-      }),
-    );
+      });
+    });
   } catch (e) {
     if (isUniqueViolation(e)) throw new LedgerError(`${installmentMemo(s, i)} sudah dicatat.`);
     throw e;
@@ -169,7 +174,9 @@ export async function stopSchedule(db: Db, input: { clientId: string; scheduleId
   const s = await db.adjustmentSchedule.findFirst({ where: { id: input.scheduleId, clientId: input.clientId } });
   if (!s) throw new LedgerError("Jadwal tidak ditemukan.");
   if (s.stoppedAt) return s;
-  return db.adjustmentSchedule.update({ where: { id: s.id }, data: { stoppedAt: new Date() } });
+  // Conditional update: takes the row lock a posting click holds, so the two serialize (see postInstallment).
+  await db.adjustmentSchedule.updateMany({ where: { id: s.id, stoppedAt: null }, data: { stoppedAt: new Date() } });
+  return db.adjustmentSchedule.findUniqueOrThrow({ where: { id: s.id } });
 }
 
 /** Schedules of a client with progress: installments posted, amount posted and remaining (reversals excluded). */
