@@ -10,8 +10,10 @@ const HIDE_ON_PHONE = "hidden sm:table-cell";
 
 /** Financial-statement table: section → FS line → accounts (each links to its ledger). */
 export type FsSection = { title?: string; items: FsItem[][]; total?: { label: string; values: bigint[]; strong?: boolean } };
+/** Client accounts behind a Buku account (current-period column only), keyed by Buku account code. */
+export type FsParts = Record<string, { key: string; code: string; name: string; amount: bigint; href?: string }[]>;
 
-export function FsTable({ columns, sections, accountHref, currency = "IDR" }: { columns: string[]; sections: FsSection[]; accountHref: (code: string) => string; currency?: string }) {
+export function FsTable({ columns, sections, accountHref, currency = "IDR", parts }: { columns: string[]; sections: FsSection[]; accountHref: (code: string) => string; currency?: string; parts?: FsParts }) {
   const lineKeys = (items: FsItem[][]) => {
     const keys: string[] = [];
     for (const col of items) for (const i of col) if (!keys.includes(i.fsLine)) keys.push(i.fsLine);
@@ -29,19 +31,19 @@ export function FsTable({ columns, sections, accountHref, currency = "IDR" }: { 
       </TableHeader>
       <TableBody>
         {sections.map((s, si) => (
-          <SectionRows key={si} section={s} keys={lineKeys(s.items)} accountHref={accountHref} currency={currency} />
+          <SectionRows key={si} section={s} keys={lineKeys(s.items)} accountHref={accountHref} currency={currency} parts={parts} />
         ))}
       </TableBody>
     </Table>
   );
 }
 
-function SectionRows({ section, keys, accountHref, currency }: { section: FsSection; keys: string[]; accountHref: (code: string) => string; currency: string }) {
+function SectionRows({ section, keys, accountHref, currency, parts }: { section: FsSection; keys: string[]; accountHref: (code: string) => string; currency: string; parts?: FsParts }) {
   return (
     <>
-      {section.title && (
+      {section.title && keys.length > 0 && (
         <TableRow className="border-b-0 hover:bg-transparent">
-          <TableCell colSpan={section.items.length + 1} className="pt-5 pb-1 pl-6 text-xs font-semibold tracking-wide text-muted-foreground uppercase">{section.title}</TableCell>
+          <TableCell colSpan={section.items.length + 1} className="eyebrow pt-5 pb-1 pl-6">{section.title}</TableCell>
         </TableRow>
       )}
       {keys.map((k) => {
@@ -59,7 +61,8 @@ function SectionRows({ section, keys, accountHref, currency }: { section: FsSect
             {accountCodes.map((code) => {
               const name = cells.flatMap((c) => c?.accounts ?? []).find((a) => a.code === code)!.name;
               return (
-                <TableRow key={code} className="border-b-0 text-muted-foreground hover:bg-muted/40">
+                <Fragment key={code}>
+                <TableRow className="border-b-0 text-muted-foreground hover:bg-muted/40">
                   <TableCell className="py-1 pl-10 whitespace-normal">
                     <Link href={accountHref(code)} className="underline decoration-border underline-offset-4 hover:text-primary hover:decoration-primary" data-testid="fs-account-link">
                       <span className="num">{code}</span> {name}
@@ -69,6 +72,23 @@ function SectionRows({ section, keys, accountHref, currency }: { section: FsSect
                     <TableCell key={i} className={cn("py-1 pr-6 text-right", i > 0 && HIDE_ON_PHONE)}><Money value={c?.accounts.find((a) => a.code === code)?.amount ?? 0n} currency={currency} /></TableCell>
                   ))}
                 </TableRow>
+                {parts?.[code]?.map((p) => (
+                  <TableRow key={p.key} className="border-b-0 text-xs text-muted-foreground hover:bg-muted/40" data-testid="fs-client-account">
+                    <TableCell className="py-0.5 pl-14 whitespace-normal">
+                      {p.href ? (
+                        <Link href={p.href} className="underline decoration-border underline-offset-4 hover:text-primary hover:decoration-primary">
+                          {p.code && <span className="num">{p.code}</span>} {p.name}
+                        </Link>
+                      ) : (
+                        <>{p.code && <span className="num">{p.code}</span>} {p.name}</>
+                      )}
+                    </TableCell>
+                    {cells.map((_, i) => (
+                      <TableCell key={i} className={cn("py-0.5 pr-6 text-right", i > 0 && HIDE_ON_PHONE)}>{i === 0 ? <Money value={p.amount} currency={currency} /> : null}</TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+                </Fragment>
               );
             })}
           </Fragment>

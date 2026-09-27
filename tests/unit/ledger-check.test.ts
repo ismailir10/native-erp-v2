@@ -131,7 +131,7 @@ describe("planLedger", () => {
 });
 
 describe("planNeraca", () => {
-  const nr = (code: string, amount: bigint, typeHint: NeracaRow["typeHint"]): NeracaRow => ({ ref: `N!${n++}`, row: n, code, name: code, amount, typeHint, coded: true, errors: [] });
+  const nr = (code: string, amount: bigint, typeHint: NeracaRow["typeHint"]): NeracaRow => ({ ref: `N!${n++}`, row: n, code, name: code, amount, typeHint, termHint: null, coded: true, errors: [] });
   it("builds one opening entry, checks file totals, rounds with 7190", () => {
     const p = planNeraca(
       [nr("1-1000", 100_060n, "ASET"), nr("2-2000", -40_000n, "LIABILITAS"), nr("3-3000", -60_060n, "EKUITAS")],

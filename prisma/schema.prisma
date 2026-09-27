@@ -30,6 +30,12 @@ enum NormalBalance {
   CREDIT
 }
 
+/// Current vs non-current, from the section a Neraca file lists an account under (mapping hint only).
+enum AccountTerm {
+  CURRENT
+  NON_CURRENT
+}
+
 enum TaxTag {
   PPN_KELUARAN
   PPN_MASUKAN
@@ -433,6 +439,8 @@ model SourceAccount {
   /// Names this code had in earlier files (code reused / chart migrated).
   previousNames String[]      @default([])
   typeHint      AccountType?
+  /// Neraca files: the section's term ("Long-term Liability" → NON_CURRENT). Only steers mapping suggestions.
+  termHint      AccountTerm?
   /// Set for monetary foreign-currency accounts (revaluation, rule 6b).
   currency      String?
   /// Accepted mapping (set only by the accountant's click, rule 9a).

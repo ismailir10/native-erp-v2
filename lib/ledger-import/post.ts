@@ -10,7 +10,7 @@ import { ParseError } from "@/lib/import/types";
 import { detectTables, readSheets, readTable } from "@/lib/ledger-import/read";
 import { accountKey, planLedger, planNeraca, type Check, type CurrencyMode, type EntityInfo, type Plan, type PlanEntry } from "@/lib/ledger-import/check";
 import { inferType } from "@/lib/ledger-import/mapping";
-import type { TableCandidate } from "@/lib/ledger-import/types";
+import type { NeracaRow, TableCandidate } from "@/lib/ledger-import/types";
 
 /**
  * Ledger / Neraca import (accounting-rules §15a): stage (read → check → source accounts → DRAFT plan),
@@ -150,6 +150,7 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
   // "Catat N jurnal" is the number that will post.
   const entries = plan.entries.filter(willPost);
   const neracaHints = read.mode === "NERACA" ? new Map(read.rows.map((r) => [r.code, r.typeHint])) : new Map();
+  const termHints = read.mode === "NERACA" ? new Map(read.rows.map((r) => [r.code, r.termHint])) : new Map<string, NeracaRow["termHint"]>();
   const imp = await db.$transaction(
     async (tx) => {
       // Source accounts: create new codes, keep the latest name, remember earlier names (rule 9a, assumption 4).
@@ -159,9 +160,17 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
         const found = existing.find((s) => s.entityId === ei.entityId && s.code === a.code);
         const typeHint = neracaHints.get(a.code) ?? inferType(a.code, a.name);
         if (!found) {
-          await tx.sourceAccount.create({ data: { firmId: input.firmId, clientId: input.clientId, entityId: ei.entityId, code: a.code, name: a.name, previousNames: a.previousNames, typeHint } });
-        } else if (found.name !== a.name || a.previousNames.some((p) => !found.previousNames.includes(p))) {
-          await tx.sourceAccount.update({ where: { id: found.id }, data: { name: a.name, previousNames: [...new Set([...found.previousNames, ...a.previousNames])].filter((p) => p !== a.name) } });
+          await tx.sourceAccount.create({ data: { firmId: input.firmId, clientId: input.clientId, entityId: ei.entityId, code: a.code, name: a.name, previousNames: a.previousNames, typeHint, termHint: termHints.get(a.code) ?? null } });
+        } else {
+          const data: { name?: string; previousNames?: string[]; termHint?: NeracaRow["termHint"] } = {};
+          if (found.name !== a.name || a.previousNames.some((p) => !found.previousNames.includes(p))) {
+            data.name = a.name;
+            data.previousNames = [...new Set([...found.previousNames, ...a.previousNames])].filter((p) => p !== a.name);
+          }
+          // A Neraca states the account's term even when an earlier file created the code; it is only a mapping hint.
+          const term = termHints.get(a.code) ?? null;
+          if (term && term !== found.termHint) data.termHint = term;
+          if (Object.keys(data).length) await tx.sourceAccount.update({ where: { id: found.id }, data });
         }
       }
       return tx.ledgerImport.create({

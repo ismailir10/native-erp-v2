@@ -33,3 +33,12 @@ export async function loadClientPage(params: Promise<{ id: string }>, searchPara
   const mixed = isMixed(scoped);
   return { client, period, scope, periodOptions, entityOptions, scopeLabel, base, sp, currency, mixed };
 }
+
+/**
+ * Client COA first: a single entity with its own accounts (from a ledger or Neraca file) is shown in those accounts by
+ * default; `?view=buku` switches to the Buku chart. Groups stay on the Buku chart (each entity has its own accounts).
+ */
+export async function clientAccountsView(scope: { mode: "entity" | "combined"; value: string }, sp: Awaited<SearchParams>) {
+  const available = scope.mode === "entity" && (await prisma.sourceAccount.count({ where: { entityId: scope.value } })) > 0;
+  return { available, active: available && sp.view !== "buku" };
+}
