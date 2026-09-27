@@ -55,7 +55,7 @@ export async function scheduleCandidates(db: Db, clientId: string, year: number,
       where: {
         entityId: e.id,
         date: { gte: start, lte: end },
-        entry: { kind: { not: "OPENING" }, scheduleId: null, schedulesFrom: { none: {} } },
+        entry: { kind: { not: "OPENING" }, scheduleId: null },
         OR: [{ account: { fsLine: { in: ["ASET_TETAP", "BIAYA_DIBAYAR_DIMUKA"] } } }, { account: { code: DEFERRED_REVENUE } }, ...["diterima di muka", "unearned", "deferred revenue"].map((w) => ({ account: { type: "LIABILITAS" as const, name: { contains: w, mode: "insensitive" as const } } }))],
       },
       include: { account: true, entry: { select: { id: true, memo: true, date: true, bankTransaction: { select: { description: true } } } } },
@@ -69,7 +69,19 @@ export async function scheduleCandidates(db: Db, clientId: string, year: number,
       g.net += l.debit - l.credit;
       groups.set(k, g);
     }
+    // A schedule made from an entry covers only the line it came from, so a compound entry's other lines stay proposed. Prepaid and
+    // deferred-revenue schedules name that account; a depreciation schedule doesn't (6180/1219), so it covers the asset line of its
+    // amount, or every asset line once the entry has as many depreciation schedules as asset lines (amounts edited on creation).
+    const from = await db.adjustmentSchedule.findMany({ where: { entityId: e.id, sourceEntryId: { in: [...new Set(lines.map((l) => l.entryId))] } } });
+    const assetLines = (entryId: string) => [...groups.values()].filter((g) => g.line.entryId === entryId && g.line.account.fsLine === "ASET_TETAP").length;
+    const covered = (l: (typeof lines)[number], net: bigint) => {
+      const mine = from.filter((s) => s.sourceEntryId === l.entryId);
+      if (l.account.fsLine !== "ASET_TETAP") return mine.some((s) => s.debitAccountId === l.accountId || s.creditAccountId === l.accountId);
+      const deps = mine.filter((s) => s.kind === "DEPRECIATION");
+      return deps.some((s) => s.amount === net) || deps.length >= assetLines(l.entryId);
+    };
     for (const { line: l, net } of groups.values()) {
+      if (covered(l, net)) continue;
       const when = formatDate(l.entry.date);
       // What happened, in the source's words: the bank description for a reviewed bank line, else the journal memo.
       const what = (l.entry.bankTransaction?.description ?? l.memo ?? l.entry.memo).replace(/^Reklasifikasi:\s*/i, "").slice(0, 90);

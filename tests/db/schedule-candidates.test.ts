@@ -58,6 +58,25 @@ describe("schedule candidates from the ledger", () => {
     expect(summary(await scheduleCandidates(db, c, 2026, 8))).toEqual([]);
   });
 
+  it("a schedule made from a compound entry covers only its own line; the entry's other lines stay proposed", async () => {
+    const { g, pt, c } = await books();
+    const vehicles = await db.account.create({ data: { firmId: g.firm.id, clientId: c, code: "1211", name: "Kendaraan", type: "ASET", normalBalance: "DEBIT", fsLine: "ASET_TETAP" } });
+    const acc = (code: string) => accountId(c, code);
+    // One purchase of two fixed assets, and one invoice with a prepayment and a fixed asset.
+    const buy = await db.$transaction(async (tx) => postJournal(tx, { entityId: pt, date: dateOnly(2026, 8, 19), kind: "ADJUSTMENT", memo: "Mesin dan mobil", lines: [{ accountId: await acc("1210"), debit: 48_000_000n }, { accountId: vehicles.id, debit: 30_000_000n }, { accountId: await acc("2110"), credit: 78_000_000n }] }));
+    const mixed = await db.$transaction(async (tx) => postJournal(tx, { entityId: pt, date: dateOnly(2026, 8, 22), kind: "ADJUSTMENT", memo: "Sewa dan rak", lines: [{ accountId: await acc("1170"), debit: 12_000_000n }, { accountId: await acc("1210"), debit: 20_000_000n }, { accountId: await acc("2110"), credit: 32_000_000n }] }));
+    const pending = async () => (await scheduleCandidates(db, c, 2026, 8)).filter((x) => x.kind !== "ACCRUAL").map((x) => `${x.kind}:${x.sourceEntryId === buy.id ? "buy" : "mixed"}:${x.amount}`);
+    expect(await pending()).toEqual(["DEPRECIATION:buy:48000000", "DEPRECIATION:buy:30000000", "AMORTIZATION:mixed:12000000", "DEPRECIATION:mixed:20000000"]);
+
+    // Depreciating the machine leaves the car; amortising the rent leaves the rack.
+    await createSchedule(db, { clientId: c, entityId: pt, kind: "DEPRECIATION", memo: "Penyusutan mesin", debitCode: "6180", creditCode: "1219", amount: "48.000.000", months: 48, startYear: 2026, startMonth: 9, sourceEntryId: buy.id });
+    await createSchedule(db, { clientId: c, entityId: pt, kind: "AMORTIZATION", memo: "Sewa", debitCode: "6120", creditCode: "1170", amount: "12.000.000", months: 12, startYear: 2026, startMonth: 9, sourceEntryId: mixed.id });
+    expect(await pending()).toEqual(["DEPRECIATION:buy:30000000", "DEPRECIATION:mixed:20000000"]);
+    // A depreciation created with an edited amount (residual value) still counts: two schedules for two asset lines cover the entry.
+    await createSchedule(db, { clientId: c, entityId: pt, kind: "DEPRECIATION", memo: "Penyusutan mobil", debitCode: "6180", creditCode: "1219", amount: "25.000.000", months: 60, startYear: 2026, startMonth: 9, sourceEntryId: buy.id });
+    expect(await pending()).toEqual(["DEPRECIATION:mixed:20000000"]);
+  });
+
   it("drops an accrual candidate once that month's accrual is created", async () => {
     const { pt, c } = await books();
     await createSchedule(db, { clientId: c, entityId: pt, kind: "ACCRUAL", memo: "Akrual sewa Agustus", debitCode: "6120", creditCode: "2150", amount: "3.000.000", months: 1, startYear: 2026, startMonth: 8 });
