@@ -256,6 +256,7 @@ export async function acceptMappings(
   db: Db,
   clientId: string,
   items: { sourceAccountId: string; accountCode?: string; newAccount?: { fsLine: FsLine; name: string }; method: MapMethod }[],
+  actorId?: string | null,
 ) {
   return db.$transaction(async (tx) => {
     const sources = await tx.sourceAccount.findMany({ where: { id: { in: items.map((i) => i.sourceAccountId) }, clientId } });
@@ -269,7 +270,7 @@ export async function acceptMappings(
       }
       const acc = code ? await tx.account.findFirst({ where: { clientId, code } }) : null;
       if (!acc || acc.isBank || acc.isSuspense || acc.isClearing) throw new MappingError(`Akun ${code ?? "(kosong)"} tidak bisa dipakai untuk pemetaan`);
-      await tx.sourceAccount.update({ where: { id: it.sourceAccountId }, data: { accountId: acc.id, mappedBy: it.newAccount ? "NEW" : it.method } });
+      await tx.sourceAccount.update({ where: { id: it.sourceAccountId }, data: { accountId: acc.id, mappedBy: it.newAccount ? "NEW" : it.method, mappedById: actorId ?? null } });
     }
     return { mapped: items.length, created };
   });
