@@ -18,7 +18,7 @@ const FEES = /\b(BIAYA|FEE|ADM\w*|MATERAI|STAMP|PROVISI)\b/i;
 const CAPITAL = /\b(SETORAN MODAL|MODAL)\b/i;
 // PENCAIRAN / PELUNASAN alone also mean a deposit or an invoice being settled: they count only with a loan word next to them.
 const LOAN_IN = /\b(PINJAMAN|LOAN|PLAFON|PRK|PENCAIRAN (?:KREDIT|KMK|KI))\b/i;
-const LOAN_OUT = /\b(ANGSURAN|POKOK|PINJAMAN|LOAN|PELUNASAN (?:KREDIT|KMK|KI))\b/i;
+const LOAN_OUT = /\b(ANGSURAN|POKOK|PINJAMAN|LOAN|PLAFON|PRK|PELUNASAN (?:KREDIT|KMK|KI))\b/i;
 const OWN_MOVE = /\b(PINDAH ?BUKU|OVERBOOK\w*|ANTAR REKENING)\b/i;
 
 export const FINANCING_CONFIDENCE = 0.5;

@@ -28,7 +28,7 @@ Approved in advance by the owner's request ("make sure these are done … finish
 Loan lines (`lib/classify/financing.ts`)
 - [x] After rules and memory, **before AI**: financing text (same words as the sanity control) gets a deterministic suggestion —
       money in from a loan (PENCAIRAN / PINJAMAN / LOAN / PLAFON / PRK) → 2210 Utang Bank; money out repaying one
-      (ANGSURAN / POKOK / PELUNASAN / PINJAMAN / LOAN) → 2210; interest on it (BUNGA / INTEREST) → 7110; bank fees on it
+      (ANGSURAN / POKOK / PELUNASAN / PINJAMAN / LOAN / PRK / PLAFON) → 2210; interest on it (BUNGA / INTEREST) → 7110; bank fees on it
       (BIAYA / ADM / FEE / MATERAI / PROVISI) → 7100; capital paid in (SETORAN MODAL / MODAL) → 3100; an unpaired own-account move
       (PINDAH BUKU / OVERBOOK / ANTAR REKENING) → 1199. Method HEURISTIC (review, never auto-posts), confidence 0.5, reason
       says why. No AI call for these lines. Any other cost word on a loan line (PAJAK / TAX) gets no suggestion — never principal.
@@ -88,6 +88,7 @@ allowed.
 - Sixth review round (aa23dce): asking *Jelaskan* again after that refusal reused the same proposal key and returned the stale row, so the draft could never post again. `saveProposal` now refreshes a still-open draft whose snapshot differs (conditional on PROPOSED; a racing post wins or fails to serialize); decided drafts stay as decided. The same test now asks again and posts (fails on the previous code).
 - Seventh review round (9721bef): posting a bank-line draft released the line's tax tag and marked it REVIEWED, so it left the Review queue (which lists only NEEDS_REVIEW) and its PPN could not be set again. A line whose tag is released now goes back to NEEDS_REVIEW with the new account as its suggestion; the review control holds the close until the accountant confirms the tax. A line without a tag is simply reviewed. The card says so. Tests in `tests/db/close-explain.test.ts` (fail on the previous code).
 - Eighth review round (d75e3f7): that interim, untaxed decision still taught Memory "no PPN", so a new import of the same merchant could have auto-posted untaxed before the accountant re-confirmed. `reviewTransactionTx` takes `learn: false` for such a provisional decision; Memory learns only from the final Review one. Test asserts Memory keeps the last confirmed treatment (fails on the previous code).
+- Ninth review round (e46f6fe): "PELUNASAN PRK" / "PELUNASAN PLAFON" (money out) matched no repayment marker and fell to AI or 6190; PRK and PLAFON now count both ways. Unit test fails on the previous code.
 
 ## Verification
 - T1: lint + typecheck clean; `npm test` → Test Files 59 passed (59), Tests 418 passed (418).
@@ -103,6 +104,7 @@ allowed.
 - Sixth review round: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 430 passed (430); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (55.0s).
 - Seventh review round: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 430 passed (430); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (56.6s).
 - Eighth review round: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 430 passed (430); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (54.9s).
+- Ninth review round: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 430 passed (430); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (54.8s).
 
 ## Ship Notes
 - **Migration** `20260927190000_proposal_snapshot`: one nullable column `ProposedEntry.snapshot`. Additive; applied by `vercel-build`.
