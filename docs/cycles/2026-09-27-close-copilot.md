@@ -25,14 +25,14 @@ Proposals (`lib/adjust/proposals.ts`, new)
 - [x] **Dismiss** (click): PROPOSED → DISMISSED. Nothing else changes a proposal.
 
 Jelaskan (`lib/controls/explain.ts`, reuses `gather()` of the close review for the one control)
-- [ ] Input: that control's rows only (same ADR 0009 caps: ≤ 10 rows, 80-char texts) + the client chart (codes + names).
-- [ ] Output, validated before anything is stored: explanation (≤ 400), suggestion (≤ 300), refs ⊆ the control's row ids,
+- [x] Input: that control's rows only (same ADR 0009 caps: ≤ 10 rows, 80-char texts) + the client chart (codes + names).
+- [x] Output, validated before anything is stored: explanation (≤ 400), suggestion (≤ 300), refs ⊆ the control's row ids,
       optional **note** (≤ 300, for REVIEW controls), optional **entry** `{memo, lines:[{accountCode, side, amount}]}`:
       entity-scoped controls only; every account in the chart, never a bank account; balanced; **every line amount equals the
       amount of a cited row** (the AI can't invent numbers); ≥ 2 lines. An invalid entry is dropped, the explanation kept.
-- [ ] Money discipline (rule 18/20a): `runBudgetedAi` with the close scope limit, cached by input hash + model + prompt version
+- [x] Money discipline (rule 18/20a): `runBudgetedAi` with the close scope limit, cached by input hash + model + prompt version
       (re-asking is free), `AiUsage` logged, no retries. The draft entry is stored once per cache key (`key` unique).
-- [ ] Prompt names the fix types it may draft: reclass between P&L and balance sheet, correcting a 1999 difference, an
+- [x] Prompt names the fix types it may draft: reclass between P&L and balance sheet, correcting a 1999 difference, an
       accrual/reversal, or "no journal — here is why it is fine" (note).
 
 UI (Tutup Buku)
@@ -44,9 +44,9 @@ UI (Tutup Buku)
 - [ ] Existing "Tinjauan AI" card stays (one call for all); Jelaskan is the per-control path.
 
 Verification
-- [ ] `tests/unit/close-explain.test.ts`: parser keeps a grounded balanced entry; drops an entry with an invented amount, an
+- [x] `tests/unit/close-explain.test.ts`: parser keeps a grounded balanced entry; drops an entry with an invented amount, an
       unknown or bank account, unbalanced lines, or for a group control; refs outside the control dropped; note length.
-- [ ] `tests/db/close-explain.test.ts` (MockProvider): Jelaskan on the loan-in-revenue control stores one proposal
+- [x] `tests/db/close-explain.test.ts` (MockProvider): Jelaskan on the loan-in-revenue control stores one proposal
       (Dr 4100 / Cr 2210 of the cited amount), a second call is served from cache (1 `AiUsage`, still 1 proposal); post with an
       edited account creates the ADJUSTMENT entry and marks POSTED; double post refused; dismiss; locked period refused; never
       posts/acks/locks on its own.
@@ -68,15 +68,17 @@ dismiss); proposals for group-level controls (1199/1190/suspense queue — their
 
 ## Tasks
 - [x] T1 Schema + migration + `lib/adjust/proposals.ts` (post / dismiss / list) + DB tests — accept: migration on a fresh DB; tests green.
-- [ ] T2 `explainControl` (gather one control, provider method + parser + prompt, cache, store proposal) + unit/DB tests — accept: tests green with MockProvider. Depends T1.
+- [x] T2 `explainControl` (gather one control, provider method + parser + prompt, cache, store proposal) + unit/DB tests — accept: tests green with MockProvider. Depends T1.
 - [ ] T3 UI: Jelaskan per row, inline panel, note prefill, *Usulan jurnal koreksi* card + actions — accept: browser check 1440/390 with a mock-configured AI on local demo. Depends T2. Load `ui-rules`.
 - [ ] T4 Docs + end-of-cycle gates — accept: ADR note, rule 20b, README; `build`, `verify:books`, `test:e2e` green.
 
 ## Implementation
 - Plan: T1–T4 sequential, inline (proposal store → AI explain → UI → docs/gates).
 - T1: `prisma/schema.prisma` + migration `20260927170000_proposed_entries` (enums `ProposalSource`, `ProposalStatus`; table `ProposedEntry` with unique `key` and unique `entryId` (FK RESTRICT); CHECKs: POSTED ⇔ `entryId` set, month 1–12). `lib/adjust/proposals.ts` — `readLines()` (shape + digit check on every read), `saveProposal()` (once per key, race-safe on the unique index), `openProposals()`, `postProposal()` (accounts may be replaced per line, amounts never; client chart only, never a bank account; `postJournal` ADJUSTMENT dated the period end, then PROPOSED → POSTED guarded by `updateMany … status: PROPOSED` in the same transaction), `dismissProposal()`. Tests: `tests/db/proposals.test.ts`.
+- T2: `lib/ai/provider.ts` — `ControlExplainInput/Answer`, `buildControlExplainPrompt` (one control, its rows, the chart without bank accounts, `canDraft`), `parseControlExplain` (explanation required; refs only from this control; note ≤ 300; draft kept only when every account is in the chart, D = K, 2–10 lines and **every amount equals a cited row's amount** — stored as that row's own text so a cached answer re-validates identically in any currency), `amountOf`, provider + MockProvider `explainControl`. `lib/controls/ai-review.ts` — `gather()` exported. `lib/controls/explain.ts` — `explainControl()`: the control must be flagged; one `runBudgetedAi` call under the close scope limit, cached by input hash + model + `control-explain-v1`, note "Jelaskan kontrol"; entity-scoped controls may store a draft as a `ProposedEntry` (key `AI:<hash>`), group-level ones get words only. **Design change found by the test:** a draft that takes a cited *bank line* off its account is a re-classification of that line — posting it as a free ADJUSTMENT would fix the GL but leave the line mis-coded (the `pl-financing` control kept flagging, Memory kept the wrong account). Such drafts carry `bankTransactionId` and post through the reviewer's writer (`reviewTransactionTx`, split out of `reviewTransaction` so the RECLASS and the proposal commit together); the accountant may change the target account, not the line's current one. Migration regenerated with `ProposedEntry.bankTransactionId` (not shipped yet). Tests: `tests/unit/close-explain.test.ts`, `tests/db/close-explain.test.ts`.
 
 ## Verification
 - T1: fresh DB `prisma migrate deploy` → "All migrations have been successfully applied."; `prisma migrate diff` vs schema → empty; lint + typecheck clean; `npm test` → Test Files 56 passed (56), Tests 410 passed (410).
+- T2: lint + typecheck clean; `npm test` → Test Files 58 passed (58), Tests 416 passed (416); local DBs rebuilt from migrations, `prisma migrate diff` → empty.
 
 ## Ship Notes

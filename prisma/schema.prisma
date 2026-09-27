@@ -293,6 +293,7 @@ model BankTransaction {
   taxTag        TaxTag?
   matchedTxId   String?
   entries       JournalEntry[]
+  proposals     ProposedEntry[]
   createdAt     DateTime        @default(now())
 
   @@unique([bankAccountId, hash])
@@ -846,29 +847,32 @@ enum ProposalStatus {
 /// A draft journal (accounting-rules 20b): proposed by the close copilot or a deterministic check, posted only by the accountant's
 /// click through postJournal(). Lines are JSON [{accountCode, debit, credit}] in minor units (strings); only accounts may be edited.
 model ProposedEntry {
-  id          String         @id @default(cuid())
-  firmId      String
-  clientId    String
-  client      Client         @relation(fields: [clientId], references: [id])
-  entityId    String
-  entity      Entity         @relation(fields: [entityId], references: [id])
-  year        Int
-  month       Int
-  source      ProposalSource
-  controlKey  String?
+  id                String           @id @default(cuid())
+  firmId            String
+  clientId          String
+  client            Client           @relation(fields: [clientId], references: [id])
+  entityId          String
+  entity            Entity           @relation(fields: [entityId], references: [id])
+  year              Int
+  month             Int
+  source            ProposalSource
+  controlKey        String?
   /// Dedupe: one proposal per AI answer (input hash) or per suspense line.
-  key         String         @unique
-  memo        String
-  lines       Json
-  reason      String
-  refs        String[]       @default([])
-  status      ProposalStatus @default(PROPOSED)
-  entryId     String?        @unique
-  entry       JournalEntry?  @relation(fields: [entryId], references: [id], onDelete: Restrict)
-  decidedById String?
-  decidedBy   FirmMember?    @relation("ProposalDecidedBy", fields: [decidedById], references: [id])
-  decidedAt   DateTime?
-  createdAt   DateTime       @default(now())
+  key               String           @unique
+  memo              String
+  lines             Json
+  reason            String
+  refs              String[]         @default([])
+  status            ProposalStatus   @default(PROPOSED)
+  /// Set when the draft re-classifies one bank line: posting goes through the review writer (rule 3), not a free journal.
+  bankTransactionId String?
+  bankTransaction   BankTransaction? @relation(fields: [bankTransactionId], references: [id])
+  entryId           String?          @unique
+  entry             JournalEntry?    @relation(fields: [entryId], references: [id], onDelete: Restrict)
+  decidedById       String?
+  decidedBy         FirmMember?      @relation("ProposalDecidedBy", fields: [decidedById], references: [id])
+  decidedAt         DateTime?
+  createdAt         DateTime         @default(now())
 
   @@index([clientId, year, month])
 }
