@@ -19,6 +19,9 @@ import { OpeningError, postOpening, type OpeningLineInput } from "@/lib/opening"
 import type { TaxTag } from "@/lib/generated/prisma/enums";
 import { RateError, upsertRate, validateRateInput } from "@/lib/fx/rates";
 import { postRevaluation, RevaluationError } from "@/lib/fx/revalue";
+import { reviewClose, type CloseReviewView } from "@/lib/controls/ai-review";
+import { AiBudgetError } from "@/lib/ai/budget";
+import { AiAnswerError } from "@/lib/ai/provider";
 import { acceptCheck, LedgerImportError, postImport, stageImport } from "@/lib/ledger-import/post";
 import { acceptMappings, MappingError, suggestMappings } from "@/lib/ledger-import/mapping";
 import type { FsLine } from "@/lib/coa/template";
@@ -243,6 +246,23 @@ export async function revaluationAction(clientId: string, entityId: string, year
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
   } catch (e) {
+    return fail(e);
+  }
+}
+
+/** AI close review (ADR 0009): explains flagged controls and proposes actions. Never posts, acks or locks. */
+export async function closeReviewAction(clientId: string, year: number, month: number): Promise<Result<{ review: CloseReviewView }>> {
+  try {
+    const client = await getClientForFirm(clientId);
+    const provider = await resolveProvider(prisma);
+    if (!provider) return { ok: false, error: "AI belum diatur di Pengaturan. Kontrol tetap berjalan tanpa AI." };
+    return { ok: true, review: await reviewClose(prisma, client.firmId, client.id, year, month, provider) };
+  } catch (e) {
+    if (e instanceof AiBudgetError || e instanceof AiAnswerError) return { ok: false, error: e.message };
+    if (e instanceof Error && (e.name === "TimeoutError" || /^(AI \d|Model )/.test(e.message))) {
+      console.error(e);
+      return { ok: false, error: "AI tidak tersedia saat ini. Kontrol tetap berjalan; coba lagi nanti." };
+    }
     return fail(e);
   }
 }

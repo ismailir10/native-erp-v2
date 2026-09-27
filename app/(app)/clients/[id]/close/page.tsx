@@ -8,6 +8,9 @@ import { ScopeBar } from "@/components/app/scope-bar";
 import { ClosePanel } from "@/components/app/close-panel";
 import { RevaluationCard } from "@/components/app/revaluation-card";
 import { revaluationProposals } from "@/lib/fx/revalue";
+import { CloseReviewCard } from "@/components/app/close-review-card";
+import { cachedCloseReview } from "@/lib/controls/ai-review";
+import { resolveAiConfig } from "@/lib/settings/ai";
 
 export default async function ClosePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, period, periodOptions, base } = await loadClientPage(params, searchParams);
@@ -26,6 +29,10 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
   const missing = controls.find((c) => c.key.startsWith("bank:") && c.detail.includes("belum diimpor"));
   const locked = p?.status === "LOCKED";
   const reval = await revaluationProposals(prisma, client.id, period.year, period.month);
+  const flagged = controls.filter((c) => c.status !== "PASS").length;
+  const ai = await resolveAiConfig(prisma);
+  const aiModel = ai.apiKey && ai.model ? ai.model : null;
+  const review = !locked && flagged ? await cachedCloseReview(prisma, client.firmId, client.id, period.year, period.month, aiModel, controls) : null;
 
   return (
     <div className="space-y-6">
@@ -59,6 +66,7 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
           }))}
         />
       )}
+      {!locked && flagged > 0 && <CloseReviewCard key={period.key} clientId={client.id} year={period.year} month={period.month} flagged={flagged} aiReady={aiModel !== null} initial={review} />}
       <ClosePanel
         clientId={client.id}
         year={period.year}
