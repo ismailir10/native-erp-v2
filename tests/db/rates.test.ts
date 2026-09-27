@@ -132,6 +132,28 @@ describe("rate table", () => {
     expect([flag.severity, flag.message]).toEqual(["REVIEW", "Kurs USD→SGD di file berbeda dari tabel Kurs pada 1 tanggal (3 Jan 2023: file 1,35, Kurs 1,31). tabel Kurs tidak diubah."]);
   });
 
+  it("posting keeps the review for an earlier row's differing rate when the file states two rates for one date", async () => {
+    const g = await makeGroup();
+    await db.entity.update({ where: { id: g.pt.entity.id }, data: { functionalCurrency: "SGD" } });
+    await upsertRate(db, g.firm.id, { ...R("USD", "SGD", 2023, 1, 3, "SPOT", "1.31"), source: "MANUAL" });
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("GL");
+    ws.addRow(["Entity", "Entry Date", "Account Code", "Account Name", "Currency", "Debit", "Credit", "Notes"]);
+    for (const [ref, rate] of [["A", "1.35"], ["B", "1.31"]] as const) { // the last row's rate matches Kurs, the first doesn't
+      ws.addRow(["PT Uji", new Date(Date.UTC(2023, 0, 3)), "10001", "Bank USD", "USD", 150000, 0, `Ref: ${ref}; Rate: ${rate}`]);
+      ws.addRow(["PT Uji", new Date(Date.UTC(2023, 0, 3)), "20000", "Loan Payable", "SGD", 0, 150000, ""]);
+    }
+    const st = await stageImport(db, { firmId: g.firm.id, clientId: g.client.id, fileName: "twice.xlsx", data: Buffer.from(await wb.xlsx.writeBuffer()) });
+    if (st.status !== "STAGED") throw new Error("not staged");
+    const differs = () => db.importCheck.findMany({ where: { ledgerImportId: st.importId, code: "FX_FILE_RATE_DIFFERS" } });
+    expect(await differs()).toHaveLength(1);
+    await suggestMappings(db, { firmId: g.firm.id, clientId: g.client.id, provider: null, useAi: false });
+    const src = await importSourceAccounts(db, st.importId);
+    await acceptMappings(db, g.client.id, src.map((x) => ({ sourceAccountId: x.id, accountCode: x.suggestedCode!, method: x.suggestedBy! })));
+    await postImport(db, g.client.id, st.importId);
+    expect((await differs()).map((c) => c.message)).toEqual([expect.stringContaining("file 1,35, Kurs 1,31")]);
+  });
+
   it("a pair flagged at staging also lists a date that got a different rate after staging", async () => {
     const g = await makeGroup();
     await db.entity.update({ where: { id: g.pt.entity.id }, data: { functionalCurrency: "SGD" } });

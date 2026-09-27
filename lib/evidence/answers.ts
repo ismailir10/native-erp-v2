@@ -70,7 +70,7 @@ type UnitRef = { versionId: string; unitKey: string };
 const unknownNote = (n: number) => `${n} bagian belum dikonfirmasi entitas/periodenya; ikut dicari.`;
 
 async function sourceScope(db: Db, firmId: string, intakeId: string, clientId: string | null, versionIds: string[], entityId: string | undefined, range: { start: Date; end: Date } | null, intent: EvidenceAnswerPlan["intent"]) {
-  if (!versionIds.length) return { excluded: [] as UnitRef[], unknown: 0, versionOut: (_: string) => false };
+  if (!versionIds.length) return { excluded: [] as UnitRef[], unknown: 0, versionOut: ((): boolean => false) as (versionId: string) => boolean };
   const [selections, units] = await Promise.all([
     db.evidenceSelection.findMany({ where: { firmId, intakeId, versionId: { in: versionIds }, confirmed: true }, select: { versionId: true, unitKey: true, entityId: true, periodStart: true, periodEnd: true } }),
     db.$queryRaw<{ versionId: string; unitKey: string; periodStart: string | null; periodEnd: string | null }[]>(Prisma.sql`
@@ -258,7 +258,9 @@ export async function askEvidence(db: Db, firmId: string, intakeId: string, inpu
     if (plan.intent === "MISSING") {
       // A scoped question leaves out documents and conflicts whose versions are known to be outside the scope; unknown stays in.
       // Their versions (a problem document keeps its last one; a conflict may cite older ones) are scoped here, never searched.
-      const allConflicts = await db.evidenceConflict.findMany({ where: { firmId, intakeId, resolved: false }, take: 500, orderBy: { id: "asc" } });
+      const fetched = await db.evidenceConflict.findMany({ where: { firmId, intakeId, resolved: false }, take: 501, orderBy: { id: "asc" } });
+      const allConflicts = fetched.slice(0, 500);
+      if (fetched.length > 500) answer.limitations.push("Pengecualian terbuka lebih dari 500; hanya 500 pertama yang diperiksa.");
       const idsOf = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
       const extra = [...new Set([...documents.slice(0, 500).flatMap((d) => (d.currentVersionId && !d.excluded ? [d.currentVersionId] : [])), ...allConflicts.flatMap((c) => idsOf(c.versionIds))])].filter((v) => !versionIds.includes(v));
       const missingScope = scope && extra.length ? await sourceScope(db, firmId, intakeId, intake.clientId, [...versionIds, ...extra], entityId, sourceRange, plan.intent) : scope;

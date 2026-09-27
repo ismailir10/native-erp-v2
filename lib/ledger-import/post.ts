@@ -55,7 +55,8 @@ export type StageResult =
   | { status: "STAGED"; importId: string; mode: "LEDGER" | "NERACA"; checks: Check[]; entries: number; sourceAccounts: number; unmapped: number };
 
 type FileRate = { currency: string; quote: string; date: string; rate: string; ref: string };
-type SavedPlan = { rates?: FileRate[]; entries: (Omit<PlanEntry, "date" | "imbalance" | "rounding" | "lines"> & { date: string; imbalance: string; rounding: string; lines: (Omit<PlanEntry["lines"][number], "amount" | "fx"> & { amount: string; fx: { currency: string; amount: string; rate: string } | null })[] })[]; entities: Record<string, string> };
+/** `rates`: the one rate per pair and date written to Kurs; `stated`: every distinct rate the file states (reviewed on posting). */
+type SavedPlan = { rates?: FileRate[]; stated?: FileRate[]; entries: (Omit<PlanEntry, "date" | "imbalance" | "rounding" | "lines"> & { date: string; imbalance: string; rounding: string; lines: (Omit<PlanEntry["lines"][number], "amount" | "fx"> & { amount: string; fx: { currency: string; amount: string; rate: string } | null })[] })[]; entities: Record<string, string> };
 
 const toSaved = (entries: PlanEntry[], entities: Map<string, EntityInfo>): SavedPlan => ({
   entities: Object.fromEntries([...entities].map(([k, v]) => [k, v.entityId])),
@@ -199,7 +200,7 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
           rowCount: read.rows.length,
           groupCount: entries.length,
           roundingTotal: entries.reduce((s, e) => s + (e.rounding < 0n ? -e.rounding : e.rounding), 0n),
-          data: { ...toSaved(entries, entityInfos), rates: [...fileRates.values()] } as unknown as Prisma.InputJsonValue,
+          data: { ...toSaved(entries, entityInfos), rates: [...fileRates.values()], stated: [...statedRates.values()] } as unknown as Prisma.InputJsonValue,
           checks: {
             create: plan.checks.map((c) => ({
               severity: c.severity,
@@ -308,16 +309,18 @@ export async function postImport(db: Db, clientId: string, importId: string, act
         });
         posted++;
       }
-      const differs: RateDiff[] = [];
       for (const r of saved.rates ?? []) {
-        const kept = await upsertFileRate(tx, imp.firmId, { currency: r.currency, quote: r.quote, date: new Date(`${r.date}T00:00:00.000Z`), kind: "SPOT", rate: r.rate, note: `${imp.fileName} ${r.ref}` });
-        if (formatRate(kept.rate) !== formatRate(r.rate)) differs.push({ r, kurs: kept.rate });
+        await upsertFileRate(tx, imp.firmId, { currency: r.currency, quote: r.quote, date: new Date(`${r.date}T00:00:00.000Z`), kind: "SPOT", rate: r.rate, note: `${imp.fileName} ${r.ref}` });
       }
-      // Posting sees every file rate that didn't land (known at staging or filled since by another import or the accountant):
-      // the rate-difference reviews are replaced by that complete set, so no late date goes unflagged and no stale one stays.
-      await tx.importCheck.deleteMany({ where: { ledgerImportId: imp.id, code: "FX_FILE_RATE_DIFFERS" } });
-      const rateReviews = rateDiffChecks(differs, imp.currencyMode);
-      if (rateReviews.length) await tx.importCheck.createMany({ data: rateReviews.map((c) => ({ ledgerImportId: imp.id, severity: c.severity, code: c.code, message: c.message, refs: c.refs })) });
+      // Every rate the file states, checked again against the Kurs rows that now stand (known at staging, or filled since by another
+      // import or the accountant): the rate-difference reviews become that complete set — no late date unflagged, no stale one kept.
+      // A draft staged before `stated` was saved keeps its staged reviews and only gains pairs they don't mention.
+      const rateReviews = await fileRateChecks(tx as unknown as Db, imp.firmId, saved.stated ?? saved.rates ?? [], imp.currencyMode);
+      const staged = imp.checks.filter((c) => c.code === "FX_FILE_RATE_DIFFERS").map((c) => c.message);
+      const pairOf = (message: string) => message.slice(0, message.indexOf(" di file"));
+      if (saved.stated) await tx.importCheck.deleteMany({ where: { ledgerImportId: imp.id, code: "FX_FILE_RATE_DIFFERS" } });
+      const add = saved.stated ? rateReviews : rateReviews.filter((c) => !staged.some((m) => pairOf(m) === pairOf(c.message)));
+      if (add.length) await tx.importCheck.createMany({ data: add.map((c) => ({ ledgerImportId: imp.id, severity: c.severity, code: c.code, message: c.message, refs: c.refs })) });
       await tx.ledgerImport.update({ where: { id: imp.id }, data: { status: "POSTED", postedAt: new Date(), postedById: actorId ?? null, groupCount: posted } });
       return { entries: posted };
     },

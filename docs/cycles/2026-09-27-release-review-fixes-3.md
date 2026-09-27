@@ -45,12 +45,19 @@ release merges.
   checks with that complete set (a stale one also disappears). Test: 3 Jan flagged at staging, 4 Jan filled afterwards → one check
   listing both dates; fails on the previous code.
 
+- Review of #40 (0b133bb): (1) the saved plan kept one rate per pair and date, so when a file states two rates for one date and
+  the last matches Kurs, posting dropped the valid staged review for the earlier row. Staging now also saves every distinct stated
+  rate (`stated`) and posting re-runs `fileRateChecks` over it against the Kurs rows that now stand; a draft staged before this
+  field keeps its staged reviews and only gains unflagged pairs. (2) more than 500 open conflicts are now reported as truncated
+  instead of possibly reading as "none". Tests fail on the previous code.
+
 ## Verification
 - T1: new tests fail on the previous code (2 failed | 10 passed; the rate race reproduces), pass after. Gates: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 437 passed (437); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (55.4s).
 - Review of #40: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 437 passed (437); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (54.8s).
 - Review of #40 (4790b6c): lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 437 passed (437); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (53.2s).
 - Review of #40 (cdb8251): lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 439 passed (439); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (51.8s).
 - Review of #40 (4372a6d): lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 440 passed (440); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (51.7s).
+- Review of #40 (0b133bb): lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 442 passed (442); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (54.2s).
 
 ## Ship Notes
 No migration, no env change. Merges to staging, then rides the open promotion PR #37.

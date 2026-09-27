@@ -115,3 +115,10 @@ it("a missing-documents answer looks at the same first 500 documents it scopes",
   expect(answer.rows?.map((r) => r.label)).not.toContain("late.xlsx");
   expect(answer.limitations).toContain("Pencarian dibatasi 500 dokumen pertama.");
 });
+
+it("says so when there are more open conflicts than a missing-documents answer checks", async () => {
+  const g = await collection();
+  await db.evidenceConflict.createMany({ data: Array.from({ length: 501 }, (_, i) => ({ firmId: g.firm.id, intakeId: g.intake.id, key: `k${i}`, kind: "PERIODE", message: `Konflik ${i}`, versionIds: json([g.version.id]) })) });
+  const answer = await askEvidence(db, g.firm.id, g.intake.id, { question: "Dokumen apa yang kurang?", period: "2024-12" }, null);
+  expect(answer.limitations).toContain("Pengecualian terbuka lebih dari 500; hanya 500 pertama yang diperiksa.");
+});
