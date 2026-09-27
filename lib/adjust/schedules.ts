@@ -1,4 +1,4 @@
-import type { Db } from "@/lib/db";
+import type { Db, Tx } from "@/lib/db";
 import type { AdjustmentSchedule } from "@/lib/generated/prisma/client";
 import type { ScheduleKind } from "@/lib/generated/prisma/enums";
 import { LedgerError, postJournal } from "@/lib/ledger/post";
@@ -58,6 +58,15 @@ export type ScheduleInput = {
   actorId?: string | null;
 };
 
+/** Serialises schedule creation with closing a month of the client (rule 5a): taken inside a transaction by both. */
+export const closeLock = (tx: Tx, clientId: string) => tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`close:${clientId}`}, 0))::text`;
+
+/** Ids of the client's schedules with an installment (or reversal) in the month; a close compares them before and after its controls. */
+export async function schedulesIn(db: Db | Tx, clientId: string, year: number, month: number) {
+  const all = await db.adjustmentSchedule.findMany({ where: { clientId }, orderBy: { id: "asc" } });
+  return all.filter((s) => installments(s).some((i) => i.year === year && i.month === month)).map((s) => s.id);
+}
+
 export async function createSchedule(db: Db, input: ScheduleInput) {
   const entity = await db.entity.findFirst({ where: { id: input.entityId, clientId: input.clientId } });
   if (!entity) throw new LedgerError("Pilih entitas.");
@@ -78,35 +87,38 @@ export async function createSchedule(db: Db, input: ScheduleInput) {
   // Every installment must carry an amount; a zero one could never post (postJournal needs two non-zero lines).
   if (amount < BigInt(months)) throw new LedgerError(`Nominal terlalu kecil untuk dibagi ${months} bulan.`);
   if (!(input.startMonth >= 1 && input.startMonth <= 12) || !Number.isInteger(input.startYear)) throw new LedgerError("Bulan mulai tidak valid.");
-  // Every installment (and an accrual's reversal) must still be postable: one in a locked month could never post, and later months
-  // would close without it (rule 5a). Unlock that month or start later.
-  const planned = installments({ amount, months, startYear: input.startYear, startMonth: input.startMonth, reverse: accrual, debitAccountId: debit.id, creditAccountId: credit.id });
-  const locked = await db.period.findFirst({
-    where: { clientId: input.clientId, status: "LOCKED", OR: planned.map((i) => ({ year: i.year, month: i.month })) },
-    orderBy: [{ year: "asc" }, { month: "asc" }],
-  });
-  if (locked) throw new LedgerError(`${formatPeriod(locked.year, locked.month)} sudah dikunci, jadi cicilan di bulan itu tidak bisa dicatat. Buka kunci bulan itu atau mulai jadwal setelahnya.`);
   if (input.sourceEntryId) {
     const src = await db.journalEntry.findFirst({ where: { id: input.sourceEntryId, entityId: entity.id } });
     if (!src) throw new LedgerError("Jurnal sumber tidak termasuk entitas ini.");
   }
-  return db.adjustmentSchedule.create({
-    data: {
-      firmId: entity.firmId,
-      clientId: input.clientId,
-      entityId: entity.id,
-      kind: input.kind,
-      memo,
-      debitAccountId: debit.id,
-      creditAccountId: credit.id,
-      amount,
-      months,
-      startYear: input.startYear,
-      startMonth: input.startMonth,
-      reverse: accrual,
-      sourceEntryId: input.sourceEntryId ?? null,
-      createdById: input.actorId ?? null,
-    },
+  // Every installment (and an accrual's reversal) must still be postable: one in a locked month could never post, and later months
+  // would close without it (rule 5a). Checked under the client's close lock, so a close running now can't slip in between.
+  const planned = installments({ amount, months, startYear: input.startYear, startMonth: input.startMonth, reverse: accrual, debitAccountId: debit.id, creditAccountId: credit.id });
+  return db.$transaction(async (tx) => {
+    await closeLock(tx, input.clientId);
+    const locked = await tx.period.findFirst({
+      where: { clientId: input.clientId, status: "LOCKED", OR: planned.map((i) => ({ year: i.year, month: i.month })) },
+      orderBy: [{ year: "asc" }, { month: "asc" }],
+    });
+    if (locked) throw new LedgerError(`${formatPeriod(locked.year, locked.month)} sudah dikunci, jadi cicilan di bulan itu tidak bisa dicatat. Buka kunci bulan itu atau mulai jadwal setelahnya.`);
+    return tx.adjustmentSchedule.create({
+      data: {
+        firmId: entity.firmId,
+        clientId: input.clientId,
+        entityId: entity.id,
+        kind: input.kind,
+        memo,
+        debitAccountId: debit.id,
+        creditAccountId: credit.id,
+        amount,
+        months,
+        startYear: input.startYear,
+        startMonth: input.startMonth,
+        reverse: accrual,
+        sourceEntryId: input.sourceEntryId ?? null,
+        createdById: input.actorId ?? null,
+      },
+    });
   });
 }
 
