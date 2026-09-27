@@ -84,7 +84,7 @@ Pro plan upgrade; an audit-log page (columns land, the page is a later cycle).
 9. Installing the Supabase ↔ Vercel integration is an OAuth grant — I will stop and ask before clicking *Authorize*.
 
 ## Tasks
-- [ ] T1 Infra: create `native-erp-v2-staging` in Rightjet (Free, `ap-southeast-1`); `supabase init` + `config.toml`
+- [x] T1 Infra: create `native-erp-v2-staging` in Rightjet (Free, `ap-southeast-1`); `supabase init` + `config.toml`
       (site URL, redirect URLs, password min 8, confirmations off, Bahasa templates); set the same Auth settings on both
       hosted projects via the dashboard — accept: both projects visible, Auth → URL configuration + password policy set,
       `supabase/config.toml` committed.
@@ -115,7 +115,10 @@ Pro plan upgrade; an audit-log page (columns land, the page is a later cycle).
       login works; end-of-cycle gates green; Ship Notes filled. Depends T7.
 
 ## Implementation
+- Plan: T1–T8 sequential, inline (infra → schema → auth core → UI → roles → attribution → seed/e2e/CI → deploy/docs). No subagents: every slice touches the shared session/tenant layer.
+- T1: Rightjet project `native-erp-v2-staging` created (`oexirgohnltkgigcteyp`, ap-southeast-1, Free, Data API off at creation). Dashboard on both projects: Site URL (prod `https://native-erp-v2.vercel.app`, staging `https://native-erp-v2-git-staging-…vercel.app`), redirect allow-list `/auth/callback` (staging also `…-git-real-data-…`, wildcard `native-erp-v2-*-…` for PR previews, `http://localhost:3000`), *Allow new users to sign up* off, min password 8, prod Data API disabled (was on). `supabase init` → `supabase/config.toml` (site_url localhost, callbacks, signup off, min 8, Bahasa invite/recovery templates in `supabase/templates/`). **Finding:** hosted templates are editable only after custom SMTP, so until then Supabase's default English template is sent; its link lands on `/auth/callback` with tokens in the URL hash — the callback must accept `code`, `token_hash` and hash flows (T4).
 
 ## Verification
+- T1: dashboard shows both projects healthy; staging URL configuration lists 4 redirect URLs; both providers pages show signup off after reload; prod Data API page reads "Data API disabled".
 
 ## Ship Notes
