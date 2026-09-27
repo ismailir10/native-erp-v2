@@ -78,7 +78,7 @@ export async function openProposals(db: Db, clientId: string, year: number, mont
 }
 
 /** The accountant's click. `accounts` (optional) replaces each line's account code, in order; amounts never change. */
-export async function postProposal(db: Db, input: { clientId: string; proposalId: string; accounts?: string[]; actorId?: string | null; origin?: { ledgerImportId?: string; sourceRef?: string } }) {
+export async function postProposal(db: Db, input: { clientId: string; proposalId: string; accounts?: string[]; actorId?: string | null; origin?: { ledgerImportId?: string; sourceRef?: string }; guard?: (tx: Tx) => Promise<void> }) {
   const p = await db.proposedEntry.findFirst({ where: { id: input.proposalId, clientId: input.clientId } });
   if (!p) throw new LedgerError("Usulan tidak ditemukan.");
   if (p.status !== "PROPOSED") throw new LedgerError(p.status === "POSTED" ? "Usulan ini sudah dicatat." : "Usulan ini sudah diabaikan.");
@@ -99,6 +99,7 @@ export async function postProposal(db: Db, input: { clientId: string; proposalId
     // (the snapshot then differs) or makes this one fail — a stale draft never posts on top of it.
     return await db.$transaction(
       async (tx) => {
+        await input.guard?.(tx); // a caller's own precondition, checked on the same serializable snapshot as the write
         if (p.source === "AI_CONTROL") {
           // An AI draft is only valid for the books it was made from; one without a snapshot can't be proven fresh.
           // The control readers only read (no nested transaction), so they run on this transaction.

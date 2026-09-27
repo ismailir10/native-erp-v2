@@ -78,7 +78,8 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     accepted**, which posts its difference to 1999 with memo "Selisih dari file sumber". Same file twice for the same entity is refused.
     Each such 1999 line gets a deterministic correction proposal (`lib/adjust/suspense.ts`, rule 20b): reverse it on 1999 against a
     counter account — prefilled only when one line of the same entry has exactly that amount — posted only by the accountant's click
-    (it can't be dismissed: the close FAILs until 1999 is cleared), keeping the group's `ledgerImportId` + `sourceRef`.
+    (it can't be dismissed: the close FAILs until 1999 is cleared), keeping the group's `ledgerImportId` + `sourceRef`. It is offered
+    and posted only while the entity's 1999 balance still holds that difference (never reversed twice, e.g. after a manual fix).
 16. Parsers detect format from **content**, not file name, and raise `ParseError` with a Bahasa message the UI shows verbatim.
 
 ## AI (credit is limited — treat every call as money)
@@ -95,7 +96,8 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     rows (20a caps) and gets an explanation, an optional note (a prefill the accountant saves) and an optional draft journal —
     kept only if every account is in the chart (never a bank account), it balances, and **every amount equals the amount of a row the answer cites** (checked again when it posts).
     Drafts are `ProposedEntry` rows, posted only by the accountant's click (accounts editable, amounts never) through `postJournal()`;
-    a draft that moves one cited **bank line** posts through the reviewer's writer instead (RECLASS + Memory, rule 3). Group-level
+    a draft that moves one cited **bank line** posts through the reviewer's writer instead (RECLASS + Memory, rule 3); one that moves
+    cited bank lines any other way (several lines at once) gets no draft, never a free journal. Group-level
     controls get words only. Deterministic proposals (e.g. 1999 corrections) use the same table.
 21. Provider is OpenAI-compatible `fetch` (OpenCode Zen default) behind `AiProvider`; swap by config, not code.
     Key + model: **Pengaturan (DB, encrypted) overrides env** — resolve via `resolveAiConfig()` (`lib/settings/ai.ts`).

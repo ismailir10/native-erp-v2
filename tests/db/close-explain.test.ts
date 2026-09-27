@@ -137,6 +137,19 @@ describe("close copilot — Jelaskan", () => {
     const both = await explainControl(db, g.firm.id, g.client.id, 2026, 8, key, citing([first.id, second.id]));
     expect([both.proposal, await db.proposedEntry.count()]).toEqual([null, 0]);
 
+    // One four-line draft moving both lines can't go through the reviewer's writer: no draft, never a free journal.
+    await db.evidenceAiCache.deleteMany();
+    const four: AiProvider = {
+      ...citing([first.id, second.id]),
+      explainControl: async (input) => {
+        const l = (accountCode: string, side: "D" | "K") => ({ accountCode, side, amount: "Rp 100.000.000" });
+        const entry = { memo: "Reklasifikasi dua pinjaman", lines: [l("4100", "D"), l("2210", "K"), l("4100", "D"), l("2210", "K")] };
+        return { ...parseControlExplain(JSON.stringify({ explanation: "Dua pinjaman di pendapatan.", suggestion: "", refs: [first.id, second.id], note: "", entry }), input), promptTokens: 1, completionTokens: 1, model: "mock" };
+      },
+    };
+    const multi = await explainControl(db, g.firm.id, g.client.id, 2026, 8, key, four);
+    expect([multi.explanation, multi.proposal, await db.proposedEntry.count()]).toEqual(["Dua pinjaman di pendapatan.", null, 0]);
+
     // One cited → that one, even though the other has the lower id. (Same books: clear the cached answer to ask again.)
     await db.evidenceAiCache.deleteMany();
     const one = await explainControl(db, g.firm.id, g.client.id, 2026, 8, key, citing([second.id]));

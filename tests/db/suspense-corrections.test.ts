@@ -5,6 +5,8 @@ import { acceptCheck, importSourceAccounts, postImport, stageImport } from "@/li
 import { acceptMappings, suggestMappings } from "@/lib/ledger-import/mapping";
 import { runControls } from "@/lib/controls";
 import { correctionViews, postSuspenseCorrection, suspenseCorrections } from "@/lib/adjust/suspense";
+import { postJournal } from "@/lib/ledger/post";
+import { dateOnly } from "@/lib/format";
 
 /** One ledger group that doesn't balance, accepted: its difference goes to 1999 (rule 15a). */
 async function unbalanced(rows: [string, string, number, number][]) {
@@ -52,6 +54,22 @@ describe("1999 corrections for ledger-file differences", () => {
     expect((await control()).status).not.toBe("FAIL");
     expect(await suspenseCorrections(db, g.client.id, 2026, 1)).toEqual([]);
     await expect(postSuspenseCorrection(db, { firmId: g.firm.id, clientId: g.client.id, lineId: c.lineId, accounts: c.lines.map((l) => l.accountCode) })).rejects.toThrow("sudah diputuskan");
+  });
+
+  it("offers nothing, and posts nothing, for a difference already cleared by a manual adjustment", async () => {
+    const { g, control, suspenseNet } = await unbalanced([["10000", "Kas", 100, 0], ["21001", "Income Tax Payable - Art 21", 0, 100], ["21002", "Smartfarm Payable", 0, 5]]);
+    const [c] = await suspenseCorrections(db, g.client.id, 2026, 1);
+    const account = async (code: string) => (await db.account.findUniqueOrThrow({ where: { clientId_code: { clientId: g.client.id, code } } })).id;
+    // Cleared the old way, before these proposals existed: a manual adjustment against 1999.
+    const debit1999 = c.lines[0].debit !== "0";
+    await db.$transaction(async (tx) => postJournal(tx, { entityId: g.pt.entity.id, date: dateOnly(2026, 1, 31), kind: "ADJUSTMENT", memo: "koreksi manual", lines: [
+      { accountId: await account("1999"), debit: debit1999 ? 5n : 0n, credit: debit1999 ? 0n : 5n },
+      { accountId: await account("2120"), debit: debit1999 ? 0n : 5n, credit: debit1999 ? 5n : 0n },
+    ] }));
+    expect([await suspenseNet(), (await control()).status === "FAIL"]).toEqual([0n, false]);
+    expect(await suspenseCorrections(db, g.client.id, 2026, 1)).toEqual([]);
+    await expect(postSuspenseCorrection(db, { firmId: g.firm.id, clientId: g.client.id, lineId: c.lineId, accounts: ["1999", "2120"] })).rejects.toThrow();
+    expect(await suspenseNet()).toBe(0n); // never reversed a second time
   });
 
   it("leaves the counter account to the accountant when no single line explains it, and the FAIL stays until it is corrected", async () => {
