@@ -136,8 +136,9 @@ async function bankReclass(tx: Tx, p: { entityId: string; bankTransactionId: str
   const before = new Set((await tx.journalEntry.findMany({ where: { bankTransactionId: t.id }, select: { id: true } })).map((e) => e.id));
   // The approved draft moves the full amount: a tax split on the line would post something else, so it is released
   // (the card says so) and the line goes back to the Review queue on its new account, where the accountant confirms the
-  // tax (the review control holds the close until then). A line without a tag is simply reviewed.
-  await reviewTransactionTx(tx, { bankTxId: t.id, accountCode: target, taxTag: null, actorId });
+  // tax (the review control holds the close until then); Memory learns only from that final decision, never the untaxed
+  // interim one. A line without a tag is simply reviewed.
+  await reviewTransactionTx(tx, { bankTxId: t.id, accountCode: target, taxTag: null, actorId, learn: !t.taxTag });
   if (t.taxTag) {
     await tx.bankTransaction.update({ where: { id: t.id }, data: { status: "NEEDS_REVIEW", suggestedCode: target, reason: `Tag pajak ${t.taxTag} dilepas saat usulan dicatat; pastikan pajaknya` } });
   }

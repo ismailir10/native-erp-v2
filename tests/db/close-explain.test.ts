@@ -138,6 +138,9 @@ describe("close copilot — Jelaskan", () => {
     expect([moved.accountCode, moved.taxTag]).toEqual(["2210", null]);
     // …and the line is back in the Review queue on its new account, so the accountant confirms its tax before the close.
     expect([moved.status, moved.suggestedCode]).toEqual(["NEEDS_REVIEW", "2210"]);
+    // Memory keeps the last confirmed treatment until then: a new import of the same merchant isn't auto-posted untaxed.
+    const memory = await db.memory.findUniqueOrThrow({ where: { clientId_merchantKey_direction: { clientId: g.client.id, merchantKey: moved.merchantKey, direction: "IN" } } });
+    expect([memory.accountCode, memory.taxTag]).toEqual(["4100", "PPN_KELUARAN"]);
     expect((await runControls(db, g.client.id, 2026, 8)).find((c) => c.key === "suspense")?.status).not.toBe("PASS");
     const net = async (code: string) => {
       const s = await db.journalLine.aggregate({ where: { entityId: g.pt.entity.id, account: { code } }, _sum: { debit: true, credit: true } });
