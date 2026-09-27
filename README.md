@@ -41,12 +41,12 @@ Review the [standalone, clickable HTML prototype](docs/prototypes/buku-workspace
 | Area | |
 |---|---|
 | **Import** | PDF e-statements (text, password-protected, combined multi-account e.g. SMBC), KlikBCA CSV, Mandiri XLSX, BRI CSV, generic column detection · running-balance continuity check · dedupe on re-upload |
-| **Ledger / Neraca import** | GL or Neraca from Jurnal/Accurate/Excel (XLSX, CSV) · source checks with row refs (unbalanced groups, broken cells, reused codes, foreign lines without rate) · each entity keeps its own chart, mapped to Buku's by rules → AI (names only) → accountant · all-or-nothing posting · *Akun sumber* TB |
+| **Ledger / Neraca import** | GL or Neraca from Jurnal/Accurate/Excel (XLSX, CSV) · source checks with row refs (unbalanced groups, broken cells, reused codes, foreign lines without rate) · each entity keeps its own chart, mapped to Buku's by rules → AI (names only) → accountant · all-or-nothing posting · Neraca sub-headings (current / long-term) steer suggestions · an entity with its own chart opens Buku Besar and Neraca Saldo in *Akun klien*, each with its own ledger down to `sheet!row` |
 | **Multi-currency** | functional currency per entity · fx lines with rate · Kurs page (typed-in / from file, never fetched) · month-end revaluation on click · Gabungan translated to IDR (closing / average / historical, CTA line) |
 | **Onboarding** | Tambah klien (entities + bank accounts, template COA) · Saldo Awal per entity (plug to 3200) |
 | **Classify** | transfer matcher (own accounts → 1199, group entities → 1190) → rules → learned memory → LLM (cached, capped) → review |
 | **Ledger** | double entry, BigInt Rupiah, immutable entries, reclass-by-difference, period locks, PPN 11% split |
-| **Reports** | Neraca Saldo, Laba Rugi (month + YTD), Neraca (comparative), Kertas Kerja Gabungan with intercompany elimination, drill-down to source |
+| **Reports** | Neraca Saldo with opening / movement / closing, Laba Rugi (month + YTD), Neraca (comparative, current / long-term liabilities, lines open into client accounts), Kertas Kerja Gabungan with intercompany elimination, drill-down to source |
 | **Close** | Automatic controls per entity + group (TB, A=L+E, bank recon per account, continuity, clearing, suspense, intercompany), notes, sign-offs, lock |
 | **Document evidence** | Financial statements, company profiles, and supporting documents · versioned sources · reviewed company context · cited questions before posting · [support and limits](docs/evidence-workspace.md) |
 | **Demo** | 3 synthetic clients × 6 months seeded through the real pipeline; [5-minute investor script](docs/demo/investor-demo.md) |
