@@ -62,9 +62,11 @@
   --color-fail: var(--fail);
   --color-fail-subtle: var(--fail-subtle);
   --color-primary-subtle: var(--primary-subtle);
+  --color-primary-hover: var(--primary-hover);
   /* Brand fill (primary button, logo, NextStep marker) */
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
+  --color-brand-hover: var(--brand-hover);
 }
 
 :root {
@@ -80,10 +82,13 @@
   --primary: #1D5BD8;
   --primary-foreground: #FFFFFF;
   --primary-subtle: #EDF2FD;
+  /* Opaque hover step: white text keeps 7.4:1 (a translucent /80 fill drops to 4.0:1 on white) */
+  --primary-hover: #184DBE;
 
   /* Brand fill (primary button, logo, NextStep marker) — the same blue, white text on top */
   --brand: #1D5BD8;
   --brand-foreground: #FFFFFF;
+  --brand-hover: #184DBE;
 
   --secondary: #EEF2F7;
   --secondary-foreground: #0B1B32;

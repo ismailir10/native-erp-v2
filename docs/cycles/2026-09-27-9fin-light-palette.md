@@ -50,12 +50,16 @@ Checks
 - T1: `app/globals.css` `:root` rewritten (navy ink, blue primary, `--brand` = blue fill with white text, white sidebar with blue-tint active item, re-tuned status, new chart order); header comment updated. `.agents/skills/ui-rules/SKILL.md` Look section + description, AGENTS.md §4 row. `--sidebar-foreground` is `#2A3547` (not `#3B4658`) so the 70%-opacity firm name and email stay ≥ 4.5:1. No component edits needed: every surface reads tokens.
 - T2: login page background `bg-sidebar` → `bg-background` (the sidebar is white now; the login keeps a white card on the light canvas). After merging staging (Supabase auth) the change lives in `app/login/shell.tsx` (`AuthShell`), so login, forgot-password and set-password all use the light canvas. No other component change needed; sidebar keeps its hairline `border-r`.
 
+- Review fix (Codex P2): primary button hover was `bg-brand/80` and linked-badge hover `bg-primary/80`; translucent blue under white text dropped to 4.00:1 on white / 4.10:1 on the canvas. New opaque tokens `--brand-hover` / `--primary-hover` `#184DBE` (white text 7.38:1) used in `components/ui/button.tsx` and `components/ui/badge.tsx`.
+
 ## Verification
 - T1 contrast (WCAG, computed): foreground on canvas 16.08 · on card 17.25 · muted-fg on card 7.34 / canvas 6.84 / muted 6.53 · primary on card 5.93 / canvas 5.53 / primary-subtle 5.29 · white on primary/brand 5.93 · sidebar fg on white 12.36 (at 75% 5.64, at 70% 4.86) · active nav text on tint 7.30 · hover text 15.64 · pass/review/fail on their tints 4.77/5.74/5.04, on card 5.37/6.33/5.79 · input edge 3.15.
 - T1 dataviz validator (light, #FFFFFF): `#1D5BD8,#E0592A,#12876F,#9B4DCA` → ALL CHECKS PASS (worst adjacent CVD ΔE 8.6 protan, normal 27.2, all ≥ 3:1). Pendapatan/Beban pair `#1D5BD8,#E0592A` → CVD ΔE 28.3, normal 37.4. Rejected first try: teal `#0E8A7B` failed the chroma floor.
 - T1: lint + typecheck clean; `npm test` → Test Files 53 passed (53), Tests 394 passed (394).
 - T2 browser (dev, demo data): Beranda, client overview (charts + legend + table), Tutup Buku, Laporan Keuangan at 1440 and 390 px — `scrollWidth = clientWidth` on every page; login captured anonymously at both widths. Sidebar active item, primary button, NextStep marker, status tags all read on the new tokens.
 - End of cycle: lint + typecheck clean; `npm test` → Test Files 53 passed (53), Tests 394 passed (394); `npm run build` ✓ Compiled successfully; `npm run demo:reset && npm run verify:books` → `ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.`; `npm run test:e2e` → 9 passed (51.7s).
+
+- Review fix: lint + typecheck clean; `npm test` → Test Files 52 passed (52), Tests 381 passed (381); build ✓; built CSS has `hover:bg-brand-hover` and `hover:bg-primary-hover` rules.
 
 ## Ship Notes
 - **Visual change only.** No schema, env var, dependency, AI or number change; copy and selectors unchanged (e2e green).
