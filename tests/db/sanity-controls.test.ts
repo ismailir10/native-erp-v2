@@ -7,6 +7,9 @@ import { lockPeriod, runControls, CloseError } from "@/lib/controls";
 import { postJournal } from "@/lib/ledger/post";
 import { createClient } from "@/lib/setup";
 import { dateOnly } from "@/lib/format";
+import ExcelJS from "exceljs";
+import { importSourceAccounts, postImport, stageImport } from "@/lib/ledger-import/post";
+import { acceptMappings, suggestMappings } from "@/lib/ledger-import/mapping";
 
 const statement = makePdf([
   [
@@ -84,5 +87,29 @@ describe("sanity controls", () => {
     await post(g.pt.entity.id, g.client.id, dateOnly(2026, 7, 15), "1120", "4100", 1_000_000n);
     const pt = (await runControls(db, g.client.id, 2026, 8)).filter((c) => c.scope === g.pt.entity.shortName);
     expect(pt.some((c) => c.key.startsWith("activity:"))).toBe(false);
+  });
+
+  it("doesn't call a month empty when a posted ledger file spans it, but does after the file ends", async () => {
+    const g = await makeGroup();
+    const { client } = await db.$transaction((tx) =>
+      createClient(tx, g.firm.id, { name: "Klien GL Tahunan", industry: "jasa", entities: [{ name: "PT Tahunan", shortName: "TH", kind: "PT", banks: [] }] }),
+    );
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("GL");
+    ws.addRow(["Entity", "Entry Date", "Account Code", "Account Name", "Debit", "Credit"]);
+    for (const [m, amt] of [[0, 100], [2, 50]] as const) {
+      ws.addRow(["TH", new Date(Date.UTC(2026, m, 31)), "10000", "Kas", amt, 0]);
+      ws.addRow(["TH", new Date(Date.UTC(2026, m, 31)), "40000", "Pendapatan", 0, amt]);
+    }
+    const st = await stageImport(db, { firmId: g.firm.id, clientId: client.id, fileName: "gl.xlsx", data: Buffer.from(await wb.xlsx.writeBuffer()) });
+    if (st.status !== "STAGED") throw new Error("not staged");
+    await suggestMappings(db, { firmId: g.firm.id, clientId: client.id, provider: null, useAi: false });
+    const src = await importSourceAccounts(db, st.importId);
+    await acceptMappings(db, client.id, src.map((x) => ({ sourceAccountId: x.id, accountCode: x.suggestedCode ?? (x.code === "10000" ? "1120" : "4100"), method: "MANUAL" as const })));
+    await postImport(db, client.id, st.importId);
+
+    const activity = async (m: number) => (await runControls(db, client.id, 2026, m)).some((c) => c.key.startsWith("activity:"));
+    expect(await activity(2)).toBe(false); // inside the file's Jan–Mar range, no rows: nothing happened
+    expect(await activity(4)).toBe(true); // after the file ends: data missing
   });
 });

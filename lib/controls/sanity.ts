@@ -64,11 +64,13 @@ export async function sanityControls(db: Db, a: Args): Promise<Control[]> {
     );
   }
 
-  // 4. A month without data after the entity started.
+  // 4. A month without data after the entity started and outside any posted ledger file's date range.
   if (!a.statementMissing && txs.length === 0) {
     const inPeriod = await db.journalLine.count({ where: { entityId: e.id, date: { gte: a.start, lte: a.end } } });
     const before = inPeriod === 0 && (await db.journalLine.findFirst({ where: { entityId: e.id, date: { lt: a.start } }, select: { id: true } }));
-    if (before) control("activity", "Tidak ada transaksi bulan ini", "REVIEW", "Belum ada mutasi atau buku besar untuk bulan ini. Pastikan datanya sudah lengkap sebelum ditutup", `${a.base}/import`);
+    // A posted ledger file whose rows span this month already says "nothing happened here" (e.g. an annual GL).
+    const covered = before && (await db.ledgerImport.findFirst({ where: { clientId: a.clientId, status: "POSTED", mode: "LEDGER", periodStart: { lte: a.end }, periodEnd: { gte: a.start }, entries: { some: { entityId: e.id } } }, select: { id: true } }));
+    if (before && !covered) control("activity", "Tidak ada transaksi bulan ini", "REVIEW", "Belum ada mutasi atau buku besar untuk bulan ini. Pastikan datanya sudah lengkap sebelum ditutup", `${a.base}/import`);
   }
 
   // 5. Guesses accepted as they were.

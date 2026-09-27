@@ -110,7 +110,7 @@ export type CloseReviewInput = { client: string; period: string; accounts: { cod
 export type CloseReviewItem = { controlKey: string; explanation: string; suggestion: string; refs: string[] };
 export type CloseReviewResult = { items: CloseReviewItem[]; promptTokens: number; completionTokens: number; model: string };
 export const CLOSE_REVIEW_PROMPT_VERSION = "close-review-v1";
-export const CLOSE_REVIEW_MAX_TOKENS = 3000;
+export const CLOSE_REVIEW_MAX_TOKENS = 6000; // reasoning models spend part of it before answering
 export const CLOSE_REVIEW_MAX_ROWS = 40;
 
 export function buildCloseReviewPrompt(input: CloseReviewInput) {

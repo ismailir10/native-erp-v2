@@ -4,7 +4,10 @@ import { makePdf, table } from "../pdf-fixture";
 import { importStatement } from "@/lib/import/pipeline";
 import { reviewTransaction } from "@/lib/review";
 import { cachedCloseReview, reviewClose } from "@/lib/controls/ai-review";
-import { MockProvider, type AiProvider } from "@/lib/ai/provider";
+import { MockProvider, type AiProvider, type CloseReviewInput } from "@/lib/ai/provider";
+import ExcelJS from "exceljs";
+import { importSourceAccounts, postImport, stageImport } from "@/lib/ledger-import/post";
+import { acceptMappings, suggestMappings } from "@/lib/ledger-import/mapping";
 
 const statement = makePdf([
   [
@@ -66,5 +69,29 @@ describe("AI close review", () => {
     await expect(reviewClose(db, g.firm.id, g.client.id, 2026, 8, broken)).rejects.toThrow(/AI 500/);
     expect((await db.aiUsage.findMany()).map((u) => u.ok)).toEqual([false]);
     expect(await db.evidenceAiCache.count()).toBe(0);
+  });
+
+  it("shows the client's own accounts behind a ledger-fed balance against its nature", async () => {
+    const g = await makeGroup();
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("GL");
+    ws.addRow(["Entity", "Entry Date", "Account Code", "Account Name", "Debit", "Credit"]);
+    ws.addRow(["PT Uji", new Date(Date.UTC(2026, 7, 31)), "10000", "Kas", 900, 0]);
+    ws.addRow(["PT Uji", new Date(Date.UTC(2026, 7, 31)), "21500", "Hutang Pemegang Saham", 0, 900]);
+    const st = await stageImport(db, { firmId: g.firm.id, clientId: g.client.id, fileName: "gl.xlsx", data: Buffer.from(await wb.xlsx.writeBuffer()) });
+    if (st.status !== "STAGED") throw new Error("not staged");
+    await suggestMappings(db, { firmId: g.firm.id, clientId: g.client.id, provider: null, useAi: false });
+    const src = await importSourceAccounts(db, st.importId);
+    // Mis-mapped on purpose: the shareholder loan lands in receivables.
+    await acceptMappings(db, g.client.id, src.map((x) => ({ sourceAccountId: x.id, accountCode: x.code === "10000" ? "1120" : "1140", method: "MANUAL" as const })));
+    await postImport(db, g.client.id, st.importId);
+
+    let seen: CloseReviewInput | null = null;
+    const provider = new MockProvider();
+    const spy: AiProvider = { model: "mock", classify: provider.classify.bind(provider), mapAccounts: provider.mapAccounts.bind(provider), reviewClose: async (input) => ((seen = input), provider.reviewClose(input)) };
+    const r = await reviewClose(db, g.firm.id, g.client.id, 2026, 8, spy);
+    const nature = seen!.controls.find((c) => c.key === `nature:${g.pt.entity.id}`)!;
+    expect(nature.rows.map((x) => [x.text, x.amount, x.how])).toEqual([["Akun sumber 21500 Hutang Pemegang Saham", "-Rp 900", "dipetakan ke 1140, jenis di file LIABILITAS"]]);
+    expect(r.items.find((i) => i.controlKey === nature.key)!.links[0].href).toBe(`/clients/${g.client.id}/trial-balance?view=source&entity=${g.pt.entity.id}&period=2026-08`);
   });
 });

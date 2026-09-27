@@ -57,14 +57,32 @@ async function gather(db: Db, clientId: string, year: number, month: number, con
     } else if (e && (kind === "nature" || kind === "nature-total")) {
       // The bank lines that fed the suspicious balance-sheet accounts this month.
       const codes = (await db.account.findMany({ where: { clientId, type: { in: ["ASET", "LIABILITAS"] }, isBank: false, isSuspense: false, isClearing: false, isIntercompany: false }, select: { code: true } })).map((a) => a.code);
+      const flaggedCodes = codes.filter((code) => c.detail.includes(`${code} `));
       const txs = await db.bankTransaction.findMany({ where: { entityId: e.id, date: { gte: start, lte: end }, accountCode: { in: codes } } });
       rows = take(bySize(txs)).map((t) => bankRow(t, e.functionalCurrency, e.id));
+      // Ledger-fed balances: the client's own accounts that make up each flagged Buku account.
+      const parts = await db.journalLine.groupBy({
+        by: ["sourceAccountId"],
+        where: { entityId: e.id, date: { lte: end }, sourceAccountId: { not: null }, account: { clientId, code: { in: flaggedCodes } } },
+        _sum: { debit: true, credit: true },
+      });
+      const sources = new Map((await db.sourceAccount.findMany({ where: { id: { in: parts.map((x) => x.sourceAccountId!) } }, include: { account: true } })).map((x) => [x.id, x]));
+      const nets = parts.map((x) => ({ id: x.sourceAccountId!, amount: (x._sum.debit ?? 0n) - (x._sum.credit ?? 0n) })).filter((x) => x.amount !== 0n);
+      rows.push(
+        ...take(bySize(nets)).map((x) => {
+          const src = sources.get(x.id)!;
+          const id = `src:${x.id}`;
+          links.set(id, { id, label: `${src.code} ${src.name.slice(0, 40)}`, href: `${base}/trial-balance?view=source&entity=${e.id}&period=${pk}` });
+          return { id, date: "", text: `Akun sumber ${src.code} ${src.name}`.slice(0, DESCRIPTION), amount: formatMoney(x.amount, e.functionalCurrency), account: src.account?.code ?? "", how: `dipetakan ke ${src.account?.code ?? "-"}${src.typeHint ? `, jenis di file ${src.typeHint}` : ""}` };
+        }),
+      );
     } else if (kind === "suspense") {
       const txs = await db.bankTransaction.findMany({ where: { bankAccount: { entity: { clientId } }, status: "NEEDS_REVIEW", date: { lte: end } }, include: { bankAccount: { include: { entity: true } } } });
       rows = take(bySize(txs)).map((t) => bankRow(t, t.bankAccount.entity.functionalCurrency, t.entityId));
     } else if (kind === "ledger") {
       const importId = c.key.split(":")[1];
-      const checks = await db.importCheck.findMany({ where: { ledgerImportId: importId, severity: { in: ["BLOCK", "REVIEW"] }, OR: [{ date: null }, { date: { gte: start, lte: end } }] }, orderBy: { id: "asc" } });
+      const checks = (await db.importCheck.findMany({ where: { ledgerImportId: importId, severity: { in: ["BLOCK", "REVIEW"] }, OR: [{ date: null }, { date: { gte: start, lte: end } }] }, orderBy: { id: "asc" } }))
+        .sort((x, y) => Number(x.severity !== "BLOCK") - Number(y.severity !== "BLOCK")); // the differences behind a FAIL first
       rows = take(checks).map((k) => {
         links.set(k.id, { id: k.id, label: k.message.slice(0, 60), href: `${base}/import/ledger/${importId}` });
         const currency = client.entities.find((x) => x.id === k.entityId)?.functionalCurrency ?? "IDR";
