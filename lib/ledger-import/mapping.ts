@@ -247,7 +247,11 @@ export async function suggestMappings(db: Db, args: { firmId: string; clientId: 
     if (sug) {
       deterministic++;
       await db.sourceAccount.update({ where: { id: s.id }, data: { suggestedCode: sug.accountCode, suggestedBy: sug.method, mapConfidence: sug.confidence, mapReason: sug.reason } });
-    } else leftovers.push(s);
+    } else {
+      // The evidence changed (e.g. a richer file re-typed the account) and no rule matches now: an old rule suggestion must not linger.
+      if (s.suggestedBy && s.suggestedBy !== "AI") await db.sourceAccount.update({ where: { id: s.id }, data: { suggestedCode: null, suggestedBy: null, mapConfidence: null, mapReason: null } });
+      leftovers.push(s);
+    }
   }
 
   let calls = 0;
@@ -326,14 +330,24 @@ export async function acceptMappings(
     const sources = await tx.sourceAccount.findMany({ where: { id: { in: items.map((i) => i.sourceAccountId) }, clientId } });
     if (sources.length !== new Set(items.map((i) => i.sourceAccountId)).size) throw new MappingError("Akun sumber tidak ditemukan untuk klien ini");
     let created = 0;
+    // One shared client chart: the same name from several entities (or accepted twice) is one account, not one per row.
+    const byName = new Map<string, string>();
+    for (const a of await tx.account.findMany({ where: { clientId }, select: { code: true, name: true, isBank: true, isSuspense: true, isClearing: true } })) {
+      if (!a.isBank && !a.isSuspense && !a.isClearing) byName.set(normName(a.name), a.code);
+    }
     for (const it of items) {
       let code = it.accountCode;
       // A `new:<FS_LINE>` suggestion accepted as-is creates the account under that line, named after the client's account.
       const suggestedLine = it.newAccount ? null : newFsLineOf(it.accountCode);
       const newAccount = it.newAccount ?? (suggestedLine ? { fsLine: suggestedLine, name: sources.find((x) => x.id === it.sourceAccountId)!.name } : null);
       if (newAccount) {
-        code = await createClientAccount(tx, clientId, newAccount.fsLine, newAccount.name);
-        created++;
+        const existing = byName.get(normName(newAccount.name));
+        if (existing) code = existing;
+        else {
+          code = await createClientAccount(tx, clientId, newAccount.fsLine, newAccount.name);
+          byName.set(normName(newAccount.name), code);
+          created++;
+        }
       }
       const acc = code ? await tx.account.findFirst({ where: { clientId, code } }) : null;
       if (!acc || acc.isBank || acc.isSuspense || acc.isClearing) throw new MappingError(`Akun ${code ?? "(kosong)"} tidak bisa dipakai untuk pemetaan`);
@@ -382,8 +396,9 @@ export async function createClientAccount(tx: Tx, clientId: string, fsLine: FsLi
   const used = new Set((await tx.account.findMany({ where: { clientId }, select: { code: true } })).map((a) => a.code));
   let code: string | null = null;
   for (let c = range[0]; c <= range[1]; c++) if (!used.has(String(c)) && !SPECIAL.has(String(c))) (code ??= String(c));
-  // Past the 4-digit range, keep going under the line's anchor: 1140 → 114001 … 114099 (sorts right after 1140 as text).
-  for (let i = 1; !code && i <= 99; i++) {
+  // Past the 4-digit range, keep going under the line's anchor: 1140 → 114001 … 114099, then 1140100 … 1140999
+  // (sorts right after 1140 as text; ≥ 1,000 detailed accounts per line).
+  for (let i = 1; !code && i <= 999; i++) {
     const c = `${range[0] - 1}${String(i).padStart(2, "0")}`;
     if (!used.has(c)) code = c;
   }

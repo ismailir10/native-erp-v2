@@ -187,4 +187,37 @@ describe("suggestMappings + acceptMappings", () => {
     ]);
     expect(await db.aiUsage.count()).toBe(0);
   });
+
+  it("drops a stale rule suggestion when re-typed evidence no longer matches any rule", async () => {
+    const g = await makeGroup();
+    const [dep] = await sources(g, ["Security Deposit Ruko"], "L");
+    await db.sourceAccount.update({ where: { id: dep.id }, data: { typeHint: "ASET" } });
+    await suggestMappings(db, { firmId: g.firm.id, clientId: g.client.id, provider: null, useAi: false });
+    expect((await db.sourceAccount.findUniqueOrThrow({ where: { id: dep.id } })).suggestedCode).toBe("1170"); // "deposit" as an asset
+    // A richer file re-types the account as an expense: the deposit rule no longer applies and no expense rule matches.
+    await db.sourceAccount.update({ where: { id: dep.id }, data: { typeHint: "BEBAN" } });
+    await suggestMappings(db, { firmId: g.firm.id, clientId: g.client.id, provider: null, useAi: false });
+    const after = await db.sourceAccount.findUniqueOrThrow({ where: { id: dep.id } });
+    expect([after.suggestedCode, after.suggestedBy, after.mapReason]).toEqual([null, null, null]);
+  });
+
+  it("shares one created account across entities that use the same name, and never fails past the 4-digit range", async () => {
+    const g = await makeGroup();
+    const a = await db.sourceAccount.create({ data: { firmId: g.firm.id, clientId: g.client.id, entityId: g.pt.entity.id, code: "E1", name: "Payable to Event" } });
+    const b = await db.sourceAccount.create({ data: { firmId: g.firm.id, clientId: g.client.id, entityId: g.owner.entity.id, code: "E1", name: "Payable to Event" } });
+    const r = await acceptMappings(db, g.client.id, [
+      { sourceAccountId: a.id, accountCode: "new:UTANG_LAIN", method: "NEW" },
+      { sourceAccountId: b.id, accountCode: "new:UTANG_LAIN", method: "NEW" },
+    ]);
+    expect(r.created).toBe(1);
+    const both = await db.sourceAccount.findMany({ where: { id: { in: [a.id, b.id] } }, include: { account: true } });
+    expect(new Set(both.map((x) => x.account!.code)).size).toBe(1);
+
+    const many = await sources(g, Array.from({ length: 120 }, (_, i) => `Piutang Detail ${i}`), "D");
+    await acceptMappings(db, g.client.id, many.map((m) => ({ sourceAccountId: m.id, newAccount: { fsLine: "PIUTANG_LAIN" as const, name: m.name }, method: "NEW" as const })));
+    const codes = (await db.account.findMany({ where: { clientId: g.client.id, fsLine: "PIUTANG_LAIN", code: { startsWith: "114" } } })).map((x) => x.code);
+    expect(codes).toHaveLength(121); // 1140 + 9 four-digit + 99 two-digit overflow + 12 three-digit overflow
+    expect(new Set(codes).size).toBe(121);
+    expect(codes).toContain("1140100");
+  });
 });
