@@ -38,11 +38,11 @@ no baseline month → the scans that need one are skipped.
       Controls follow `runControls`' shape (key, title, scope, detail, href to the account's ledger for the period, ack).
 
 AI close review (ADR 0009, extended, not a new path)
-- [ ] `gather()` sends the rows behind each new control: per flagged account a summary row (`akun:<entity>:<code>` —
+- [x] `gather()` sends the rows behind each new control: per flagged account a summary row (`akun:<entity>:<code>` —
       baseline months and this month) and the largest lines of the month on it (`jl:<lineId>`: date, memo ≤ 80 chars,
       amount, account, entry kind + `sourceRef`); for `dup`, both entries of each pair (`je:<entryId>`). Same caps: ≤ 10 rows
       per control, ≤ 40 in total. Links open the account ledger for the period.
-- [ ] Prompt names the four scans and what a good answer looks like (seasonal / one-off with evidence, reclass, reversing
+- [x] Prompt names the four scans and what a good answer looks like (seasonal / one-off with evidence, reclass, reversing
       adjustment, ask for the document); `CLOSE_REVIEW_PROMPT_VERSION` → `close-review-v2` (old cache entries simply miss).
 - [ ] ADR 0009 amendment + accounting-rules **22b**: the scans, the thresholds, and that journal memos (≤ 80 chars) of
       lines behind flagged anomaly controls may be sent, under the same caps and budget.
@@ -52,7 +52,7 @@ Verification
       same-file different memo, below M, 7190, OPENING, < 2 baseline months, contra account on its normal side); a period
       with a flagged scan can lock only after a note; `runControls` output for a clean entity unchanged apart from the
       PASS text.
-- [ ] `tests/db/close-review.test.ts`: MockProvider review of a flux + dup case returns items citing `akun:`/`jl:`/`je:`
+- [x] `tests/db/close-review.test.ts`: MockProvider review of a flux + dup case returns items citing `akun:`/`jl:`/`je:`
       ids; ids it wasn't given are dropped; cache hit on second call (0 extra `AiUsage`).
 - [ ] Demo: `demo:reset && verify:books` ALL PASS (no number changes). The investor walk expects August to close with
       no "Perlu dicek"; if a scan flags on the synthetic August it is inspected — a genuine scenario pattern is acknowledged
@@ -79,7 +79,7 @@ flagged controls in one call).
 
 ## Tasks
 - [x] T1 `lib/controls/anomaly.ts` scans + wiring into `runControls` + DB tests — accept: `tests/db/anomaly-controls.test.ts` green; demo August inspected (`demo:reset`, controls listed). Reuse `periodBounds`, `formatMoney`, `Control`, sanity's `control()` shape.
-- [ ] T2 AI review rows + prompt v2 + tests — accept: `tests/db/close-review.test.ts` new cases green with MockProvider. Depends T1. Reuse `gather()`'s `take`/`bySize`/`links`.
+- [x] T2 AI review rows + prompt v2 + tests — accept: `tests/db/close-review.test.ts` new cases green with MockProvider. Depends T1. Reuse `gather()`'s `take`/`bySize`/`links`.
 - [ ] T3 Docs + real-data report: ADR 0009 amendment, accounting-rules 22b, `verify-real` anomaly section, demo walk/doc if T1 found a flag — accept: typecheck; e2e green.
 - [ ] T4 End-of-cycle gates — accept: `build`, `demo:reset`, `verify:books` ALL PASS, `test:e2e` green.
 
@@ -87,8 +87,10 @@ flagged controls in one call).
 - Plan: T1–T4 sequential, inline (each task builds on the previous one's control keys; small enough to review as one diff).
 - T1: `lib/controls/anomaly.ts` — `scanLedger()` (per account natural movement per month via `groupBy`, OPENING excluded; baseline = active months among the 3 before; materiality 1 % of the baseline's average P&L volume; flux / flip / dormant / dup findings, shared with the AI review in T2) and `anomalyControls()` (REVIEW rows `flux:` `flip:` `dormant:` `dup:` with top-5 details and a ledger link for the period). *Akun baru* = nothing on the account before the period at all; an opening balance or older movement reads *bergerak lagi setelah ≥ 3 bulan diam*. `lib/controls/index.ts` runs it after the sanity checks; the entity's single PASS row (`sanity:`) moved from `sanity.ts` to `runControls` and now also names the ledger scans. Tests: `tests/db/anomaly-controls.test.ts` (clean month, flux vs small-amount look-alike, < 2 baseline months, flip vs 7190, new vs opening-balance account vs below materiality, duplicates vs bank pair / 19 days apart / same file different memo, lock blocked by the unacknowledged duplicate only).
 - Demo inspection (`demo:reset`, controls May–Aug 2026 for every client): one flag — PT Jasa Kreatif Juli `flux` 6170 Rp 17.450.000 vs rata-rata Rp 11.466.666 (+52%), a closed month the seed acknowledges. Ayam August is clean as seeded, but the walk's review books the planted *mesin pakan* (Rp 185.000.000) to 1210 Aset Tetap, which only had an opening balance, so `dormant` should flag it after the review step — a genuine capex signal; confirmed and handled in the walk in T3.
+- T2: `lib/controls/ai-review.ts` — `gather()` handles `flux` / `flip` / `dormant` / `dup` from the same `scanLedger()` the control uses: per flagged account an `akun:<entity>:<code>` row with the baseline months and this month (`Mei 26 Rp … · … · Agu 26 Rp …`), then the month's largest lines on those accounts (`jl:<lineId>`, memo ≤ 80 chars, source label + the line's `sheet!row`); for `dup` both entries of each pair (`je:<entryId>`); one 10-row allowance per control, 40 overall, links to the account ledger for the period. `lib/ai/provider.ts` — the system prompt explains the four scans and what a useful answer is (seasonal / one-off / capitalisation vs error, the document to check, a reversing entry only when the evidence shows the same transaction); `CLOSE_REVIEW_PROMPT_VERSION` → `close-review-v2`. Test: flux + duplicate on the same account — the flux control carries the month series and both lines, the duplicate both entries, a foreign `jl:` id is dropped, second call served from cache (1 `AiUsage`).
 
 ## Verification
 - T1: lint + typecheck clean; `npm test` → Test Files 53 passed (53), Tests 392 passed (392).
+- T2: lint + typecheck clean; `npm test` → Test Files 53 passed (53), Tests 393 passed (393).
 
 ## Ship Notes

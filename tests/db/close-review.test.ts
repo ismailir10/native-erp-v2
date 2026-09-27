@@ -6,6 +6,8 @@ import { reviewTransaction } from "@/lib/review";
 import { cachedCloseReview, reviewClose } from "@/lib/controls/ai-review";
 import { MockProvider, type AiProvider, type CloseReviewInput } from "@/lib/ai/provider";
 import ExcelJS from "exceljs";
+import { postJournal } from "@/lib/ledger/post";
+import { dateOnly } from "@/lib/format";
 import { importSourceAccounts, postImport, stageImport } from "@/lib/ledger-import/post";
 import { acceptMappings, suggestMappings } from "@/lib/ledger-import/mapping";
 
@@ -169,5 +171,49 @@ describe("AI close review", () => {
     const total = seen!.controls.find((c) => c.key === `nature-total:${g.pt.entity.id}`)!;
     expect(total.rows).toHaveLength(10); // account summary + bank lines share one allowance
     expect(total.rows[0].id).toBe(`akun:${g.pt.entity.id}:1130`);
+  });
+
+  it("explains ledger anomalies with the account's months, the lines behind them and both halves of a duplicate", async () => {
+    const g = await makeGroup();
+    const pt = g.pt.entity.id;
+    const id = async (code: string) => (await db.account.findUniqueOrThrow({ where: { clientId_code: { clientId: g.client.id, code } } })).id;
+    const post = async (date: Date, dr: string, cr: string, amount: bigint, memo = "uji") =>
+      db.$transaction(async (tx) => postJournal(tx, { entityId: pt, date, kind: "ADJUSTMENT", memo, lines: [{ accountId: await id(dr), debit: amount }, { accountId: await id(cr), credit: amount }] }));
+    for (const m of [5, 6, 7]) {
+      await post(dateOnly(2026, m, 10), "1130", "4100", 100_000_000n);
+      await post(dateOnly(2026, m, 20), "6130", "1130", 5_000_000n);
+    }
+    await post(dateOnly(2026, 8, 10), "1130", "4100", 100_000_000n);
+    await post(dateOnly(2026, 8, 20), "6130", "1130", 5_000_000n, "Tagihan PLN Agustus");
+    await post(dateOnly(2026, 8, 21), "6130", "1130", 5_000_000n, "Tagihan PLN Agustus (lagi)");
+
+    let seen: CloseReviewInput | null = null;
+    const cite: AiProvider = {
+      model: "mock",
+      classify: async () => ({ answers: [], promptTokens: 0, completionTokens: 0, model: "mock" }),
+      mapAccounts: async () => ({ answers: [], promptTokens: 0, completionTokens: 0, model: "mock" }),
+      reviewClose: async (i) => {
+        seen = i;
+        const items = i.controls.map((c) => ({ controlKey: c.key, explanation: `Uji ${c.title}`, suggestion: "Cek faktur", refs: [...c.rows.map((r) => r.id), "jl:tidak-dikirim"] }));
+        return { items, promptTokens: 40, completionTokens: 40, model: "mock" };
+      },
+    };
+    const r = await reviewClose(db, g.firm.id, g.client.id, 2026, 8, cite);
+
+    const flux = seen!.controls.find((c) => c.key === `flux:${pt}`)!;
+    expect(flux.rows[0]).toMatchObject({ id: `akun:${pt}:6130`, amount: "Rp 10.000.000", text: "Mutasi 6130 Beban Listrik, Air & Internet: Mei 26 Rp 5.000.000 · Jun 26 Rp 5.000.000 · Jul 26 Rp 5.000.000 · Agu 26 Rp 10.000.000" });
+    expect(flux.rows.slice(1).map((x) => [x.text, x.amount, x.how])).toEqual([
+      ["Tagihan PLN Agustus", "Rp 5.000.000", "jurnal penyesuaian"],
+      ["Tagihan PLN Agustus (lagi)", "Rp 5.000.000", "jurnal penyesuaian"],
+    ]);
+    const dup = seen!.controls.find((c) => c.key === `dup:${pt}`)!;
+    expect(dup.rows.map((x) => x.id.split(":")[0])).toEqual(["je", "je"]);
+
+    const item = r.items.find((i) => i.controlKey === `flux:${pt}`)!;
+    expect(item.refs).toEqual(flux.rows.map((x) => x.id)); // the id it wasn't given is dropped
+    expect(item.links[0].href).toBe(`/clients/${g.client.id}/ledger/6130?period=2026-08&entity=${pt}`);
+    expect(await db.aiUsage.count()).toBe(1);
+    await reviewClose(db, g.firm.id, g.client.id, 2026, 8, cite);
+    expect(await db.aiUsage.count()).toBe(1); // cached
   });
 });
