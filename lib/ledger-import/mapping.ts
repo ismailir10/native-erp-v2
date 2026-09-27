@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Db, Tx } from "@/lib/db";
-import type { AccountType, MapMethod } from "@/lib/generated/prisma/enums";
+import type { AccountTerm, AccountType, MapMethod } from "@/lib/generated/prisma/enums";
 import { AI_BATCH_SIZE, ACCOUNT_MAPPING_PROMPT_VERSION, aiConfig, buildMapPrompt, maxTokensFor, type AiProvider, type MapItem } from "@/lib/ai/provider";
 import { AiBudgetError, runBudgetedAi } from "@/lib/ai/budget";
 import { ACCOUNT_CODES, FS_LINES, type FsLine } from "@/lib/coa/template";
@@ -101,6 +101,33 @@ const KEYWORDS: { re: RegExp; code: string; types?: AccountType[]; not?: RegExp 
 ];
 
 export function deterministicSuggestion(
+  src: { code: string; name: string; typeHint: AccountType | null; termHint?: AccountTerm | null },
+  ctx: { accounts: ClientAccount[]; priorByName: Map<string, string> },
+): Suggestion | null {
+  const hit = keywordSuggestion(src, ctx);
+  return hit?.method === "PRIOR" || hit?.method === "NAME" ? hit : byTerm(src, hit, ctx.accounts);
+}
+
+/**
+ * A Neraca lists accounts under "Current" / "Long-term" headings: that beats a generic keyword on the wrong side
+ * (a payable under "Long-term Liability" is 2300, not 2120). Specific keywords on the right side are kept.
+ */
+function byTerm(src: { typeHint: AccountType | null; termHint?: AccountTerm | null; code: string; name: string }, hit: Suggestion | null, accounts: ClientAccount[]): Suggestion | null {
+  const type = src.typeHint ?? inferType(src.code, src.name);
+  if (!src.termHint || (type !== "ASET" && type !== "LIABILITAS")) return hit;
+  const acc = hit ? accounts.find((a) => a.code === hit.accountCode) : undefined;
+  const section = acc ? FS_LINES[acc.fsLine as FsLine]?.section : undefined;
+  const to = (code: string, why: string): Suggestion | null => {
+    const target = accounts.find((a) => a.code === code);
+    return target ? { accountCode: code, method: "KEYWORD", confidence: 0.75, reason: `${why} → ${target.code} ${target.name}` } : hit;
+  };
+  if (type === "LIABILITAS" && src.termHint === "NON_CURRENT" && (!acc || section === "LIABILITAS_JANGKA_PENDEK")) return to("2300", "Di file tercantum di bagian liabilitas jangka panjang");
+  if (type === "LIABILITAS" && src.termHint === "CURRENT" && section === "LIABILITAS_JANGKA_PANJANG") return to("2120", "Di file tercantum di bagian liabilitas jangka pendek");
+  if (type === "ASET" && src.termHint === "NON_CURRENT" && (!acc || section === "ASET_LANCAR") && !acc?.isBank) return to("1260", "Di file tercantum di bagian aset tidak lancar");
+  return hit;
+}
+
+function keywordSuggestion(
   src: { code: string; name: string; typeHint: AccountType | null },
   ctx: { accounts: ClientAccount[]; priorByName: Map<string, string> },
 ): Suggestion | null {
@@ -152,7 +179,7 @@ export async function suggestMappings(db: Db, args: { firmId: string; clientId: 
   let deterministic = 0;
   const leftovers: typeof pending = [];
   for (const s of pending) {
-    const sug = deterministicSuggestion({ code: s.code, name: s.name, typeHint: s.typeHint }, { accounts, priorByName });
+    const sug = deterministicSuggestion({ code: s.code, name: s.name, typeHint: s.typeHint, termHint: s.termHint }, { accounts, priorByName });
     if (sug) {
       deterministic++;
       await db.sourceAccount.update({ where: { id: s.id }, data: { suggestedCode: sug.accountCode, suggestedBy: sug.method, mapConfidence: sug.confidence, mapReason: sug.reason } });

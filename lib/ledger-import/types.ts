@@ -1,4 +1,4 @@
-import type { AccountType } from "@/lib/generated/prisma/enums";
+import type { AccountTerm, AccountType } from "@/lib/generated/prisma/enums";
 
 /** A raw spreadsheet cell: text, number, date, or an Excel error such as "#VALUE!" (kept verbatim for checks). */
 export type RawCell = string | number | Date | { error: string } | null;
@@ -38,6 +38,8 @@ export type NeracaRow = {
   /** Signed sen, debit-positive (assets +, liabilities/equity −, contra accounts flipped by their sign). */
   amount: bigint;
   typeHint: AccountType | null;
+  /** Current / non-current from the file's sub-heading ("Long-term Liability"); null for equity or unknown. */
+  termHint: AccountTerm | null;
   coded: boolean;
   errors: string[];
 };
