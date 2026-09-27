@@ -33,7 +33,7 @@ const HEURISTIC: Record<Direction, Classification> = {
 
 export async function importStatement(
   db: Db,
-  args: { evidenceVersionId?: string; evidenceUnitKey?: string; bankAccountId: string; fileName: string; data: Buffer; provider: AiProvider | null; password?: string },
+  args: { evidenceVersionId?: string; evidenceUnitKey?: string; bankAccountId: string; fileName: string; data: Buffer; provider: AiProvider | null; password?: string; actorId?: string | null },
 ): Promise<ImportSummary> {
   const bankAccount = await db.bankAccount.findUniqueOrThrow({
     where: { id: args.bankAccountId },
@@ -158,6 +158,7 @@ export async function importStatement(
           duplicateCount: st.rows.length - fresh.length,
           continuityOk: continuity.ok,
           continuityNote: continuity.note,
+          importedById: args.actorId ?? null,
         },
       });
       const idMap = new Map<string, string>();
@@ -191,7 +192,7 @@ export async function importStatement(
         idMap.set(it.id, created.id);
         byMethod[c.method]++;
         if (!auto) needsReview++;
-        await postBankTransaction(tx, created.id, auto ? { accountCode: c.accountCode, taxTag: c.taxTag } : { accountCode: ACCOUNT_CODES.SUSPENSE }, { codeToId });
+        await postBankTransaction(tx, created.id, auto ? { accountCode: c.accountCode, taxTag: c.taxTag } : { accountCode: ACCOUNT_CODES.SUSPENSE }, { codeToId, actorId: args.actorId });
       }
       // Link transfer pairs (both new, or new ↔ previously imported open half).
       for (const [id, c] of transfers) {
@@ -204,7 +205,7 @@ export async function importStatement(
           // Previously imported half: link and move it onto the transfer account if it was elsewhere.
           const prev = await tx.bankTransaction.update({ where: { id: selfId }, data: { matchedTxId: otherId } });
           if (prev.accountCode !== c.accountCode) {
-            await postBankTransaction(tx, prev.id, { accountCode: c.accountCode }, { codeToId });
+            await postBankTransaction(tx, prev.id, { accountCode: c.accountCode }, { codeToId, actorId: args.actorId });
             await tx.bankTransaction.update({
               where: { id: prev.id },
               data: { accountCode: c.accountCode, status: "POSTED", method: "TRANSFER", confidence: c.confidence, reason: c.reason, taxTag: null },

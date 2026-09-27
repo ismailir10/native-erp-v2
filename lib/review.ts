@@ -8,7 +8,7 @@ import { postBankTransaction } from "@/lib/ledger/bank";
  */
 export async function reviewTransaction(
   db: Db,
-  args: { bankTxId: string; accountCode: string; taxTag: TaxTag | null; createRule?: boolean },
+  args: { bankTxId: string; accountCode: string; taxTag: TaxTag | null; createRule?: boolean; actorId?: string | null },
 ) {
   return db.$transaction(async (tx) => {
     const t = await tx.bankTransaction.findUniqueOrThrow({
@@ -16,7 +16,7 @@ export async function reviewTransaction(
       include: { bankAccount: { include: { entity: true } } },
     });
     const clientId = t.bankAccount.entity.clientId;
-    await postBankTransaction(tx, t.id, { accountCode: args.accountCode, taxTag: args.taxTag });
+    await postBankTransaction(tx, t.id, { accountCode: args.accountCode, taxTag: args.taxTag }, { actorId: args.actorId });
     const changed = args.accountCode !== t.suggestedCode || args.taxTag !== t.taxTag;
     await tx.bankTransaction.update({
       where: { id: t.id },
@@ -43,13 +43,13 @@ export async function reviewTransaction(
 }
 
 /** Accept every open line with the same merchant key + direction using its suggestion. */
-export async function acceptSimilar(db: Db, bankTxId: string, scope?: { entityIds: string[]; through: Date }) {
+export async function acceptSimilar(db: Db, bankTxId: string, scope?: { entityIds: string[]; through: Date }, actorId?: string | null) {
   const t = await db.bankTransaction.findUniqueOrThrow({ where: { id: bankTxId } });
   const peers = await db.bankTransaction.findMany({
     where: { ...(scope ? { entityId: { in: scope.entityIds }, date: { lte: scope.through } } : {}), bankAccount: { entity: { clientId: (await db.entity.findUniqueOrThrow({ where: { id: t.entityId } })).clientId } }, merchantKey: t.merchantKey, direction: t.direction, status: "NEEDS_REVIEW" },
   });
   for (const p of peers) {
-    await reviewTransaction(db, { bankTxId: p.id, accountCode: t.suggestedCode ?? "6190", taxTag: t.taxTag });
+    await reviewTransaction(db, { bankTxId: p.id, accountCode: t.suggestedCode ?? "6190", taxTag: t.taxTag, actorId });
   }
   return peers.length;
 }

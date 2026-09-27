@@ -22,7 +22,7 @@ export function ClosePanel(props: {
   month: number;
   periodLabel: string;
   controls: Control[];
-  signoffs: { key: string; label: string; done: boolean }[];
+  signoffs: { key: string; label: string; done: boolean; by: string | null }[];
   locked: boolean;
   lockedAt: string | null;
   blockers: string[];
@@ -96,7 +96,7 @@ export function ClosePanel(props: {
                   onCheckedChange={(v) => run(() => signoffAction(clientId, year, month, s.key, Boolean(v)))}
                   className="mt-0.5"
                 />
-                <label htmlFor={`signoff-${s.key}`} className="cursor-pointer">{s.label}</label>
+                <label htmlFor={`signoff-${s.key}`} className="cursor-pointer">{s.label}{s.by && <span className="block text-xs text-muted-foreground">Dicentang {s.by}</span>}</label>
               </div>
             ))}
           </CardContent>

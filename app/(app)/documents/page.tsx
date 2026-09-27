@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { evidenceEnabled } from "@/lib/evidence/config";
-import { getCurrentFirm } from "@/lib/tenant";
+import { requireWorkspaceSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
 import { oauthConfigured } from "@/lib/evidence/drive";
 import { EvidenceHome } from "@/components/app/evidence-workspace";
@@ -10,7 +10,7 @@ import { resolveWorkspaceScope, workspaceHref, WorkspaceInputError } from "@/lib
 import type { SearchParams } from "@/lib/scope";
 
 export default async function DocumentsPage({ searchParams }: { searchParams: SearchParams }) {
-  const firm = await getCurrentFirm();
+  const { firm, member } = await requireWorkspaceSession();
   if (!evidenceEnabled()) notFound();
   const input = await searchParams;
   const scope = await resolveWorkspaceScope(prisma, firm.id, { scope: typeof input.scope === "string" ? input.scope : undefined, period: typeof input.period === "string" ? input.period : undefined }).catch(error => { if (error instanceof WorkspaceInputError) notFound(); throw error; });
@@ -27,5 +27,5 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Se
   return <EvidenceHome
     actions={<WorkspaceScopeBar key="documents-scope" scope={scope} />}
     note={<p key="documents-note" className="text-sm text-muted-foreground">Kumpulan dokumen dapat memuat beberapa periode. Periode terpilih digunakan saat bertanya dan membuka laporan.{scope.kind === "entity" && <> Hanya kumpulan dengan perusahaan terkonfirmasi ditampilkan. <Link className="text-primary underline" href={workspaceHref("/documents", { key: `client:${scope.clientIds[0]}`, period: scope.period })}>Lihat dokumen grup yang belum dikonfirmasi</Link>.</>}</p>}
-    googleResult={googleResult} googleReason={googleReason} intakes={intakes} clients={scope.clients.map(c => ({ id: c.id, name: c.name }))} clientId={scope.kind === "all" ? undefined : scope.clientIds[0]} connected={Boolean(connection)} googleConfigured={oauthConfigured()} />;
+    googleResult={googleResult} googleReason={googleReason} intakes={intakes} clients={scope.clients.map(c => ({ id: c.id, name: c.name }))} clientId={scope.kind === "all" ? undefined : scope.clientIds[0]} connected={Boolean(connection)} googleConfigured={oauthConfigured()} isAdmin={member.role === "ADMIN"} />;
 }

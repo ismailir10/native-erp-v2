@@ -6,6 +6,11 @@ export async function getCurrentFirm() {
   return (await requireWorkspaceSession()).firm;
 }
 
+/** The member behind the request, for attribution on what they post, tick or lock. */
+export async function getCurrentMember() {
+  return (await requireWorkspaceSession()).member;
+}
+
 export async function getClientForFirm(clientId: string) {
   const firm = await getCurrentFirm();
   const client = await prisma.client.findFirst({

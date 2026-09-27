@@ -218,7 +218,7 @@ export function closeReadiness(controls: Control[], signoffs: string[]) {
   return { ready: fails.length === 0 && unacked.length === 0 && missing.length === 0, fails, unacked, missing };
 }
 
-export async function lockPeriod(db: Db, clientId: string, year: number, month: number, note: string) {
+export async function lockPeriod(db: Db, clientId: string, year: number, month: number, note: string, actorId?: string | null) {
   const controls = await runControls(db, clientId, year, month);
   const period = await db.period.upsert({
     where: { clientId_year_month: { clientId, year, month } },
@@ -235,5 +235,5 @@ export async function lockPeriod(db: Db, clientId: string, year: number, month: 
     ].filter(Boolean);
     throw new CloseError(`Belum bisa tutup buku: ${why.join(", ")}.`);
   }
-  return db.period.update({ where: { id: period.id }, data: { status: "LOCKED", lockedAt: new Date(), lockNote: note } });
+  return db.period.update({ where: { id: period.id }, data: { status: "LOCKED", lockedAt: new Date(), lockNote: note, lockedById: actorId ?? null } });
 }

@@ -1,6 +1,9 @@
 import "dotenv/config";
 import { createPrisma } from "../lib/db";
-import { initializeWorkspace, inviteUser, revokeUser } from "../lib/auth/operator";
+import { initializeWorkspace, inviteUser, listMembers, revokeUser } from "../lib/auth/operator";
+import { createSupabaseAdmin } from "../lib/supabase/admin";
+import { appUrl } from "../lib/supabase/env";
+import type { MemberRole } from "../lib/generated/prisma/enums";
 
 async function main() {
   const [command, ...args] = process.argv.slice(2);
@@ -11,10 +14,12 @@ async function main() {
     if (options.has(key)) throw new Error(`Opsi --${key} tidak boleh diulang.`);
     options.set(key, args[i + 1]);
   }
-  const allowed: Record<string, string[]> = { init: ["name"], list: [], invite: ["firm", "email", "name"], revoke: ["firm", "email"] };
-  if (!Object.hasOwn(allowed, command)) throw new Error("Pilih init --name NAMA, list, invite --firm ID --email ALAMAT --name NAMA, atau revoke --firm ID --email ALAMAT. Tidak ada email dikirim.");
+  const allowed: Record<string, string[]> = { init: ["name"], list: [], invite: ["firm", "email", "name", "role", "url"], revoke: ["firm", "email"] };
+  if (!Object.hasOwn(allowed, command)) throw new Error("Pilih init --name NAMA, list, invite --firm ID --email ALAMAT --name NAMA [--role ADMIN|AKUNTAN] [--url ORIGIN], atau revoke --firm ID --email ALAMAT.");
   if ([...options.keys()].some((key) => !allowed[command].includes(key))) throw new Error("Opsi tidak dikenal untuk perintah ini.");
   if (["invite", "revoke"].includes(command) && (!options.get("firm") || !options.get("email"))) throw new Error("--firm ID dan --email ALAMAT wajib diisi.");
+  const role = options.get("role");
+  if (role && role !== "ADMIN" && role !== "AKUNTAN") throw new Error("--role harus ADMIN atau AKUNTAN.");
   const db = createPrisma();
   try {
     if (command === "init") {
@@ -24,10 +29,17 @@ async function main() {
       const firms = await db.firm.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } });
       for (const firm of firms) console.log(`${firm.id} · ${firm.name}`);
       if (!firms.length) console.log("Belum ada kantor. Gunakan access init --name NAMA.");
+      for (const member of await listMembers(db)) console.log(`  ${member.email} · ${member.name} · ${member.role}${member.disabled ? " · DICABUT" : ""} · kantor ${member.firm.name}`);
     } else {
+      const auth = createSupabaseAdmin().auth;
       const input = { firmId: options.get("firm")!, email: options.get("email")! };
-      const user = command === "invite" ? await inviteUser(db, { ...input, name: options.get("name") ?? "" }) : await revokeUser(db, input);
-      console.log(`${command === "invite" ? "Akses diaktifkan" : "Akses dicabut"}: ${user.email} · kantor ${user.firmId}. Tidak ada email dikirim.`);
+      if (command === "invite") {
+        const member = await inviteUser(db, auth, { ...input, name: options.get("name") ?? "", role: role as MemberRole | undefined, redirectTo: options.get("url") || appUrl() || undefined });
+        console.log(`Undangan terkirim ke ${member.email} (${member.role}) · kantor ${member.firmId}. Tautan atur kata sandi ada di email.`);
+      } else {
+        const member = await revokeUser(db, auth, input);
+        console.log(`Akses dicabut: ${member.email} · kantor ${member.firmId}.`);
+      }
     }
   } finally { await db.$disconnect(); }
 }
