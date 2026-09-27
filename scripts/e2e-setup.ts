@@ -20,7 +20,7 @@ async function setup() {
     const firm = await db.firm.findFirstOrThrow();
     const email = process.env.E2E_EMAIL ?? "accountant@buku.example";
     const password = process.env.E2E_PASSWORD ?? randomBytes(12).toString("base64url");
-    await ensureLocalAdmin(db, createSupabaseAdmin().auth.admin, { email, password, name: "Akuntan uji", firmId: firm.id });
+    await ensureLocalAdmin(db, createSupabaseAdmin().auth, { email, password, name: "Akuntan uji", firmId: firm.id });
     mkdirSync(".playwright", { recursive: true });
     writeFileSync(".playwright/credentials.json", JSON.stringify({ email, password }), { mode: 0o600 });
   } finally { await db.$disconnect(); }

@@ -31,7 +31,7 @@ async function main() {
       if (!firms.length) console.log("Belum ada kantor. Gunakan access init --name NAMA.");
       for (const member of await listMembers(db)) console.log(`  ${member.email} · ${member.name} · ${member.role}${member.disabled ? " · DICABUT" : ""} · kantor ${member.firm.name}`);
     } else {
-      const auth = createSupabaseAdmin().auth.admin;
+      const auth = createSupabaseAdmin().auth;
       const input = { firmId: options.get("firm")!, email: options.get("email")! };
       if (command === "invite") {
         const member = await inviteUser(db, auth, { ...input, name: options.get("name") ?? "", role: role as MemberRole | undefined, redirectTo: options.get("url") || appUrl() || undefined });

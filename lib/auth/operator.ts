@@ -7,9 +7,11 @@ import type { SupabaseAdmin } from "@/lib/supabase/admin";
 export const normalizeEmail = (value: string) => z.email().parse(value.trim().toLowerCase());
 const BAN_FOREVER = "876600h";
 
-/** The slice of the admin API these operations need; tests pass a fake. */
-export type AuthAdmin = Pick<SupabaseAdmin["auth"]["admin"], "inviteUserByEmail" | "updateUserById" | "generateLink" | "createUser"> & {
-  listUsers?: SupabaseAdmin["auth"]["admin"]["listUsers"];
+/** The slice of the Supabase Auth API these operations need (`supabase.auth` of a service-role client); tests pass a fake. */
+export type AuthApi = {
+  admin: Pick<SupabaseAdmin["auth"]["admin"], "inviteUserByEmail" | "updateUserById" | "createUser"> & { listUsers?: SupabaseAdmin["auth"]["admin"]["listUsers"] };
+  /** Public endpoint: Supabase sends the recovery email itself. */
+  resetPasswordForEmail: SupabaseAdmin["auth"]["resetPasswordForEmail"];
 };
 
 function fail(error: { message: string } | null, fallback: string): never {
@@ -20,7 +22,7 @@ function fail(error: { message: string } | null, fallback: string): never {
  * CLI-only provisioning. Creates the Supabase user (invite email) and the firm member together.
  * A re-invitation of a revoked member lifts the ban and sends a fresh password link.
  */
-export async function inviteUser(db: Db, auth: AuthAdmin, input: { email: string; name: string; firmId: string; role?: MemberRole; redirectTo?: string }) {
+export async function inviteUser(db: Db, auth: AuthApi, input: { email: string; name: string; firmId: string; role?: MemberRole; redirectTo?: string }) {
   const email = normalizeEmail(input.email);
   const name = input.name.trim();
   const role: MemberRole = input.role ?? "AKUNTAN";
@@ -31,24 +33,25 @@ export async function inviteUser(db: Db, auth: AuthAdmin, input: { email: string
   const redirect = input.redirectTo ? { redirectTo: `${input.redirectTo.replace(/\/$/, "")}/auth/callback` } : {};
 
   if (existing) {
-    const unbanned = await auth.updateUserById(existing.userId, { ban_duration: "none" });
+    const unbanned = await auth.admin.updateUserById(existing.userId, { ban_duration: "none" });
     if (unbanned.error) fail(unbanned.error, "Akses lama tidak bisa dipulihkan.");
-    const link = await auth.generateLink({ type: "recovery", email, options: redirect });
-    if (link.error) fail(link.error, "Tautan kata sandi belum terkirim.");
+    // Sends the recovery email (a generated link would only be returned, never delivered).
+    const sent = await auth.resetPasswordForEmail(email, redirect);
+    if (sent.error) fail(sent.error, "Tautan kata sandi belum terkirim.");
     return db.firmMember.update({ where: { id: existing.id }, data: { name, role, disabled: false } });
   }
-  const invited = await auth.inviteUserByEmail(email, { data: { name }, ...redirect });
+  const invited = await auth.admin.inviteUserByEmail(email, { data: { name }, ...redirect });
   if (invited.error || !invited.data.user) fail(invited.error, "Undangan belum terkirim.");
   return db.firmMember.create({ data: { userId: invited.data.user.id, email, name, role, firmId: input.firmId } });
 }
 
 /** Disabling the member closes the workspace at once (checked on every request); the ban stops new logins. */
-export async function revokeUser(db: Db, auth: AuthAdmin, input: { email: string; firmId: string }) {
+export async function revokeUser(db: Db, auth: AuthApi, input: { email: string; firmId: string }) {
   const email = normalizeEmail(input.email);
   const member = await db.firmMember.findUnique({ where: { email } });
   if (!member || member.firmId !== input.firmId) throw new Error("Pengguna tidak ditemukan di kantor ini. Akses tidak diubah.");
   const updated = await db.firmMember.update({ where: { id: member.id }, data: { disabled: true } });
-  const banned = await auth.updateUserById(member.userId, { ban_duration: BAN_FOREVER });
+  const banned = await auth.admin.updateUserById(member.userId, { ban_duration: BAN_FOREVER });
   if (banned.error) fail(banned.error, "Akses dicabut di Buku, tetapi sesi Supabase belum ditutup. Ulangi perintah.");
   return updated;
 }
@@ -71,17 +74,17 @@ export async function initializeWorkspace(db: Db, name: string) {
  * Demo / test admin with a known password (staging, local, e2e only — the seed refuses to run it in DEMO_MODE=false).
  * Idempotent: an existing Supabase user gets its password and membership refreshed.
  */
-export async function ensureLocalAdmin(db: Db, auth: AuthAdmin, input: { email: string; password: string; name: string; firmId: string }) {
+export async function ensureLocalAdmin(db: Db, auth: AuthApi, input: { email: string; password: string; name: string; firmId: string }) {
   const email = normalizeEmail(input.email);
   if (input.password.length < 8) throw new Error("Kata sandi demo minimal 8 karakter.");
-  const created = await auth.createUser({ email, password: input.password, email_confirm: true, user_metadata: { name: input.name } });
+  const created = await auth.admin.createUser({ email, password: input.password, email_confirm: true, user_metadata: { name: input.name } });
   let userId = created.data.user?.id;
   if (!userId) {
-    if (!auth.listUsers) fail(created.error, "Akun demo tidak bisa dibuat.");
-    const page = await auth.listUsers({ page: 1, perPage: 1000 });
+    if (!auth.admin.listUsers) fail(created.error, "Akun demo tidak bisa dibuat.");
+    const page = await auth.admin.listUsers({ page: 1, perPage: 1000 });
     userId = page.data.users.find((user) => user.email?.toLowerCase() === email)?.id;
     if (!userId) fail(created.error, "Akun demo tidak bisa dibuat.");
-    const updated = await auth.updateUserById(userId, { password: input.password, email_confirm: true, ban_duration: "none" });
+    const updated = await auth.admin.updateUserById(userId, { password: input.password, email_confirm: true, ban_duration: "none" });
     if (updated.error) fail(updated.error, "Kata sandi akun demo tidak bisa diperbarui.");
   }
   const existing = await db.firmMember.findUnique({ where: { email } });

@@ -14,7 +14,7 @@ export async function seedDemoAdmin(db: Db, log: (line: string) => void = () => 
   if (process.env.DEMO_MODE !== "true") throw new Error("DEMO_ADMIN_* hanya untuk DEMO_MODE=true. Gunakan `npm run access -- invite` untuk ruang kerja sungguhan.");
   if (!supabaseEnv() || !supabaseSecretKey()) { log("Demo admin dilewati: NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SECRET_KEY belum diatur."); return null; }
   const firm = await db.firm.findFirstOrThrow({ orderBy: { createdAt: "asc" } });
-  const member = await ensureLocalAdmin(db, createSupabaseAdmin().auth.admin, { email, password, name: process.env.DEMO_ADMIN_NAME ?? "Admin Demo", firmId: firm.id });
+  const member = await ensureLocalAdmin(db, createSupabaseAdmin().auth, { email, password, name: process.env.DEMO_ADMIN_NAME ?? "Admin Demo", firmId: firm.id });
   log(`Demo admin siap: ${member.email} (ADMIN, ${firm.name})`);
   return member;
 }

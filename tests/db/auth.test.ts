@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { db, resetDb } from "../helpers";
-import { initializeWorkspace, inviteUser, listMembers, revokeUser, type AuthAdmin } from "@/lib/auth/operator";
+import { initializeWorkspace, inviteUser, listMembers, revokeUser, type AuthApi } from "@/lib/auth/operator";
 
 const email = "member@example.test";
 /** Fake of the Supabase admin API: records calls, mints ids, never sends mail. */
@@ -9,11 +9,13 @@ function fakeAdmin() {
   const calls: { method: string; args: unknown[] }[] = [];
   const ok = (data: unknown) => ({ data, error: null });
   const auth = {
-    inviteUserByEmail: vi.fn(async (...args: unknown[]) => { calls.push({ method: "invite", args }); return ok({ user: { id: randomUUID() } }); }),
-    updateUserById: vi.fn(async (...args: unknown[]) => { calls.push({ method: "update", args }); return ok({ user: {} }); }),
-    generateLink: vi.fn(async (...args: unknown[]) => { calls.push({ method: "link", args }); return ok({ properties: {} }); }),
-    createUser: vi.fn(),
-  } as unknown as AuthAdmin;
+    admin: {
+      inviteUserByEmail: vi.fn(async (...args: unknown[]) => { calls.push({ method: "invite", args }); return ok({ user: { id: randomUUID() } }); }),
+      updateUserById: vi.fn(async (...args: unknown[]) => { calls.push({ method: "update", args }); return ok({ user: {} }); }),
+      createUser: vi.fn(),
+    },
+    resetPasswordForEmail: vi.fn(async (...args: unknown[]) => { calls.push({ method: "reset", args }); return ok({}); }),
+  } as unknown as AuthApi;
   return { auth, calls };
 }
 
@@ -45,7 +47,7 @@ describe("invitation-only membership", () => {
     expect(await db.firmMember.count()).toBe(1);
   });
 
-  it("revokes by disabling the member and banning the Supabase user; re-invitation lifts both", async () => {
+  it("revokes by disabling the member and banning the Supabase user; re-invitation lifts the ban and emails a recovery link", async () => {
     const firm = await db.firm.create({ data: { name: "Kantor" } });
     const { auth, calls } = fakeAdmin();
     const member = await inviteUser(db, auth, { email, name: "Member", firmId: firm.id });
@@ -58,15 +60,15 @@ describe("invitation-only membership", () => {
     expect(again).toMatchObject({ id: member.id, userId: member.userId, name: "Member Baru", disabled: false });
     expect(calls.slice(-2)).toEqual([
       { method: "update", args: [member.userId, { ban_duration: "none" }] },
-      { method: "link", args: [{ type: "recovery", email, options: {} }] },
+      { method: "reset", args: [email, {}] },
     ]);
-    expect(auth.inviteUserByEmail).toHaveBeenCalledTimes(1);
+    expect(auth.admin.inviteUserByEmail).toHaveBeenCalledTimes(1);
   });
 
   it("does not store a member when Supabase refuses the invitation", async () => {
     const firm = await db.firm.create({ data: { name: "Kantor" } });
     const { auth } = fakeAdmin();
-    (auth.inviteUserByEmail as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ data: { user: null }, error: { message: "email rate limit exceeded" } });
+    (auth.admin.inviteUserByEmail as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ data: { user: null }, error: { message: "email rate limit exceeded" } });
     await expect(inviteUser(db, auth, { email, name: "Member", firmId: firm.id })).rejects.toThrow("Undangan belum terkirim");
     expect(await db.firmMember.count()).toBe(0);
   });

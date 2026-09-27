@@ -22,7 +22,7 @@ async function main() {
     if (!email) return;
     if (await db.firmMember.findUnique({ where: { email } })) { console.log(`✓ Admin awal sudah ada: ${email}`); return; }
     if (!supabaseEnv() || !supabaseSecretKey()) { console.log("· Bootstrap admin dilewati: NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SECRET_KEY belum diatur."); return; }
-    const member = await inviteUser(db, createSupabaseAdmin().auth.admin, { email, name: process.env.INITIAL_ADMIN_NAME?.trim() || email.split("@")[0], firmId: firm.id, role: "ADMIN", redirectTo: appUrl() || undefined });
+    const member = await inviteUser(db, createSupabaseAdmin().auth, { email, name: process.env.INITIAL_ADMIN_NAME?.trim() || email.split("@")[0], firmId: firm.id, role: "ADMIN", redirectTo: appUrl() || undefined });
     console.log(`✓ Undangan admin terkirim ke ${member.email} (${firm.name})`);
   } finally { await db.$disconnect(); }
 }
