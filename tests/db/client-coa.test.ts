@@ -5,7 +5,7 @@ import { importSourceAccounts, postImport, stageImport } from "@/lib/ledger-impo
 import { acceptMappings, suggestMappings } from "@/lib/ledger-import/mapping";
 import { balanceSheet, trialBalanceMovement } from "@/lib/reports/ledger";
 import { clientAccountsByAccount, sourceTrialBalance } from "@/lib/reports/source";
-import { accountLedger } from "@/lib/reports/account-ledger";
+import { accountLedger, sourceLedgerBasis } from "@/lib/reports/account-ledger";
 import { dateOnly } from "@/lib/format";
 
 /** A small client GL across a year end: cash, revenue and a long-term payable in the client's own codes. */
@@ -56,6 +56,49 @@ describe("client COA-first reports", () => {
     expect(ledger.opening).toBe(1000n);
     expect(ledger.rows.map((r) => [r.debit, r.balance])).toEqual([["500", "1500"], ["200", "1700"]]);
     expect(ledger.rows[0].fileSource).toMatchObject({ fileName: "gl.xlsx", lineRef: "GL!4", sourceAccount: "10000 Kas" });
+  });
+
+  it("reads a client account's ledger by the accounts its lines were posted to, not a later remap", async () => {
+    const { g, kas } = await postedGl();
+    const ledger = async () => {
+      const src = await db.sourceAccount.findUniqueOrThrow({ where: { id: kas.id }, include: { account: true } });
+      const basis = await sourceLedgerBasis(db, src);
+      return { basis, ...(await accountLedger(db, { sourceAccountId: kas.id, entityIds: [g.pt.entity.id], start: dateOnly(2026, 1, 1), end: dateOnly(2026, 1, 31), ...basis })) };
+    };
+    expect((await ledger()).basis).toEqual({ normalBalance: "DEBIT", isPL: false });
+    // Remapped (for a later file) to an expense, then to a liability: the posted cash lines still read as cash.
+    for (const code of ["6180", "2110"]) {
+      const to = await db.account.findUniqueOrThrow({ where: { clientId_code: { clientId: g.client.id, code } } });
+      await db.sourceAccount.update({ where: { id: kas.id }, data: { accountId: to.id } });
+      const l = await ledger();
+      expect(l.basis).toEqual({ normalBalance: "DEBIT", isPL: false });
+      expect(l.opening).toBe(1000n); // December's cash isn't dropped as last year's income
+      expect(l.rows.map((r) => r.balance)).toEqual(["1500", "1700"]); // nor turned negative
+    }
+    // Posted first to a contra asset (1219, credit side), then to a regular asset: the earliest posted account decides the side.
+    const acc = async (code: string) => (await db.account.findUniqueOrThrow({ where: { clientId_code: { clientId: g.client.id, code } } })).id;
+    const contra = await db.sourceAccount.create({ data: { firmId: g.firm.id, clientId: g.client.id, entityId: g.pt.entity.id, code: "12900", name: "Akumulasi Penyusutan" } });
+    const { postJournal } = await import("@/lib/ledger/post");
+    await db.$transaction(async (tx) => {
+      await postJournal(tx, { entityId: g.pt.entity.id, date: dateOnly(2026, 1, 5), kind: "ADJUSTMENT", memo: "Penyusutan", lines: [{ accountId: await acc("6180"), debit: 100n }, { accountId: await acc("1219"), credit: 100n, sourceAccountId: contra.id }] });
+      await postJournal(tx, { entityId: g.pt.entity.id, date: dateOnly(2026, 1, 25), kind: "ADJUSTMENT", memo: "Salah akun", lines: [{ accountId: await acc("1210"), credit: 10n, sourceAccountId: contra.id }, { accountId: await acc("6180"), debit: 10n }] });
+    });
+    expect(await sourceLedgerBasis(db, { ...contra, account: null })).toEqual({ normalBalance: "CREDIT", isPL: false });
+    // A file type that matches no posted account still takes the earliest posted one, never a type of its own.
+    expect(await sourceLedgerBasis(db, { ...contra, typeHint: "BEBAN", account: null })).toEqual({ normalBalance: "CREDIT", isPL: false });
+
+    // Posted to two types (asset, then liability) under a file type matching neither: the earliest posted account decides, so the
+    // ledger doesn't restart in January as an income statement account.
+    const mixed = await db.sourceAccount.create({ data: { firmId: g.firm.id, clientId: g.client.id, entityId: g.pt.entity.id, code: "19000", name: "Rupa-rupa", typeHint: "BEBAN" } });
+    await db.$transaction(async (tx) => {
+      await postJournal(tx, { entityId: g.pt.entity.id, date: dateOnly(2025, 12, 5), kind: "ADJUSTMENT", memo: "Uang muka", lines: [{ accountId: await acc("1110"), debit: 50n, sourceAccountId: mixed.id }, { accountId: await acc("2110"), credit: 50n }] });
+      await postJournal(tx, { entityId: g.pt.entity.id, date: dateOnly(2026, 1, 6), kind: "ADJUSTMENT", memo: "Pindah", lines: [{ accountId: await acc("1110"), debit: 5n }, { accountId: await acc("2110"), credit: 5n, sourceAccountId: mixed.id }] });
+    });
+    expect(await sourceLedgerBasis(db, { ...mixed, account: null })).toEqual({ normalBalance: "DEBIT", isPL: false });
+
+    // A client account with nothing posted follows its current mapping.
+    const empty = await db.sourceAccount.create({ data: { firmId: g.firm.id, clientId: g.client.id, entityId: g.pt.entity.id, code: "41000", name: "Pendapatan Lain", typeHint: "PENDAPATAN" } });
+    expect(await sourceLedgerBasis(db, { ...empty, account: null })).toEqual({ normalBalance: "CREDIT", isPL: true });
   });
 
   it("breaks each Buku account into the client accounts behind it", async () => {

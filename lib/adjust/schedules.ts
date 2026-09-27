@@ -135,9 +135,8 @@ export type Proposal = { schedule: AdjustmentSchedule & { entity: { id: string; 
 export async function dueProposals(db: Db, clientId: string, year: number, month: number, entityId?: string): Promise<Proposal[]> {
   const locked = new Set((await db.period.findMany({ where: { clientId, status: "LOCKED" }, select: { year: true, month: true } })).map((p) => p.year * 12 + p.month));
   const upTo = year * 12 + month;
-  // A stopped accrual still owes the reversal of an accrual it already posted; a stopped schedule proposes nothing else.
   const schedules = await db.adjustmentSchedule.findMany({
-    where: { clientId, OR: [{ stoppedAt: null }, { reverse: true }], ...(entityId ? { entityId } : {}) },
+    where: { clientId, ...(entityId ? { entityId } : {}) },
     include: { entity: { select: { id: true, shortName: true, functionalCurrency: true } }, debitAccount: { select: { code: true, name: true } }, creditAccount: { select: { code: true, name: true } }, entries: { select: { installment: true } } },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   });
@@ -147,13 +146,20 @@ export async function dueProposals(db: Db, clientId: string, year: number, month
     for (const i of installments(s)) {
       // A reversal only follows the accrual it reverses: never propose it while that installment is unposted.
       if (i.reversal && !posted.has(s.months)) continue;
-      if (s.stoppedAt && !i.reversal) continue;
+      if (!owed(s.stoppedAt, i)) continue;
       const at = i.year * 12 + i.month;
       if (at <= upTo && !locked.has(at) && !posted.has(i.k)) out.push({ schedule: s, installment: i, memo: installmentMemo(s, i) });
     }
   }
   return out;
 }
+
+/**
+ * A stop ends the schedule after the month it happened in: installments already due by then stay owed (proposed until posted), later
+ * ones are dropped. A stopped accrual still owes the reversal of an accrual it posted.
+ */
+const stopMonth = (stoppedAt: Date) => stoppedAt.getUTCFullYear() * 12 + stoppedAt.getUTCMonth() + 1;
+const owed = (stoppedAt: Date | null, i: Installment) => !stoppedAt || i.reversal || i.year * 12 + i.month <= stopMonth(stoppedAt);
 
 const isUniqueViolation = (e: unknown) => typeof e === "object" && e !== null && (e as { code?: string }).code === "P2002";
 
@@ -171,7 +177,7 @@ export async function postInstallment(db: Db, input: { clientId: string; schedul
       // Lock the schedule and read its stop inside the posting transaction: a stop racing this click either commits first (and is
       // seen here) or waits until this installment is recorded. The reversal of a posted accrual is still owed after a stop.
       const [row] = await tx.$queryRaw<{ stoppedAt: Date | null }[]>`SELECT "stoppedAt" FROM "AdjustmentSchedule" WHERE id = ${s.id} FOR UPDATE`;
-      if (row?.stoppedAt && !i.reversal) throw new LedgerError("Jadwal ini sudah dihentikan.");
+      if (!owed(row?.stoppedAt ?? null, i)) throw new LedgerError("Jadwal ini sudah dihentikan.");
       return postJournal(tx, {
         entityId: s.entityId,
         date: i.date,
@@ -200,12 +206,13 @@ export async function postAllDue(db: Db, input: { clientId: string; year: number
   return due.length;
 }
 
-export async function stopSchedule(db: Db, input: { clientId: string; scheduleId: string }) {
+/** `at` is the stop's moment (now); tests pass it to fix the stop month. */
+export async function stopSchedule(db: Db, input: { clientId: string; scheduleId: string; at?: Date }) {
   const s = await db.adjustmentSchedule.findFirst({ where: { id: input.scheduleId, clientId: input.clientId } });
   if (!s) throw new LedgerError("Jadwal tidak ditemukan.");
   if (s.stoppedAt) return s;
   // Conditional update: takes the row lock a posting click holds, so the two serialize (see postInstallment).
-  await db.adjustmentSchedule.updateMany({ where: { id: s.id, stoppedAt: null }, data: { stoppedAt: new Date() } });
+  await db.adjustmentSchedule.updateMany({ where: { id: s.id, stoppedAt: null }, data: { stoppedAt: input.at ?? new Date() } });
   return db.adjustmentSchedule.findUniqueOrThrow({ where: { id: s.id } });
 }
 
