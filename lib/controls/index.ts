@@ -8,7 +8,7 @@ import { revaluationProposals } from "@/lib/fx/revalue";
 import { balanceSheet, combinedWorksheet, trialBalance } from "@/lib/reports/ledger";
 import { sanityControls } from "@/lib/controls/sanity";
 import { anomalyControls } from "@/lib/controls/anomaly";
-import { closeLock, dueProposals, schedulesIn } from "@/lib/adjust/schedules";
+import { closeLock, dueProposals, schedulesDueBy } from "@/lib/adjust/schedules";
 
 /**
  * Close controls (analog of belifi 16_CONTROLS). PASS / REVIEW / FAIL.
@@ -247,8 +247,8 @@ export function closeReadiness(controls: Control[], signoffs: string[]) {
 }
 
 export async function lockPeriod(db: Db, clientId: string, year: number, month: number, note: string, actorId?: string | null) {
-  // Schedules known before the controls run: one created meanwhile was never checked, so the lock below refuses (rule 5a).
-  const known = new Set(await schedulesIn(db, clientId, year, month));
+  // Schedules due by this month known before the controls run: one created meanwhile was never checked, so the lock refuses (rule 5a).
+  const known = new Set(await schedulesDueBy(db, clientId, year, month));
   const controls = await runControls(db, clientId, year, month);
   const period = await db.period.upsert({
     where: { clientId_year_month: { clientId, year, month } },
@@ -267,8 +267,8 @@ export async function lockPeriod(db: Db, clientId: string, year: number, month: 
   }
   return db.$transaction(async (tx) => {
     await closeLock(tx, clientId);
-    if ((await schedulesIn(tx, clientId, year, month)).some((id) => !known.has(id))) {
-      throw new CloseError("Jadwal penyesuaian baru untuk bulan ini ditambahkan saat tutup buku berjalan. Muat ulang halaman, periksa kontrolnya, lalu tutup lagi.");
+    if ((await schedulesDueBy(tx, clientId, year, month)).some((id) => !known.has(id))) {
+      throw new CloseError("Jadwal penyesuaian baru yang jatuh tempo sampai bulan ini ditambahkan saat tutup buku berjalan. Muat ulang halaman, periksa kontrolnya, lalu tutup lagi.");
     }
     return tx.period.update({ where: { id: period.id }, data: { status: "LOCKED", lockedAt: new Date(), lockNote: note, lockedById: actorId ?? null } });
   });

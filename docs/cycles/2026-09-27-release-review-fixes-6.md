@@ -14,6 +14,9 @@ locked August exposed only September, and August's share of the total was never 
       inserts under a per-client advisory lock (`close:<clientId>`). `lockPeriod` notes the month's schedules before running its
       controls, then takes the same lock to write LOCKED and refuses if a schedule for that month appeared meanwhile.
 
+- [x] Review round 3 (#43): the close compares every schedule due by the closing month, not only those with an installment in it,
+      since an overdue installment is part of the month's `sched:` control.
+
 **Non-goals:** locking a month after a schedule exists (the `sched:` control already flags the missing installment before the lock).
 Serialising every other posting with the close (`postJournal` already refuses a locked period).
 **Assumptions:** the lock is per client (as `Period` is), the same scope `dueProposals` uses.
@@ -21,6 +24,7 @@ Serialising every other posting with the close (`postJournal` already refuses a 
 ## Tasks
 - [x] T1 Refuse schedules with an installment in a locked month — accept: new test fails on the old code
 - [x] T2 Serialise schedule creation with closing — accept: both race directions fail without the lock
+- [x] T3 The close-race check covers overdue schedules — accept: new case fails with the exact-month filter
 
 ## Implementation
 - T1: `lib/adjust/schedules.ts` `createSchedule` computes the planned installments (including the reversal) and refuses the
@@ -35,6 +39,8 @@ Serialising every other posting with the close (`postJournal` already refuses a 
   uncommitted transaction holding the lock:
   - A creation arriving while LOCKED is written waits for it, then is refused.
   - A close whose controls ran while a schedule was being written is refused, and the month stays open.
+- T3: `schedulesIn` becomes `schedulesDueBy` (any installment or reversal on or before the month). Test: closing September while a
+  one-month July schedule is being written is refused, and September stays open.
 
 ## Verification
 - T1: the new test fails on the previous code ("promise resolved … instead of rejecting"; schedules 1 failed | 9 passed) and passes after.
@@ -51,6 +57,13 @@ Serialising every other posting with the close (`postJournal` already refuses a 
   - `npm run build` ✓.
   - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
   - `test:e2e` → 10 passed (54.3s).
+- T3: the new case fails with the exact-month filter ("promise resolved … instead of rejecting") and passes after.
+- T3 gates:
+  - Lint and typecheck clean.
+  - `npm test` → Test Files 61 passed (61), Tests 450 passed (450).
+  - `npm run build` ✓.
+  - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
+  - `test:e2e` → 10 passed (52.3s).
 
 ## Ship Notes
 No migration, no env change. Merges to staging, then rides the promotion PR #37.

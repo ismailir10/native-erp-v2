@@ -61,10 +61,14 @@ export type ScheduleInput = {
 /** Serialises schedule creation with closing a month of the client (rule 5a): taken inside a transaction by both. */
 export const closeLock = (tx: Tx, clientId: string) => tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`close:${clientId}`}, 0))::text`;
 
-/** Ids of the client's schedules with an installment (or reversal) in the month; a close compares them before and after its controls. */
-export async function schedulesIn(db: Db | Tx, clientId: string, year: number, month: number) {
+/**
+ * Ids of the client's schedules with an installment (or reversal) due in or before the month, the ones its `sched:` control can
+ * show (an overdue installment stays proposed); a close compares them before and after its controls.
+ */
+export async function schedulesDueBy(db: Db | Tx, clientId: string, year: number, month: number) {
+  const upTo = year * 12 + month;
   const all = await db.adjustmentSchedule.findMany({ where: { clientId }, orderBy: { id: "asc" } });
-  return all.filter((s) => installments(s).some((i) => i.year === year && i.month === month)).map((s) => s.id);
+  return all.filter((s) => installments(s).some((i) => i.year * 12 + i.month <= upTo)).map((s) => s.id);
 }
 
 export async function createSchedule(db: Db, input: ScheduleInput) {

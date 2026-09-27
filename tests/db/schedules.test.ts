@@ -129,8 +129,24 @@ describe("adjustment schedules", () => {
       closed.catch(() => {});
       await new Promise((r) => setTimeout(r, 300));
     });
-    await expect(closed).rejects.toThrow("Jadwal penyesuaian baru untuk bulan ini");
+    await expect(closed).rejects.toThrow("Jadwal penyesuaian baru yang jatuh tempo sampai bulan ini");
     expect((await db.period.findUniqueOrThrow({ where: { id: period.id } })).status).toBe("OPEN");
+
+    // Closing September while a one-month schedule for open July is written: its installment is overdue in September's controls.
+    const sept = await db.period.upsert({ where: { clientId_year_month: { clientId: g.client.id, year: 2026, month: 9 } }, create: { firmId: g.firm.id, clientId: g.client.id, year: 2026, month: 9 }, update: {} });
+    for (const s of CLOSE_SIGNOFFS) await db.closeSignoff.create({ data: { periodId: sept.id, key: s.key } });
+    const septControls = await runControls(db, g.client.id, 2026, 9);
+    for (const c of septControls) if (c.status === "REVIEW") await db.controlAck.create({ data: { periodId: sept.id, controlKey: c.key, note: "Wajar untuk uji" } });
+    expect(septControls.filter((c) => c.status === "FAIL")).toEqual([]);
+    await db.$transaction(async (tx) => {
+      await closeLock(tx, g.client.id);
+      await tx.adjustmentSchedule.create({ data: { firmId: g.firm.id, clientId: g.client.id, entityId: g.pt.entity.id, kind: "DEPRECIATION", memo: "Penyusutan Juli", debitAccountId: (await tx.account.findFirstOrThrow({ where: { clientId: g.client.id, code: "6180" } })).id, creditAccountId: (await tx.account.findFirstOrThrow({ where: { clientId: g.client.id, code: "1219" } })).id, amount: 600_000n, months: 1, startYear: 2026, startMonth: 7 } });
+      closed = lockPeriod(db, g.client.id, 2026, 9, "uji");
+      closed.catch(() => {});
+      await new Promise((r) => setTimeout(r, 300));
+    });
+    await expect(closed).rejects.toThrow("Jadwal penyesuaian baru yang jatuh tempo sampai bulan ini");
+    expect((await db.period.findUniqueOrThrow({ where: { id: sept.id } })).status).toBe("OPEN");
   });
 
   it("proposes the month's installment, posts it once even when clicked twice, and tracks progress", async () => {
