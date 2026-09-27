@@ -94,8 +94,8 @@ export async function scanLedger(db: Db, clientId: string, entityId: string, yea
     const exempt = EITHER_SIDE.has(a.code);
     const history = activeIdx.map((i) => prior[i].get(id));
     if (isPl(a) && !exempt) {
-      // Flux: only accounts the baseline knows; one it doesn't is a new/reactivated account, not a swing.
-      if (activeIdx.length >= 2 && history.some((v) => v !== undefined)) {
+      // Flux: only accounts that moved in ≥ 2 baseline months; one moved once (or never) has no average to swing from.
+      if (history.filter((v) => v !== undefined).length >= 2) {
         const sum = history.reduce<bigint>((s, v) => s + (v ?? 0n), 0n);
         const diffN = cur * n - sum; // Δ × n, exact
         if (abs(diffN) >= materiality * n && abs(diffN) * 100n >= abs(sum) * FLUX_PERCENT) {

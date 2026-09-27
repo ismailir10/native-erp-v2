@@ -29,13 +29,16 @@ describe("close copilot parser", () => {
     expect(a.refs).toEqual(["tx-1"]);
     expect(a.entry).toEqual({ memo: "Reklasifikasi pencairan KMK", lines: [{ accountCode: "4100", side: "D", amount: "Rp 100.000.000" }, { accountCode: "2210", side: "K", amount: "Rp 100.000.000" }] });
     // A row's negative amount may be cited without its sign; bare digits of the same value match too.
-    expect(parseControlExplain(answer(reclass("1.000.000")), input()).entry?.lines[0].amount).toBe("Rp 1.000.000");
+    expect(parseControlExplain(answer(reclass("1.000.000"), { refs: ["tx-2"] }), input()).entry?.lines[0].amount).toBe("Rp 1.000.000");
     // Re-validating a stored answer gives the same result.
     expect(parseControlExplain(JSON.stringify(a), input())).toEqual(a);
   });
 
   it("drops the draft — keeping the explanation — for an invented amount, an unknown account, unbalanced lines or a group control", () => {
     expect(parseControlExplain(answer(reclass("Rp 99.000.000")), input()).entry).toBeNull();
+    // An amount copied from a row the answer doesn't cite has no source: tx-2's Rp 1.000.000 while citing only tx-1, or nothing cited.
+    expect(parseControlExplain(answer(reclass("Rp 1.000.000")), input()).entry).toBeNull();
+    expect(parseControlExplain(answer(reclass(), { refs: [] }), input()).entry).toBeNull();
     expect(parseControlExplain(answer(reclass(undefined, "1101")), input()).entry).toBeNull();
     const unbalanced = { memo: "x", lines: [{ accountCode: "4100", side: "D", amount: "Rp 100.000.000" }, { accountCode: "2210", side: "K", amount: "Rp 1.000.000" }] };
     expect(parseControlExplain(answer(unbalanced), input()).entry).toBeNull();
