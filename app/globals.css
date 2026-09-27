@@ -6,9 +6,8 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Buku design tokens — 9fin structure (dark app chrome, hairlines, sharp corners, mono micro-labels)
- * in Wise colours (@transferwise/neptune-tokens 8.26, personal theme). Forest Green is the text/interactive
- * colour; Bright Green is a fill only, always with Forest text. Rules: .agents/skills/ui-rules/SKILL.md
+ * Buku design tokens — 9fin look on a light background: hairlines, sharp corners, mono micro-labels,
+ * navy ink and one strong blue. Rules: .agents/skills/ui-rules/SKILL.md
  */
 @theme inline {
   --color-background: var(--background);
@@ -63,68 +62,68 @@
   --color-fail: var(--fail);
   --color-fail-subtle: var(--fail-subtle);
   --color-primary-subtle: var(--primary-subtle);
-  /* Wise Bright Green — fill only (buttons, active nav, logo), never text on light surfaces */
+  /* Brand fill (primary button, logo, NextStep marker) */
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
 }
 
 :root {
-  /* Wise content colours on a Forest-tinted neutral canvas */
-  --background: #F6F7F5;
-  --foreground: #0E0F0C;
+  /* 9fin-inspired: cool light canvas, navy ink, one strong blue */
+  --background: #F5F7FA;
+  --foreground: #0B1B32;
   --card: #FFFFFF;
-  --card-foreground: #0E0F0C;
+  --card-foreground: #0B1B32;
   --popover: #FFFFFF;
-  --popover-foreground: #0E0F0C;
+  --popover-foreground: #0B1B32;
 
-  /* Forest Green (Wise interactive primary) — 13.9:1 on white: text, links, rings, dark fills */
-  --primary: #163300;
+  /* Strong blue — 5.9:1 on white: text, links, rings, fills */
+  --primary: #1D5BD8;
   --primary-foreground: #FFFFFF;
-  --primary-subtle: #ECEFEA;
+  --primary-subtle: #EDF2FD;
 
-  /* Bright Green (Wise accent) — 9.5:1 with Forest text on top; 1.5:1 as text, so fill only */
-  --brand: #9FE870;
-  --brand-foreground: #163300;
+  /* Brand fill (primary button, logo, NextStep marker) — the same blue, white text on top */
+  --brand: #1D5BD8;
+  --brand-foreground: #FFFFFF;
 
-  --secondary: #ECEFEA;
-  --secondary-foreground: #0E0F0C;
-  --muted: #F1F2EF;
-  --muted-foreground: #454745;
-  --accent: #ECEFEA;
-  --accent-foreground: #0E0F0C;
-  --destructive: #CB272F;
+  --secondary: #EEF2F7;
+  --secondary-foreground: #0B1B32;
+  --muted: #EFF2F6;
+  --muted-foreground: #4B5768;
+  --accent: #EEF2F7;
+  --accent-foreground: #0B1B32;
+  --destructive: #C4213A;
 
-  --border: #E0E1DD;
-  --input: #8A8C87;
-  --ring: #163300;
+  --border: #E3E7ED;
+  --input: #8792A2;
+  --ring: #1D5BD8;
   --radius: 0.25rem;
 
-  /* Dark app chrome (9fin) in Forest Green */
-  --sidebar: #163300;
-  --sidebar-foreground: #E8EFE3;
-  --sidebar-primary: #9FE870;
-  --sidebar-primary-foreground: #163300;
-  --sidebar-accent: #25470F;
-  --sidebar-accent-foreground: #FFFFFF;
-  --sidebar-border: #2D4F18;
-  --sidebar-ring: #9FE870;
+  /* Light app chrome: white sidebar, navy text, blue-tinted active item */
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #2A3547;
+  --sidebar-primary: #EDF2FD;
+  --sidebar-primary-foreground: #1747B0;
+  --sidebar-accent: #F1F4F8;
+  --sidebar-accent-foreground: #0B1B32;
+  --sidebar-border: #E3E7ED;
+  --sidebar-ring: #1D5BD8;
 
-  /* Categorical chart order from Wise ramps (green-dark, brand purple, orange-dark, blue-dark), validated with the
-     dataviz validator on white: lightness band, chroma, CVD ΔE ≥ 22, contrast ≥ 3:1. Fixed order, never cycled.
+  /* Categorical chart order (blue, orange, green, violet), validated with the dataviz validator on white:
+     lightness band, chroma, adjacent CVD ΔE ≥ 8, contrast ≥ 3:1. Fixed order, never cycled.
      chart-5 is the neutral "Lainnya" slot, not a fifth hue. */
-  --chart-1: #008026;
-  --chart-2: #485CC7;
-  --chart-3: #9A6500;
-  --chart-4: #0097C7;
-  --chart-5: #6A6C6A;
+  --chart-1: #1D5BD8;
+  --chart-2: #E0592A;
+  --chart-3: #12876F;
+  --chart-4: #9B4DCA;
+  --chart-5: #6B7280;
 
-  /* Wise sentiments */
-  --pass: #054D28;
-  --pass-subtle: #E2F6D5;
-  --review: #4A3B1C;
-  --review-subtle: #FFF7D7;
-  --fail: #CB272F;
-  --fail-subtle: #FBEAEA;
+  /* Status — reserved for control & state, never chart series */
+  --pass: #0E7A4D;
+  --pass-subtle: #E6F5EE;
+  --review: #8A5300;
+  --review-subtle: #FFF3D6;
+  --fail: #C4213A;
+  --fail-subtle: #FCEBEE;
 }
 
 @layer base {
