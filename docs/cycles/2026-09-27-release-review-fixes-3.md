@@ -40,11 +40,17 @@ release merges.
   while scoping only the first 500; both now use the first 500. Tests in `tests/db/rates.test.ts` and `tests/db/evidence-scope.test.ts`
   fail on the previous code.
 
+- Review of #40 (4372a6d): a pair already flagged at staging suppressed the late check, so a date that got a different Kurs rate after
+  staging was never listed. Posting sees every file rate that didn't land, so it now replaces the import's `FX_FILE_RATE_DIFFERS`
+  checks with that complete set (a stale one also disappears). Test: 3 Jan flagged at staging, 4 Jan filled afterwards → one check
+  listing both dates; fails on the previous code.
+
 ## Verification
 - T1: new tests fail on the previous code (2 failed | 10 passed; the rate race reproduces), pass after. Gates: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 437 passed (437); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (55.4s).
 - Review of #40: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 437 passed (437); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (54.8s).
 - Review of #40 (4790b6c): lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 437 passed (437); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (53.2s).
 - Review of #40 (cdb8251): lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 439 passed (439); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (51.8s).
+- Review of #40 (4372a6d): lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 440 passed (440); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (51.7s).
 
 ## Ship Notes
 No migration, no env change. Merges to staging, then rides the open promotion PR #37.

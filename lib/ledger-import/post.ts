@@ -313,10 +313,11 @@ export async function postImport(db: Db, clientId: string, importId: string, act
         const kept = await upsertFileRate(tx, imp.firmId, { currency: r.currency, quote: r.quote, date: new Date(`${r.date}T00:00:00.000Z`), kind: "SPOT", rate: r.rate, note: `${imp.fileName} ${r.ref}` });
         if (formatRate(kept.rate) !== formatRate(r.rate)) differs.push({ r, kurs: kept.rate });
       }
-      // A rate another import (or the accountant) filled after this file was staged: flag it now, as staging would have.
-      const flagged = imp.checks.filter((c) => c.code === "FX_FILE_RATE_DIFFERS").map((c) => c.message);
-      const late = rateDiffChecks(differs, imp.currencyMode).filter((c) => !flagged.some((m) => m.startsWith(c.message.slice(0, c.message.indexOf(" di file")))));
-      if (late.length) await tx.importCheck.createMany({ data: late.map((c) => ({ ledgerImportId: imp.id, severity: c.severity, code: c.code, message: c.message, refs: c.refs })) });
+      // Posting sees every file rate that didn't land (known at staging or filled since by another import or the accountant):
+      // the rate-difference reviews are replaced by that complete set, so no late date goes unflagged and no stale one stays.
+      await tx.importCheck.deleteMany({ where: { ledgerImportId: imp.id, code: "FX_FILE_RATE_DIFFERS" } });
+      const rateReviews = rateDiffChecks(differs, imp.currencyMode);
+      if (rateReviews.length) await tx.importCheck.createMany({ data: rateReviews.map((c) => ({ ledgerImportId: imp.id, severity: c.severity, code: c.code, message: c.message, refs: c.refs })) });
       await tx.ledgerImport.update({ where: { id: imp.id }, data: { status: "POSTED", postedAt: new Date(), postedById: actorId ?? null, groupCount: posted } });
       return { entries: posted };
     },
