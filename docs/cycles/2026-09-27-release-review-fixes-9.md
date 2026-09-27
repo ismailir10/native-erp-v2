@@ -13,6 +13,9 @@ asset came in as LIABILITAS and could be suggested a liability account such as 2
 - [x] Review round 2 (#46): "Intangible Assets" / "Tangible Assets" (and "aset tak/tidak berwujud") are long-term (NON_CURRENT)
       too, whether they open the file or follow "Current Assets".
 
+- [x] Review round 3 (#46): the long-term term matcher covers every asset sub-heading the section matcher accepts other than "Current",
+      in both singular and plural forms (e.g. "Other Asset").
+
 **Non-goals:** new heading vocabularies beyond these asset sub-headings. Indonesian "Aset …" / "Aktiva …" headings already
 match the main asset heading.
 **Assumptions:** these sub-headings never name a liability or equity section.
@@ -20,6 +23,7 @@ match the main asset heading.
 ## Tasks
 - [x] T1 Asset sub-headings open the ASET section — accept: new tests fail on the old reader
 - [x] T2 Intangible / tangible asset headings are NON_CURRENT — accept: new case fails on the previous reader
+- [x] T3 Singular asset sub-headings take the same term — accept: new case fails on the previous reader
 
 ## Implementation
 - T1: `lib/ledger-import/read.ts` adds `SECTION_ASSET_SUB` next to `SECTION_ASSET`. Tests:
@@ -29,6 +33,8 @@ match the main asset heading.
 - T2: `TERM_NON_CURRENT` adds `(in)?tangible assets?`, `tak berwujud` and `tidak berwujud`. The unit test covers a Neraca opening at
   "Tangible Assets", then "Current Assets", then "Intangible Assets": NON_CURRENT / CURRENT / NON_CURRENT. The first case now
   uses "Intangible Assets" in place of "Other Assets".
+- T3: `TERM_NON_CURRENT` uses `(fixed|other|intangible|tangible)\s+assets?`, the same words as `SECTION_ASSET_SUB`. The unit test adds
+  "Current Asset" (CURRENT), then "Other Asset" (NON_CURRENT) after it.
 
 ## Verification
 - T1: both new tests fail on the old reader (unit: rows untyped under "Current Assets" / "Fixed Assets"; DB: "expected
@@ -46,6 +52,13 @@ match the main asset heading.
   - `npm run build` ✓.
   - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
   - `test:e2e` → 10 passed (50.4s).
+- T3: the new case fails on the previous reader (the singular "Other Asset" row kept CURRENT) and passes after.
+- T3 gates:
+  - Lint and typecheck clean.
+  - `npm test` → Test Files 61 passed (61), Tests 455 passed (455).
+  - `npm run build` ✓.
+  - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
+  - `test:e2e` → 10 passed (49.7s).
 
 ## Ship Notes
 No migration, no env change. Merges to staging, then rides the promotion PR #37.

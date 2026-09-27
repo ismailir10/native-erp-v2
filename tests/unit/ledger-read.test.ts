@@ -153,9 +153,11 @@ describe("Neraca reader (Jurnal-style export)", () => {
         ["Tangible Assets"], ["2-1500", "Kendaraan", 800, ""],
         ["Current Assets"], ["1-1000", "BANK", 700, ""],
         ["Intangible Assets"], ["1-1900", "Lisensi", 500, ""],
-        ["Total Assets", null, 2000, ""],
-        ["Liability & Equity"], ["2-2000", "Accounts Payable", 2000, ""],
-        ["Total Liability & Equity", null, 2000, ""],
+        ["Current Asset"], ["1-1100", "Kas Kecil", 100, ""],
+        ["Other Asset"], ["1-1810", "Deposit", 100, ""],
+        ["Total Assets", null, 2200, ""],
+        ["Liability & Equity"], ["2-2000", "Accounts Payable", 2200, ""],
+        ["Total Liability & Equity", null, 2200, ""],
       ],
     });
     const s2 = await readSheets("balance_sheet.xlsx", opens);
@@ -165,6 +167,8 @@ describe("Neraca reader (Jurnal-style export)", () => {
       ["2-1500", "ASET", "NON_CURRENT"],
       ["1-1000", "ASET", "CURRENT"],
       ["1-1900", "ASET", "NON_CURRENT"],
+      ["1-1100", "ASET", "CURRENT"],
+      ["1-1810", "ASET", "NON_CURRENT"], // singular "Other Asset" after a current heading
       ["2-2000", "LIABILITAS", null],
     ]);
   });

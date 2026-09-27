@@ -226,13 +226,16 @@ export function readLedger(sheet: RawSheet, t: TableCandidate): LedgerRow[] {
 }
 
 const SECTION_ASSET = /^(assets?|aset|aktiva|harta)\b/i;
-/** Asset sub-headings that can open a Neraca on their own ("Current Assets" with no "Assets" row above): they are ASET too. */
+/**
+ * Asset sub-headings that can open a Neraca on their own ("Current Assets" with no "Assets" row above): they are ASET too. Every one
+ * but "Current" is long-term, and TERM_NON_CURRENT matches the same words in singular and plural.
+ */
 const SECTION_ASSET_SUB = /^(current|fixed|other|non.?current|intangible|tangible)\s+(assets?)\b/i;
 const SECTION_LIAB = /^(liabilit|kewajiban|utang|hutang|current liabilit|long-term liabilit)/i;
 const SECTION_EQUITY = /^(equity|ekuitas|modal)\b/i;
 const SECTION_LIAB_EQUITY = /(liabilit.*(equity|ekuitas)|kewajiban.*(ekuitas|modal)|pasiva)/i;
 /** Sub-headings that say how long a balance runs (Jurnal: "Current Assets", "Fixed Assets", "Long-term Liability"). */
-const TERM_NON_CURRENT = /(long.?term|jangka panjang|non.?current|tidak lancar|fixed assets?|(in)?tangible assets?|aset tetap|aktiva tetap|tak berwujud|tidak berwujud|other assets|aset lain|depreciation|penyusutan|amorti)/i;
+const TERM_NON_CURRENT = /(long.?term|jangka panjang|non.?current|tidak lancar|(fixed|other|intangible|tangible)\s+assets?|aset tetap|aktiva tetap|tak berwujud|tidak berwujud|aset lain|depreciation|penyusutan|amorti)/i;
 const TERM_CURRENT = /(\bcurrent\b|\blancar\b|jangka pendek|short.?term)/i;
 
 export function readNeraca(sheet: RawSheet, t: TableCandidate): { date: Date | null; rows: NeracaRow[]; totals: NeracaTotal[] } {
