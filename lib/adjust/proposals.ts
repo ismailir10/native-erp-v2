@@ -44,10 +44,22 @@ export type NewProposal = {
   snapshot?: string | null;
 };
 
-/** Stores a proposal once per key (a cached AI answer or a suspense line never duplicates). */
+/**
+ * Stores a proposal once per key (a cached AI answer or a suspense line never duplicates). A still-open draft made from books
+ * that have moved since (its snapshot differs) is refreshed in place, so asking again after a stale refusal gives a postable
+ * draft; a decided one stays as it was decided.
+ */
 export async function saveProposal(db: Db, p: NewProposal) {
   const existing = await db.proposedEntry.findUnique({ where: { key: p.key } });
-  if (existing) return existing;
+  if (existing) {
+    if (existing.status !== "PROPOSED" || existing.snapshot === (p.snapshot ?? null)) return existing;
+    // Conditional on still PROPOSED: a post racing this refresh either wins (and this changes nothing) or fails to serialize.
+    await db.proposedEntry.updateMany({
+      where: { id: existing.id, status: "PROPOSED" },
+      data: { memo: p.memo, lines: p.lines, reason: p.reason, refs: p.refs ?? [], bankTransactionId: p.bankTransactionId ?? null, snapshot: p.snapshot ?? null },
+    });
+    return db.proposedEntry.findUniqueOrThrow({ where: { id: existing.id } });
+  }
   try {
     return await db.proposedEntry.create({ data: { ...p, controlKey: p.controlKey ?? null, refs: p.refs ?? [], lines: p.lines, bankTransactionId: p.bankTransactionId ?? null, snapshot: p.snapshot ?? null } });
   } catch (e) {

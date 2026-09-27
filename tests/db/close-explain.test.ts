@@ -66,6 +66,12 @@ describe("close copilot — Jelaskan", () => {
     const entries = await db.journalEntry.count();
     await expect(postProposal(db, { clientId: g.client.id, proposalId: r.proposal!.id })).rejects.toThrow("Buku berubah sejak draf ini dibuat");
     expect([(await db.bankTransaction.findUniqueOrThrow({ where: { id: tx.id } })).taxTag, await db.journalEntry.count()]).toEqual(["PPN_KELUARAN", entries]);
+
+    // Asking again (as the refusal says) refreshes the same draft for today's books, and it posts.
+    const again = await explainControl(db, g.firm.id, g.client.id, 2026, 8, key, new MockProvider());
+    expect([again.proposal?.id, await db.proposedEntry.count()]).toEqual([r.proposal!.id, 1]);
+    await postProposal(db, { clientId: g.client.id, proposalId: r.proposal!.id });
+    expect((await db.bankTransaction.findUniqueOrThrow({ where: { id: tx.id } })).accountCode).toBe("2210");
   });
 
   it("gives a group-level control words only, and refuses a control that passes", async () => {
