@@ -18,11 +18,11 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
   const banks = client.entities.flatMap((e) => e.bankAccounts.map((b) => ({ id: b.id, label: b.label, entity: e.name, bank: b.bank, number: b.number })));
   const imports = await prisma.statementImport.findMany({
     where: { bankAccountId: { in: banks.map((b) => b.id) } },
-    include: { bankAccount: { include: { entity: true } } },
+    include: { bankAccount: { include: { entity: true } }, importedBy: { select: { name: true } } },
     orderBy: [{ periodStart: "desc" }, { createdAt: "desc" }],
     take: 30,
   });
-  const ledgerImports = await prisma.ledgerImport.findMany({ where: { clientId: client.id }, orderBy: { createdAt: "desc" }, take: 30, include: { _count: { select: { entries: true } } } });
+  const ledgerImports = await prisma.ledgerImport.findMany({ where: { clientId: client.id }, orderBy: { createdAt: "desc" }, take: 30, include: { _count: { select: { entries: true } }, importedBy: { select: { name: true } }, postedBy: { select: { name: true } } } });
   const hasBanks = banks.length > 0;
   const tab = !hasBanks || sp.tab === "ledger" ? "ledger" : "statement";
 
@@ -68,7 +68,7 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
                     <TableCell className="hidden text-muted-foreground md:table-cell">{formatDate(i.periodStart)}{+i.periodEnd !== +i.periodStart ? ` – ${formatDate(i.periodEnd)}` : ""}</TableCell>
                     <TableCell className="num text-right">{i.rowCount}</TableCell>
                     <TableCell>
-                      <StatusPill status={i.status === "POSTED" ? "PASS" : "REVIEW"} label={i.status === "POSTED" ? `Tercatat · ${i._count.entries} jurnal` : "Draf"} />
+                      <StatusPill status={i.status === "POSTED" ? "PASS" : "REVIEW"} label={i.status === "POSTED" ? `Tercatat · ${i._count.entries} jurnal` : "Draf"} /><span className="mt-1 block text-xs text-muted-foreground">{i.status === "POSTED" ? `oleh ${i.postedBy?.name ?? "Sistem"}` : `diunggah ${i.importedBy?.name ?? "Sistem"}`}</span>
                     </TableCell>
                     <TableCell className="pr-6 text-right">
                       <Link href={`/clients/${client.id}/import/ledger/${i.id}`} aria-label={`Buka ${i.fileName}`} className="text-muted-foreground hover:text-primary">
@@ -131,7 +131,7 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
                   <TableCell className="text-muted-foreground">{formatDate(i.periodStart)} – {formatDate(i.periodEnd)}</TableCell>
                   <TableCell className="num text-right">{i.rowCount}{i.duplicateCount ? <span className="text-muted-foreground"> ({i.duplicateCount} duplikat)</span> : null}</TableCell>
                   <TableCell><StatusPill status={i.continuityOk ? "PASS" : "REVIEW"} label={i.continuityOk ? "Nyambung" : "Ada celah"} /></TableCell>
-                  <TableCell className="pr-6 text-muted-foreground">{formatDate(i.createdAt)}</TableCell>
+                  <TableCell className="pr-6 text-muted-foreground">{formatDate(i.createdAt)}<span className="block text-xs">oleh {i.importedBy?.name ?? "Sistem"}</span></TableCell>
                 </TableRow>
               ))}
             </TableBody>

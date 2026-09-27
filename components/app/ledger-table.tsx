@@ -13,6 +13,8 @@ export type LedgerRow = {
   entity: string;
   memo: string;
   kind: string;
+  /** "Nama · 27 Sep 2026, 14:02" — who posted the entry and when; "Sistem" for seeds. */
+  postedBy?: string;
   debit: string;
   credit: string;
   balance: string;
@@ -69,7 +71,7 @@ export function LedgerTable({ rows, opening, currency = "IDR" }: { rows: LedgerR
             <>
               <SheetHeader>
                 <SheetTitle>{KIND[open.kind]} · {open.date}</SheetTitle>
-                <SheetDescription>{open.memo}</SheetDescription>
+                <SheetDescription>{open.memo}{open.postedBy && <span className="mt-1 block text-xs">Dicatat oleh {open.postedBy}</span>}</SheetDescription>
               </SheetHeader>
               <div className="space-y-6 px-4 pb-6">
                 {open.source && (

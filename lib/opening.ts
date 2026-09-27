@@ -57,7 +57,7 @@ function lastDayOfPreviousMonth() {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0));
 }
 
-export async function postOpening(db: Db, input: { clientId: string; entityId: string; date: Date; lines: OpeningLineInput[] }) {
+export async function postOpening(db: Db, input: { clientId: string; entityId: string; date: Date; lines: OpeningLineInput[]; actorId?: string | null }) {
   const entity = await db.entity.findFirst({ where: { id: input.entityId, clientId: input.clientId } });
   if (!entity) throw new OpeningError("Entitas tidak ditemukan.");
   const existing = await db.journalEntry.findFirst({ where: { entityId: entity.id, kind: "OPENING" } });
@@ -87,6 +87,6 @@ export async function postOpening(db: Db, input: { clientId: string; entityId: s
   if (debit !== credit) lines.push(debit > credit ? { accountId: retained.id, credit: debit - credit, memo: "Penyeimbang saldo awal" } : { accountId: retained.id, debit: credit - debit, memo: "Penyeimbang saldo awal" });
 
   return db.$transaction((tx) =>
-    postJournal(tx, { entityId: entity.id, date: input.date, kind: "OPENING", memo: `Saldo awal per ${formatDate(input.date)}`, lines }),
+    postJournal(tx, { entityId: entity.id, date: input.date, kind: "OPENING", memo: `Saldo awal per ${formatDate(input.date)}`, lines, actorId: input.actorId }),
   );
 }

@@ -40,6 +40,8 @@ export type StageInput = {
   entityMap?: Record<string, string>;
   /** Files without an entity column (and every Neraca) go to this entity. */
   entityId?: string;
+  /** Member staging the file; null for system runs. */
+  actorId?: string | null;
   /** Neraca date when the file doesn't state one. */
   date?: Date;
   currencyMode?: CurrencyMode;
@@ -182,6 +184,7 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
           evidenceUnitKey: input.evidenceUnitKey,
           fileHash,
           sheetName: table.sheet,
+          importedById: input.actorId ?? null,
           mode: read.mode,
           currencyMode,
           periodStart,
@@ -239,7 +242,7 @@ export async function importSourceAccounts(db: Db, importId: string) {
   return or.length ? db.sourceAccount.findMany({ where: { OR: or }, include: { account: true, entity: true }, orderBy: [{ entityId: "asc" }, { code: "asc" }] }) : [];
 }
 
-export async function postImport(db: Db, clientId: string, importId: string) {
+export async function postImport(db: Db, clientId: string, importId: string, actorId?: string | null) {
   const imp = await db.ledgerImport.findFirst({ where: { id: importId, clientId }, include: { checks: true } });
   if (!imp) throw new LedgerImportError("Impor tidak ditemukan");
   if (imp.status === "POSTED") throw new LedgerImportError("Impor ini sudah dicatat.");
@@ -291,6 +294,7 @@ export async function postImport(db: Db, clientId: string, importId: string) {
           memo: `${e.memo} · ${imp.fileName}`.slice(0, 300),
           ledgerImportId: imp.id,
           sourceRef: e.ref,
+          actorId,
           lines,
         });
         posted++;
@@ -298,7 +302,7 @@ export async function postImport(db: Db, clientId: string, importId: string) {
       for (const r of saved.rates ?? []) {
         await upsertFileRate(tx, imp.firmId, { currency: r.currency, quote: r.quote, date: new Date(`${r.date}T00:00:00.000Z`), kind: "SPOT", rate: r.rate, note: `${imp.fileName} ${r.ref}` });
       }
-      await tx.ledgerImport.update({ where: { id: imp.id }, data: { status: "POSTED", postedAt: new Date(), groupCount: posted } });
+      await tx.ledgerImport.update({ where: { id: imp.id }, data: { status: "POSTED", postedAt: new Date(), postedById: actorId ?? null, groupCount: posted } });
       return { entries: posted };
     },
     { timeout: 300_000, maxWait: 20_000 },
