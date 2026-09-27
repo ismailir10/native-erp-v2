@@ -1,21 +1,35 @@
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { authConfigured, getAuth } from "@/lib/auth";
+import { authConfigured } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import type { MemberRole } from "@/lib/generated/prisma/enums";
 
+export const ROLE_LABEL: Record<MemberRole, string> = { ADMIN: "Admin", AKUNTAN: "Akuntan" };
+
+/**
+ * The verified Supabase user resolved to an active firm member. Consulted live on every request,
+ * so a revocation takes effect immediately, whatever the token still says.
+ */
 export async function getWorkspaceSession() {
-  // An incomplete rollout stays closed and reaches the login setup message.
   if (!authConfigured()) return null;
-  const result = await getAuth().api.getSession({ headers: await headers() });
-  if (!result) return null;
-  // Always consult the live user. Revocation takes effect even for an in-flight session creation.
-  const user = await prisma.authUser.findUnique({ where: { id: result.user.id }, include: { firm: true } });
-  if (!user || user.disabled) return null;
-  return { session: result.session, user, firm: user.firm };
+  const supabase = await createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+  const member = await prisma.firmMember.findUnique({ where: { userId: user.id }, include: { firm: true } });
+  if (!member || member.disabled) return null;
+  return { member, user: member, firm: member.firm };
 }
 
 export async function requireWorkspaceSession() {
   const session = await getWorkspaceSession();
   if (!session) redirect("/login");
   return session;
+}
+
+/** For server actions: an error, not a redirect, so the form can show it. */
+export async function requireMember(role?: MemberRole) {
+  const session = await getWorkspaceSession();
+  if (!session) throw new Error("Masuk terlebih dahulu.");
+  if (role && session.member.role !== role) throw new Error("Hanya admin kantor yang dapat mengubah ini.");
+  return session.member;
 }

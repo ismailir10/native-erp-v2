@@ -88,11 +88,11 @@ Pro plan upgrade; an audit-log page (columns land, the page is a later cycle).
       (site URL, redirect URLs, password min 8, confirmations off, Bahasa templates); set the same Auth settings on both
       hosted projects via the dashboard — accept: both projects visible, Auth → URL configuration + password policy set,
       `supabase/config.toml` committed.
-- [ ] T2 Schema: drop Better Auth models, add `MemberRole` + `FirmMember`, attribution columns; migration
+- [x] T2 Schema: drop Better Auth models, add `MemberRole` + `FirmMember`, attribution columns; migration
       `supabase_members_attribution`; `lib/db.ts` reads `DATABASE_URL` / `DIRECT_URL` (fallback to the integration's
       `POSTGRES_PRISMA_URL` / `POSTGRES_URL_NON_POOLING`) — accept: fresh DB `prisma migrate deploy` clean; `npm test`
       green after fixture updates. Depends T1 (none for code; order only).
-- [ ] T3 Auth core: `lib/supabase/{server,admin}.ts`, `proxy.ts`, `lib/auth/session.ts` (getUser → FirmMember),
+- [x] T3 Auth core: `lib/supabase/{server,admin}.ts`, `proxy.ts`, `lib/auth/session.ts` (getUser → FirmMember),
       `lib/auth/operator.ts` (invite/revoke/list via admin API + FirmMember), `scripts/access.ts` `--role`, remove
       `better-auth`, OTP, shared code, Resend code mail; unit tests with a fake Supabase client — accept: lint,
       typecheck, `tests/unit/auth-*` rewritten and green. Depends T2.
@@ -117,8 +117,10 @@ Pro plan upgrade; an audit-log page (columns land, the page is a later cycle).
 ## Implementation
 - Plan: T1–T8 sequential, inline (infra → schema → auth core → UI → roles → attribution → seed/e2e/CI → deploy/docs). No subagents: every slice touches the shared session/tenant layer.
 - T1: Rightjet project `native-erp-v2-staging` created (`oexirgohnltkgigcteyp`, ap-southeast-1, Free, Data API off at creation). Dashboard on both projects: Site URL (prod `https://native-erp-v2.vercel.app`, staging `https://native-erp-v2-git-staging-…vercel.app`), redirect allow-list `/auth/callback` (staging also `…-git-real-data-…`, wildcard `native-erp-v2-*-…` for PR previews, `http://localhost:3000`), *Allow new users to sign up* off, min password 8, prod Data API disabled (was on). `supabase init` → `supabase/config.toml` (site_url localhost, callbacks, signup off, min 8, Bahasa invite/recovery templates in `supabase/templates/`). **Finding:** hosted templates are editable only after custom SMTP, so until then Supabase's default English template is sent; its link lands on `/auth/callback` with tokens in the URL hash — the callback must accept `code`, `token_hash` and hash flows (T4).
+- T2 + T3 (one commit — the schema drop and the Better Auth removal cannot pass a gate apart): `prisma/schema.prisma` (Auth* models → `FirmMember` + `MemberRole`; `postedById`, `doneById`, `lockedById`, `ackedById`, `importedById` ×2, `LedgerImport.postedById`, `SourceAccount.mappedById`), migration `20260927032216_supabase_members_attribution` (generated with `migrate diff`, applied locally to `buku` + `buku_test`). `lib/supabase/{env,server,browser,admin,proxy}.ts`, root `proxy.ts` (Next 16 convention, refreshes the cookie session), `lib/auth.ts` (`authConfigured` = URL + publishable key present), `lib/auth/session.ts` (`getUser()` → live `FirmMember`; `requireMember(role?)` for actions), `lib/auth/operator.ts` (invite = `inviteUserByEmail` + member row; re-invite = unban + recovery link; revoke = `disabled` + 100-year ban; `ensureLocalAdmin` for demo/e2e), `scripts/access.ts` (`--role`, `--url`), `app/login/{page,login-form,actions,shell}.tsx`, `app/login/lupa`, `app/auth/callback/route.ts` (code / token_hash / hash-fragment), `app/atur-sandi` (browser client consumes the link, `updateUser({password})`), `lib/demo/admin.ts` + seeds (`DEMO_ADMIN_EMAIL/PASSWORD`, refused when `DEMO_MODE≠true`), `scripts/e2e-setup.ts` + `e2e/global-setup.ts` (admin API user, login through the real form), sidebar footer = name · role. Removed: `better-auth`, OTP/shared-code config, Resend mail, `/api/auth`, two unit tests. **Deviation:** `package-lock.json` regenerated from scratch — `npm install` of the new packages stripped rolldown's platform bindings (npm/cli#4828); a fresh lock keeps them, at the cost of patch bumps across the tree.
 
 ## Verification
 - T1: dashboard shows both projects healthy; staging URL configuration lists 4 redirect URLs; both providers pages show signup off after reload; prod Data API page reads "Data API disabled".
+- T2+T3: `npm run lint` clean; `tsc --noEmit` clean (after clearing a stale `.next/types` stub of the deleted route); `npm test` → Test Files 51 passed (51), Tests 380 passed (380). Fresh `prisma migrate deploy` on `buku_test` → "All migrations have been successfully applied."
 
 ## Ship Notes
