@@ -5,6 +5,7 @@ import { formatMoney } from "@/lib/money";
 import { FxMissingError } from "@/lib/reports/fx";
 import { revaluationProposals } from "@/lib/fx/revalue";
 import { balanceSheet, combinedWorksheet, trialBalance } from "@/lib/reports/ledger";
+import { sanityControls } from "@/lib/controls/sanity";
 
 /**
  * Close controls (analog of belifi 16_CONTROLS). PASS / REVIEW / FAIL.
@@ -56,6 +57,7 @@ export async function runControls(db: Db, clientId: string, year: number, month:
       href: `${base}/reports?entity=${e.id}`,
     });
 
+    let statementMissing = false;
     for (const ba of e.bankAccounts) {
       const lastTx = await db.bankTransaction.findFirst({
         where: { bankAccountId: ba.id, date: { lte: end }, balance: { not: null } },
@@ -66,6 +68,7 @@ export async function runControls(db: Db, clientId: string, year: number, month:
       const gl = glRow?.net ?? 0n;
       const key = `bank:${ba.id}`;
       if (coverage.length === 0) {
+        statementMissing = true;
         controls.push({ key, title: `Rekonsiliasi ${ba.label}`, scope: e.shortName, status: "REVIEW", detail: "Mutasi bulan ini belum diimpor", href: `${base}/import`, ack: acks.get(key) });
         continue;
       }
@@ -102,6 +105,8 @@ export async function runControls(db: Db, clientId: string, year: number, month:
       href: `${base}/ledger/${ACCOUNT_CODES.CLEARING}?entity=${e.id}`,
       ack: acks.get(clKey),
     });
+
+    controls.push(...(await sanityControls(db, { clientId, entity: e, tb, start, end, base, acks, statementMissing })));
   }
 
   // Ledger / Neraca imports (rule 15a): accepted source differences stay FAIL until 1999 is cleared; REVIEW checks need a note.
