@@ -8,16 +8,22 @@ import { formatRateId } from "@/lib/fx/currency";
 /**
  * One account's ledger for a month: opening balance, lines with running balance, and the source behind each line
  * (bank row, or file `sheet!row`). Either a Buku account (`accountId`) or one of the client's own accounts
- * (`sourceAccountId`). Balances follow the account's normal side; income & expense start at 1 January.
+ * (`sourceAccountId`). Balances follow `normalBalance`. The opening follows each posted line's own account, as the TBs do:
+ * income & expense lines count from 1 January (earlier years sit in the prior-year result), balance-sheet lines from the start.
  */
 export async function accountLedger(
   db: Db,
-  args: { entityIds: string[]; start: Date; end: Date; normalBalance: NormalBalance; isPL: boolean } & ({ accountId: string } | { sourceAccountId: string }),
+  args: { entityIds: string[]; start: Date; end: Date; normalBalance: NormalBalance } & ({ accountId: string } | { sourceAccountId: string }),
 ): Promise<{ opening: bigint; rows: LedgerRow[] }> {
   const which = "accountId" in args ? { accountId: args.accountId } : { sourceAccountId: args.sourceAccountId };
-  const from = args.isPL ? dateOnly(args.start.getUTCFullYear(), 1, 1) : undefined;
+  const PL: AccountType[] = ["PENDAPATAN", "BEBAN"];
   const before = await db.journalLine.aggregate({
-    where: { ...which, entityId: { in: args.entityIds }, date: { lt: args.start, gte: from } },
+    where: {
+      ...which,
+      entityId: { in: args.entityIds },
+      date: { lt: args.start },
+      OR: [{ account: { type: { notIn: PL } } }, { account: { type: { in: PL } }, date: { gte: dateOnly(args.start.getUTCFullYear(), 1, 1) } }],
+    },
     _sum: { debit: true, credit: true },
   });
   const lines = await db.journalLine.findMany({

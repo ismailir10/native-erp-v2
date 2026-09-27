@@ -44,8 +44,7 @@ export default async function AccountLedger({ params, searchParams }: { params: 
       </div>
     );
   }
-  const isPL = account.type === "PENDAPATAN" || account.type === "BEBAN";
-  const { opening, rows } = await accountLedger(prisma, { accountId: account.id, entityIds: scope.entityIds, start: period.start, end: period.end, normalBalance: account.normalBalance, isPL });
+  const { opening, rows } = await accountLedger(prisma, { accountId: account.id, entityIds: scope.entityIds, start: period.start, end: period.end, normalBalance: account.normalBalance });
   return (
     <div className="space-y-6">
       {back}

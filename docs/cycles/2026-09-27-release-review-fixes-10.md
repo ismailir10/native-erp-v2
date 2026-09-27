@@ -25,6 +25,10 @@ The review of the staging → main promotion (#37, head e41a53f) found two more 
 - [x] Review round 3 (#47): the client-account ledger's basis takes the report's period end too. The TB row and the ledger it drills
       to always read by the same posted account.
 
+- [x] Review round 4 (#47): the ledger's opening follows each posted line's own account, as the TBs do. Income and expense lines
+      count from 1 January; balance-sheet lines count from the start. A client account posted to both kinds therefore closes its
+      ledger at its TB row. The posted basis now only chooses the normal side shown.
+
 **Non-goals:** storing a schedule's source line (a schema change).
 **Assumptions:** a depreciation schedule whose amount was edited and that isn't the last one for the entry may leave one extra
 suggestion visible. That is harmless: it is only a suggestion.
@@ -34,6 +38,7 @@ suggestion visible. That is harmless: it is only a suggestion.
 - [x] T2 Source TB rows use the posted basis — accept: new test fails on the old aggregation
 - [x] T3 One-to-one depreciation matching; as-of horizon for the TB basis — accept: both new cases fail on the previous commit
 - [x] T4 The ledger basis uses the same report cutoff — accept: new case fails on the previous helper
+- [x] T5 The ledger opening follows each line's own account — accept: new case fails on the previous ledger
 
 ## Implementation
 - T1: `lib/adjust/candidates.ts` drops the entry-level filter and adds `covered(line, net)`, based on the entry's schedules.
@@ -54,6 +59,12 @@ suggestion visible. That is harmless: it is only a suggestion.
 - T4: `sourceLedgerBasis(db, src, asOf?)` limits the posted lines to `asOf`, and the client-account ledger page passes `period.end`.
   The test uses a client account typed ASET in its file, posted to 2110 up to January and to 1110 in February. Its January TB row and
   January ledger both read 2110 (CREDIT). From February on, the ledger reads 1110.
+- T5:
+  - `lib/reports/account-ledger.ts` `accountLedger` drops its `isPL` argument. The opening sums balance-sheet lines before the
+    start, plus income and expense lines from 1 January. For a Buku account this changes nothing, since it has a single type.
+  - The two ledger pages and tests no longer pass `isPL`.
+  - Test: a client account posted to 1110 in November, 6180 in December and 1110 in January. Its TB row and ledger both open at
+    10 and close at 30.
 
 ## Verification
 - T1: the new test fails on the old scan ("expected [] to deeply equal [ 'DEPRECIATION:buy:30000000', …"; the car and rack
@@ -82,6 +93,14 @@ suggestion visible. That is harmless: it is only a suggestion.
   - `npm run build` ✓.
   - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
   - `test:e2e` → 10 passed (51.7s).
+- T5: the new case fails on the previous ledger ("expected [ 15n, '35' ] to deeply equal [ 10n, '30' ]": last year's expense was in
+  the opening) and passes after.
+- T5 gates:
+  - Lint and typecheck clean.
+  - `npm test` → Test Files 61 passed (61), Tests 458 passed (458).
+  - `npm run build` ✓.
+  - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
+  - `test:e2e` → 10 passed (53.7s).
 
 ## Ship Notes
 No migration, no env change. Merges to staging, then rides the promotion PR #37.

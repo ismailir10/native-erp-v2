@@ -49,7 +49,8 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
    overdraft (PRK) bank accounts **2201–2209**, **7190** rounding, **7200** FX gain/loss, **3900** translation difference.
 9a. An entity's own codes live in `SourceAccount` (per entity), each mapped to exactly one client account. Imported lines keep
    `sourceAccountId`; the *Akun sumber* TB groups by it, and a client account's ledger (and its *Akun sumber* TB row) reads by the accounts its lines were posted to
-   (a remap moves no posted line, so it never reinterprets history). Mapping suggestions (rules → AI on **names only**) are applied only by the
+   (a remap moves no posted line, so it never reinterprets history); its opening follows each line's own account, like the TBs
+   (income & expense from 1 January, balance sheet from the start). Mapping suggestions (rules → AI on **names only**) are applied only by the
    accountant's explicit click; an import can't post while any source account is unmapped. A rule that only knows the
    side of the books ("expense", "payable") proposes a **new client account** named after the file's account
    (`suggestedCode = new:<FS_LINE>`) instead of a catch-all; the account exists only after that click. Types come from

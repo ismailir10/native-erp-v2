@@ -18,8 +18,8 @@ export default async function ClientAccountLedger({ params, searchParams }: { pa
   const src = await prisma.sourceAccount.findFirst({ where: { id: sourceAccountId, clientId: client.id }, include: { account: true, entity: true } });
   if (!src) notFound();
   // Read by the accounts its lines were posted to, so a later remap doesn't reinterpret history.
-  const { normalBalance, isPL } = await sourceLedgerBasis(prisma, src, period.end);
-  const { opening, rows } = await accountLedger(prisma, { sourceAccountId: src.id, entityIds: [src.entityId], start: period.start, end: period.end, normalBalance, isPL });
+  const { normalBalance } = await sourceLedgerBasis(prisma, src, period.end);
+  const { opening, rows } = await accountLedger(prisma, { sourceAccountId: src.id, entityIds: [src.entityId], start: period.start, end: period.end, normalBalance });
   const q = { period: period.key, entity: src.entityId };
   return (
     <div className="space-y-6">

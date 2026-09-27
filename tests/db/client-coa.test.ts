@@ -53,7 +53,7 @@ describe("client COA-first reports", () => {
     expect([row.code, row.name, row.accountCode, row.opening, row.periodDebit, row.periodLines, row.net]).toEqual(["10000", "Kas", "1110", 1000n, 700n, 2, 1700n]);
     expect(tb.find((r) => r.key === "prior")?.net).toBe(-1000n);
 
-    const ledger = await accountLedger(db, { sourceAccountId: kas.id, entityIds: [g.pt.entity.id], start: dateOnly(2026, 1, 1), end: dateOnly(2026, 1, 31), normalBalance: kas.account!.normalBalance, isPL: false });
+    const ledger = await accountLedger(db, { sourceAccountId: kas.id, entityIds: [g.pt.entity.id], start: dateOnly(2026, 1, 1), end: dateOnly(2026, 1, 31), normalBalance: kas.account!.normalBalance });
     expect(ledger.opening).toBe(1000n);
     expect(ledger.rows.map((r) => [r.debit, r.balance])).toEqual([["500", "1500"], ["200", "1700"]]);
     expect(ledger.rows[0].fileSource).toMatchObject({ fileName: "gl.xlsx", lineRef: "GL!4", sourceAccount: "10000 Kas" });
@@ -64,7 +64,7 @@ describe("client COA-first reports", () => {
     const ledger = async () => {
       const src = await db.sourceAccount.findUniqueOrThrow({ where: { id: kas.id }, include: { account: true } });
       const basis = await sourceLedgerBasis(db, src);
-      return { basis, ...(await accountLedger(db, { sourceAccountId: kas.id, entityIds: [g.pt.entity.id], start: dateOnly(2026, 1, 1), end: dateOnly(2026, 1, 31), ...basis })) };
+      return { basis, ...(await accountLedger(db, { sourceAccountId: kas.id, entityIds: [g.pt.entity.id], start: dateOnly(2026, 1, 1), end: dateOnly(2026, 1, 31), normalBalance: basis.normalBalance })) };
     };
     expect((await ledger()).basis).toEqual({ normalBalance: "DEBIT", isPL: false });
     // Remapped (for a later file) to an expense, then to a liability: the posted cash lines still read as cash.
@@ -139,6 +139,25 @@ describe("client COA-first reports", () => {
     expect([jan.accountCode, jan.type]).toEqual(["2110", "LIABILITAS"]);
     expect(await sourceLedgerBasis(db, { ...z, account: null }, dateOnly(2026, 1, 31))).toEqual({ normalBalance: "CREDIT", isPL: false });
     expect(await sourceLedgerBasis(db, { ...z, account: null }, dateOnly(2026, 2, 28))).toEqual({ normalBalance: "DEBIT", isPL: false }); // by then 1110 matches the file's type
+  });
+
+  it("a client account posted to balance-sheet and income-statement accounts closes its ledger at its TB row", async () => {
+    const { g } = await postedGl();
+    const pt = g.pt.entity.id;
+    const acc = async (code: string) => (await db.account.findUniqueOrThrow({ where: { clientId_code: { clientId: g.client.id, code } } })).id;
+    const w = await db.sourceAccount.create({ data: { firmId: g.firm.id, clientId: g.client.id, entityId: pt, code: "19004", name: "Rupa-rupa 19004" } });
+    await db.$transaction(async (tx) => {
+      const line = async (code: string, date: Date, amount: bigint) =>
+        postJournal(tx, { entityId: pt, date, kind: "ADJUSTMENT", memo: "uji", lines: [{ accountId: await acc(code), debit: amount, sourceAccountId: w.id }, { accountId: await acc("3100"), credit: amount }] });
+      await line("1110", dateOnly(2025, 11, 3), 10n); // balance sheet: carries into 2026
+      await line("6180", dateOnly(2025, 12, 3), 5n); // last year's expense: in the prior-year result, not this row
+      await line("1110", dateOnly(2026, 1, 7), 20n);
+    });
+    const row = (await sourceTrialBalance(db, pt, dateOnly(2026, 1, 31))).find((r) => r.sourceAccountId === w.id)!;
+    const basis = await sourceLedgerBasis(db, { ...w, account: null }, dateOnly(2026, 1, 31));
+    const ledger = await accountLedger(db, { sourceAccountId: w.id, entityIds: [pt], start: dateOnly(2026, 1, 1), end: dateOnly(2026, 1, 31), normalBalance: basis.normalBalance });
+    expect([row.opening, row.net]).toEqual([10n, 30n]);
+    expect([ledger.opening, ledger.rows.at(-1)?.balance]).toEqual([10n, "30"]);
   });
 
   it("breaks each Buku account into the client accounts behind it", async () => {
