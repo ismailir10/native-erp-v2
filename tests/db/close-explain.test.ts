@@ -4,9 +4,9 @@ import { makePdf, table } from "../pdf-fixture";
 import { importStatement } from "@/lib/import/pipeline";
 import { reviewTransaction } from "@/lib/review";
 import { explainControl } from "@/lib/controls/explain";
-import { postProposal } from "@/lib/adjust/proposals";
+import { postProposal, proposalViews } from "@/lib/adjust/proposals";
 import { runControls } from "@/lib/controls";
-import { MockProvider } from "@/lib/ai/provider";
+import { MockProvider, parseControlExplain, type AiProvider } from "@/lib/ai/provider";
 
 const statement = makePdf([
   [
@@ -75,6 +75,64 @@ describe("close copilot — Jelaskan", () => {
     await expect(postProposal(db, { clientId: g.client.id, proposalId: r.proposal!.id, accounts: ["6190", "2210"] })).rejects.toThrow("akun transaksi saat ini");
     await postProposal(db, { clientId: g.client.id, proposalId: r.proposal!.id, accounts: ["4100", "2300"] }); // the accountant knows it's long-term
     expect((await db.bankTransaction.findUniqueOrThrow({ where: { id: tx.id } })).accountCode).toBe("2300");
+  });
+
+  it("moves only the bank line the draft cites, refuses a draft the books have moved past, and releases a tax split", async () => {
+    const g = await makeGroup();
+    const twin = makePdf([
+      [
+        ...table(800, [[[40, "PT Bank Mandiri (Persero) Tbk"]], [[40, "Nomor Rekening : 2222222222"]], [[40, "Periode : 01/08/2026 - 31/08/2026"]]]),
+        ...table(740, [
+          [[40, "Tanggal"], [130, "Keterangan"], [360, "Debit"], [440, "Kredit"], [520, "Saldo"]],
+          [[40, "01/08/2026"], [130, "SALDO AWAL"], [500, "0,00"]],
+          [[40, "04/08/2026"], [130, "PENCAIRAN PINJAMAN KMK"], [430, "100.000.000,00"], [510, "100.000.000,00"]],
+          [[40, "05/08/2026"], [130, "PENCAIRAN PINJAMAN KMK"], [430, "100.000.000,00"], [510, "200.000.000,00"]],
+        ]),
+      ],
+    ]);
+    await importStatement(db, { bankAccountId: g.pt.banks[1].id, fileName: "m.pdf", data: twin, provider: null });
+    const [first, second] = await db.bankTransaction.findMany({ where: { entityId: g.pt.entity.id }, orderBy: { date: "asc" } });
+    await reviewTransaction(db, { bankTxId: first.id, accountCode: "4100", taxTag: null });
+    await reviewTransaction(db, { bankTxId: second.id, accountCode: "4100", taxTag: "PPN_KELUARAN" }); // wrongly taxed too
+    const key = `pl-financing:${g.pt.entity.id}`;
+    const citing = (ids: string[]): AiProvider => ({
+      model: "mock",
+      classify: async () => ({ answers: [], promptTokens: 0, completionTokens: 0, model: "mock" }),
+      mapAccounts: async () => ({ answers: [], promptTokens: 0, completionTokens: 0, model: "mock" }),
+      explainControl: async (input) => {
+        const entry = { memo: "Reklasifikasi pinjaman", lines: [{ accountCode: "4100", side: "D", amount: "Rp 100.000.000" }, { accountCode: "2210", side: "K", amount: "Rp 100.000.000" }] };
+        return { ...parseControlExplain(JSON.stringify({ explanation: "Pinjaman di pendapatan.", suggestion: "Reklasifikasi.", refs: ids, note: "", entry }), input), promptTokens: 1, completionTokens: 1, model: "mock" };
+      },
+    });
+
+    // Both lines cited and both fit: which one to move is ambiguous, so no draft is stored.
+    const both = await explainControl(db, g.firm.id, g.client.id, 2026, 8, key, citing([first.id, second.id]));
+    expect([both.proposal, await db.proposedEntry.count()]).toEqual([null, 0]);
+
+    // One cited → that one, even though the other has the lower id. (Same books: clear the cached answer to ask again.)
+    await db.evidenceAiCache.deleteMany();
+    const one = await explainControl(db, g.firm.id, g.client.id, 2026, 8, key, citing([second.id]));
+    const p = await db.proposedEntry.findUniqueOrThrow({ where: { id: one.proposal!.id } });
+    expect(p.bankTransactionId).toBe(second.id);
+    const [view] = await proposalViews(db, g.client.id, 2026, 8);
+    expect(view.reason).toMatch(/Tag pajak transaksi ini dilepas saat dicatat/);
+
+    // Posting releases the tax split: the whole Rp 100 jt lands on 2210, no PPN left behind.
+    await postProposal(db, { clientId: g.client.id, proposalId: p.id });
+    const moved = await db.bankTransaction.findUniqueOrThrow({ where: { id: second.id } });
+    expect([moved.accountCode, moved.taxTag]).toEqual(["2210", null]);
+    const net = async (code: string) => {
+      const s = await db.journalLine.aggregate({ where: { entityId: g.pt.entity.id, account: { code } }, _sum: { debit: true, credit: true } });
+      return (s._sum.credit ?? 0n) - (s._sum.debit ?? 0n);
+    };
+    expect([await net("2210"), await net("2130")]).toEqual([100_000_000n, 0n]);
+
+    // A draft for the first line, then the accountant fixes that line in Review: the books moved, the draft can't post.
+    const stale = await explainControl(db, g.firm.id, g.client.id, 2026, 8, key, citing([first.id]));
+    await reviewTransaction(db, { bankTxId: first.id, accountCode: "2210", taxTag: null });
+    const entries = await db.journalEntry.count();
+    await expect(postProposal(db, { clientId: g.client.id, proposalId: stale.proposal!.id })).rejects.toThrow("Buku berubah sejak draf ini dibuat");
+    expect(await db.journalEntry.count()).toBe(entries); // nothing posted twice
   });
 });
 

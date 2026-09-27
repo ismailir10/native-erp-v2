@@ -3,6 +3,7 @@ import type { ProposalSource } from "@/lib/generated/prisma/enums";
 import { LedgerError, postJournal } from "@/lib/ledger/post";
 import { periodBounds } from "@/lib/format";
 import { reviewTransactionTx } from "@/lib/review";
+import { controlSnapshot } from "@/lib/controls/ai-review";
 
 /**
  * Proposed entries (accounting-rules 20b): draft journals from the close copilot or a deterministic check. Nothing posts until
@@ -39,6 +40,8 @@ export type NewProposal = {
   refs?: string[];
   /** The draft re-classifies this bank line (posted through the review writer, rule 3). */
   bankTransactionId?: string | null;
+  /** AI drafts: fingerprint of the control's rows at draft time (`snapshotOf`). */
+  snapshot?: string | null;
 };
 
 /** Stores a proposal once per key (a cached AI answer or a suspense line never duplicates). */
@@ -46,7 +49,7 @@ export async function saveProposal(db: Db, p: NewProposal) {
   const existing = await db.proposedEntry.findUnique({ where: { key: p.key } });
   if (existing) return existing;
   try {
-    return await db.proposedEntry.create({ data: { ...p, controlKey: p.controlKey ?? null, refs: p.refs ?? [], lines: p.lines, bankTransactionId: p.bankTransactionId ?? null } });
+    return await db.proposedEntry.create({ data: { ...p, controlKey: p.controlKey ?? null, refs: p.refs ?? [], lines: p.lines, bankTransactionId: p.bankTransactionId ?? null, snapshot: p.snapshot ?? null } });
   } catch (e) {
     if ((e as { code?: string }).code === "P2002") return db.proposedEntry.findUniqueOrThrow({ where: { key: p.key } });
     throw e;
@@ -66,6 +69,10 @@ export async function postProposal(db: Db, input: { clientId: string; proposalId
   const p = await db.proposedEntry.findFirst({ where: { id: input.proposalId, clientId: input.clientId } });
   if (!p) throw new LedgerError("Usulan tidak ditemukan.");
   if (p.status !== "PROPOSED") throw new LedgerError(p.status === "POSTED" ? "Usulan ini sudah dicatat." : "Usulan ini sudah diabaikan.");
+  // An AI draft is only valid for the books it was made from: the control must still flag the same rows.
+  if (p.source === "AI_CONTROL" && p.controlKey && p.snapshot && (await controlSnapshot(db, input.clientId, p.year, p.month, p.controlKey)) !== p.snapshot) {
+    throw new LedgerError("Buku berubah sejak draf ini dibuat. Minta Jelaskan lagi, atau abaikan draf ini.");
+  }
   const lines = readLines(p.lines);
   if (input.accounts && input.accounts.length !== lines.length) throw new LedgerError("Jumlah akun tidak sesuai dengan baris usulan.");
   const codes = lines.map((l, i) => (input.accounts?.[i] ?? l.accountCode).trim());
@@ -102,7 +109,9 @@ async function postBankReclass(db: Db, p: { id: string; entityId: string; bankTr
   if (target === t.accountCode) throw new LedgerError("Akun tujuan sama dengan akun saat ini.");
   return db.$transaction(async (tx) => {
     const before = new Set((await tx.journalEntry.findMany({ where: { bankTransactionId: t.id }, select: { id: true } })).map((e) => e.id));
-    await reviewTransactionTx(tx, { bankTxId: t.id, accountCode: target, taxTag: t.taxTag, actorId });
+    // The approved draft moves the full amount: a tax split on the line would post something else, so it is released
+    // (the card says so); a PPN split that still applies is set again in Review.
+    await reviewTransactionTx(tx, { bankTxId: t.id, accountCode: target, taxTag: null, actorId });
     const entry = await tx.journalEntry.findFirst({ where: { bankTransactionId: t.id, kind: "RECLASS", id: { notIn: [...before] } } });
     if (!entry) throw new LedgerError("Tidak ada selisih untuk direklasifikasi.");
     const done = await tx.proposedEntry.updateMany({ where: { id: p.id, status: "PROPOSED" }, data: { status: "POSTED", entryId: entry.id, decidedById: actorId ?? null, decidedAt: new Date() } });
@@ -120,11 +129,12 @@ export async function dismissProposal(db: Db, input: { clientId: string; proposa
 export async function proposalViews(db: Db, clientId: string, year: number, month: number) {
   // 1999 corrections are shown from their source line (lib/adjust/suspense), never twice.
   const rows = (await openProposals(db, clientId, year, month)).filter((p) => p.source !== "SUSPENSE");
-  const txs = new Map((await db.bankTransaction.findMany({ where: { id: { in: rows.flatMap((p) => (p.bankTransactionId ? [p.bankTransactionId] : [])) } }, select: { id: true, accountCode: true } })).map((t) => [t.id, t.accountCode]));
+  const txs = new Map((await db.bankTransaction.findMany({ where: { id: { in: rows.flatMap((p) => (p.bankTransactionId ? [p.bankTransactionId] : [])) } }, select: { id: true, accountCode: true, taxTag: true } })).map((t) => [t.id, t]));
   return rows.map((p) => {
     const lines = readLines(p.lines);
-    const current = p.bankTransactionId ? txs.get(p.bankTransactionId) : null;
-    const fixed = current ? lines.findIndex((l) => l.accountCode === current) : -1;
-    return { id: p.id, memo: p.memo, reason: p.reason, source: p.source, entity: p.entity.shortName, currency: p.entity.functionalCurrency, fixed: fixed >= 0 ? fixed : null, lines };
+    const tx = p.bankTransactionId ? txs.get(p.bankTransactionId) : null;
+    const fixed = tx?.accountCode ? lines.findIndex((l) => l.accountCode === tx.accountCode) : -1;
+    const reason = tx?.taxTag ? `${p.reason} · Tag pajak transaksi ini dilepas saat dicatat; atur lagi di Review bila masih berlaku.` : p.reason;
+    return { id: p.id, memo: p.memo, reason, source: p.source, entity: p.entity.shortName, currency: p.entity.functionalCurrency, fixed: fixed >= 0 ? fixed : null, lines };
   });
 }

@@ -157,6 +157,17 @@ export async function gather(db: Db, clientId: string, year: number, month: numb
   return { input: { client: client.name, period: formatPeriod(year, month), accounts, controls: reviewed }, links, flagged };
 }
 
+/** Fingerprint of a control's rows: a draft made from them is only postable while they are unchanged. */
+export const snapshotOf = (rows: CloseReviewRow[]) => createHash("sha256").update(JSON.stringify(rows)).digest("hex");
+
+/** The current fingerprint of a still-flagged control, or null when it passes or no longer exists. */
+export async function controlSnapshot(db: Db, clientId: string, year: number, month: number, controlKey: string): Promise<string | null> {
+  const control = (await runControls(db, clientId, year, month)).find((c) => c.key === controlKey && c.status !== "PASS");
+  if (!control) return null;
+  const g = await gather(db, clientId, year, month, [control]);
+  return snapshotOf(g.input.controls[0].rows);
+}
+
 const cacheKey = (firmId: string, clientId: string, input: CloseReviewInput, model: string) =>
   createHash("sha256").update(JSON.stringify([firmId, clientId, input, model, CLOSE_REVIEW_PROMPT_VERSION])).digest("hex");
 const scopeOf = (clientId: string, year: number, month: number) => `close:${clientId}:${year}-${String(month).padStart(2, "0")}`;
