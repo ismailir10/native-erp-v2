@@ -47,7 +47,7 @@ Review the [standalone, clickable HTML prototype](docs/prototypes/buku-workspace
 | **Classify** | transfer matcher (own accounts → 1199, group entities → 1190) → rules → learned memory → LLM (cached, capped) → review |
 | **Ledger** | double entry, BigInt Rupiah, immutable entries, reclass-by-difference, period locks, PPN 11% split |
 | **Reports** | Neraca Saldo with opening / movement / closing, Laba Rugi (month + YTD), Neraca (comparative, current / long-term liabilities, lines open into client accounts), Kertas Kerja Gabungan with intercompany elimination, drill-down to source |
-| **Close** | Automatic controls per entity + group (TB, A=L+E, bank recon per account, continuity, clearing, suspense, intercompany), notes, sign-offs, lock |
+| **Close** | Automatic controls per entity + group (TB, A=L+E, bank recon per account, continuity, clearing, suspense, intercompany), sanity checks and ledger anomaly scans (flux vs the last 3 months, P&L against its nature, new or reactivated accounts, possible duplicates), AI explanation of flagged controls, notes, sign-offs, lock |
 | **Document evidence** | Financial statements, company profiles, and supporting documents · versioned sources · reviewed company context · cited questions before posting · [support and limits](docs/evidence-workspace.md) |
 | **Demo** | 3 synthetic clients × 6 months seeded through the real pipeline; [5-minute investor script](docs/demo/investor-demo.md) |
 
