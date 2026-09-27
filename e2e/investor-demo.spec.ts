@@ -77,12 +77,20 @@ test("statement in → reviewed → traceable reports → combined → closed", 
   await page.getByRole("button", { name: "Simpan jurnal" }).click();
   await expect(page.getByText("Jurnal penyesuaian tersimpan")).toBeVisible();
 
-  // 7. Close: all controls pass → sign-offs → lock
+  // 7. Close: arithmetic passes; the ledger scan flags the machine bought in August (Aset Tetap moves for the first time
+  // since its opening balance) → the accountant notes why → sign-offs → lock
   await page.getByRole("link", { name: "Tutup Buku" }).click();
   await expect(page.getByRole("heading", { name: "Tutup Buku" })).toBeVisible();
   await expect(page.getByText("Lolos").first()).toBeVisible();
-  await expect(page.getByText("Perlu dicek")).toHaveCount(0);
   await expect(page.getByText("Gagal")).toHaveCount(0);
+  const flagged = page.locator('[data-testid^="control-"]').filter({ hasText: "Perlu dicek" });
+  await expect(flagged).toHaveCount(1);
+  const capex = page.getByTestId("control-dormant");
+  await expect(capex).toContainText("1210 Aset Tetap");
+  await capex.getByRole("button", { name: "Beri catatan" }).click();
+  await page.getByRole("dialog").getByRole("textbox").fill("Pembelian mesin pakan otomatis, faktur PT Agro Teknik Mandiri ada. Penyusutan mulai September.");
+  await page.getByRole("button", { name: "Simpan catatan" }).click();
+  await expect(capex).toContainText("Penyusutan mulai September");
   const boxes = page.getByRole("checkbox");
   for (let i = 0; i < (await boxes.count()); i++) {
     await expect(boxes.nth(i)).toBeEnabled();

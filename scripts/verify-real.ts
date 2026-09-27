@@ -12,6 +12,7 @@ import { parseStatementSections } from "@/lib/import/parsers";
 import { checkContinuity } from "@/lib/import/normalize";
 import { formatMoney } from "@/lib/money";
 import { dateOnly } from "@/lib/format";
+import { anomalyControls } from "@/lib/controls/anomaly";
 
 /**
  * npm run verify:real -- chickin|goers|smbc|all [--into-app]
@@ -102,6 +103,30 @@ async function mappingQuality(db: Db, clientId: string, label: string) {
   log(`- ${catchAll.length === 0 ? "✓" : "✗"} saran ke akun penampung untuk nama yang bukan penampung: ${catchAll.length}${catchAll.length ? ` — ${catchAll.slice(0, 8).map((s) => `${s.code} ${s.name} → ${s.account!.code}`).join("; ")}` : ""}`);
   log(`- ${wrongSide.length === 0 ? "✓" : "✗"} sisi akun berbeda dari tipe menurut skema kode file: ${wrongSide.length}${wrongSide.length ? ` — ${wrongSide.slice(0, 10).map((s) => `${s.code} ${s.name} → ${s.account!.code} ${s.account!.name}`).join("; ")}` : ""}`);
   if (catchAll.length || wrongSide.length) failures++;
+}
+
+/** Ledger anomaly scans (rule 22b) over the last 12 months with lines per entity: how noisy are they on real books? Informational. */
+async function anomalyReport(db: Db, clientId: string, label: string) {
+  log(`\n## Anomali buku besar — ${label} (12 bulan terakhir per entitas)`);
+  for (const e of await db.entity.findMany({ where: { clientId }, orderBy: { shortName: "asc" } })) {
+    const last = await db.journalLine.findFirst({ where: { entityId: e.id, entry: { kind: { not: "OPENING" } } }, orderBy: { date: "desc" }, select: { date: true } });
+    if (!last) {
+      log(`- ${e.shortName}: hanya saldo awal, tidak ada mutasi untuk dipindai`);
+      continue;
+    }
+    const counts: Record<string, number> = { flux: 0, flip: 0, dormant: 0, dup: 0 };
+    let months = 0;
+    let latest: Awaited<ReturnType<typeof anomalyControls>> = [];
+    for (let i = 11; i >= 0; i--) {
+      const at = new Date(Date.UTC(last.date.getUTCFullYear(), last.date.getUTCMonth() - i, 1));
+      const flagged = await anomalyControls(db, { clientId, entity: e, year: at.getUTCFullYear(), month: at.getUTCMonth() + 1, base: "", acks: new Map() });
+      months++;
+      for (const c of flagged) counts[c.key.split(":")[0]]++;
+      if (i === 0) latest = flagged;
+    }
+    log(`- ${e.shortName}: ${months} bulan · bulan yang ditandai — flux ${counts.flux}, berlawanan arah ${counts.flip}, akun baru/bergerak lagi ${counts.dormant}, jurnal ganda ${counts.dup}`);
+    for (const c of latest) log(`  ${last.date.toISOString().slice(0, 7)} ${c.title}: ${c.detail.slice(0, 300)}`);
+  }
 }
 
 // ─── Independent recompute (not Buku's reader) ────────────────────────────────
@@ -199,6 +224,7 @@ async function chickin(db: Db, intoApp: boolean) {
   }
 
   await mappingQuality(db, client.id, "Chickin");
+  await anomalyReport(db, client.id, "Chickin");
 
   // Buku vs independent recompute, per entity × account × year.
   log("\n## Buku vs rekalkulasi independen buku besar workbook (per entitas × akun klien × bulan)");
@@ -286,6 +312,7 @@ async function goers(db: Db, intoApp: boolean) {
   const imp = await runImport(db, firm.id, client.id, file, { entityId: entities[0].entity.id });
   log(`- Neraca 31 Mei 2026 → saldo awal: ${imp.sources} akun (${imp.byRules} dipetakan aturan, fallback: ${imp.fallback.join(", ") || "-"})`);
   await mappingQuality(db, client.id, "Goers");
+  await anomalyReport(db, client.id, "Goers");
   const totals = imp.checks.filter((c) => c.code === "TOTAL_OK" || c.code === "TOTAL_MISMATCH");
   for (const t of totals) {
     if (t.code === "TOTAL_MISMATCH") failures++;

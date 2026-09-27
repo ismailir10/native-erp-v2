@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import type { Db } from "@/lib/db";
 import { runControls, type Control } from "@/lib/controls";
 import { flaggedBankRows } from "@/lib/controls/sanity";
-import { periodBounds, formatPeriod } from "@/lib/format";
+import { scanLedger, sourceLabel } from "@/lib/controls/anomaly";
+import { formatMonthShort, formatPeriod, periodBounds } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
 import { runBudgetedAi } from "@/lib/ai/budget";
 import { AiAnswerError, CLOSE_REVIEW_MAX_ROWS, CLOSE_REVIEW_MAX_TOKENS, CLOSE_REVIEW_PROMPT_VERSION, buildCloseReviewPrompt, parseCloseReview, type AiProvider, type CloseReviewControl, type CloseReviewInput, type CloseReviewItem, type CloseReviewRow } from "@/lib/ai/provider";
@@ -102,6 +103,41 @@ async function gather(db: Db, clientId: string, year: number, month: number, con
           return { id, date: "", text: `Akun sumber ${src.code} ${src.name}`.slice(0, DESCRIPTION), amount: formatMoney(x.amount, e.functionalCurrency), account: src.account?.code ?? "", how: `dipetakan ke ${src.account?.code ?? "-"}${src.typeHint ? `, jenis di file ${src.typeHint}` : ""}` };
         }),
       );
+    } else if (e && (kind === "flux" || kind === "flip" || kind === "dormant" || kind === "dup")) {
+      // Ledger anomaly scans (rule 22b): the same findings the control shows, then the month's lines behind them.
+      const scan = await scanLedger(db, clientId, e.id, year, month);
+      const fmt = (v: bigint) => formatMoney(v, e.functionalCurrency);
+      const ledger = (code: string) => `${base}/ledger/${code}?period=${pk}&entity=${e.id}`;
+      if (kind === "dup") {
+        rows = take(scan.dup.flatMap((d) => [d.first, d.second].map((x) => ({ ...x, code: d.account.code })))).map((x) => {
+          const id = `je:${x.id}`;
+          links.set(id, { id, label: `${x.date.toISOString().slice(0, 10)} ${x.code} ${x.memo.slice(0, 40)}`, href: ledger(x.code) });
+          return { id, date: x.date.toISOString().slice(0, 10), text: x.memo.slice(0, DESCRIPTION), amount: fmt(x.amount), account: x.code, how: sourceLabel(x) };
+        });
+      } else {
+        const found = kind === "flux" ? scan.flux : kind === "flip" ? scan.flip : scan.dormant;
+        const months = [...scan.baseline, pk].map((k) => formatMonthShort(Number(k.slice(0, 4)), Number(k.slice(5))));
+        const summaries = take(found).map((f) => {
+          const id = `akun:${e.id}:${f.account.code}`;
+          links.set(id, { id, label: `${f.account.code} ${f.account.name}`, href: ledger(f.account.code) });
+          const series = scan.series.get(f.account.id) ?? [];
+          const text = `Mutasi ${f.account.code} ${f.account.name}: ${series.map((v, i) => `${months[i]} ${fmt(v)}`).join(" · ")}`;
+          return { id, date: "", text: text.slice(0, 240), amount: fmt(f.current), account: f.account.code, how: `sisi normal ${f.account.normalBalance === "DEBIT" ? "debit" : "kredit"}` };
+        });
+        rows.push(...summaries);
+        const lines = await db.journalLine.findMany({
+          where: { entityId: e.id, date: { gte: start, lte: end }, accountId: { in: found.slice(0, summaries.length).map((f) => f.account.id) }, entry: { kind: { not: "OPENING" } } },
+          include: { account: { select: { code: true } }, entry: { select: { kind: true, memo: true, sourceRef: true, bankTransactionId: true } } },
+          orderBy: [{ date: "asc" }, { id: "asc" }], // stable ties for bySize: the payload is the cache key
+        });
+        rows.push(
+          ...take(bySize(lines.map((l) => ({ ...l, amount: l.debit - l.credit })))).map((l) => {
+            const id = `jl:${l.id}`;
+            links.set(id, { id, label: `${l.date.toISOString().slice(0, 10)} ${l.account.code} ${(l.memo ?? l.entry.memo).slice(0, 40)}`, href: ledger(l.account.code) });
+            return { id, date: l.date.toISOString().slice(0, 10), text: (l.memo ?? l.entry.memo).slice(0, DESCRIPTION), amount: fmt(l.amount), account: l.account.code, how: sourceLabel({ ...l.entry, sourceRef: l.sourceRef ?? l.entry.sourceRef }) }; // the line's own sheet!row when it has one
+          }),
+        );
+      }
     } else if (kind === "suspense") {
       const txs = await db.bankTransaction.findMany({ where: { bankAccount: { entity: { clientId } }, status: "NEEDS_REVIEW", date: { lte: end } }, include: { bankAccount: { include: { entity: true } } } });
       rows = take(bySize(txs)).map((t) => bankRow(t, t.bankAccount.entity.functionalCurrency, t.entityId));

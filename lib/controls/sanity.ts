@@ -5,7 +5,7 @@ import type { Control } from "@/lib/controls";
 
 /**
  * Sanity controls (accounting-rules 22a, ADR 0009): the books add up, but do they make sense?
- * Deterministic only. Each check is emitted only when it flags; a clean entity gets one PASS row.
+ * Deterministic only. Each check is emitted only when it flags; `runControls` adds one PASS row for a clean entity.
  */
 
 /** Words that mark financing or own-money movements — balance-sheet, not Laba Rugi. */
@@ -79,7 +79,6 @@ export async function sanityControls(db: Db, a: Args): Promise<Control[]> {
     control("guess", "Tebakan diterima tanpa diubah", "REVIEW", `${guesses.length} transaksi (${fmt(total)}) disetujui persis seperti tebakan dengan keyakinan rendah`, `${a.base}/ledger?entity=${e.id}`);
   }
 
-  if (out.length === 0) out.push({ key: `sanity:${e.id}`, title: "Kewajaran pembukuan", scope: e.shortName, status: "PASS", detail: "Tidak ada saldo janggal, pembiayaan di Laba Rugi, bulan kosong atau tebakan yang diterima begitu saja" });
   return out;
 }
 
