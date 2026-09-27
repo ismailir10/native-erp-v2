@@ -278,7 +278,7 @@ const RANGES: Partial<Record<FsLine, [number, number]>> = {
 export const NEW_ACCOUNT_FS_LINES = (Object.keys(FS_LINES) as FsLine[]).filter((k) => RANGES[k]).map((k) => ({ key: k, label: FS_LINES[k].label }));
 
 const SPECIAL = new Set(["1190", "1199", "1999", "3200", "3900", "7190", "7200", ...Array.from({ length: 9 }, (_, i) => `110${i + 1}`), ...Array.from({ length: 9 }, (_, i) => `220${i + 1}`)]);
-const SECTION_TYPE: Record<string, AccountType> = { ASET_LANCAR: "ASET", ASET_TIDAK_LANCAR: "ASET", LIABILITAS: "LIABILITAS", EKUITAS: "EKUITAS" };
+const SECTION_TYPE: Record<string, AccountType> = { ASET_LANCAR: "ASET", ASET_TIDAK_LANCAR: "ASET", LIABILITAS_JANGKA_PENDEK: "LIABILITAS", LIABILITAS_JANGKA_PANJANG: "LIABILITAS", EKUITAS: "EKUITAS" };
 
 export async function createClientAccount(tx: Tx, clientId: string, fsLine: FsLine, name: string): Promise<string> {
   const range = RANGES[fsLine];

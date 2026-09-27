@@ -96,6 +96,25 @@ async function nativeTrialBalance(db: Db, scope: Scope, asOf: Date): Promise<TbR
   return rows;
 }
 
+export type TbMoveRow = TbRow & { opening: bigint; periodDebit: bigint; periodCredit: bigint };
+
+/**
+ * Neraca Saldo with the month's movement: opening + debit − credit = closing (`net`). Opening is derived as closing minus
+ * movement, so year-end folding of P&L into 3200 stays consistent. Single-currency scopes only (movement isn't translated).
+ */
+export async function trialBalanceMovement(db: Db, scope: Scope, start: Date, end: Date): Promise<TbMoveRow[]> {
+  const entities = await scopeEntities(db, scope.entityIds);
+  if (isMixed(entities)) throw new Error("Mutasi neraca saldo hanya untuk satu mata uang.");
+  const [closing, moves] = await Promise.all([nativeTrialBalance(db, scope, end), sumByAccount(db, scope, { from: start, to: end })]);
+  const byId = new Map(moves.map((m) => [m.accountId, m]));
+  return closing.map((r) => {
+    const m = byId.get(r.account.id);
+    const d = m?.debit ?? 0n;
+    const c = m?.credit ?? 0n;
+    return { ...r, opening: r.net - (d - c), periodDebit: d, periodCredit: c };
+  });
+}
+
 export type FsItem = { fsLine: FsLine | "LABA_BERJALAN" | "UTANG_ANTAR_ENTITAS"; label: string; amount: bigint; accounts: { code: string; name: string; amount: bigint }[] };
 export type IncomeStatement = {
   revenue: FsItem[];
@@ -168,6 +187,9 @@ export async function incomeStatement(db: Db, scope: Scope, from: Date, to: Date
 export type BalanceSheet = {
   currentAssets: FsItem[];
   nonCurrentAssets: FsItem[];
+  /** SAK EP presentation: current and non-current liabilities; `liabilities` is both, in that order. */
+  currentLiabilities: FsItem[];
+  nonCurrentLiabilities: FsItem[];
   liabilities: FsItem[];
   equity: FsItem[];
   totals: { assets: bigint; liabilities: bigint; equity: bigint; difference: bigint };
@@ -186,19 +208,21 @@ export async function balanceSheet(db: Db, scope: Scope, asOf: Date): Promise<Ba
 
   const currentAssets = group(assets, linesOf("ASET_LANCAR"));
   const nonCurrentAssets = group(assets, linesOf("ASET_TIDAK_LANCAR"));
-  const liabilities = group(liabRows, linesOf("LIABILITAS"));
+  const currentLiabilities = group(liabRows, linesOf("LIABILITAS_JANGKA_PENDEK"));
+  const nonCurrentLiabilities = group(liabRows, linesOf("LIABILITAS_JANGKA_PANJANG"));
   if (icCredit.length) {
     const amount = icCredit.reduce((s, r) => s - r.amount, 0n);
-    liabilities.push({ fsLine: "UTANG_ANTAR_ENTITAS", label: "Utang antar entitas", amount, accounts: icCredit.map((r) => ({ code: r.account.code, name: r.account.name, amount: -r.amount })) });
+    currentLiabilities.push({ fsLine: "UTANG_ANTAR_ENTITAS", label: "Utang antar entitas", amount, accounts: icCredit.map((r) => ({ code: r.account.code, name: r.account.name, amount: -r.amount })) });
   }
   const equity = group(eqRows, linesOf("EKUITAS"));
   const ytdProfit = tb.filter((r) => isPL(r.account)).reduce((s, r) => s - r.net, 0n);
   equity.push({ fsLine: "LABA_BERJALAN", label: "Laba (rugi) tahun berjalan", amount: ytdProfit, accounts: [] });
 
   const tA = sum(currentAssets) + sum(nonCurrentAssets);
+  const liabilities = [...currentLiabilities, ...nonCurrentLiabilities];
   const tL = sum(liabilities);
   const tE = sum(equity);
-  return { currentAssets, nonCurrentAssets, liabilities, equity, totals: { assets: tA, liabilities: tL, equity: tE, difference: tA - tL - tE } };
+  return { currentAssets, nonCurrentAssets, currentLiabilities, nonCurrentLiabilities, liabilities, equity, totals: { assets: tA, liabilities: tL, equity: tE, difference: tA - tL - tE } };
 }
 
 /**
