@@ -3,7 +3,7 @@ import { db, makeGroup, resetDb } from "../helpers";
 import { makePdf, table } from "../pdf-fixture";
 import { importStatement } from "@/lib/import/pipeline";
 import { reviewTransaction } from "@/lib/review";
-import { explainControl } from "@/lib/controls/explain";
+import { explainControl, reclassedBankLine } from "@/lib/controls/explain";
 import { postProposal, proposalViews } from "@/lib/adjust/proposals";
 import { runControls } from "@/lib/controls";
 import { MockProvider, parseControlExplain, type AiProvider } from "@/lib/ai/provider";
@@ -136,6 +136,26 @@ describe("close copilot — Jelaskan", () => {
     // Both lines cited and both fit: which one to move is ambiguous, so no draft is stored.
     const both = await explainControl(db, g.firm.id, g.client.id, 2026, 8, key, citing([first.id, second.id]));
     expect([both.proposal, await db.proposedEntry.count()]).toEqual([null, 0]);
+
+    // One four-line draft moving both lines can't go through the reviewer's writer: no draft, never a free journal.
+    await db.evidenceAiCache.deleteMany();
+    const four: AiProvider = {
+      ...citing([first.id, second.id]),
+      explainControl: async (input) => {
+        const l = (accountCode: string, side: "D" | "K") => ({ accountCode, side, amount: "Rp 100.000.000" });
+        const entry = { memo: "Reklasifikasi dua pinjaman", lines: [l("4100", "D"), l("2210", "K"), l("4100", "D"), l("2210", "K")] };
+        return { ...parseControlExplain(JSON.stringify({ explanation: "Dua pinjaman di pendapatan.", suggestion: "", refs: [first.id, second.id], note: "", entry }), input), promptTokens: 1, completionTokens: 1, model: "mock" };
+      },
+    };
+    const multi = await explainControl(db, g.firm.id, g.client.id, 2026, 8, key, four);
+    expect([multi.explanation, multi.proposal, await db.proposedEntry.count()]).toEqual(["Dua pinjaman di pendapatan.", null, 0]);
+
+    // Nor a split reversal of one cited line (Rp 100 jt off 4100 in two pieces): it still moves that bank line.
+    const l = (accountCode: string, side: "D" | "K", amount: string) => ({ accountCode, side: side as "D" | "K", amount });
+    const splitEntry = { memo: "Reklasifikasi bertahap", lines: [l("4100", "D", "Rp 60.000.000"), l("4100", "D", "Rp 40.000.000"), l("2210", "K", "Rp 100.000.000")] };
+    expect(await reclassedBankLine(db, g.pt.entity.id, [first.id], splitEntry, "IDR")).toBe("AMBIGUOUS");
+    const oneLine = { memo: "Reklasifikasi", lines: [l("4100", "D", "Rp 100.000.000"), l("2210", "K", "Rp 100.000.000")] };
+    expect(await reclassedBankLine(db, g.pt.entity.id, [first.id], oneLine, "IDR")).toBe(first.id);
 
     // One cited → that one, even though the other has the lower id. (Same books: clear the cached answer to ask again.)
     await db.evidenceAiCache.deleteMany();

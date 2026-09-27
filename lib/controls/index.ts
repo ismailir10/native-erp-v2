@@ -1,4 +1,5 @@
 import type { Db } from "@/lib/db";
+import { sourceSuspenseNet } from "@/lib/controls/suspense-net";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { periodBounds } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
@@ -148,8 +149,9 @@ export async function runControls(db: Db, clientId: string, year: number, month:
     const reviews = checks.filter((c) => c.severity === "REVIEW");
     let open = 0;
     for (const c of accepted) {
-      const suspense = await db.journalLine.aggregate({ where: { entityId: c.entityId ?? undefined, account: { clientId, code: ACCOUNT_CODES.SUSPENSE }, date: { lte: end } }, _sum: { debit: true, credit: true } });
-      if ((suspense._sum.debit ?? 0n) !== (suspense._sum.credit ?? 0n)) open++;
+      // Bank lines waiting in Review also sit on 1999; they are the `suspense` control's, not this file's.
+      const entityIds = c.entityId ? [c.entityId] : (await db.entity.findMany({ where: { clientId }, select: { id: true } })).map((e) => e.id);
+      for (const id of entityIds) if ((await sourceSuspenseNet(db, id, end)) !== 0n) { open++; break; }
     }
     const key = `ledger:${imp.id}`;
     const parts = [
