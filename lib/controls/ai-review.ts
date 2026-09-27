@@ -25,12 +25,12 @@ export type CloseReviewView = {
 
 type Gathered = { input: CloseReviewInput; links: Map<string, ReviewLink>; flagged: Control[] };
 
-async function gather(db: Db, clientId: string, year: number, month: number): Promise<Gathered> {
+async function gather(db: Db, clientId: string, year: number, month: number, controls?: Control[]): Promise<Gathered> {
   const { start, end } = periodBounds(year, month);
   const client = await db.client.findUniqueOrThrow({ where: { id: clientId }, include: { entities: true } });
   const base = `/clients/${clientId}`;
   const pk = `${year}-${String(month).padStart(2, "0")}`;
-  const flagged = (await runControls(db, clientId, year, month)).filter((c) => c.status !== "PASS");
+  const flagged = (controls ?? (await runControls(db, clientId, year, month))).filter((c) => c.status !== "PASS");
   const entityOf = (key: string) => client.entities.find((e) => e.id === key.split(":")[1]);
   const links = new Map<string, ReviewLink>();
   let budget = CLOSE_REVIEW_MAX_ROWS;
@@ -46,7 +46,7 @@ async function gather(db: Db, clientId: string, year: number, month: number): Pr
   };
   const bySize = <T extends { amount: bigint }>(rows: T[]) => [...rows].sort((a, b) => (abs(b.amount) > abs(a.amount) ? 1 : abs(b.amount) < abs(a.amount) ? -1 : 0));
 
-  const controls: CloseReviewControl[] = [];
+  const reviewed: CloseReviewControl[] = [];
   for (const c of flagged) {
     const kind = c.key.split(":")[0];
     const e = entityOf(c.key);
@@ -71,10 +71,10 @@ async function gather(db: Db, clientId: string, year: number, month: number): Pr
         return { id: k.id, date: k.date?.toISOString().slice(0, 10) ?? "", text: k.message.slice(0, 160), amount: k.amount === null ? "" : formatMoney(k.amount, currency), account: k.code, how: `${k.severity}${k.accepted ? " diterima" : ""}` };
       });
     }
-    controls.push({ key: c.key, title: c.title, scope: c.scope, status: c.status as "REVIEW" | "FAIL", detail: c.detail, rows });
+    reviewed.push({ key: c.key, title: c.title, scope: c.scope, status: c.status as "REVIEW" | "FAIL", detail: c.detail, rows });
   }
   const accounts = await db.account.findMany({ where: { clientId }, select: { code: true, name: true }, orderBy: { code: "asc" } });
-  return { input: { client: client.name, period: formatPeriod(year, month), accounts, controls }, links, flagged };
+  return { input: { client: client.name, period: formatPeriod(year, month), accounts, controls: reviewed }, links, flagged };
 }
 
 const cacheKey = (firmId: string, clientId: string, input: CloseReviewInput, model: string) =>
@@ -93,9 +93,9 @@ function view(g: Gathered, items: CloseReviewItem[]): CloseReviewView {
 }
 
 /** A review already paid for with exactly this input and model; null if the books changed since (or none yet). No AI call. */
-export async function cachedCloseReview(db: Db, firmId: string, clientId: string, year: number, month: number, model: string | null): Promise<CloseReviewView | null> {
+export async function cachedCloseReview(db: Db, firmId: string, clientId: string, year: number, month: number, model: string | null, controls?: Control[]): Promise<CloseReviewView | null> {
   if (!model) return null;
-  const g = await gather(db, clientId, year, month);
+  const g = await gather(db, clientId, year, month, controls);
   if (g.flagged.length === 0) return null;
   const hit = await db.evidenceAiCache.findFirst({ where: { key: cacheKey(firmId, clientId, g.input, model), firmId, scope: scopeOf(clientId, year, month) } });
   return hit ? view(g, parseCloseReview(JSON.stringify(hit.payload), g.input)) : null;
