@@ -24,3 +24,11 @@ bounds and budgets evidence calls. Neither covers AI reading the books themselve
 accountant is stuck (why is this flagged, what should I do). Bank descriptions of flagged rows leave the firm's database to the
 configured provider; firms that don't want that leave the AI key unset and keep the deterministic controls. Later cycles (1999
 fixes, adjustment proposals, questions over the GL) extend this ADR instead of inventing new rules.
+
+**Amendment (27 Sep 2026, cycle gl-anomaly-flux).** The deterministic checks now include ledger anomaly scans over journal lines
+(flux against a 3-month baseline, P&L movement against its nature, new or reactivated accounts, possible duplicates; rule 22b). They
+are REVIEW controls like the others: code decides, the accountant notes. For these controls the review may also send, within the
+same ≤ 40-row cap, budget and cache: the flagged accounts' movement per baseline month and this month, and the month's journal lines
+on them with their memo cut to 80 characters and their source (bank row, ledger `sheet!row`, adjustment). A ledger-file memo is the
+client's own GL description, the ledger counterpart of a bank description; nothing else from the file (other rows, other accounts,
+evidence passages) is sent.

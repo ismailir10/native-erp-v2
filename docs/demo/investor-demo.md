@@ -44,9 +44,16 @@ Automated end to end by `e2e/investor-demo.spec.ts` — if you change this scrip
 
 > Talking point: *bank data gives cash basis; adjusting entries make it accrual-ready.*
 
-### 6. Tutup Buku — the controlled close (45 s)
-- **16 controls, all Lolos**: TB balanced, A = L + E, each bank reconciled to the statement, continuity,
+### 6. Tutup Buku — the controlled close (60 s)
+- **Arithmetic all Lolos**: TB balanced, A = L + E, each bank reconciled to the statement, continuity,
   clearing 1199 = 0, nothing in suspense, intercompany eliminated.
+- **One Perlu dicek from the ledger scan**: *Akun baru atau aktif lagi — 1210 Aset Tetap* — the machine reviewed in step 3
+  is the first movement on fixed assets since the opening balance. Click **Beri catatan** → "Pembelian mesin pakan otomatis,
+  faktur ada. Penyusutan mulai September." → Simpan.
+
+> Talking point: *the close doesn't only check that the books add up — it reads the ledger like a reviewer would (swings
+> against the last 3 months, accounts that wake up, P&L running backwards, double entries) and asks for a one-line note.*
+
 - Tick the three accountant sign-offs → **Tutup buku Agustus 2026**. Period locked; imports into it are now rejected.
 
 ### Close (15 s)
