@@ -43,7 +43,10 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
    overdraft (PRK) bank accounts **2201–2209**, **7190** rounding, **7200** FX gain/loss, **3900** translation difference.
 9a. An entity's own codes live in `SourceAccount` (per entity), each mapped to exactly one client account. Imported lines keep
    `sourceAccountId`; the *Akun sumber* TB groups by it. Mapping suggestions (rules → AI on **names only**) are applied only by the
-   accountant's explicit click; an import can't post while any source account is unmapped.
+   accountant's explicit click; an import can't post while any source account is unmapped. A rule that only knows the
+   side of the books ("expense", "payable") proposes a **new client account** named after the file's account
+   (`suggestedCode = new:<FS_LINE>`) instead of a catch-all; the account exists only after that click. Types come from
+   strong name words, then the file's own code scheme, then weak words (`inferType`).
 10. Same-entity transfer → 1199 (must net to 0). Cross-entity → 1190, posted in *each* entity's books,
     eliminated in the combined worksheet (receivable vs payable, matched = min). Residual ≠ 0 → REVIEW.
 11. PT + owner individual combined is a **management "Gabungan"**, not SAK consolidation. Keep the label + tooltip.
