@@ -52,7 +52,7 @@ Verification
       rejection counts.
 - [x] Existing tests that relied on the old 4100 guess for "PENCAIRAN PINJAMAN" now set that wrong account explicitly (the controls
       still have to catch a human mistake).
-- [ ] Demo: `verify:books` ALL PASS; investor e2e unchanged.
+- [x] Demo: `verify:books` ALL PASS; investor e2e unchanged.
 
 **Gate-reopeners:** none — no migration (reuses `ProposedEntry`), no dependency. Classifier order is unchanged in rule 13's
 sense (transfer → rules → memory → [financing heuristic] → AI → heuristic); the financing suggestion is a heuristic and never
@@ -71,7 +71,7 @@ allowed.
 - [x] T1 1999 correction proposals + card + control text + tests — accept: DB test green.
 - [x] T2 Financing heuristic + business-day transfer window + tests (update tests that relied on the old guess) — accept: tests green; demo `verify:books` ALL PASS.
 - [x] T3 Evidence plan normalisation, scope fix, rejection metric on Pengaturan + tests — accept: unit + DB tests green.
-- [ ] T4 Docs + end-of-cycle gates — accept: rules 13/15a, README; `build`, `verify:books`, `test:e2e` green.
+- [x] T4 Docs + end-of-cycle gates — accept: rules 13/15a, README; `build`, `verify:books`, `test:e2e` green.
 
 ## Implementation
 - Plan: T1–T4 sequential, inline; branch stacked on `task/close-copilot` (1999 corrections reuse its `ProposedEntry`).
@@ -79,11 +79,16 @@ allowed.
 - T2: `lib/classify/financing.ts` — `FINANCING` / `FINANCING_COST` moved here (the sanity control re-exports them, so suggestion and control share one word list) and `financingSuggestion()`: interest → 7110, fees → 7100 (money out only), capital in → 3100, loan in → 2210, repayment out → 2210, own-account move → 1199; HEURISTIC 0.5, reason in Bahasa; deposits and income-side interest left alone. `lib/import/pipeline.ts` — accounts read before classification; the financing suggestion applies after transfer/rules/memory and only if its account is in the client chart; those lines skip AI. `lib/classify/transfer.ts` — `businessDaysApart()` and `MATCH_BUSINESS_DAYS = 2`; the pipeline reads open counterparts ±6 calendar days. Tests: `tests/unit/financing.test.ts`, `tests/db/financing-classify.test.ts` (loan statement → 2210 / 7110 / 2210 to review, 0 AI calls); `tests/db/sanity-controls.test.ts` and `tests/db/close-review.test.ts` now book the drawdown to 4100 explicitly (the controls still catch that human mistake; an accepted interest guess still needs its note).
 - T3: `lib/ai/provider.ts` `parseEvidenceAnswerPlan` — intent upper-cased, terms trimmed / over-long and non-text dropped / first 8 kept, an account code taken from its leading token when that token has a digit ("6180 Beban Penyusutan" → 6180; "akun kas" still invalid); unknown keys, invalid dates, unknown intents still rejected (the pinned safety cases unchanged). `lib/evidence/answers.ts` — a planned entity outside the chosen scope is dropped with a limitation line (it used to throw and fail the question; the scope still can't widen); plan calls carry `note: PLAN_NOTE` ("Rencana jawaban"). `lib/ai/budget.ts` — a failed call's note keeps the caller's note as prefix ("Rencana jawaban — AI gagal: …"). `lib/evidence/plan-stats.ts` `planRejections()`; `app/(app)/settings/page.tsx` card *Rencana jawaban AI* (30 days: requested, rejected, %). Tests: `tests/unit/evidence-ai.test.ts` (normalisation), `tests/db/evidence-scope.test.ts` (out-of-scope entity → limitation; 2 plans, 1 rejected → 50 %), `tests/unit/evidence-answers.test.ts` (the override test now asserts the scope stays and the limitation shows, instead of a thrown error).
 - Review fixes carried from PR #35 (merged before Codex's review landed): (1) a draft's bank line is matched only among the rows the answer **cites**, and two cited lines that both fit make the draft ambiguous — no proposal is stored (it could have re-coded the wrong twin); (2) AI drafts store a `snapshot` of the control's rows (`snapshotOf`, migration `20260927190000_proposal_snapshot`, one nullable column) and `postProposal` refuses when the control no longer flags the same rows ("Buku berubah sejak draf ini dibuat") — an old draft can't duplicate a fix made meanwhile; (3) a bank-line draft posts with the tax tag released (the approved full-amount lines are what posts), and the card says so. Test: `tests/db/close-explain.test.ts` "moves only the bank line the draft cites…" (fails on the previous code).
+- T4: accounting-rules 13 (order with the financing suggestion, business-day window) and 15a (1999 correction proposals), README (Classify row, close row, Tanya Buku plan handling). Browser: Pengaturan shows *Rencana jawaban AI* ("Belum ada rencana jawaban AI dalam 30 hari terakhir." on the demo firm).
 
 ## Verification
 - T1: lint + typecheck clean; `npm test` → Test Files 59 passed (59), Tests 418 passed (418).
 - T2: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 423 passed (423); `demo:reset` (same AI call pattern per file) + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
 - T3: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 425 passed (425).
 - PR #35 review fixes: new case fails on the previous code (1 failed | 3 passed), passes after; local DBs migrated, `prisma migrate diff` → empty; lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 426 passed (426).
+- End of cycle: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 426 passed (426); `npm run build` ✓ Compiled successfully; `npm run demo:reset && npm run verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.; `npm run test:e2e` → 10 passed (1.3m); with `EVIDENCE_ENABLED=true` → 10 passed (1.1m).
 
 ## Ship Notes
+- **Migration** `20260927190000_proposal_snapshot`: one nullable column `ProposedEntry.snapshot`. Additive; applied by `vercel-build`.
+- **Behaviour changes:** loan / capital / own-account lines are suggested to the balance sheet (still reviewed) and skip AI; own-account transfers pair across weekends (2 business days); ledger-file differences on 1999 get correction proposals in *Usulan jurnal koreksi*; evidence questions no longer fail when the AI plan names another entity; Pengaturan shows the plan-rejection rate. AI drafts from *Jelaskan* now refuse to post once the books changed, and move only the cited bank line (fixes from the PR #35 review).
+- No env var, no dependency. Rollback: revert the merge; the migration is additive.
