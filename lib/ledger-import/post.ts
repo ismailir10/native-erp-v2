@@ -161,8 +161,16 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
         const typeHint = neracaHints.get(a.code) ?? inferType(a.code, a.name);
         if (!found) {
           await tx.sourceAccount.create({ data: { firmId: input.firmId, clientId: input.clientId, entityId: ei.entityId, code: a.code, name: a.name, previousNames: a.previousNames, typeHint, termHint: termHints.get(a.code) ?? null } });
-        } else if (found.name !== a.name || a.previousNames.some((p) => !found.previousNames.includes(p))) {
-          await tx.sourceAccount.update({ where: { id: found.id }, data: { name: a.name, previousNames: [...new Set([...found.previousNames, ...a.previousNames])].filter((p) => p !== a.name) } });
+        } else {
+          const data: { name?: string; previousNames?: string[]; termHint?: NeracaRow["termHint"] } = {};
+          if (found.name !== a.name || a.previousNames.some((p) => !found.previousNames.includes(p))) {
+            data.name = a.name;
+            data.previousNames = [...new Set([...found.previousNames, ...a.previousNames])].filter((p) => p !== a.name);
+          }
+          // A Neraca states the account's term even when an earlier file created the code; it is only a mapping hint.
+          const term = termHints.get(a.code) ?? null;
+          if (term && term !== found.termHint) data.termHint = term;
+          if (Object.keys(data).length) await tx.sourceAccount.update({ where: { id: found.id }, data });
         }
       }
       return tx.ledgerImport.create({

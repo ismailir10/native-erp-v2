@@ -31,12 +31,14 @@ export default async function TrialBalancePage({ params, searchParams }: { param
   if (view.active) {
     // The client's own accounts, as in their file; lines without one (bank, adjustments) under their Buku account.
     const src = await sourceTrialBalance(prisma, scope.value, period.end, period.start);
+    // Last years' result isn't a 3200 entry: it is folded income & expense, so it opens last year's Laba Rugi.
+    const priorHref = withParams(`${base}/reports`, { period: `${period.year - 1}-12`, entity: scope.value, tab: "pl" });
     const rows: TbTableRow[] = src.map((r) => ({
       key: r.key,
       code: r.code,
       name: r.name,
-      href: r.sourceAccountId ? withParams(`${base}/ledger/akun/${r.sourceAccountId}`, q) : withParams(`${base}/ledger/${r.accountCode}`, q),
-      sub: [r.clientAccount ? `→ ${r.clientAccount.code} ${r.clientAccount.name}` : r.key === "prior" ? "" : "tanpa akun klien", r.previousNames.length ? `dulu: ${r.previousNames.map((p) => `“${p}”`).join(", ")}` : ""].filter(Boolean).join(" · ") || undefined,
+      href: r.key === "prior" ? priorHref : r.sourceAccountId ? withParams(`${base}/ledger/akun/${r.sourceAccountId}`, q) : withParams(`${base}/ledger/${r.accountCode}`, q),
+      sub: [r.clientAccount ? `→ ${r.clientAccount.code} ${r.clientAccount.name}` : r.key === "prior" ? "dari pendapatan & beban tahun lalu · buka Laba Rugi" : "tanpa akun klien", r.previousNames.length ? `dulu: ${r.previousNames.map((p) => `“${p}”`).join(", ")}` : ""].filter(Boolean).join(" · ") || undefined,
       review: r.accountCode === "1999",
       move: { opening: r.opening, debit: r.periodDebit, credit: r.periodCredit },
       net: r.net,

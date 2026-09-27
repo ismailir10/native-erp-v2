@@ -55,4 +55,22 @@ describe("Neraca sub-headings steer mapping", () => {
     expect(by("Deposit").suggestedCode).toBe("1260"); // prepaid/deposit keyword is current; the file says non-current
     expect(by("Others Payables-Related Parties").mapReason).toMatch(/bagian liabilitas jangka panjang/);
   });
+
+  it("stores the term on a code an earlier file already created", async () => {
+    const g = await makeGroup();
+    const gl = new ExcelJS.Workbook();
+    const ws = gl.addWorksheet("GL");
+    ws.addRow(["Entity", "Entry Date", "Account Code", "Account Name", "Debit", "Credit"]);
+    ws.addRow(["PT Uji", new Date(Date.UTC(2026, 3, 30)), "1-1000", "Bank", 400, 0]);
+    ws.addRow(["PT Uji", new Date(Date.UTC(2026, 3, 30)), "2-2744", "Others Payables-Related Parties", 0, 400]);
+    const first = await stageImport(db, { firmId: g.firm.id, clientId: g.client.id, fileName: "gl.xlsx", data: Buffer.from(await gl.xlsx.writeBuffer()) });
+    if (first.status !== "STAGED") throw new Error("not staged");
+    expect((await db.sourceAccount.findFirstOrThrow({ where: { code: "2-2744" } })).termHint).toBeNull();
+
+    const st = await stageImport(db, { firmId: g.firm.id, clientId: g.client.id, fileName: "neraca.xlsx", data: await jurnalNeraca(), entityId: g.pt.entity.id, date: dateOnly(2026, 5, 31) });
+    if (st.status !== "STAGED") throw new Error("not staged");
+    await suggestMappings(db, { firmId: g.firm.id, clientId: g.client.id, provider: null, useAi: false });
+    const acc = await db.sourceAccount.findFirstOrThrow({ where: { code: "2-2744" } });
+    expect([acc.termHint, acc.suggestedCode]).toEqual(["NON_CURRENT", "2300"]);
+  });
 });

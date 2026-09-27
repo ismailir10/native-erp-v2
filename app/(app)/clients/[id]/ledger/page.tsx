@@ -60,10 +60,10 @@ export default async function LedgerIndex({ params, searchParams }: { params: Pr
                       {rows.map((r) => (
                         <TableRow key={r.key}>
                           <TableCell className="pl-6 whitespace-normal">
-                            <Link href={r.sourceAccountId ? withParams(`${base}/ledger/akun/${r.sourceAccountId}`, q) : withParams(`${base}/ledger/${r.accountCode}`, q)} className="underline decoration-border underline-offset-4 hover:text-primary hover:decoration-primary" data-testid="client-account-link">
+                            <Link href={r.key === "prior" ? withParams(`${base}/reports`, { period: `${period.year - 1}-12`, entity: scope.value, tab: "pl" }) : r.sourceAccountId ? withParams(`${base}/ledger/akun/${r.sourceAccountId}`, q) : withParams(`${base}/ledger/${r.accountCode}`, q)} className="underline decoration-border underline-offset-4 hover:text-primary hover:decoration-primary" data-testid="client-account-link">
                               {r.code && <span className="num text-muted-foreground">{r.code}</span>} {r.name}
                             </Link>
-                            <div className="text-xs text-muted-foreground">{r.clientAccount ? `→ ${r.clientAccount.code} ${r.clientAccount.name}` : r.key === "prior" ? "" : "tanpa akun klien"}</div>
+                            <div className="text-xs text-muted-foreground">{r.clientAccount ? `→ ${r.clientAccount.code} ${r.clientAccount.name}` : r.key === "prior" ? "dari pendapatan & beban tahun lalu · buka Laba Rugi" : "tanpa akun klien"}</div>
                           </TableCell>
                           <TableCell className="num text-right text-muted-foreground">{r.periodLines || "–"}</TableCell>
                           <TableCell className="pr-6 text-right"><Money value={r.net * sign} currency={currency} /></TableCell>

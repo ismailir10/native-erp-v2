@@ -119,8 +119,13 @@ test("ledger import: checks, mapping, post, Kurs, Gabungan in IDR, client accoun
   // Client COA first: one entity with its own accounts opens in those accounts, each with its own ledger.
   await page.getByRole("link", { name: "Neraca Saldo" }).click();
   await expect(page.getByRole("tab", { name: "Akun klien" })).toHaveCount(0); // a group has no single client chart
-  await page.getByRole("combobox").first().click();
-  await page.getByRole("option", { name: "Dua Holdings Pte Ltd" }).click();
+  // The first click right after navigation can land before hydration: retry opening until the option shows.
+  const dua = page.getByRole("option", { name: "Dua Holdings Pte Ltd" });
+  await expect(async () => {
+    await page.getByRole("combobox").first().click();
+    await expect(dua).toBeVisible({ timeout: 2_000 });
+  }).toPass();
+  await dua.click();
   await expect(page.getByRole("tab", { name: "Akun klien" })).toBeVisible();
   await expect(page.getByRole("cell", { name: "10001" })).toBeVisible();
   await expect(page.getByText("dalam SGD")).toBeVisible();
