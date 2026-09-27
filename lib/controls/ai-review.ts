@@ -34,9 +34,11 @@ async function gather(db: Db, clientId: string, year: number, month: number, con
   const entityOf = (key: string) => client.entities.find((e) => e.id === key.split(":")[1]);
   const links = new Map<string, ReviewLink>();
   let budget = CLOSE_REVIEW_MAX_ROWS;
+  let allowance = ROWS_PER_CONTROL; // shared by every batch added to the current control; reset per control
   const take = <T,>(rows: T[]) => {
-    const n = Math.max(0, Math.min(ROWS_PER_CONTROL, budget, rows.length));
+    const n = Math.max(0, Math.min(allowance, budget, rows.length));
     budget -= n;
+    allowance -= n;
     return rows.slice(0, n);
   };
   const bankRow = (t: { id: string; date: Date; description: string; amount: bigint; accountCode: string | null; suggestedCode: string | null; method: string; confidence: number }, currency: string, entityId: string): CloseReviewRow => {
@@ -48,6 +50,7 @@ async function gather(db: Db, clientId: string, year: number, month: number, con
 
   const reviewed: CloseReviewControl[] = [];
   for (const c of flagged) {
+    allowance = ROWS_PER_CONTROL;
     const kind = c.key.split(":")[0];
     const e = entityOf(c.key);
     let rows: CloseReviewRow[] = [];
@@ -71,7 +74,7 @@ async function gather(db: Db, clientId: string, year: number, month: number, con
         bankCodes = [...flaggedCodes, ...nonAsset];
         rows.push(
           ...take(bySize(negative.map((x) => ({ ...x, amount: x.net })))).map((x) => {
-            const id = `akun:${x.account.code}`;
+            const id = `akun:${e.id}:${x.account.code}`; // entity-scoped: the same code can be negative in two entities
             links.set(id, { id, label: `${x.account.code} ${x.account.name}`, href: `${base}/ledger/${x.account.code}?period=${pk}&entity=${e.id}` });
             return { id, date: "", text: `Akun aset ${x.account.code} ${x.account.name} bersaldo kredit`.slice(0, DESCRIPTION), amount: formatMoney(x.net, e.functionalCurrency), account: x.account.code, how: "saldo akhir" };
           }),

@@ -81,6 +81,7 @@ sanity checks on ledger-imported lines' descriptions (their text isn't stored pe
 - T5: rerun on local `buku_real` found two gaps, fixed here. (1) *Tidak ada transaksi bulan ini* fired 63× on Chickin, whose GL posts a few aggregated entries per year: a month inside a posted LEDGER file's date range that holds this entity's entries now counts as covered (`lib/controls/sanity.ts`, new test). (2) The AI saw no rows for a ledger-fed *Saldo berlawanan* and the wrong checks for a ledger FAIL: the review now sends the client's source accounts that make up each flagged Buku account (`src:<id>`, linked to *Akun sumber*) and puts BLOCK checks before REVIEW ones (`lib/controls/ai-review.ts`, new test). Completion cap raised 3k → 6k after kimi-k3 truncated once (reasoning tokens); the failed call was logged `ok=false`, not cached.
 - Review fixes (Codex on PR #22): `nature` sends only bank lines booked to the listed accounts and `nature-total` only non-bank assets, so unrelated descriptions never leave the database; a cited row must belong to the control it was sent with; the card hides the re-review button while a review is shown (the cache would return it unchanged) and the page remounts the card when the flagged set changes.
 - Codex review on PR #23: a negative asset total is now explained by the non-bank asset accounts carrying credit balances plus the month's bank lines booked to those accounts or to non-asset accounts; asset-to-asset transfers (which can't move the total) are no longer sent.
+- Codex review on PR #25: the 10-row limit now applies per control across all its batches (account summaries, bank lines, source accounts), and synthetic account rows are entity-scoped (`akun:<entityId>:<code>`) so two entities with the same negative account don't overwrite each other's links.
 
 ## Verification
 - T1: lint + typecheck clean; `npm test` → Test Files 48 passed (48), Tests 373 passed (373).
@@ -90,6 +91,7 @@ sanity checks on ledger-imported lines' descriptions (their text isn't stored pe
 - End of cycle: lint + typecheck clean; `npm test` → Test Files 51 passed (51), Tests 384 passed (384); `npm run build` ✓; `npm run demo:reset && npm run verify:books` → `ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.` (without the reset it failed on a local demo DB already changed by earlier e2e runs); `npm run test:e2e` → 9 passed (29.8s), investor walk still locks with zero *Perlu dicek*.
 - Review fixes: lint + typecheck clean; `npm test` → Test Files 51 passed (51), Tests 386 passed (386).
 - PR #23 follow-up: lint + typecheck clean; `npm test` → Test Files 51 passed (51), Tests 387 passed (387).
+- PR #25 follow-up: lint + typecheck clean; `npm test` → Test Files 51 passed (51), Tests 388 passed (388).
 
 ## Ship Notes
 - **No migration, env var or dependency.** AI close reviews cache in the existing `EvidenceAiCache` table (scope `close:<clientId>:<yyyy-mm>`).

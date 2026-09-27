@@ -145,4 +145,29 @@ describe("AI close review", () => {
     expect(total.status).toBe("FAIL");
     expect(total.rows.map((r) => r.id)).toEqual([fee.id]);
   });
+
+  it("caps a control's rows across all its batches and scopes account rows to their entity", async () => {
+    const g = await makeGroup();
+    const lines: [number, string][][] = [[[40, "Tanggal"], [130, "Keterangan"], [360, "Debit"], [440, "Kredit"], [520, "Saldo"]], [[40, "01/08/2026"], [130, "SALDO AWAL"], [500, "0,00"]]];
+    lines.push([[40, "02/08/2026"], [130, "TRANSFER DARI PT MITRA"], [430, "1.000.000,00"], [510, "1.000.000,00"]]);
+    let balance = 1_000_000;
+    for (let d = 3; d <= 14; d++) {
+      balance -= 500_000;
+      const bal = (balance < 0 ? "-" : "") + Math.abs(balance).toLocaleString("id-ID") + ",00";
+      lines.push([[40, `${String(d).padStart(2, "0")}/08/2026`], [130, `BAYAR JASA ${d}`], [360, "500.000,00"], [520, bal]]);
+    }
+    const pdf = makePdf([[...table(800, [[[40, "PT Bank Mandiri (Persero) Tbk"]], [[40, "Nomor Rekening : 2222222222"]], [[40, "Periode : 01/08/2026 - 31/08/2026"]]]), ...table(740, lines)]]);
+    await importStatement(db, { bankAccountId: g.pt.banks[1].id, fileName: "m.pdf", data: pdf, provider: null });
+    const txs = await db.bankTransaction.findMany({ where: { entityId: g.pt.entity.id }, orderBy: { date: "asc" } });
+    expect(txs).toHaveLength(13);
+    await reviewTransaction(db, { bankTxId: txs[0].id, accountCode: "1130", taxTag: null }); // receivable credited → negative asset account
+    for (const t of txs.slice(1)) await reviewTransaction(db, { bankTxId: t.id, accountCode: "6170", taxTag: null });
+
+    let seen: CloseReviewInput | null = null;
+    const provider = new MockProvider();
+    await reviewClose(db, g.firm.id, g.client.id, 2026, 8, { model: "mock", classify: provider.classify.bind(provider), mapAccounts: provider.mapAccounts.bind(provider), reviewClose: async (i) => ((seen = i), provider.reviewClose(i)) });
+    const total = seen!.controls.find((c) => c.key === `nature-total:${g.pt.entity.id}`)!;
+    expect(total.rows).toHaveLength(10); // account summary + bank lines share one allowance
+    expect(total.rows[0].id).toBe(`akun:${g.pt.entity.id}:1130`);
+  });
 });
