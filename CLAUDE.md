@@ -64,7 +64,7 @@ In the Claude cloud sandbox set `PW_CHROMIUM=/opt/pw-browsers/chromium` (never `
 | Touching | Load first |
 |---|---|
 | `lib/ledger/** lib/import/** lib/ledger-import/** lib/fx/** lib/classify/** lib/ai/** lib/reports/** lib/controls/** prisma/**` | [`accounting-rules`](.claude/skills/accounting-rules/SKILL.md) — **non-negotiable invariants** |
-| `app/** components/**` | [`ui-rules`](.claude/skills/ui-rules/SKILL.md) — Stripe look, shadcn-first, "don't make me think" |
+| `app/** components/**` | [`ui-rules`](.claude/skills/ui-rules/SKILL.md) — 9fin structure in Wise colours, shadcn-first, "don't make me think" |
 | `lib/demo/** scripts/seed.ts e2e/**` | [`demo-data`](.claude/skills/demo-data/SKILL.md) |
 | Anything that changes a number on a report | [`verify-books`](.claude/skills/verify-books/SKILL.md) |
 
