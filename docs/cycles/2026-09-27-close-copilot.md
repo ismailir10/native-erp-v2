@@ -16,13 +16,13 @@ Approved in advance by the owner's request ("make sure these are done … finish
 
 ## Spec
 Proposals (`lib/adjust/proposals.ts`, new)
-- [ ] **`ProposedEntry`**: firm, client, entity, period (year/month), source (`AI_CONTROL` now; `SUSPENSE` next cycle), control
+- [x] **`ProposedEntry`**: firm, client, entity, period (year/month), source (`AI_CONTROL` now; `SUSPENSE` next cycle), control
       key, dedupe `key` (unique), memo, lines (JSON: account code, debit, credit as minor-unit strings), reason, cited ids, status
       `PROPOSED | POSTED | DISMISSED`, posted `entryId` (unique FK to `JournalEntry`), decided by/at.
-- [ ] **Post** (click): status must be PROPOSED; the accountant may change each line's **account** (never the amounts); accounts
+- [x] **Post** (click): status must be PROPOSED; the accountant may change each line's **account** (never the amounts); accounts
       must be in the client chart and not bank accounts; balanced, ≥ 2 lines; `postJournal()` kind `ADJUSTMENT`; proposal →
       POSTED with `entryId` in the same transaction (a second click fails cleanly). Locked period refused as every write.
-- [ ] **Dismiss** (click): PROPOSED → DISMISSED. Nothing else changes a proposal.
+- [x] **Dismiss** (click): PROPOSED → DISMISSED. Nothing else changes a proposal.
 
 Jelaskan (`lib/controls/explain.ts`, reuses `gather()` of the close review for the one control)
 - [ ] Input: that control's rows only (same ADR 0009 caps: ≤ 10 rows, 80-char texts) + the client chart (codes + names).
@@ -67,13 +67,16 @@ dismiss); proposals for group-level controls (1199/1190/suspense queue — their
 3. The proposal's entity is the control's entity (`kind:<entityId>` keys).
 
 ## Tasks
-- [ ] T1 Schema + migration + `lib/adjust/proposals.ts` (post / dismiss / list) + DB tests — accept: migration on a fresh DB; tests green.
+- [x] T1 Schema + migration + `lib/adjust/proposals.ts` (post / dismiss / list) + DB tests — accept: migration on a fresh DB; tests green.
 - [ ] T2 `explainControl` (gather one control, provider method + parser + prompt, cache, store proposal) + unit/DB tests — accept: tests green with MockProvider. Depends T1.
 - [ ] T3 UI: Jelaskan per row, inline panel, note prefill, *Usulan jurnal koreksi* card + actions — accept: browser check 1440/390 with a mock-configured AI on local demo. Depends T2. Load `ui-rules`.
 - [ ] T4 Docs + end-of-cycle gates — accept: ADR note, rule 20b, README; `build`, `verify:books`, `test:e2e` green.
 
 ## Implementation
+- Plan: T1–T4 sequential, inline (proposal store → AI explain → UI → docs/gates).
+- T1: `prisma/schema.prisma` + migration `20260927170000_proposed_entries` (enums `ProposalSource`, `ProposalStatus`; table `ProposedEntry` with unique `key` and unique `entryId` (FK RESTRICT); CHECKs: POSTED ⇔ `entryId` set, month 1–12). `lib/adjust/proposals.ts` — `readLines()` (shape + digit check on every read), `saveProposal()` (once per key, race-safe on the unique index), `openProposals()`, `postProposal()` (accounts may be replaced per line, amounts never; client chart only, never a bank account; `postJournal` ADJUSTMENT dated the period end, then PROPOSED → POSTED guarded by `updateMany … status: PROPOSED` in the same transaction), `dismissProposal()`. Tests: `tests/db/proposals.test.ts`.
 
 ## Verification
+- T1: fresh DB `prisma migrate deploy` → "All migrations have been successfully applied."; `prisma migrate diff` vs schema → empty; lint + typecheck clean; `npm test` → Test Files 56 passed (56), Tests 410 passed (410).
 
 ## Ship Notes
