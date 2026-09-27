@@ -75,4 +75,11 @@ describe("schedule candidates from the ledger", () => {
     await post(pt, c, dateOnly(2026, 8, 10), "1130", "4100", 100_000_000n);
     expect(await scheduleCandidates(db, c, 2026, 8)).toEqual([]);
   });
+
+  it("a finished schedule no longer covers its account: a missing rent is proposed as an accrual again", async () => {
+    const { pt, c } = await books();
+    await createSchedule(db, { clientId: c, entityId: pt, kind: "AMORTIZATION", memo: "Sewa kantor Mar–Mei", debitCode: "6120", creditCode: "1170", amount: "9.000.000", months: 3, startYear: 2026, startMonth: 3 });
+    expect(summary(await scheduleCandidates(db, c, 2026, 8))).toEqual([["ACCRUAL", "6120", "2150", 3_000_000n, 1, "2026-8"]]);
+  });
 });
+

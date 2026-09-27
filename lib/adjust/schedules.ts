@@ -75,6 +75,8 @@ export async function createSchedule(db: Db, input: ScheduleInput) {
   const accrual = input.kind === "ACCRUAL";
   const months = accrual ? 1 : Math.trunc(input.months);
   if (!(months >= 1 && months <= MAX_MONTHS)) throw new LedgerError(`Jumlah bulan 1–${MAX_MONTHS}.`);
+  // Every installment must carry an amount; a zero one could never post (postJournal needs two non-zero lines).
+  if (amount < BigInt(months)) throw new LedgerError(`Nominal terlalu kecil untuk dibagi ${months} bulan.`);
   if (!(input.startMonth >= 1 && input.startMonth <= 12) || !Number.isInteger(input.startYear)) throw new LedgerError("Bulan mulai tidak valid.");
   if (input.sourceEntryId) {
     const src = await db.journalEntry.findFirst({ where: { id: input.sourceEntryId, entityId: entity.id } });
@@ -113,6 +115,8 @@ export async function dueProposals(db: Db, clientId: string, year: number, month
   for (const s of schedules) {
     const posted = new Set(s.entries.map((e) => e.installment));
     for (const i of installments(s)) {
+      // A reversal only follows the accrual it reverses: never propose it while that installment is unposted.
+      if (i.reversal && !posted.has(s.months)) continue;
       if (i.year === year && i.month === month && !posted.has(i.k)) out.push({ schedule: s, installment: i, memo: installmentMemo(s, i) });
     }
   }
@@ -128,6 +132,9 @@ export async function postInstallment(db: Db, input: { clientId: string; schedul
   if (s.stoppedAt) throw new LedgerError("Jadwal ini sudah dihentikan.");
   const i = installments(s).find((x) => x.k === input.k);
   if (!i) throw new LedgerError("Angsuran tidak ada di jadwal ini.");
+  if (i.reversal && !(await db.journalEntry.findFirst({ where: { scheduleId: s.id, installment: s.months }, select: { id: true } }))) {
+    throw new LedgerError(`Catat dulu ${installmentMemo(s, { k: s.months, reversal: false })} sebelum pembaliknya.`);
+  }
   try {
     return await db.$transaction((tx) =>
       postJournal(tx, {

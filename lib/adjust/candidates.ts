@@ -3,6 +3,7 @@ import type { ScheduleKind } from "@/lib/generated/prisma/enums";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { formatDate, periodBounds } from "@/lib/format";
 import { scanLedger } from "@/lib/controls/anomaly";
+import { installments } from "@/lib/adjust/schedules";
 
 /**
  * Candidates for new adjustment schedules, read from the period's ledger (deterministic, cycle adjustment-schedules).
@@ -86,9 +87,10 @@ export async function scheduleCandidates(db: Db, clientId: string, year: number,
     // A recurring cost missing this month: movement in each of the 3 baseline months, none now → accrue the average.
     if (scan.baseline.length === 3 && codes.has(ACCRUED_EXPENSES)) {
       // Accounts a running schedule already covers, and accruals already started for this month.
+      // Only schedules with an installment in this very month cover the account (not finished or stopped ones).
       const scheduled = new Set(
-        (await db.adjustmentSchedule.findMany({ where: { entityId: e.id }, select: { debitAccountId: true, kind: true, startYear: true, startMonth: true, stoppedAt: true } }))
-          .filter((s) => (s.kind === "ACCRUAL" ? s.startYear === year && s.startMonth === month : !s.stoppedAt))
+        (await db.adjustmentSchedule.findMany({ where: { entityId: e.id, stoppedAt: null } }))
+          .filter((s) => installments(s).some((i) => !i.reversal && i.year === year && i.month === month))
           .map((s) => s.debitAccountId),
       );
       const accounts = await db.account.findMany({ where: { clientId, type: "BEBAN", code: { notIn: [ACCOUNT_CODES.ROUNDING, ACCOUNT_CODES.FX_GAIN_LOSS] } } });

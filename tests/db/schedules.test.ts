@@ -26,6 +26,9 @@ describe("adjustment schedules", () => {
       [1, "2026-08-31", false, true],
       [2, "2026-09-01", true, false],
     ]);
+    // The reversal waits for the accrual: nothing to reverse while August's installment is unposted.
+    expect(await dueProposals(db, g.client.id, 2026, 9)).toEqual([]);
+    await expect(postInstallment(db, { clientId: g.client.id, scheduleId: s.id, k: 2 })).rejects.toThrow("Catat dulu Akrual listrik Agustus (1/1) sebelum pembaliknya");
     await postInstallment(db, { clientId: g.client.id, scheduleId: s.id, k: 1 });
     const [sep] = await dueProposals(db, g.client.id, 2026, 9);
     expect(sep.memo).toBe("Pembalikan: Akrual listrik Agustus");
@@ -40,6 +43,7 @@ describe("adjustment schedules", () => {
     await expect(createSchedule(db, { ...base, creditCode: bank.code })).rejects.toThrow("tidak memakai akun bank");
     await expect(createSchedule(db, { ...base, amount: "0" })).rejects.toThrow("lebih dari nol");
     await expect(createSchedule(db, { ...base, months: 0 })).rejects.toThrow("Jumlah bulan");
+    await expect(createSchedule(db, { ...base, amount: "5", months: 12 })).rejects.toThrow("terlalu kecil untuk dibagi 12 bulan"); // Rp 0 installments could never post
     await expect(createSchedule(db, { ...base, entityId: "bukan" })).rejects.toThrow("Pilih entitas");
   });
 
