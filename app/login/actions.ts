@@ -52,8 +52,9 @@ export async function requestResetAction(_previous: FormState, formData: FormDat
   return { notice: "Jika alamat ini terdaftar, tautan atur ulang kata sandi masuk ke email. Periksa juga folder spam." };
 }
 
+/** This device only. Ending every session of a person is the admin's `access revoke`, not a Keluar click. */
 export async function signOutAction() {
   const supabase = await createSupabaseServerClient();
-  await supabase.auth.signOut();
+  await supabase.auth.signOut({ scope: "local" });
   redirect("/login");
 }
