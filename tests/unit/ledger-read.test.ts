@@ -124,8 +124,8 @@ describe("Neraca reader (Jurnal-style export)", () => {
         ["1-1000", "BANK", 1000, ""],
         ["Fixed Assets"],
         ["2-1500", "Kendaraan", 800, ""],
-        ["Other Assets"],
-        ["9-0001", "Deposit", 200, ""],
+        ["Intangible Assets"],
+        ["9-0001", "Software", 200, ""],
         ["Total Assets", null, 2000, ""],
         ["Liability & Equity"],
         ["2-2000", "Accounts Payable", 1000, ""],
@@ -144,6 +144,28 @@ describe("Neraca reader (Jurnal-style export)", () => {
       ["9-0001", 20_000n, "ASET", "NON_CURRENT"],
       ["2-2000", -100_000n, "LIABILITAS", null],
       ["3-3000", -100_000n, "EKUITAS", null],
+    ]);
+
+    // Opening with a long-term asset sub-heading, then moving to the current ones: each row takes its own heading's term.
+    const opens = await workbook({
+      "31-05-2026": [
+        ["Date", "", "31/05/2026", ""],
+        ["Tangible Assets"], ["2-1500", "Kendaraan", 800, ""],
+        ["Current Assets"], ["1-1000", "BANK", 700, ""],
+        ["Intangible Assets"], ["1-1900", "Lisensi", 500, ""],
+        ["Total Assets", null, 2000, ""],
+        ["Liability & Equity"], ["2-2000", "Accounts Payable", 2000, ""],
+        ["Total Liability & Equity", null, 2000, ""],
+      ],
+    });
+    const s2 = await readSheets("balance_sheet.xlsx", opens);
+    const res2 = readTable(s2, detectTables(s2)[0]);
+    if (res2.mode !== "NERACA") throw new Error("mode");
+    expect(res2.rows.map((r) => [r.code, r.typeHint, r.termHint])).toEqual([
+      ["2-1500", "ASET", "NON_CURRENT"],
+      ["1-1000", "ASET", "CURRENT"],
+      ["1-1900", "ASET", "NON_CURRENT"],
+      ["2-2000", "LIABILITAS", null],
     ]);
   });
 });

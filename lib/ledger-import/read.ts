@@ -232,7 +232,7 @@ const SECTION_LIAB = /^(liabilit|kewajiban|utang|hutang|current liabilit|long-te
 const SECTION_EQUITY = /^(equity|ekuitas|modal)\b/i;
 const SECTION_LIAB_EQUITY = /(liabilit.*(equity|ekuitas)|kewajiban.*(ekuitas|modal)|pasiva)/i;
 /** Sub-headings that say how long a balance runs (Jurnal: "Current Assets", "Fixed Assets", "Long-term Liability"). */
-const TERM_NON_CURRENT = /(long.?term|jangka panjang|non.?current|tidak lancar|fixed assets?|aset tetap|aktiva tetap|other assets|aset lain|depreciation|penyusutan|amorti)/i;
+const TERM_NON_CURRENT = /(long.?term|jangka panjang|non.?current|tidak lancar|fixed assets?|(in)?tangible assets?|aset tetap|aktiva tetap|tak berwujud|tidak berwujud|other assets|aset lain|depreciation|penyusutan|amorti)/i;
 const TERM_CURRENT = /(\bcurrent\b|\blancar\b|jangka pendek|short.?term)/i;
 
 export function readNeraca(sheet: RawSheet, t: TableCandidate): { date: Date | null; rows: NeracaRow[]; totals: NeracaTotal[] } {
