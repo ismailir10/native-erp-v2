@@ -9,7 +9,7 @@ import { ClosePanel } from "@/components/app/close-panel";
 import { RevaluationCard } from "@/components/app/revaluation-card";
 import { ScheduleProposals } from "@/components/app/schedule-proposals";
 import { proposalViews } from "@/lib/adjust/view";
-import { proposalViews as draftViews } from "@/lib/adjust/proposals";
+import { correctionViews as draftViews } from "@/lib/adjust/suspense";
 import { ProposalsCard } from "@/components/app/proposals-card";
 import { revaluationProposals } from "@/lib/fx/revalue";
 import { CloseReviewCard } from "@/components/app/close-review-card";

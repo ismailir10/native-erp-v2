@@ -12,6 +12,9 @@ import { accountKey, planLedger, planNeraca, type Check, type CurrencyMode, type
 import { inferType, learnScheme, suggestMappings } from "@/lib/ledger-import/mapping";
 import type { NeracaRow, TableCandidate } from "@/lib/ledger-import/types";
 
+/** Memo of the 1999 line an accepted unbalanced group posts (rule 15a); the 1999 correction proposals look for it. */
+export const SOURCE_DIFFERENCE_MEMO = "Selisih dari file sumber";
+
 /**
  * Ledger / Neraca import (accounting-rules §15a): stage (read → check → source accounts → DRAFT plan),
  * then post the saved plan all-or-nothing once every BLOCK is fixed or accepted and every source account is mapped.
@@ -291,7 +294,7 @@ export async function postImport(db: Db, clientId: string, importId: string, act
         const r = BigInt(e.rounding);
         if (r !== 0n) lines.push({ accountId: rounding.id, debit: r > 0n ? r : 0n, credit: r < 0n ? -r : 0n, memo: e.fxRounding ? "Selisih pembulatan konversi kurs" : "Selisih pembulatan sen" });
         const imbalance = BigInt(e.imbalance);
-        if (imbalance !== 0n) lines.push({ accountId: suspense.id, debit: imbalance < 0n ? -imbalance : 0n, credit: imbalance > 0n ? imbalance : 0n, memo: "Selisih dari file sumber" });
+        if (imbalance !== 0n) lines.push({ accountId: suspense.id, debit: imbalance < 0n ? -imbalance : 0n, credit: imbalance > 0n ? imbalance : 0n, memo: SOURCE_DIFFERENCE_MEMO });
         if (lines.length < 2) continue;
         await postJournal(tx, {
           entityId,

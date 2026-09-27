@@ -18,12 +18,12 @@ Approved in advance by the owner's request ("make sure these are done … finish
 
 ## Spec
 1999 corrections (`lib/adjust/suspense.ts`, reuses `ProposedEntry` from close-copilot)
-- [ ] For each ledger-import difference line on 1999 of an entity, dated in the period and not yet decided: a proposal
+- [x] For each ledger-import difference line on 1999 of an entity, dated in the period and not yet decided: a proposal
       (source `SUSPENSE`, key `SUSPENSE:<lineId>`) reversing it on 1999 against a counter account — prefilled when the same
       entry has exactly one other line of that very amount (the likely duplicated/missing line), else left for the accountant.
       Computed at read time; stored only when posted (→ POSTED) or dismissed (→ DISMISSED).
-- [ ] Shown in *Usulan jurnal koreksi* next to the AI drafts; the `ledger:` control detail points there.
-- [ ] Posting clears the entity's 1999 difference → the `ledger:` control's FAIL turns into PASS/REVIEW by itself.
+- [x] Shown in *Usulan jurnal koreksi* next to the AI drafts; the `ledger:` control detail points there.
+- [x] Posting clears the entity's 1999 difference → the `ledger:` control's FAIL turns into PASS/REVIEW by itself.
 
 Loan lines (`lib/classify/financing.ts`)
 - [ ] After rules and memory, **before AI**: financing text (same words as the sanity control) gets a deterministic suggestion —
@@ -68,13 +68,16 @@ allowed.
 3. Financing words are the sanity control's words, so the suggestion and the control can't disagree.
 
 ## Tasks
-- [ ] T1 1999 correction proposals + card + control text + tests — accept: DB test green.
+- [x] T1 1999 correction proposals + card + control text + tests — accept: DB test green.
 - [ ] T2 Financing heuristic + business-day transfer window + tests (update tests that relied on the old guess) — accept: tests green; demo `verify:books` ALL PASS.
 - [ ] T3 Evidence plan normalisation, scope fix, rejection metric on Pengaturan + tests — accept: unit + DB tests green.
 - [ ] T4 Docs + end-of-cycle gates — accept: rules 13/15a, README; `build`, `verify:books`, `test:e2e` green.
 
 ## Implementation
+- Plan: T1–T4 sequential, inline; branch stacked on `task/close-copilot` (1999 corrections reuse its `ProposedEntry`).
+- T1: `lib/ledger-import/post.ts` exports `SOURCE_DIFFERENCE_MEMO` (the 1999 line's memo). `lib/adjust/suspense.ts` — `suspenseCorrections()` (1999 lines with that memo from a ledger import, dated in the period, without a *decided* proposal `SUSPENSE:<lineId>`; draft reverses the 1999 line; counter prefilled only when exactly one other line of the entry has that amount), `postSuspenseCorrection()` (1999 line fixed, counter required and not 1999; stores then posts through `postProposal`), `dismissSuspenseCorrection()`, `correctionViews()` (stored AI drafts + read-time 1999 corrections for the card). `lib/adjust/proposals.ts` — `proposalViews()` skips SUSPENSE rows (shown from their line, never twice). `app/actions.ts` routes `suspense:<lineId>` ids. `lib/controls/index.ts` — `ledger:` detail now says "koreksi lewat Usulan jurnal koreksi di Tutup Buku". Close page uses `correctionViews()`. Found by the test: a post that fails after storing (no counter / locked month) must not hide the line — only POSTED/DISMISSED decide it; an empty counter is refused before storing. Tests: `tests/db/suspense-corrections.test.ts`.
 
 ## Verification
+- T1: lint + typecheck clean; `npm test` → Test Files 59 passed (59), Tests 418 passed (418).
 
 ## Ship Notes

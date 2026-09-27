@@ -118,7 +118,8 @@ export async function dismissProposal(db: Db, input: { clientId: string; proposa
 
 /** Plain JSON for the proposals card (bigint as strings). */
 export async function proposalViews(db: Db, clientId: string, year: number, month: number) {
-  const rows = await openProposals(db, clientId, year, month);
+  // 1999 corrections are shown from their source line (lib/adjust/suspense), never twice.
+  const rows = (await openProposals(db, clientId, year, month)).filter((p) => p.source !== "SUSPENSE");
   const txs = new Map((await db.bankTransaction.findMany({ where: { id: { in: rows.flatMap((p) => (p.bankTransactionId ? [p.bankTransactionId] : [])) } }, select: { id: true, accountCode: true } })).map((t) => [t.id, t.accountCode]));
   return rows.map((p) => {
     const lines = readLines(p.lines);
@@ -127,4 +128,3 @@ export async function proposalViews(db: Db, clientId: string, year: number, mont
     return { id: p.id, memo: p.memo, reason: p.reason, source: p.source, entity: p.entity.shortName, currency: p.entity.functionalCurrency, fixed: fixed >= 0 ? fixed : null, lines };
   });
 }
-

@@ -23,6 +23,7 @@ import { postRevaluation, RevaluationError } from "@/lib/fx/revalue";
 import { reviewClose, type CloseReviewView } from "@/lib/controls/ai-review";
 import { explainControl, ExplainError, type ControlExplanation } from "@/lib/controls/explain";
 import { dismissProposal, postProposal } from "@/lib/adjust/proposals";
+import { dismissSuspenseCorrection, postSuspenseCorrection, SUSPENSE_PREFIX } from "@/lib/adjust/suspense";
 import { AiBudgetError } from "@/lib/ai/budget";
 import { AiAnswerError } from "@/lib/ai/provider";
 import { acceptCheck, LedgerImportError, postImport, stageImport } from "@/lib/ledger-import/post";
@@ -340,7 +341,9 @@ export async function explainControlAction(clientId: string, year: number, month
 export async function postProposalAction(clientId: string, proposalId: string, accounts: string[]): Promise<Result> {
   try {
     const client = await getClientForFirm(clientId);
-    await postProposal(prisma, { clientId: client.id, proposalId, accounts, actorId: (await getCurrentMember()).id });
+    const actorId = (await getCurrentMember()).id;
+    if (proposalId.startsWith(SUSPENSE_PREFIX)) await postSuspenseCorrection(prisma, { firmId: client.firmId, clientId: client.id, lineId: proposalId.slice(SUSPENSE_PREFIX.length), accounts, actorId });
+    else await postProposal(prisma, { clientId: client.id, proposalId, accounts, actorId });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
   } catch (e) {
@@ -351,7 +354,9 @@ export async function postProposalAction(clientId: string, proposalId: string, a
 export async function dismissProposalAction(clientId: string, proposalId: string): Promise<Result> {
   try {
     const client = await getClientForFirm(clientId);
-    await dismissProposal(prisma, { clientId: client.id, proposalId, actorId: (await getCurrentMember()).id });
+    const actorId = (await getCurrentMember()).id;
+    if (proposalId.startsWith(SUSPENSE_PREFIX)) await dismissSuspenseCorrection(prisma, { firmId: client.firmId, clientId: client.id, lineId: proposalId.slice(SUSPENSE_PREFIX.length), actorId });
+    else await dismissProposal(prisma, { clientId: client.id, proposalId, actorId });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
   } catch (e) {
