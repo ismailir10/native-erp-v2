@@ -38,7 +38,7 @@ CREATE INDEX "AdjustmentSchedule_entityId_idx" ON "AdjustmentSchedule"("entityId
 CREATE UNIQUE INDEX "JournalEntry_scheduleId_installment_key" ON "JournalEntry"("scheduleId", "installment");
 
 -- AddForeignKey
-ALTER TABLE "JournalEntry" ADD CONSTRAINT "JournalEntry_scheduleId_fkey" FOREIGN KEY ("scheduleId") REFERENCES "AdjustmentSchedule"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "JournalEntry" ADD CONSTRAINT "JournalEntry_scheduleId_fkey" FOREIGN KEY ("scheduleId") REFERENCES "AdjustmentSchedule"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "AdjustmentSchedule" ADD CONSTRAINT "AdjustmentSchedule_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

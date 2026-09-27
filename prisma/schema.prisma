@@ -316,7 +316,7 @@ model JournalEntry {
   sourceRef         String?
   /// Installment of an adjustment schedule (C4); unique per schedule so a double click posts once.
   scheduleId        String?
-  schedule          AdjustmentSchedule?  @relation("ScheduleEntries", fields: [scheduleId], references: [id])
+  schedule          AdjustmentSchedule?  @relation("ScheduleEntries", fields: [scheduleId], references: [id], onDelete: Restrict)
   installment       Int?
   /// Schedules created from this entry (a fixed-asset purchase, a prepayment).
   schedulesFrom     AdjustmentSchedule[] @relation("ScheduleSource")
