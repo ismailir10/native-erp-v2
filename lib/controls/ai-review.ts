@@ -128,6 +128,7 @@ async function gather(db: Db, clientId: string, year: number, month: number, con
         const lines = await db.journalLine.findMany({
           where: { entityId: e.id, date: { gte: start, lte: end }, accountId: { in: found.slice(0, summaries.length).map((f) => f.account.id) }, entry: { kind: { not: "OPENING" } } },
           include: { account: { select: { code: true } }, entry: { select: { kind: true, memo: true, sourceRef: true, bankTransactionId: true } } },
+          orderBy: [{ date: "asc" }, { id: "asc" }], // stable ties for bySize: the payload is the cache key
         });
         rows.push(
           ...take(bySize(lines.map((l) => ({ ...l, amount: l.debit - l.credit })))).map((l) => {

@@ -82,7 +82,9 @@ export async function scanLedger(db: Db, clientId: string, entityId: string, yea
   if (activeIdx.length === 0 || current.size === 0) return empty;
 
   const n = BigInt(activeIdx.length);
-  const volume = activeIdx.reduce((s, i) => s + [...prior[i]].reduce((t, [id, v]) => t + (isPl(accounts.get(id)!) ? abs(v) : 0n), 0n), 0n);
+  const volumeOf = (keep: (a: Account) => boolean) => activeIdx.reduce((s, i) => s + [...prior[i]].reduce((t, [id, v]) => t + (keep(accounts.get(id)!) ? abs(v) : 0n), 0n), 0n);
+  // A pre-revenue or holding entity has no P&L baseline: scale by all its movement so dup/dormant still run.
+  const volume = volumeOf(isPl) || volumeOf(() => true);
   const materiality = (volume * MATERIALITY_PERCENT) / (100n * n);
   if (materiality <= 0n) return empty;
   const scan: LedgerScan = { ...empty, materiality };
@@ -117,8 +119,9 @@ export async function scanLedger(db: Db, clientId: string, entityId: string, yea
   }
 
   scan.dup = await duplicates(db, entityId, year, month, materiality, accounts);
-  const byDelta = <T extends { delta: bigint }>(xs: T[]) => xs.sort((x, y) => (abs(y.delta) > abs(x.delta) ? 1 : abs(y.delta) < abs(x.delta) ? -1 : 0));
-  const byCurrent = <T extends { current: bigint }>(xs: T[]) => xs.sort((x, y) => (abs(y.current) > abs(x.current) ? 1 : abs(y.current) < abs(x.current) ? -1 : 0));
+  // Largest first, ties by account code: the order feeds the control detail and the AI review's cache key.
+  const byDelta = <T extends { delta: bigint; account: Account }>(xs: T[]) => xs.sort((x, y) => (abs(y.delta) > abs(x.delta) ? 1 : abs(y.delta) < abs(x.delta) ? -1 : x.account.code.localeCompare(y.account.code)));
+  const byCurrent = <T extends { current: bigint; account: Account }>(xs: T[]) => xs.sort((x, y) => (abs(y.current) > abs(x.current) ? 1 : abs(y.current) < abs(x.current) ? -1 : x.account.code.localeCompare(y.account.code)));
   byDelta(scan.flux);
   byCurrent(scan.flip);
   byCurrent(scan.dormant);
@@ -161,7 +164,7 @@ async function duplicates(db: Db, entityId: string, year: number, month: number,
       }
     }
   }
-  return out.sort((a, b) => (b.amount > a.amount ? 1 : b.amount < a.amount ? -1 : 0));
+  return out.sort((a, b) => (b.amount > a.amount ? 1 : b.amount < a.amount ? -1 : +a.first.date - +b.first.date || a.first.id.localeCompare(b.first.id)));
 }
 
 export const sourceLabel = (e: Pick<DupEntry, "kind" | "bankTransactionId" | "sourceRef">) =>

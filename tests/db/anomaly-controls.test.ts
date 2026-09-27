@@ -130,4 +130,19 @@ describe("ledger anomaly controls", () => {
     await db.controlAck.create({ data: { periodId: period.id, controlKey: `dup:${pt}`, note: "Dua tagihan berbeda, faktur ada" } });
     expect((await lockPeriod(db, c, 2026, 8, "uji")).status).toBe("LOCKED");
   });
+
+  it("still scans a holding with no P&L baseline: materiality falls back to all its movement", async () => {
+    const g = await makeGroup();
+    const pt = g.pt.entity.id;
+    const c = g.client.id;
+    for (const m of [5, 6, 7]) await post(pt, c, dateOnly(2026, m, 10), "1260", "3100", 10_000_000n); // investments funded by capital
+    await post(pt, c, dateOnly(2026, 8, 10), "1260", "3100", 10_000_000n, { memo: "Setoran investasi" });
+    await post(pt, c, dateOnly(2026, 8, 11), "1260", "3100", 10_000_000n, { memo: "Setoran investasi" }); // entered twice
+    await post(pt, c, dateOnly(2026, 8, 20), "1140", "2120", 5_000_000n); // a loan to an affiliate: new accounts
+    expect((await scanLedger(db, c, pt, 2026, 8)).materiality).toBe(200_000n); // 1 % of (10 jt debit + 10 jt credit) a month
+    const k = await byKind(c, pt);
+    expect(k.dup.detail).toBe("1 pasang: 10 Agu 2026 & 11 Agu 2026 Rp 10.000.000 1260 (jurnal penyesuaian + jurnal penyesuaian)");
+    expect(k.dormant.detail).toBe("1140 Piutang Lain-lain Rp 5.000.000, akun baru; 2120 Utang Lain-lain Rp 5.000.000, akun baru");
+  });
 });
+

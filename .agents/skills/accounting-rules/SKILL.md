@@ -93,7 +93,7 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     (HEURISTIC, or AI < 0.6 unchanged) = REVIEW. Deterministic only — AI never decides a control.
 22b. **Ledger anomaly scans** (`lib/controls/anomaly.ts`, ADR 0009 amendment) read journal lines, not bank rows, so ledger-fed
     clients get the same scrutiny. Movement excludes OPENING entries; baseline = the months with activity among the 3 before the
-    period; materiality = 1 % of the baseline's average monthly P&L volume. **Flux** (P&L account differs from its baseline average by
+    period; materiality = 1 % of the baseline's average monthly P&L volume (all movement when the baseline has no P&L, e.g. a holding). **Flux** (P&L account differs from its baseline average by
     ≥ materiality and ≥ 50 %, ≥ 2 baseline months), **flip** (P&L month movement against its `normalBalance`), **dormant** (movement on an
     account with none in 3 active prior months: *akun baru* or *bergerak lagi*), **dup** (identical entries ≤ 3 days apart; two
     bank-derived entries never pair, two rows of one ledger file only with the same memo, OPENING/RECLASS never). All REVIEW, never FAIL;
