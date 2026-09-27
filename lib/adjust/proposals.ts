@@ -4,6 +4,7 @@ import { LedgerError, postJournal } from "@/lib/ledger/post";
 import { periodBounds } from "@/lib/format";
 import { reviewTransactionTx } from "@/lib/review";
 import { controlSnapshot } from "@/lib/controls/ai-review";
+import { amountOf } from "@/lib/ai/provider";
 
 /**
  * Proposed entries (accounting-rules 20b): draft journals from the close copilot or a deterministic check. Nothing posts until
@@ -102,7 +103,13 @@ export async function postProposal(db: Db, input: { clientId: string; proposalId
           // An AI draft is only valid for the books it was made from; one without a snapshot can't be proven fresh.
           // The control readers only read (no nested transaction), so they run on this transaction.
           const now = p.controlKey && p.snapshot ? await controlSnapshot(tx as unknown as Db, input.clientId, p.year, p.month, p.controlKey, p.bankTransactionId) : null;
-          if (!now || now !== p.snapshot) throw new LedgerError("Buku berubah sejak draf ini dibuat. Minta Jelaskan lagi, atau abaikan draf ini.");
+          if (!now || now.snapshot !== p.snapshot) throw new LedgerError("Buku berubah sejak draf ini dibuat. Minta Jelaskan lagi, atau abaikan draf ini.");
+          // Grounding is re-checked here, not only when the draft was stored: every amount is a row the draft cites (rule 20b).
+          const { functionalCurrency } = await tx.entity.findUniqueOrThrow({ where: { id: p.entityId }, select: { functionalCurrency: true } });
+          const cited = new Set(now.rows.filter((r) => p.refs.includes(r.id)).map((r) => amountOf(r.amount, functionalCurrency)));
+          if (lines.some((l) => !cited.has(BigInt(l.debit) || BigInt(l.credit)))) {
+            throw new LedgerError("Jumlah draf ini tidak berasal dari baris yang dirujuknya. Minta Jelaskan lagi, atau abaikan draf ini.");
+          }
         }
         const entry = p.bankTransactionId
           ? await bankReclass(tx, p, lines, codes, input.actorId)
