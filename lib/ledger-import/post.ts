@@ -308,9 +308,15 @@ export async function postImport(db: Db, clientId: string, importId: string, act
         });
         posted++;
       }
+      const differs: RateDiff[] = [];
       for (const r of saved.rates ?? []) {
-        await upsertFileRate(tx, imp.firmId, { currency: r.currency, quote: r.quote, date: new Date(`${r.date}T00:00:00.000Z`), kind: "SPOT", rate: r.rate, note: `${imp.fileName} ${r.ref}` });
+        const kept = await upsertFileRate(tx, imp.firmId, { currency: r.currency, quote: r.quote, date: new Date(`${r.date}T00:00:00.000Z`), kind: "SPOT", rate: r.rate, note: `${imp.fileName} ${r.ref}` });
+        if (formatRate(kept.rate) !== formatRate(r.rate)) differs.push({ r, kurs: kept.rate });
       }
+      // A rate another import (or the accountant) filled after this file was staged: flag it now, as staging would have.
+      const flagged = imp.checks.filter((c) => c.code === "FX_FILE_RATE_DIFFERS").map((c) => c.message);
+      const late = rateDiffChecks(differs, imp.currencyMode).filter((c) => !flagged.some((m) => m.startsWith(c.message.slice(0, c.message.indexOf(" di file")))));
+      if (late.length) await tx.importCheck.createMany({ data: late.map((c) => ({ ledgerImportId: imp.id, severity: c.severity, code: c.code, message: c.message, refs: c.refs })) });
       await tx.ledgerImport.update({ where: { id: imp.id }, data: { status: "POSTED", postedAt: new Date(), postedById: actorId ?? null, groupCount: posted } });
       return { entries: posted };
     },
@@ -326,12 +332,20 @@ async function fileRateChecks(db: Db, firmId: string, rates: FileRate[], mode: C
   if (!rates.length) return [];
   const existing = await db.exchangeRate.findMany({ where: { firmId, kind: "SPOT", OR: rates.map((r) => ({ currency: r.currency, quote: r.quote, date: new Date(`${r.date}T00:00:00.000Z`) })) }, select: { currency: true, quote: true, date: true, rate: true } });
   const kurs = new Map(existing.map((e) => [`${e.currency}|${e.quote}|${e.date.toISOString().slice(0, 10)}`, e.rate]));
-  const byPair = new Map<string, { r: FileRate; kurs: string }[]>();
+  const diffs: RateDiff[] = [];
   for (const r of rates) {
     const k = kurs.get(`${r.currency}|${r.quote}|${r.date}`);
-    if (!k || formatRate(k) === formatRate(r.rate)) continue;
-    byPair.set(`${r.currency}|${r.quote}`, [...(byPair.get(`${r.currency}|${r.quote}`) ?? []), { r, kurs: k }]);
+    if (k && formatRate(k) !== formatRate(r.rate)) diffs.push({ r, kurs: k });
   }
+  return rateDiffChecks(diffs, mode);
+}
+
+type RateDiff = { r: FileRate; kurs: string };
+
+/** One REVIEW per currency pair whose file rates differ from the Kurs table, latest dates first. */
+function rateDiffChecks(diffs: RateDiff[], mode: CurrencyMode): Check[] {
+  const byPair = new Map<string, RateDiff[]>();
+  for (const d of diffs) byPair.set(`${d.r.currency}|${d.r.quote}`, [...(byPair.get(`${d.r.currency}|${d.r.quote}`) ?? []), d]);
   return [...byPair.values()].map((list) => {
     const sorted = list.sort((a, b) => b.r.date.localeCompare(a.r.date));
     const { r } = sorted[0];

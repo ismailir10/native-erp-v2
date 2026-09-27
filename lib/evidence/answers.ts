@@ -270,7 +270,7 @@ export async function askEvidence(db: Db, firmId: string, intakeId: string, inpu
       const versionOut = missingScope?.versionOut ?? (() => false);
       const conflictOut = (versionIds: unknown) => idsOf(versionIds).length > 0 && idsOf(versionIds).every(versionOut);
       const conflicts = allConflicts.filter((c) => !conflictOut(c.versionIds)).slice(0, MAX_RESULTS);
-      answer.rows = documents.filter((d) => !d.excluded && d.status !== "DIRECTORY" && (d.issue || !d.currentVersionId) && !(d.currentVersionId && versionOut(d.currentVersionId))).slice(0, MAX_RESULTS).map((d) => ({ label: d.name, value: d.issue || "Belum selesai diperiksa", source: "Kumpulan dokumen" }));
+      answer.rows = documents.slice(0, 500).filter((d) => !d.excluded && d.status !== "DIRECTORY" && (d.issue || !d.currentVersionId) && !(d.currentVersionId && versionOut(d.currentVersionId))).slice(0, MAX_RESULTS).map((d) => ({ label: d.name, value: d.issue || "Belum selesai diperiksa", source: "Kumpulan dokumen" }));
       answer.rows.push(...conflicts.map((c) => ({ label: c.kind, value: c.message, source: "Pengecualian dokumen" })));
       answer.text = answer.rows.length ? "Dokumen dan keputusan yang masih perlu ditangani:" : "Tidak ada pengecualian terbuka yang tercatat.";
       answer.limitations.push("Daftar ini bukan jaminan dokumen lengkap; kelengkapan bergantung rekening, entitas, dan periode yang dikonfirmasi.");

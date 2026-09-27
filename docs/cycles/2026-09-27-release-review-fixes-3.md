@@ -33,10 +33,18 @@ release merges.
   exception of unknown scope went unexplained. The MISSING branch now replaces the note with the count from the expanded scope. The
   test adds a failed file with an undated sheet: it stays in and the note says 2; fails on the previous code.
 
+- Review of #40 (cdb8251): (1) two imports staged while a rate date was empty and then posted in turn: the second silently kept its own,
+  different rate on its lines while the Kurs table kept the first. `postImport` now compares each file rate with the row that landed
+  and, where they differ and staging didn't already flag that pair, adds the same `FX_FILE_RATE_DIFFERS` REVIEW check (so the
+  close asks for a note); the grouping/wording is shared (`rateDiffChecks`). (2) the missing-documents list used all 501 fetched rows
+  while scoping only the first 500; both now use the first 500. Tests in `tests/db/rates.test.ts` and `tests/db/evidence-scope.test.ts`
+  fail on the previous code.
+
 ## Verification
 - T1: new tests fail on the previous code (2 failed | 10 passed; the rate race reproduces), pass after. Gates: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 437 passed (437); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (55.4s).
 - Review of #40: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 437 passed (437); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (54.8s).
 - Review of #40 (4790b6c): lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 437 passed (437); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (53.2s).
+- Review of #40 (cdb8251): lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 439 passed (439); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (51.8s).
 
 ## Ship Notes
 No migration, no env change. Merges to staging, then rides the open promotion PR #37.

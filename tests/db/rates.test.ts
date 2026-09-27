@@ -100,4 +100,35 @@ describe("rate table", () => {
     expect([rate.currency, rate.quote, rate.rate, rate.source, rate.date.toISOString().slice(0, 10)]).toEqual(["USD", "SGD", "1.31", "FILE", "2023-01-03"]);
     expect(rate.note).toBe("hc.xlsx GL!2");
   });
+
+  it("an import staged before another filled its rate date is flagged for review when it posts", async () => {
+    const g = await makeGroup();
+    await db.entity.update({ where: { id: g.pt.entity.id }, data: { functionalCurrency: "SGD" } });
+    const stage = async (rate: string, name: string) => {
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet("GL");
+      ws.addRow(["Entity", "Entry Date", "Account Code", "Account Name", "Currency", "Debit", "Credit", "Notes"]);
+      ws.addRow(["PT Uji", new Date(Date.UTC(2023, 0, 3)), "10001", "Bank USD", "USD", 150000, 0, `Ref: ${name}; Rate: ${rate}`]);
+      ws.addRow(["PT Uji", new Date(Date.UTC(2023, 0, 3)), "20000", "Loan Payable", "SGD", 0, 150000, ""]);
+      const st = await stageImport(db, { firmId: g.firm.id, clientId: g.client.id, fileName: `${name}.xlsx`, data: Buffer.from(await wb.xlsx.writeBuffer()) });
+      if (st.status !== "STAGED") throw new Error("not staged");
+      return st.importId;
+    };
+    // Both staged while the date is empty: neither sees a difference yet.
+    const first = await stage("1.31", "a");
+    const second = await stage("1.35", "b");
+    await suggestMappings(db, { firmId: g.firm.id, clientId: g.client.id, provider: null, useAi: false });
+    for (const id of [first, second]) {
+      const src = await importSourceAccounts(db, id);
+      await acceptMappings(db, g.client.id, src.filter((x) => !x.accountId).map((x) => ({ sourceAccountId: x.id, accountCode: x.suggestedCode!, method: x.suggestedBy! })));
+    }
+    const differs = (id: string) => db.importCheck.findMany({ where: { ledgerImportId: id, code: "FX_FILE_RATE_DIFFERS" } });
+    expect([(await differs(first)).length, (await differs(second)).length]).toEqual([0, 0]);
+    await postImport(db, g.client.id, first);
+    await postImport(db, g.client.id, second);
+    expect((await db.exchangeRate.findFirstOrThrow()).rate).toBe("1.31"); // the first rate stays
+    expect(await differs(first)).toEqual([]);
+    const [flag] = await differs(second);
+    expect([flag.severity, flag.message]).toEqual(["REVIEW", "Kurs USD→SGD di file berbeda dari tabel Kurs pada 1 tanggal (3 Jan 2023: file 1,35, Kurs 1,31). tabel Kurs tidak diubah."]);
+  });
 });

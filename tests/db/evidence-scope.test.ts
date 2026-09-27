@@ -102,3 +102,16 @@ it("a scoped missing-documents question leaves out exceptions known to be outsid
   expect(again.rows?.map((r) => r.label)).toEqual(["lain.xlsx", "ENTITAS"]);
   expect(again.limitations.filter((l) => l.includes("belum dikonfirmasi"))).toEqual(["2 bagian belum dikonfirmasi entitas/periodenya; ikut dicari."]);
 });
+
+it("a missing-documents answer looks at the same first 500 documents it scopes", async () => {
+  const g = await collection();
+  await db.evidenceDocument.createMany({ data: Array.from({ length: 499 }, (_, i) => ({ firmId: g.firm.id, intakeId: g.intake.id, sourceKey: `dir-${i}`, name: `folder ${i}`, path: `folder ${i}`, mimeType: "folder", status: "DIRECTORY" })) });
+  // The 501st document: past the limit, so it is neither scoped nor listed.
+  const late = await db.evidenceDocument.create({ data: { firmId: g.firm.id, intakeId: g.intake.id, sourceKey: "late", name: "late.xlsx", path: "late.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", status: "ERROR", issue: "Gagal dibaca ulang" } });
+  const version = await db.evidenceVersion.create({ data: { firmId: g.firm.id, documentId: late.id, hash: hash("late"), name: late.name, size: 4, data: Buffer.from("late"), extracted: true, units: json([unit("Late", "2023-12-31")]) } });
+  await db.evidenceDocument.update({ where: { id: late.id }, data: { currentVersionId: version.id } });
+  expect((await db.evidenceDocument.findMany({ where: { intakeId: g.intake.id }, orderBy: { id: "asc" }, select: { id: true } }))[500].id).toBe(late.id);
+  const answer = await askEvidence(db, g.firm.id, g.intake.id, { question: "Dokumen apa yang kurang?", period: "2024-12" }, null);
+  expect(answer.rows?.map((r) => r.label)).not.toContain("late.xlsx");
+  expect(answer.limitations).toContain("Pencarian dibatasi 500 dokumen pertama.");
+});
