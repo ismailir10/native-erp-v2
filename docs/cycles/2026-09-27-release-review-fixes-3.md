@@ -55,6 +55,14 @@ release merges.
   a draft now keeps its staged reviews and gains every posting-time review that isn't already there word for word. Test simulates
   a pre-release draft; fails on the previous code.
 
+- Review of #40 (6ae52ff): a Kurs difference found only at posting was recorded after the journals were written, so the accountant
+  never saw it on the draft (rule 6b). Now, before posting, the expected reviews are computed (a Kurs row, or else the rate this
+  import writes to that empty date — so a file stating two rates for one date is also flagged at staging): stale ones are dropped
+  from the draft, and a new one is added and the post stops ("Tabel Kurs berubah sejak draf dibuat…") so it is seen first; inside
+  the posting transaction the same check runs on the Kurs rows that now stand and a concurrent change rolls the post back. The
+  post button refreshes the draft after a refusal. Tests updated (stop → shown on draft → post) and a self-conflicting file test
+  added; fail on the previous code.
+
 ## Verification
 - T1: new tests fail on the previous code (2 failed | 10 passed; the rate race reproduces), pass after. Gates: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 437 passed (437); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (55.4s).
 - Review of #40: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 437 passed (437); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (54.8s).
@@ -63,6 +71,7 @@ release merges.
 - Review of #40 (4372a6d): lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 440 passed (440); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (51.7s).
 - Review of #40 (0b133bb): lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 442 passed (442); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (54.2s).
 - Review of #40 (4f8411a): lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 443 passed (443); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (51.5s).
+- Review of #40 (6ae52ff): lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 444 passed (444); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (50.3s).
 
 ## Ship Notes
 No migration, no env change. Merges to staging, then rides the open promotion PR #37.

@@ -39,7 +39,10 @@ export function PostImportButton({ clientId, importId, label, disabled }: { clie
         setBusy(true);
         const r = await postLedgerImportAction(clientId, importId);
         setBusy(false);
-        if (!r.ok) return toast.error(r.error);
+        if (!r.ok) {
+          toast.error(r.error);
+          return router.refresh(); // a refusal can update the draft's findings (e.g. a Kurs difference found at posting)
+        }
         toast.success(`${r.entries} jurnal dicatat`);
         router.refresh();
       }}

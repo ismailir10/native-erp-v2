@@ -101,7 +101,7 @@ describe("rate table", () => {
     expect(rate.note).toBe("hc.xlsx GL!2");
   });
 
-  it("an import staged before another filled its rate date is flagged for review when it posts", async () => {
+  it("an import staged before another filled its rate date stops, shows the difference on the draft, then posts", async () => {
     const g = await makeGroup();
     await db.entity.update({ where: { id: g.pt.entity.id }, data: { functionalCurrency: "SGD" } });
     const stage = async (rate: string, name: string) => {
@@ -125,7 +125,10 @@ describe("rate table", () => {
     const differs = (id: string) => db.importCheck.findMany({ where: { ledgerImportId: id, code: "FX_FILE_RATE_DIFFERS" } });
     expect([(await differs(first)).length, (await differs(second)).length]).toEqual([0, 0]);
     await postImport(db, g.client.id, first);
-    await postImport(db, g.client.id, second);
+    const entries = await db.journalEntry.count();
+    await expect(postImport(db, g.client.id, second)).rejects.toThrow("Tabel Kurs berubah sejak draf dibuat");
+    expect([await db.journalEntry.count(), (await db.ledgerImport.findUniqueOrThrow({ where: { id: second } })).status]).toEqual([entries, "DRAFT"]);
+    await postImport(db, g.client.id, second); // seen on the draft: now it posts
     expect((await db.exchangeRate.findFirstOrThrow()).rate).toBe("1.31"); // the first rate stays
     expect(await differs(first)).toEqual([]);
     const [flag] = await differs(second);
@@ -154,6 +157,27 @@ describe("rate table", () => {
     expect((await differs()).map((c) => c.message)).toEqual([expect.stringContaining("file 1,35, Kurs 1,31")]);
   });
 
+  it("a file stating two rates for an empty date is flagged at staging, against the rate it will write", async () => {
+    const g = await makeGroup();
+    await db.entity.update({ where: { id: g.pt.entity.id }, data: { functionalCurrency: "SGD" } });
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("GL");
+    ws.addRow(["Entity", "Entry Date", "Account Code", "Account Name", "Currency", "Debit", "Credit", "Notes"]);
+    for (const [ref, rate] of [["A", "1.35"], ["B", "1.31"]] as const) {
+      ws.addRow(["PT Uji", new Date(Date.UTC(2023, 0, 3)), "10001", "Bank USD", "USD", 150000, 0, `Ref: ${ref}; Rate: ${rate}`]);
+      ws.addRow(["PT Uji", new Date(Date.UTC(2023, 0, 3)), "20000", "Loan Payable", "SGD", 0, 150000, ""]);
+    }
+    const st = await stageImport(db, { firmId: g.firm.id, clientId: g.client.id, fileName: "self.xlsx", data: Buffer.from(await wb.xlsx.writeBuffer()) });
+    if (st.status !== "STAGED") throw new Error("not staged");
+    const differs = () => db.importCheck.findMany({ where: { ledgerImportId: st.importId, code: "FX_FILE_RATE_DIFFERS" } });
+    expect((await differs()).map((c) => c.message)).toEqual([expect.stringContaining("file 1,35, Kurs 1,31")]);
+    await suggestMappings(db, { firmId: g.firm.id, clientId: g.client.id, provider: null, useAi: false });
+    const src = await importSourceAccounts(db, st.importId);
+    await acceptMappings(db, g.client.id, src.map((x) => ({ sourceAccountId: x.id, accountCode: x.suggestedCode!, method: x.suggestedBy! })));
+    await postImport(db, g.client.id, st.importId); // already on the draft: posts first time
+    expect([(await db.exchangeRate.findFirstOrThrow()).rate, (await differs()).length]).toEqual(["1.31", 1]);
+  });
+
   it("a pair flagged at staging also lists a date that got a different rate after staging", async () => {
     const g = await makeGroup();
     await db.entity.update({ where: { id: g.pt.entity.id }, data: { functionalCurrency: "SGD" } });
@@ -173,8 +197,11 @@ describe("rate table", () => {
     await suggestMappings(db, { firmId: g.firm.id, clientId: g.client.id, provider: null, useAi: false });
     const src = await importSourceAccounts(db, st.importId);
     await acceptMappings(db, g.client.id, src.map((x) => ({ sourceAccountId: x.id, accountCode: x.suggestedCode!, method: x.suggestedBy! })));
+    await expect(postImport(db, g.client.id, st.importId)).rejects.toThrow("Tabel Kurs berubah sejak draf dibuat");
+    const both = "Kurs USD→SGD di file berbeda dari tabel Kurs pada 2 tanggal (4 Jan 2023: file 1,36, Kurs 1,31; 3 Jan 2023: file 1,35, Kurs 1,3). tabel Kurs tidak diubah.";
+    expect((await differs()).map((c) => c.message)).toEqual([both]); // the draft now lists both dates
     await postImport(db, g.client.id, st.importId);
-    expect((await differs()).map((c) => c.message)).toEqual(["Kurs USD→SGD di file berbeda dari tabel Kurs pada 2 tanggal (4 Jan 2023: file 1,36, Kurs 1,31; 3 Jan 2023: file 1,35, Kurs 1,3). tabel Kurs tidak diubah."]);
+    expect((await differs()).map((c) => c.message)).toEqual([both]);
   });
 
   it("a draft staged before every stated rate was saved keeps its staged review and still gets the late date", async () => {
@@ -198,6 +225,7 @@ describe("rate table", () => {
     await suggestMappings(db, { firmId: g.firm.id, clientId: g.client.id, provider: null, useAi: false });
     const src = await importSourceAccounts(db, st.importId);
     await acceptMappings(db, g.client.id, src.map((x) => ({ sourceAccountId: x.id, accountCode: x.suggestedCode!, method: x.suggestedBy! })));
+    await expect(postImport(db, g.client.id, st.importId)).rejects.toThrow("Tabel Kurs berubah sejak draf dibuat");
     await postImport(db, g.client.id, st.importId);
     const messages = (await db.importCheck.findMany({ where: { ledgerImportId: st.importId, code: "FX_FILE_RATE_DIFFERS" }, orderBy: { id: "asc" } })).map((c) => c.message);
     expect(messages).toHaveLength(2);

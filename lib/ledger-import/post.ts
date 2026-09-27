@@ -151,7 +151,7 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
       }
     }
   }
-  plan.checks.push(...(await fileRateChecks(db, input.firmId, [...statedRates.values()], currencyMode)));
+  plan.checks.push(...(await fileRateChecks(db, input.firmId, [...statedRates.values()], currencyMode, [...fileRates.values()])));
   // All-zero groups are reported in the checks ("… jurnal bernilai nol dilewati") but not staged, so the draft's
   // "Catat N jurnal" is the number that will post.
   const entries = plan.entries.filter(willPost);
@@ -271,6 +271,24 @@ export async function postImport(db: Db, clientId: string, importId: string, act
   const rounding = accounts.find((a) => a.code === ACCOUNT_CODES.ROUNDING)!;
   const suspense = accounts.find((a) => a.code === ACCOUNT_CODES.SUSPENSE)!;
 
+  // Rate differences are shown on the draft before anything posts (rule 6b). The Kurs table may have changed since staging (another
+  // import, the accountant): refresh the draft's reviews, and when one is new, stop so the accountant sees it before posting.
+  // A draft staged before `stated` was saved can't prove its reviews complete: it keeps them and only gains new ones.
+  const stated = saved.stated ?? saved.rates ?? [];
+  const ownRates = saved.rates ?? [];
+  const onDraft = imp.checks.filter((c) => c.code === "FX_FILE_RATE_DIFFERS").map((c) => c.message);
+  const expected = await fileRateChecks(db, imp.firmId, stated, imp.currencyMode, ownRates);
+  const fresh = expected.filter((c) => !onDraft.includes(c.message));
+  const stale = saved.stated ? onDraft.filter((m) => !expected.some((c) => c.message === m)) : [];
+  if (fresh.length || stale.length) {
+    await db.$transaction([
+      db.importCheck.deleteMany({ where: { ledgerImportId: imp.id, code: "FX_FILE_RATE_DIFFERS", message: { in: stale } } }),
+      db.importCheck.createMany({ data: fresh.map((c) => ({ ledgerImportId: imp.id, severity: c.severity, code: c.code, message: c.message, refs: c.refs })) }),
+    ]);
+    if (fresh.length) throw new LedgerImportError("Tabel Kurs berubah sejak draf dibuat: temuan kurs di draf sudah diperbarui. Periksa, lalu catat lagi.");
+  }
+  const reviewed = new Set([...onDraft.filter((m) => !stale.includes(m)), ...fresh.map((c) => c.message)]);
+
   return db.$transaction(
     async (tx) => {
       let posted = 0;
@@ -312,15 +330,10 @@ export async function postImport(db: Db, clientId: string, importId: string, act
       for (const r of saved.rates ?? []) {
         await upsertFileRate(tx, imp.firmId, { currency: r.currency, quote: r.quote, date: new Date(`${r.date}T00:00:00.000Z`), kind: "SPOT", rate: r.rate, note: `${imp.fileName} ${r.ref}` });
       }
-      // Every rate the file states, checked again against the Kurs rows that now stand (known at staging, or filled since by another
-      // import or the accountant): the rate-difference reviews become that complete set — no late date unflagged, no stale one kept.
-      // A draft staged before `stated` was saved can't prove its staged reviews complete: it keeps them and gains every review
-      // posting finds that isn't already there word for word.
-      const rateReviews = await fileRateChecks(tx as unknown as Db, imp.firmId, saved.stated ?? saved.rates ?? [], imp.currencyMode);
-      const staged = new Set(imp.checks.filter((c) => c.code === "FX_FILE_RATE_DIFFERS").map((c) => c.message));
-      if (saved.stated) await tx.importCheck.deleteMany({ where: { ledgerImportId: imp.id, code: "FX_FILE_RATE_DIFFERS" } });
-      const add = saved.stated ? rateReviews : rateReviews.filter((c) => !staged.has(c.message));
-      if (add.length) await tx.importCheck.createMany({ data: add.map((c) => ({ ledgerImportId: imp.id, severity: c.severity, code: c.code, message: c.message, refs: c.refs })) });
+      // Same check on the Kurs rows that now stand: a rate another import wrote in the meantime rolls this post back (the next try
+      // shows it on the draft first).
+      const now = await fileRateChecks(tx as unknown as Db, imp.firmId, stated, imp.currencyMode, ownRates);
+      if (now.some((c) => !reviewed.has(c.message))) throw new LedgerImportError("Tabel Kurs berubah bersamaan; coba catat lagi.");
       await tx.ledgerImport.update({ where: { id: imp.id }, data: { status: "POSTED", postedAt: new Date(), postedById: actorId ?? null, groupCount: posted } });
       return { entries: posted };
     },
@@ -332,10 +345,12 @@ export async function postImport(db: Db, clientId: string, importId: string, act
  * File rates only fill empty Kurs dates (`upsertFileRate`). Where the Kurs table already holds a different rate for the same
  * pair and date, say so: one REVIEW per pair, latest dates first.
  */
-async function fileRateChecks(db: Db, firmId: string, rates: FileRate[], mode: CurrencyMode): Promise<Check[]> {
+async function fileRateChecks(db: Db, firmId: string, rates: FileRate[], mode: CurrencyMode, own: FileRate[] = []): Promise<Check[]> {
   if (!rates.length) return [];
   const existing = await db.exchangeRate.findMany({ where: { firmId, kind: "SPOT", OR: rates.map((r) => ({ currency: r.currency, quote: r.quote, date: new Date(`${r.date}T00:00:00.000Z`) })) }, select: { currency: true, quote: true, date: true, rate: true } });
   const kurs = new Map(existing.map((e) => [`${e.currency}|${e.quote}|${e.date.toISOString().slice(0, 10)}`, e.rate]));
+  // An empty date will hold the rate this import writes there (`own`): a second, different rate the file states for it differs too.
+  for (const r of own) if (!kurs.has(`${r.currency}|${r.quote}|${r.date}`)) kurs.set(`${r.currency}|${r.quote}|${r.date}`, r.rate);
   const diffs: RateDiff[] = [];
   for (const r of rates) {
     const k = kurs.get(`${r.currency}|${r.quote}|${r.date}`);
