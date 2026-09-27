@@ -29,9 +29,14 @@ release merges.
   retained versions and the versions its conflicts cite (scoped only, never searched). The test's 2023 file is now an ERROR document;
   fails on the previous code.
 
+- Review of #40 (4790b6c): the "N bagian belum dikonfirmasi" note was computed before those retained versions were added, so a kept
+  exception of unknown scope went unexplained. The MISSING branch now replaces the note with the count from the expanded scope. The
+  test adds a failed file with an undated sheet: it stays in and the note says 2; fails on the previous code.
+
 ## Verification
 - T1: new tests fail on the previous code (2 failed | 10 passed; the rate race reproduces), pass after. Gates: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 437 passed (437); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (55.4s).
 - Review of #40: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 437 passed (437); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (54.8s).
+- Review of #40 (4790b6c): lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 437 passed (437); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (53.2s).
 
 ## Ship Notes
 No migration, no env change. Merges to staging, then rides the open promotion PR #37.

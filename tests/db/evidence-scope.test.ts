@@ -93,4 +93,12 @@ it("a scoped missing-documents question leaves out exceptions known to be outsid
   // December 2024: the 2023-only file and its conflict are known to be out of scope; the file with an unknown-period sheet stays.
   const dec24 = await askEvidence(db, g.firm.id, g.intake.id, { question: "Dokumen apa yang kurang?", period: "2024-12" }, null);
   expect(dec24.rows?.map((r) => r.label)).toEqual(["ENTITAS"]);
+
+  // A failed file whose kept sheet has no known period stays in, and the note counts it with the collection's own unknown sheet.
+  const undated = await db.evidenceDocument.create({ data: { firmId: g.firm.id, intakeId: g.intake.id, sourceKey: "x", name: "lain.xlsx", path: "lain.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", status: "ERROR", issue: "Gagal dibaca ulang" } });
+  const undatedVersion = await db.evidenceVersion.create({ data: { firmId: g.firm.id, documentId: undated.id, hash: hash("lain"), name: undated.name, size: 4, data: Buffer.from("lain"), extracted: true, units: json([unit("Lain", null)]) } });
+  await db.evidenceDocument.update({ where: { id: undated.id }, data: { currentVersionId: undatedVersion.id } });
+  const again = await askEvidence(db, g.firm.id, g.intake.id, { question: "Dokumen apa yang kurang?", period: "2024-12" }, null);
+  expect(again.rows?.map((r) => r.label)).toEqual(["lain.xlsx", "ENTITAS"]);
+  expect(again.limitations.filter((l) => l.includes("belum dikonfirmasi"))).toEqual(["2 bagian belum dikonfirmasi entitas/periodenya; ikut dicari."]);
 });

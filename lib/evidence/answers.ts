@@ -67,6 +67,8 @@ type UnitRef = { versionId: string; unitKey: string };
  * known period (confirmed, else extracted) outside the range. Unconfirmed units stay in and are counted, so a freshly
  * uploaded collection answers dated questions instead of returning nothing.
  */
+const unknownNote = (n: number) => `${n} bagian belum dikonfirmasi entitas/periodenya; ikut dicari.`;
+
 async function sourceScope(db: Db, firmId: string, intakeId: string, clientId: string | null, versionIds: string[], entityId: string | undefined, range: { start: Date; end: Date } | null, intent: EvidenceAnswerPlan["intent"]) {
   if (!versionIds.length) return { excluded: [] as UnitRef[], unknown: 0, versionOut: (_: string) => false };
   const [selections, units] = await Promise.all([
@@ -244,7 +246,7 @@ export async function askEvidence(db: Db, firmId: string, intakeId: string, inpu
     const unitAllowed = (versionId: string, unitKey: string) => !excludedKeys.has(`${versionId}\0${unitKey}`);
     if (scope) {
       answer.limitations.push("Cakupan sumber memakai entitas yang dikonfirmasi dan periode dokumen; bagian yang diketahui di luar cakupan tidak disertakan.");
-      if (scope.unknown) answer.limitations.push(`${scope.unknown} bagian belum dikonfirmasi entitas/periodenya; ikut dicari.`);
+      if (scope.unknown) answer.limitations.push(unknownNote(scope.unknown));
     }
     if (documents.length > 500) answer.limitations.push("Pencarian dibatasi 500 dokumen pertama.");
     const partial = documents.some((d) => !d.excluded && d.status !== "DIRECTORY" && (d.issue || !d.currentVersionId || ["REMOVED", "INACCESSIBLE", "ERROR", "MISSING"].includes(d.status)));
@@ -260,6 +262,11 @@ export async function askEvidence(db: Db, firmId: string, intakeId: string, inpu
       const idsOf = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
       const extra = [...new Set([...documents.slice(0, 500).flatMap((d) => (d.currentVersionId && !d.excluded ? [d.currentVersionId] : [])), ...allConflicts.flatMap((c) => idsOf(c.versionIds))])].filter((v) => !versionIds.includes(v));
       const missingScope = scope && extra.length ? await sourceScope(db, firmId, intakeId, intake.clientId, [...versionIds, ...extra], entityId, sourceRange, plan.intent) : scope;
+      if (missingScope && missingScope !== scope) {
+        // The note counts what this answer actually looked at, retained and conflict versions included.
+        answer.limitations = answer.limitations.filter((l) => l !== unknownNote(scope!.unknown));
+        if (missingScope.unknown) answer.limitations.push(unknownNote(missingScope.unknown));
+      }
       const versionOut = missingScope?.versionOut ?? (() => false);
       const conflictOut = (versionIds: unknown) => idsOf(versionIds).length > 0 && idsOf(versionIds).every(versionOut);
       const conflicts = allConflicts.filter((c) => !conflictOut(c.versionIds)).slice(0, MAX_RESULTS);
