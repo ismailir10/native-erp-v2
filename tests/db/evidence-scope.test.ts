@@ -82,7 +82,7 @@ it("ignores a planned entity outside the chosen scope instead of failing, and co
 it("a scoped missing-documents question leaves out exceptions known to be outside the scope", async () => {
   const g = await collection();
   const text = "catatan 2023";
-  const doc = await db.evidenceDocument.create({ data: { firmId: g.firm.id, intakeId: g.intake.id, sourceKey: "old", name: "tb-2023.xlsx", path: "tb-2023.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", status: "READY", issue: "Sheet kedua kosong" } });
+  const doc = await db.evidenceDocument.create({ data: { firmId: g.firm.id, intakeId: g.intake.id, sourceKey: "old", name: "tb-2023.xlsx", path: "tb-2023.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", status: "ERROR", issue: "Gagal dibaca ulang" } }); // processed once, then failed: it keeps its last version
   const version = await db.evidenceVersion.create({ data: { firmId: g.firm.id, documentId: doc.id, hash: hash(text), name: doc.name, size: text.length, data: Buffer.from(text), extracted: true, units: json([unit("TB23", "2023-12-31")]) } });
   await db.evidenceDocument.update({ where: { id: doc.id }, data: { currentVersionId: version.id } });
   await db.evidenceConflict.create({ data: { firmId: g.firm.id, intakeId: g.intake.id, key: "tb23", kind: "PERIODE", message: "Dua saldo 2023 berbeda", versionIds: json([version.id]) } });

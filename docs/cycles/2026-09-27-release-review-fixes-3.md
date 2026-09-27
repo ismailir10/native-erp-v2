@@ -24,8 +24,14 @@ release merges.
   (five concurrent pairs, both callers see the stored rate), `tests/db/evidence-scope.test.ts` (a 2023-only file and its conflict
   drop out of a December 2024 question; an unknown-period file's conflict stays). Rule 6b wording.
 
+- Review of #40: a document that was processed once and later went ERROR/MISSING keeps its last version, but scope was computed only
+  from READY documents' versions, so such a document was never recognised as out of scope. The MISSING branch now scopes those
+  retained versions and the versions its conflicts cite (scoped only, never searched). The test's 2023 file is now an ERROR document;
+  fails on the previous code.
+
 ## Verification
 - T1: new tests fail on the previous code (2 failed | 10 passed; the rate race reproduces), pass after. Gates: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 437 passed (437); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (55.4s).
+- Review of #40: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 437 passed (437); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (54.8s).
 
 ## Ship Notes
 No migration, no env change. Merges to staging, then rides the open promotion PR #37.

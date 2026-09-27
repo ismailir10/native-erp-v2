@@ -255,9 +255,14 @@ export async function askEvidence(db: Db, firmId: string, intakeId: string, inpu
     };
     if (plan.intent === "MISSING") {
       // A scoped question leaves out documents and conflicts whose versions are known to be outside the scope; unknown stays in.
-      const versionOut = scope?.versionOut ?? (() => false);
-      const conflictOut = (versionIds: unknown) => Array.isArray(versionIds) && versionIds.length > 0 && versionIds.every((v) => typeof v === "string" && versionOut(v));
-      const conflicts = (await db.evidenceConflict.findMany({ where: { firmId, intakeId, resolved: false }, take: 500, orderBy: { id: "asc" } })).filter((c) => !conflictOut(c.versionIds)).slice(0, MAX_RESULTS);
+      // Their versions (a problem document keeps its last one; a conflict may cite older ones) are scoped here, never searched.
+      const allConflicts = await db.evidenceConflict.findMany({ where: { firmId, intakeId, resolved: false }, take: 500, orderBy: { id: "asc" } });
+      const idsOf = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+      const extra = [...new Set([...documents.slice(0, 500).flatMap((d) => (d.currentVersionId && !d.excluded ? [d.currentVersionId] : [])), ...allConflicts.flatMap((c) => idsOf(c.versionIds))])].filter((v) => !versionIds.includes(v));
+      const missingScope = scope && extra.length ? await sourceScope(db, firmId, intakeId, intake.clientId, [...versionIds, ...extra], entityId, sourceRange, plan.intent) : scope;
+      const versionOut = missingScope?.versionOut ?? (() => false);
+      const conflictOut = (versionIds: unknown) => idsOf(versionIds).length > 0 && idsOf(versionIds).every(versionOut);
+      const conflicts = allConflicts.filter((c) => !conflictOut(c.versionIds)).slice(0, MAX_RESULTS);
       answer.rows = documents.filter((d) => !d.excluded && d.status !== "DIRECTORY" && (d.issue || !d.currentVersionId) && !(d.currentVersionId && versionOut(d.currentVersionId))).slice(0, MAX_RESULTS).map((d) => ({ label: d.name, value: d.issue || "Belum selesai diperiksa", source: "Kumpulan dokumen" }));
       answer.rows.push(...conflicts.map((c) => ({ label: c.kind, value: c.message, source: "Pengecualian dokumen" })));
       answer.text = answer.rows.length ? "Dokumen dan keputusan yang masih perlu ditangani:" : "Tidak ada pengecualian terbuka yang tercatat.";
