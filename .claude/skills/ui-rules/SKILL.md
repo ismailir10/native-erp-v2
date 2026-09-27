@@ -1,16 +1,21 @@
 ---
 name: ui-rules
-description: Buku UI standard — Stripe-dashboard look (light canvas, white cards, strong blue), shadcn-first, "Don't Make Me Think" rules and Bahasa copy. Load before touching app/ or components/.
+description: Buku UI standard — 9fin structure (dark Forest chrome, hairlines, sharp corners, mono micro-labels) in Wise colours, shadcn-first, "Don't Make Me Think" rules and Bahasa copy. Load before touching app/ or components/.
 ---
 
 # UI rules
 
-## Look (tokens in `app/globals.css` — never hard-code hex in components)
-- Canvas `--background #F6F9FC`, white cards, 1px `--border #E3E8EE`, navy text `--foreground #0A2540`.
-- **One strong blue**: `--primary #0A5CFF` (5:1 on white — OK for text and fills), tint `bg-primary-subtle`.
-- Status tokens `pass / review / fail` (+ `-subtle`) are reserved for control & state — never for chart series.
-- Inter (self-hosted via `@fontsource-variable/inter`), `.num` = tabular numerals on every amount.
-- Radius 8px, `shadow-xs` on cards, generous whitespace; no gradients except the cash area fill.
+## Look — 9fin structure, Wise colours (tokens in `app/globals.css`; never hard-code hex in components)
+- Palette = Wise's published tokens (`@transferwise/neptune-tokens`, personal theme). Canvas `--background #F6F7F5`,
+  white cards, 1px hairline `--border #E0E1DD`, text `--foreground #0E0F0C`, secondary text `--muted-foreground #454745`.
+- **Forest Green `--primary #163300`** is the text/interactive colour: links, focus rings, selected states, dark fills.
+- **Bright Green `--brand #9FE870` is a fill only**, always with Forest text (`text-brand-foreground`): the primary button,
+  the active nav item, the logo. Never Bright Green text or icons on a light surface (1.5:1).
+- **Dark app chrome** (9fin): the sidebar is Forest Green; its text uses `sidebar-*` tokens, never `text-muted-foreground`.
+- Status tokens `pass / review / fail` (+ `-subtle`) are Wise sentiments, reserved for control & state — never chart series.
+- Sharp corners: `--radius` 4px. Cards are hairline-bordered, no shadow. No gradients.
+- Type: Inter (self-hosted), `.num` = tabular numerals on every amount. **Micro-labels** (table headers, sidebar group
+  labels, stat labels, eyebrows) use `.eyebrow`: system monospace, 11px, uppercase, tracked.
 
 ## Components
 - **shadcn first** (`components/ui/*`, base-nova on `@base-ui/react` — composition uses `render={<Link/>}`, not `asChild`).

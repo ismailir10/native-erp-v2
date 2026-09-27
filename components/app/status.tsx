@@ -13,7 +13,7 @@ export function StatusPill({ status, label, className }: { status: ControlStatus
   const s = MAP[status];
   const Icon = s.icon;
   return (
-    <span className={cn("inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium", s.cls, className)}>
+    <span className={cn("inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-sm px-1.5 py-0.5 text-xs font-medium", s.cls, className)}>
       <Icon className="size-3.5" aria-hidden />
       {label ?? s.label}
     </span>
