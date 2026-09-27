@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { db, makeGroup, resetDb } from "../helpers";
-import { createSchedule, dueProposals, installments, listSchedules, postAllDue, postInstallment, stopSchedule } from "@/lib/adjust/schedules";
+import { closeLock, createSchedule, dueProposals, installments, listSchedules, postAllDue, postInstallment, stopSchedule } from "@/lib/adjust/schedules";
 import { dateOnly } from "@/lib/format";
-import { runControls } from "@/lib/controls";
+import { CLOSE_SIGNOFFS, lockPeriod, runControls } from "@/lib/controls";
 
 describe("adjustment schedules", () => {
   beforeEach(resetDb);
@@ -78,6 +78,75 @@ describe("adjustment schedules", () => {
     await expect(createSchedule(db, { ...base, months: 0 })).rejects.toThrow("Jumlah bulan");
     await expect(createSchedule(db, { ...base, amount: "5", months: 12 })).rejects.toThrow("terlalu kecil untuk dibagi 12 bulan"); // Rp 0 installments could never post
     await expect(createSchedule(db, { ...base, entityId: "bukan" })).rejects.toThrow("Pilih entitas");
+  });
+
+  it("refuses a schedule with an installment or reversal in a locked month", async () => {
+    const g = await makeGroup();
+    const lock = (month: number) => db.period.upsert({ where: { clientId_year_month: { clientId: g.client.id, year: 2026, month } }, create: { firmId: g.firm.id, clientId: g.client.id, year: 2026, month, status: "LOCKED" }, update: { status: "LOCKED" } });
+    await lock(8);
+    const base = { clientId: g.client.id, entityId: g.pt.entity.id, kind: "DEPRECIATION" as const, memo: "Penyusutan", debitCode: "6180", creditCode: "1219", amount: "1.200.000", months: 2, startYear: 2026, startMonth: 8 };
+    // A two-month schedule starting in locked August would expose only September, leaving August unrecognised forever.
+    await expect(createSchedule(db, base)).rejects.toThrow("Agustus 2026 sudah dikunci");
+    // An accrual in open October whose reversal (1 November) lands in a locked month is refused too.
+    await lock(11);
+    await expect(createSchedule(db, { ...base, kind: "ACCRUAL", months: 1, startMonth: 10 })).rejects.toThrow("November 2026 sudah dikunci");
+    expect(await db.adjustmentSchedule.count()).toBe(0);
+    // Between the locked months is fine.
+    await createSchedule(db, { ...base, startMonth: 9 });
+    expect(await db.adjustmentSchedule.count()).toBe(1);
+  });
+
+  it("a schedule racing a close: creation waits for a lock in progress and is refused; a close sees a schedule created meanwhile and is refused", async () => {
+    const g = await makeGroup();
+    const base = { clientId: g.client.id, entityId: g.pt.entity.id, kind: "DEPRECIATION" as const, memo: "Penyusutan", debitCode: "6180", creditCode: "1219", amount: "1.200.000", months: 2, startYear: 2026, startMonth: 8 };
+    const period = await db.period.upsert({ where: { clientId_year_month: { clientId: g.client.id, year: 2026, month: 8 } }, create: { firmId: g.firm.id, clientId: g.client.id, year: 2026, month: 8 }, update: {} });
+
+    // The close's final step holds the lock and has written LOCKED, not yet committed, when the schedule arrives.
+    let created: Promise<unknown> = Promise.resolve();
+    await db.$transaction(async (tx) => {
+      await closeLock(tx, g.client.id);
+      await tx.period.update({ where: { id: period.id }, data: { status: "LOCKED" } });
+      created = createSchedule(db, base);
+      created.catch(() => {});
+      await new Promise((r) => setTimeout(r, 300));
+    });
+    await expect(created).rejects.toThrow("Agustus 2026 sudah dikunci");
+    expect(await db.adjustmentSchedule.count()).toBe(0);
+
+    // Reopen August and make it closable (sign-offs done, every REVIEW control noted).
+    await db.period.update({ where: { id: period.id }, data: { status: "OPEN" } });
+    for (const s of CLOSE_SIGNOFFS) await db.closeSignoff.create({ data: { periodId: period.id, key: s.key } });
+    const controls = await runControls(db, g.client.id, 2026, 8);
+    expect(controls.filter((c) => c.status === "FAIL")).toEqual([]);
+    for (const c of controls) if (c.status === "REVIEW") await db.controlAck.create({ data: { periodId: period.id, controlKey: c.key, note: "Wajar untuk uji" } });
+
+    // A schedule is being created (lock held, row written, not committed) while the close runs its controls: they never saw it.
+    let closed: Promise<unknown> = Promise.resolve();
+    await db.$transaction(async (tx) => {
+      await closeLock(tx, g.client.id);
+      await tx.adjustmentSchedule.create({ data: { firmId: g.firm.id, clientId: g.client.id, entityId: g.pt.entity.id, kind: "DEPRECIATION", memo: "Penyusutan", debitAccountId: (await tx.account.findFirstOrThrow({ where: { clientId: g.client.id, code: "6180" } })).id, creditAccountId: (await tx.account.findFirstOrThrow({ where: { clientId: g.client.id, code: "1219" } })).id, amount: 1_200_000n, months: 2, startYear: 2026, startMonth: 8 } });
+      closed = lockPeriod(db, g.client.id, 2026, 8, "uji");
+      closed.catch(() => {});
+      await new Promise((r) => setTimeout(r, 300));
+    });
+    await expect(closed).rejects.toThrow("Jadwal penyesuaian baru yang jatuh tempo sampai bulan ini");
+    expect((await db.period.findUniqueOrThrow({ where: { id: period.id } })).status).toBe("OPEN");
+
+    // Closing September while a one-month schedule for open July is written: its installment is overdue in September's controls.
+    const sept = await db.period.upsert({ where: { clientId_year_month: { clientId: g.client.id, year: 2026, month: 9 } }, create: { firmId: g.firm.id, clientId: g.client.id, year: 2026, month: 9 }, update: {} });
+    for (const s of CLOSE_SIGNOFFS) await db.closeSignoff.create({ data: { periodId: sept.id, key: s.key } });
+    const septControls = await runControls(db, g.client.id, 2026, 9);
+    for (const c of septControls) if (c.status === "REVIEW") await db.controlAck.create({ data: { periodId: sept.id, controlKey: c.key, note: "Wajar untuk uji" } });
+    expect(septControls.filter((c) => c.status === "FAIL")).toEqual([]);
+    await db.$transaction(async (tx) => {
+      await closeLock(tx, g.client.id);
+      await tx.adjustmentSchedule.create({ data: { firmId: g.firm.id, clientId: g.client.id, entityId: g.pt.entity.id, kind: "DEPRECIATION", memo: "Penyusutan Juli", debitAccountId: (await tx.account.findFirstOrThrow({ where: { clientId: g.client.id, code: "6180" } })).id, creditAccountId: (await tx.account.findFirstOrThrow({ where: { clientId: g.client.id, code: "1219" } })).id, amount: 600_000n, months: 1, startYear: 2026, startMonth: 7 } });
+      closed = lockPeriod(db, g.client.id, 2026, 9, "uji");
+      closed.catch(() => {});
+      await new Promise((r) => setTimeout(r, 300));
+    });
+    await expect(closed).rejects.toThrow("Jadwal penyesuaian baru yang jatuh tempo sampai bulan ini");
+    expect((await db.period.findUniqueOrThrow({ where: { id: sept.id } })).status).toBe("OPEN");
   });
 
   it("proposes the month's installment, posts it once even when clicked twice, and tracks progress", async () => {
