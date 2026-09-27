@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export default async function LoginPage() {
   const configured = authConfigured();
   if (configured && await getWorkspaceSession()) redirect("/");
-  return <main className="flex min-h-dvh items-center justify-center bg-sidebar px-5 py-12">
+  return <main className="flex min-h-dvh items-center justify-center bg-background px-5 py-12">
     <section className="w-full max-w-md rounded-lg border bg-card p-6 sm:p-8" aria-labelledby="login-title">
       <div className="mb-8 flex items-center gap-2 text-xl font-semibold"><BrandMark className="size-8 text-base" />Buku</div>
       <h1 id="login-title" className="text-2xl font-semibold">Masuk ke ruang kerja</h1>
