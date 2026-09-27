@@ -135,8 +135,12 @@ async function bankReclass(tx: Tx, p: { entityId: string; bankTransactionId: str
   if (target === t.accountCode) throw new LedgerError("Akun tujuan sama dengan akun saat ini.");
   const before = new Set((await tx.journalEntry.findMany({ where: { bankTransactionId: t.id }, select: { id: true } })).map((e) => e.id));
   // The approved draft moves the full amount: a tax split on the line would post something else, so it is released
-  // (the card says so); a PPN split that still applies is set again in Review.
+  // (the card says so) and the line goes back to the Review queue on its new account, where the accountant confirms the
+  // tax (the review control holds the close until then). A line without a tag is simply reviewed.
   await reviewTransactionTx(tx, { bankTxId: t.id, accountCode: target, taxTag: null, actorId });
+  if (t.taxTag) {
+    await tx.bankTransaction.update({ where: { id: t.id }, data: { status: "NEEDS_REVIEW", suggestedCode: target, reason: `Tag pajak ${t.taxTag} dilepas saat usulan dicatat; pastikan pajaknya` } });
+  }
   const entry = await tx.journalEntry.findFirst({ where: { bankTransactionId: t.id, kind: "RECLASS", id: { notIn: [...before] } } });
   if (!entry) throw new LedgerError("Tidak ada selisih untuk direklasifikasi.");
   return entry;
@@ -156,7 +160,7 @@ export async function proposalViews(db: Db, clientId: string, year: number, mont
     const lines = readLines(p.lines);
     const tx = p.bankTransactionId ? txs.get(p.bankTransactionId) : null;
     const fixed = tx?.accountCode ? lines.findIndex((l) => l.accountCode === tx.accountCode) : -1;
-    const reason = tx?.taxTag ? `${p.reason} · Tag pajak transaksi ini dilepas saat dicatat; atur lagi di Review bila masih berlaku.` : p.reason;
+    const reason = tx?.taxTag ? `${p.reason} · Tag pajak transaksi ini dilepas saat dicatat; transaksinya kembali ke Review untuk memastikan pajaknya.` : p.reason;
     return { id: p.id, memo: p.memo, reason, source: p.source, entity: p.entity.shortName, currency: p.entity.functionalCurrency, fixed: fixed >= 0 ? fixed : null, lines };
   });
 }

@@ -86,6 +86,7 @@ allowed.
 - Fourth review round (609f11a): a tax on a loan ("PAJAK PINJAMAN") fell through to the principal pattern and got 2210, which would understate the loan and escape the control (PAJAK is a cost word); any cost word that isn't interest or a fee now makes the classifier step aside (rules, memory or AI decide). Unit test fails on the previous code.
 - Fifth review round (417dfaa): the draft's fingerprint left out the cited bank line's tax tag, so a reviewer changing only the PPN tag after the draft was made kept it "fresh", and posting would silently drop the new tag. The snapshot now also covers the moved line's account and tax tag (`bankLineState` in `lib/controls/ai-review.ts`); any re-review of that line makes the draft stale. Test in `tests/db/close-explain.test.ts` fails on the previous code.
 - Sixth review round (aa23dce): asking *Jelaskan* again after that refusal reused the same proposal key and returned the stale row, so the draft could never post again. `saveProposal` now refreshes a still-open draft whose snapshot differs (conditional on PROPOSED; a racing post wins or fails to serialize); decided drafts stay as decided. The same test now asks again and posts (fails on the previous code).
+- Seventh review round (9721bef): posting a bank-line draft released the line's tax tag and marked it REVIEWED, so it left the Review queue (which lists only NEEDS_REVIEW) and its PPN could not be set again. A line whose tag is released now goes back to NEEDS_REVIEW with the new account as its suggestion; the review control holds the close until the accountant confirms the tax. A line without a tag is simply reviewed. The card says so. Tests in `tests/db/close-explain.test.ts` (fail on the previous code).
 
 ## Verification
 - T1: lint + typecheck clean; `npm test` → Test Files 59 passed (59), Tests 418 passed (418).
@@ -99,6 +100,7 @@ allowed.
 - Fourth review round: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 429 passed (429); `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
 - Fifth review round: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 430 passed (430); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (54.3s).
 - Sixth review round: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 430 passed (430); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (55.0s).
+- Seventh review round: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 430 passed (430); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (56.6s).
 
 ## Ship Notes
 - **Migration** `20260927190000_proposal_snapshot`: one nullable column `ProposedEntry.snapshot`. Additive; applied by `vercel-build`.

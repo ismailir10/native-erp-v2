@@ -53,7 +53,7 @@ describe("close copilot — Jelaskan", () => {
     expect(p.bankTransactionId).toBe(tx.id);
     const entry = await postProposal(db, { clientId: g.client.id, proposalId: p.id });
     expect(entry.kind).toBe("RECLASS");
-    expect((await db.bankTransaction.findUniqueOrThrow({ where: { id: tx.id } })).accountCode).toBe("2210");
+    expect(await db.bankTransaction.findUniqueOrThrow({ where: { id: tx.id } })).toMatchObject({ accountCode: "2210", status: "REVIEWED" }); // no tag: done
     expect((await db.proposedEntry.findUniqueOrThrow({ where: { id: p.id } })).entryId).toBe(entry.id);
     expect((await runControls(db, g.client.id, 2026, 8)).find((c) => c.key === key)).toBeUndefined(); // revenue no longer holds the loan
     await expect(postProposal(db, { clientId: g.client.id, proposalId: p.id })).rejects.toThrow("sudah dicatat");
@@ -136,6 +136,9 @@ describe("close copilot — Jelaskan", () => {
     await postProposal(db, { clientId: g.client.id, proposalId: p.id });
     const moved = await db.bankTransaction.findUniqueOrThrow({ where: { id: second.id } });
     expect([moved.accountCode, moved.taxTag]).toEqual(["2210", null]);
+    // …and the line is back in the Review queue on its new account, so the accountant confirms its tax before the close.
+    expect([moved.status, moved.suggestedCode]).toEqual(["NEEDS_REVIEW", "2210"]);
+    expect((await runControls(db, g.client.id, 2026, 8)).find((c) => c.key === "suspense")?.status).not.toBe("PASS");
     const net = async (code: string) => {
       const s = await db.journalLine.aggregate({ where: { entityId: g.pt.entity.id, account: { code } }, _sum: { debit: true, credit: true } });
       return (s._sum.credit ?? 0n) - (s._sum.debit ?? 0n);
