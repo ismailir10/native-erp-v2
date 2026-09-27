@@ -51,14 +51,7 @@ export async function sanityControls(db: Db, a: Args): Promise<Control[]> {
   }
 
   // 3. Financing text classified to the P&L (bank lines; ledger lines keep no description per line).
-  const txs = await db.bankTransaction.findMany({
-    where: { entityId: e.id, date: { gte: a.start, lte: a.end }, status: { in: ["POSTED", "REVIEWED"] }, accountCode: { not: null } },
-    orderBy: [{ date: "asc" }, { rowNumber: "asc" }],
-  });
-  const plCodes = new Set(
-    (await db.account.findMany({ where: { clientId: a.clientId, type: { in: ["PENDAPATAN", "BEBAN"] } }, select: { code: true } })).map((x) => x.code),
-  );
-  const financing = txs.filter((t) => plCodes.has(t.accountCode!) && FINANCING.test(t.description) && !FINANCING_COST.test(t.description));
+  const { txs, financing, guesses } = await flaggedBankRows(db, a.clientId, e.id, a.start, a.end);
   if (financing.length) {
     const total = financing.reduce((s, t) => s + (t.amount < 0n ? -t.amount : t.amount), 0n);
     const top = [...financing].sort((x, y) => (abs(y.amount) > abs(x.amount) ? 1 : -1)).slice(0, 3);
@@ -72,14 +65,13 @@ export async function sanityControls(db: Db, a: Args): Promise<Control[]> {
   }
 
   // 4. A month without data after the entity started.
-  if (!a.statementMissing) {
+  if (!a.statementMissing && txs.length === 0) {
     const inPeriod = await db.journalLine.count({ where: { entityId: e.id, date: { gte: a.start, lte: a.end } } });
     const before = inPeriod === 0 && (await db.journalLine.findFirst({ where: { entityId: e.id, date: { lt: a.start } }, select: { id: true } }));
     if (before) control("activity", "Tidak ada transaksi bulan ini", "REVIEW", "Belum ada mutasi atau buku besar untuk bulan ini. Pastikan datanya sudah lengkap sebelum ditutup", `${a.base}/import`);
   }
 
   // 5. Guesses accepted as they were.
-  const guesses = txs.filter((t) => t.status === "REVIEWED" && (t.method === "HEURISTIC" || (t.method === "AI" && t.confidence < GUESS_CONFIDENCE)));
   if (guesses.length) {
     const total = guesses.reduce((s, t) => s + abs(t.amount), 0n);
     control("guess", "Tebakan diterima tanpa diubah", "REVIEW", `${guesses.length} transaksi (${fmt(total)}) disetujui persis seperti tebakan dengan keyakinan rendah`, `${a.base}/ledger?entity=${e.id}`);
@@ -87,6 +79,20 @@ export async function sanityControls(db: Db, a: Args): Promise<Control[]> {
 
   if (out.length === 0) out.push({ key: `sanity:${e.id}`, title: "Kewajaran pembukuan", scope: e.shortName, status: "PASS", detail: "Tidak ada saldo janggal, pembiayaan di Laba Rugi, bulan kosong atau tebakan yang diterima begitu saja" });
   return out;
+}
+
+/** Bank rows behind the financing and guess checks; shared with the AI close review so both see the same rows. */
+export async function flaggedBankRows(db: Db, clientId: string, entityId: string, start: Date, end: Date) {
+  const txs = await db.bankTransaction.findMany({
+    where: { entityId, date: { gte: start, lte: end }, status: { in: ["POSTED", "REVIEWED"] }, accountCode: { not: null } },
+    orderBy: [{ date: "asc" }, { rowNumber: "asc" }],
+  });
+  const plCodes = new Set((await db.account.findMany({ where: { clientId, type: { in: ["PENDAPATAN", "BEBAN"] } }, select: { code: true } })).map((x) => x.code));
+  return {
+    txs,
+    financing: txs.filter((t) => plCodes.has(t.accountCode!) && FINANCING.test(t.description) && !FINANCING_COST.test(t.description)),
+    guesses: txs.filter((t) => t.status === "REVIEWED" && (t.method === "HEURISTIC" || (t.method === "AI" && t.confidence < GUESS_CONFIDENCE))),
+  };
 }
 
 const abs = (v: bigint) => (v < 0n ? -v : v);
