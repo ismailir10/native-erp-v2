@@ -116,6 +116,7 @@ describe("client COA-first reports", () => {
       await line(x.id, "1110", dateOnly(2026, 1, 5), 20n);
       await line(y.id, "1110", dateOnly(2025, 12, 1), 10n);
       await line(y.id, "2110", dateOnly(2026, 1, 5), 20n);
+      await line(x.id, "6180", dateOnly(2026, 2, 3), 5n); // after the report date: not part of the January TB
     });
     const tb = await sourceTrialBalance(db, pt, dateOnly(2026, 1, 31));
     const row = (id: string) => tb.find((r) => r.sourceAccountId === id)!;

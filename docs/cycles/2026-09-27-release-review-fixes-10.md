@@ -17,6 +17,11 @@ The review of the staging → main promotion (#37, head e41a53f) found two more 
 - [x] A client-account TB row takes its type and Buku account from the same posted basis as its ledger: the earliest posted account
       of the file's type, else the earliest posted (rule 9a).
 
+- [x] Review round 2 (#47):
+  - Depreciation schedules match asset lines one to one, so two lines of the same amount each need their own schedule.
+  - The posted basis of a TB row only looks at lines up to the report date. A later posting to another account can't break an
+    earlier report.
+
 **Non-goals:** storing a schedule's source line (a schema change).
 **Assumptions:** a depreciation schedule whose amount was edited and that isn't the last one for the entry may leave one extra
 suggestion visible. That is harmless: it is only a suggestion.
@@ -24,6 +29,7 @@ suggestion visible. That is harmless: it is only a suggestion.
 ## Tasks
 - [x] T1 Candidates: a schedule covers only its own line — accept: new test fails on the old scan
 - [x] T2 Source TB rows use the posted basis — accept: new test fails on the old aggregation
+- [x] T3 One-to-one depreciation matching; as-of horizon for the TB basis — accept: both new cases fail on the previous commit
 
 ## Implementation
 - T1: `lib/adjust/candidates.ts` drops the entry-level filter and adds `covered(line, net)`, based on the entry's schedules.
@@ -35,6 +41,12 @@ suggestion visible. That is harmless: it is only a suggestion.
   rows of client accounts posted to more than one Buku account. Test in `tests/db/client-coa.test.ts`: two client accounts posted
   to 2110 / 1110 in opposite orders present as 2110 LIABILITAS and 1110 ASET.
   Rules 5a and 9a wording updated.
+- T3:
+  - `lib/adjust/candidates.ts` precomputes the covered asset lines per entry. Each amount match consumes one schedule; with at
+    least as many schedules as asset lines, all are covered.
+  - `lib/reports/source.ts` adds `date: { lte: asOf }` to the basis query and skips an account it didn't load.
+  - Tests: two 15 jt printers on one entry, where one schedule leaves one candidate; and a February posting to 6180 on a client
+    account whose January TB is asked.
 
 ## Verification
 - T1: the new test fails on the old scan ("expected [] to deeply equal [ 'DEPRECIATION:buy:30000000', …"; the car and rack
@@ -47,6 +59,14 @@ suggestion visible. That is harmless: it is only a suggestion.
   - `npm run build` ✓.
   - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
   - `test:e2e` → 10 passed (51.3s).
+- T3: both new cases fail on the previous commit (candidates: "expected +0 to be 1", both printers hidden; TB: "TypeError: Cannot
+  read properties of undefined (reading 'type')") and pass after.
+- T3 gates:
+  - Lint and typecheck clean.
+  - `npm test` → Test Files 61 passed (61), Tests 457 passed (457).
+  - `npm run build` ✓.
+  - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
+  - `test:e2e` → 10 passed (51.7s).
 
 ## Ship Notes
 No migration, no env change. Merges to staging, then rides the promotion PR #37.

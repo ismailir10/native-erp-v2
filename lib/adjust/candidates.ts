@@ -70,18 +70,24 @@ export async function scheduleCandidates(db: Db, clientId: string, year: number,
       groups.set(k, g);
     }
     // A schedule made from an entry covers only the line it came from, so a compound entry's other lines stay proposed. Prepaid and
-    // deferred-revenue schedules name that account; a depreciation schedule doesn't (6180/1219), so it covers the asset line of its
+    // deferred-revenue schedules name that account; a depreciation schedule doesn't (6180/1219), so it covers one asset line of its
     // amount, or every asset line once the entry has as many depreciation schedules as asset lines (amounts edited on creation).
-    const from = await db.adjustmentSchedule.findMany({ where: { entityId: e.id, sourceEntryId: { in: [...new Set(lines.map((l) => l.entryId))] } } });
-    const assetLines = (entryId: string) => [...groups.values()].filter((g) => g.line.entryId === entryId && g.line.account.fsLine === "ASET_TETAP").length;
-    const covered = (l: (typeof lines)[number], net: bigint) => {
-      const mine = from.filter((s) => s.sourceEntryId === l.entryId);
-      if (l.account.fsLine !== "ASET_TETAP") return mine.some((s) => s.debitAccountId === l.accountId || s.creditAccountId === l.accountId);
-      const deps = mine.filter((s) => s.kind === "DEPRECIATION");
-      return deps.some((s) => s.amount === net) || deps.length >= assetLines(l.entryId);
-    };
-    for (const { line: l, net } of groups.values()) {
-      if (covered(l, net)) continue;
+    const from = await db.adjustmentSchedule.findMany({ where: { entityId: e.id, sourceEntryId: { in: [...new Set(lines.map((l) => l.entryId))] } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+    // Depreciation schedules are matched to asset lines one to one (a schedule covers one line, even when two lines share an amount).
+    const coveredAssets = new Set<string>();
+    for (const entryId of new Set(lines.map((l) => l.entryId))) {
+      const assets = [...groups.entries()].filter(([, g]) => g.line.entryId === entryId && g.line.account.fsLine === "ASET_TETAP");
+      const pool = from.filter((s) => s.sourceEntryId === entryId && s.kind === "DEPRECIATION");
+      if (pool.length >= assets.length) { for (const [k] of assets) coveredAssets.add(k); continue; }
+      for (const [k, g] of assets) {
+        const i = pool.findIndex((s) => s.amount === g.net);
+        if (i >= 0) { pool.splice(i, 1); coveredAssets.add(k); }
+      }
+    }
+    const covered = (k: string, l: (typeof lines)[number]) =>
+      l.account.fsLine === "ASET_TETAP" ? coveredAssets.has(k) : from.some((s) => s.sourceEntryId === l.entryId && (s.debitAccountId === l.accountId || s.creditAccountId === l.accountId));
+    for (const [k, { line: l, net }] of groups) {
+      if (covered(k, l)) continue;
       const when = formatDate(l.entry.date);
       // What happened, in the source's words: the bank description for a reviewed bank line, else the journal memo.
       const what = (l.entry.bankTransaction?.description ?? l.memo ?? l.entry.memo).replace(/^Reklasifikasi:\s*/i, "").slice(0, 90);

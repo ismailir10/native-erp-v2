@@ -80,14 +80,14 @@ export async function sourceTrialBalance(db: Db, entityId: string, asOf: Date, s
   const mixed = [...rows.values()].filter((r) => r.sourceAccountId && lines.filter((l) => l.sourceAccountId === r.sourceAccountId).length > 1);
   if (mixed.length) {
     const posted = await db.journalLine.findMany({
-      where: { entityId, sourceAccountId: { in: mixed.map((r) => r.sourceAccountId!) } },
+      where: { entityId, sourceAccountId: { in: mixed.map((r) => r.sourceAccountId!) }, date: { lte: asOf } }, // the same horizon as the rows
       distinct: ["sourceAccountId", "accountId"],
       orderBy: [{ date: "asc" }, { id: "asc" }],
       select: { sourceAccountId: true, accountId: true, date: true, id: true },
     });
     posted.sort((x, y) => +x.date - +y.date || x.id.localeCompare(y.id));
     for (const r of mixed) {
-      const mine = posted.filter((p) => p.sourceAccountId === r.sourceAccountId).map((p) => accounts.get(p.accountId)!);
+      const mine = posted.filter((p) => p.sourceAccountId === r.sourceAccountId).flatMap((p) => accounts.get(p.accountId) ?? []);
       const a = postedBasis(mine, sources.get(r.sourceAccountId!)?.typeHint ?? null);
       if (a) Object.assign(r, { type: a.type, accountCode: a.code, clientAccount: { code: a.code, name: a.name } });
     }
