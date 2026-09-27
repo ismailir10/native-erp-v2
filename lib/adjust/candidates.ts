@@ -1,0 +1,105 @@
+import type { Db } from "@/lib/db";
+import type { ScheduleKind } from "@/lib/generated/prisma/enums";
+import { ACCOUNT_CODES } from "@/lib/coa/template";
+import { formatDate, periodBounds } from "@/lib/format";
+import { scanLedger } from "@/lib/controls/anomaly";
+
+/**
+ * Candidates for new adjustment schedules, read from the period's ledger (deterministic, cycle adjustment-schedules).
+ * Shown as suggestions with a prefilled form; nothing is created until the accountant clicks, and they never block the
+ * close. A candidate disappears once a schedule cites its source entry (accruals: once an accrual for that account starts
+ * this month).
+ */
+
+export const DEFAULT_MONTHS: Record<ScheduleKind, number> = { DEPRECIATION: 48, AMORTIZATION: 12, ACCRUAL: 1 };
+const DEPRECIATION_EXPENSE = "6180";
+const ACCUMULATED_DEPRECIATION = "1219";
+const ACCRUED_EXPENSES = "2150";
+const DEFERRED_REVENUE = "2160";
+const SERVICE_REVENUE = "4110";
+const DEFERRED_NAME = /diterima di muka|unearned|deferred revenue/i;
+
+export type Candidate = {
+  key: string;
+  kind: ScheduleKind;
+  entity: { id: string; shortName: string; functionalCurrency: string };
+  /** What the ledger shows, e.g. "Pembelian aset tetap 19 Agu 2026". */
+  reason: string;
+  memo: string;
+  /** null = the accountant picks (the expense a prepayment is amortised into). */
+  debitCode: string | null;
+  creditCode: string;
+  amount: bigint;
+  months: number;
+  startYear: number;
+  startMonth: number;
+  sourceEntryId: string | null;
+};
+
+function next(year: number, month: number) {
+  return month === 12 ? { year: year + 1, month: 1 } : { year, month: month + 1 };
+}
+
+export async function scheduleCandidates(db: Db, clientId: string, year: number, month: number): Promise<Candidate[]> {
+  const { start, end } = periodBounds(year, month);
+  const entities = await db.entity.findMany({ where: { clientId }, orderBy: { name: "asc" } });
+  const codes = new Set((await db.account.findMany({ where: { clientId }, select: { code: true } })).map((a) => a.code));
+  const nm = next(year, month);
+  const out: Candidate[] = [];
+  for (const e of entities) {
+    const ent = { id: e.id, shortName: e.shortName, functionalCurrency: e.functionalCurrency };
+    const scan = await scanLedger(db, clientId, e.id, year, month);
+    const floor = scan.materiality ?? 1n;
+    const lines = await db.journalLine.findMany({
+      where: {
+        entityId: e.id,
+        date: { gte: start, lte: end },
+        entry: { kind: { not: "OPENING" }, scheduleId: null, schedulesFrom: { none: {} } },
+        OR: [{ account: { fsLine: { in: ["ASET_TETAP", "BIAYA_DIBAYAR_DIMUKA"] } } }, { account: { code: DEFERRED_REVENUE } }, ...["diterima di muka", "unearned", "deferred revenue"].map((w) => ({ account: { type: "LIABILITAS" as const, name: { contains: w, mode: "insensitive" as const } } }))],
+      },
+      include: { account: true, entry: { select: { id: true, memo: true, date: true } } },
+      orderBy: [{ date: "asc" }, { id: "asc" }],
+    });
+    // One candidate per source entry and account, on the net movement of that entry.
+    const groups = new Map<string, { line: (typeof lines)[number]; net: bigint }>();
+    for (const l of lines) {
+      const k = `${l.entryId}|${l.accountId}`;
+      const g = groups.get(k) ?? { line: l, net: 0n };
+      g.net += l.debit - l.credit;
+      groups.set(k, g);
+    }
+    for (const { line: l, net } of groups.values()) {
+      const when = formatDate(l.entry.date);
+      const what = (l.memo ?? l.entry.memo).slice(0, 60);
+      const base = { entity: ent, sourceEntryId: l.entry.id, startYear: nm.year, startMonth: nm.month };
+      if (l.account.fsLine === "ASET_TETAP" && net >= floor && codes.has(DEPRECIATION_EXPENSE) && codes.has(ACCUMULATED_DEPRECIATION)) {
+        out.push({ ...base, key: `DEPRECIATION:${e.id}:${l.entry.id}:${l.account.code}`, kind: "DEPRECIATION", reason: `Pembelian ${l.account.code} ${l.account.name} ${when}: ${what}`, memo: `Penyusutan ${what}`.slice(0, 80), debitCode: DEPRECIATION_EXPENSE, creditCode: ACCUMULATED_DEPRECIATION, amount: net, months: DEFAULT_MONTHS.DEPRECIATION });
+      } else if (l.account.fsLine === "BIAYA_DIBAYAR_DIMUKA" && net >= floor) {
+        out.push({ ...base, key: `AMORTIZATION:${e.id}:${l.entry.id}:${l.account.code}`, kind: "AMORTIZATION", reason: `Dibayar di muka ke ${l.account.code} ${when}: ${what}`, memo: `Amortisasi ${what}`.slice(0, 80), debitCode: null, creditCode: l.account.code, amount: net, months: DEFAULT_MONTHS.AMORTIZATION });
+      } else if (l.account.type === "LIABILITAS" && (l.account.code === DEFERRED_REVENUE || DEFERRED_NAME.test(l.account.name)) && -net >= floor && codes.has(SERVICE_REVENUE)) {
+        out.push({ ...base, key: `AMORTIZATION:${e.id}:${l.entry.id}:${l.account.code}`, kind: "AMORTIZATION", reason: `Diterima di muka ke ${l.account.code} ${when}: ${what}`, memo: `Pengakuan pendapatan ${what}`.slice(0, 80), debitCode: l.account.code, creditCode: SERVICE_REVENUE, amount: -net, months: DEFAULT_MONTHS.AMORTIZATION });
+      }
+    }
+
+    // A recurring cost missing this month: movement in each of the 3 baseline months, none now → accrue the average.
+    if (scan.baseline.length === 3 && codes.has(ACCRUED_EXPENSES)) {
+      // Accounts a running schedule already covers, and accruals already started for this month.
+      const scheduled = new Set(
+        (await db.adjustmentSchedule.findMany({ where: { entityId: e.id }, select: { debitAccountId: true, kind: true, startYear: true, startMonth: true, stoppedAt: true } }))
+          .filter((s) => (s.kind === "ACCRUAL" ? s.startYear === year && s.startMonth === month : !s.stoppedAt))
+          .map((s) => s.debitAccountId),
+      );
+      const accounts = await db.account.findMany({ where: { clientId, type: "BEBAN", code: { notIn: [ACCOUNT_CODES.ROUNDING, ACCOUNT_CODES.FX_GAIN_LOSS] } } });
+      for (const a of accounts) {
+        const series = scan.series.get(a.id);
+        if (!series || scheduled.has(a.id)) continue;
+        const prior = series.slice(0, 3);
+        if (series[3] !== 0n || prior.some((v) => v <= 0n)) continue;
+        const average = prior.reduce((s, v) => s + v, 0n) / 3n;
+        if (average < floor) continue;
+        out.push({ key: `ACCRUAL:${e.id}:${a.code}`, kind: "ACCRUAL", entity: ent, reason: `${a.code} ${a.name} tercatat tiap bulan (${scan.baseline.join(", ")}), bulan ini belum`, memo: `Akrual ${a.name}`.slice(0, 80), debitCode: a.code, creditCode: ACCRUED_EXPENSES, amount: average, months: 1, startYear: year, startMonth: month, sourceEntryId: null });
+      }
+    }
+  }
+  return out;
+}

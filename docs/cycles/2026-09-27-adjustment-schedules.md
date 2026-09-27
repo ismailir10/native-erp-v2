@@ -30,16 +30,16 @@ Schedules (`lib/adjust/schedules.ts`, new)
       (corrections = new entries). A schedule can't be edited after its first posting — stop it and create a new one.
 
 Candidates from the ledger (deterministic, shown, never created on their own)
-- [ ] **Fixed-asset purchase:** a debit this period on an `ASET_TETAP` account (not an opening entry, not already a
+- [x] **Fixed-asset purchase:** a debit this period on an `ASET_TETAP` account (not an opening entry, not already a
       schedule's source) → *Jadwal penyusutan*: Dr 6180 / Cr 1219, amount = the line's debit, start next month,
       48 months (editable; straight line).
-- [ ] **Prepayment / deferred revenue:** a debit on `BIAYA_DIBAYAR_DIMUKA` → *Amortisasi*: Dr (accountant picks the
+- [x] **Prepayment / deferred revenue:** a debit on `BIAYA_DIBAYAR_DIMUKA` → *Amortisasi*: Dr (accountant picks the
       expense) / Cr that account, 12 months from next month; a credit on 2160 Pendapatan Diterima di Muka → Dr 2160 / Cr 4110,
       12 months.
-- [ ] **Recurring cost missing this month:** a BEBAN account with movement in each of the 3 baseline months and none this
+- [x] **Recurring cost missing this month:** a BEBAN account with movement in each of the 3 baseline months and none this
       month (reuse `scanLedger` series from C2) → *Akrual*: Dr that account / Cr 2150 Beban Masih Harus Dibayar, amount =
       baseline average (editable), reversed next month.
-- [ ] Amounts ≥ the C2 materiality when the entity has a baseline (any amount otherwise); 7190/7200, bank, suspense, clearing, intercompany never; a candidate disappears once a
+- [x] Amounts ≥ the C2 materiality when the entity has a baseline (any amount otherwise); 7190/7200, bank, suspense, clearing, intercompany never; a candidate disappears once a
       schedule cites its source entry (accruals: once an ACCRUAL schedule exists for that account and month).
 
 Where it shows
@@ -82,7 +82,7 @@ proration); editing a schedule after it has posted; posting on a timer.
 
 ## Tasks
 - [x] T1 Schema + migration + `lib/adjust/schedules.ts` (create / installments / proposals / post / post-all / stop) + DB tests — accept: migration applies on a fresh DB; `tests/db/schedules.test.ts` green. Reuse `postJournal`, `periodBounds`, `parseMoney`.
-- [ ] T2 Candidates from the ledger + tests — accept: three candidate kinds and look-alikes in tests. Depends T1. Reuse `scanLedger` (C2).
+- [x] T2 Candidates from the ledger + tests — accept: three candidate kinds and look-alikes in tests. Depends T1. Reuse `scanLedger` (C2).
 - [ ] T3 UI + actions: Jurnal Penyesuaian sections, Tutup Buku card + `sched:` control — accept: browser check desktop + 390 px; actions resolve the client via `getClientForFirm`. Depends T1–T2. Load `ui-rules`.
 - [ ] T4 Demo + walk + docs (accounting-rules rule, ADR 0009 note, README close row) — accept: `demo:reset && verify:books` ALL PASS; investor e2e green. Depends T3. Load `demo-data`.
 - [ ] T5 End-of-cycle gates — accept: `build`, `verify:books`, full `test:e2e` green.
@@ -90,8 +90,10 @@ proration); editing a schedule after it has posted; posting on a timer.
 ## Implementation
 - Plan: T1–T5 sequential, inline (each layer builds on the previous: schedules → candidates → UI → demo walk).
 - T1: `prisma/schema.prisma` + migration `20260927150000_adjustment_schedules` (enum `ScheduleKind`, table `AdjustmentSchedule`, `JournalEntry.scheduleId` / `installment` with a unique index; CHECKs: amount > 0, 1 ≤ months ≤ 600, start month 1–12, debit ≠ credit account, schedule and installment set together). `lib/ledger/post.ts` — `PostInput` carries `scheduleId` / `installment`. `lib/adjust/schedules.ts` — `installments()` (⌊total/n⌋, remainder on the last; reversal = one swapped installment dated the 1st), `createSchedule()` (entity and accounts of the client, never bank / clearing / 1999, `parseMoney` in the entity's currency, ACCRUAL forced to 1 month + reverse, source entry must be the entity's), `dueProposals()` (running schedules, installment in the month, not yet posted), `postInstallment()` (one `postJournal` ADJUSTMENT, memo `<memo> (k/n)` or `Pembalikan: <memo>`; the unique index turns a second click into "sudah dicatat"), `postAllDue()`, `stopSchedule()`, `listSchedules()` (posted count / amount, remaining, last month). Tests: `tests/db/schedules.test.ts`.
+- T2: `lib/adjust/candidates.ts` — `scheduleCandidates()` per entity: the period's non-opening lines on `ASET_TETAP`, `BIAYA_DIBAYAR_DIMUKA` and deferred-revenue liabilities (2160 or a name with *diterima di muka / unearned / deferred revenue*), netted per entry and account, excluding entries that are a schedule's installment or already a schedule's source; ≥ C2 materiality (1 minor unit without a baseline). Fixed asset → DEPRECIATION 6180/1219, 48 months from next month; prepayment → AMORTIZATION (debit left for the accountant) / that account, 12 months; deferred revenue → Dr the liability / Cr 4110, 12 months. Accrual: a BEBAN account (7190/7200 never) with positive movement in all 3 baseline months (C2 `scanLedger` series) and none now → ACCRUAL Dr it / Cr 2150 at the average, unless a running schedule debits it or an accrual already starts this month. Tests: `tests/db/schedule-candidates.test.ts` (three kinds + opening entry / below materiality / already scheduled / < 3 baseline months).
 
 ## Verification
 - T1: fresh DB `prisma migrate deploy` → "All migrations have been successfully applied." with the five CHECK constraints present; lint + typecheck clean; `npm test` → Test Files 54 passed (54), Tests 400 passed (400).
+- T2: lint + typecheck clean; `npm test` → Test Files 55 passed (55), Tests 404 passed (404).
 
 ## Ship Notes
