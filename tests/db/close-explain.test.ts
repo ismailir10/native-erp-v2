@@ -156,6 +156,11 @@ describe("close copilot — Jelaskan", () => {
     expect(await reclassedBankLine(db, g.pt.entity.id, [first.id], splitEntry, "IDR")).toBe("AMBIGUOUS");
     const oneLine = { memo: "Reklasifikasi", lines: [l("4100", "D", "Rp 100.000.000"), l("2210", "K", "Rp 100.000.000")] };
     expect(await reclassedBankLine(db, g.pt.entity.id, [first.id], oneLine, "IDR")).toBe(first.id);
+    // The ledger anomaly scans cite the journal line or entry behind a bank row: still that bank line, never a free journal.
+    const onRevenue = await db.journalLine.findFirstOrThrow({ where: { entry: { bankTransactionId: first.id }, account: { code: "4100" } } });
+    expect(await reclassedBankLine(db, g.pt.entity.id, [`jl:${onRevenue.id}`], oneLine, "IDR")).toBe(first.id);
+    expect(await reclassedBankLine(db, g.pt.entity.id, [`je:${onRevenue.entryId}`], oneLine, "IDR")).toBe(first.id);
+    expect(await reclassedBankLine(db, g.pt.entity.id, [`jl:${onRevenue.id}`], splitEntry, "IDR")).toBe("AMBIGUOUS");
 
     // One cited → that one, even though the other has the lower id. (Same books: clear the cached answer to ask again.)
     await db.evidenceAiCache.deleteMany();

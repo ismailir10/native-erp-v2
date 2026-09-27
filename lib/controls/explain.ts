@@ -68,6 +68,20 @@ export async function explainControl(db: Db, firmId: string, clientId: string, y
 }
 
 /**
+ * The bank lines a draft's citations point at: bank rows cited directly, and the bank line behind a cited journal line (`jl:`) or
+ * entry (`je:`), as the ledger anomaly scans cite them, so a bank-derived row is never mistaken for a free journal.
+ */
+async function citedBankIds(db: Db, entityId: string, citedIds: string[]): Promise<string[]> {
+  const ids = (prefix: string) => citedIds.filter((r) => r.startsWith(prefix)).map((r) => r.slice(prefix.length));
+  const [lines, entries] = await Promise.all([
+    db.journalLine.findMany({ where: { id: { in: ids("jl:") }, entityId }, select: { entry: { select: { bankTransactionId: true } } } }),
+    db.journalEntry.findMany({ where: { id: { in: ids("je:") }, entityId }, select: { bankTransactionId: true } }),
+  ]);
+  const behind = [...lines.map((l) => l.entry.bankTransactionId), ...entries.map((e) => e.bankTransactionId)];
+  return [...new Set([...citedIds, ...behind.filter((id): id is string => !!id)])];
+}
+
+/**
  * A two-line draft that takes a cited bank line off its current account (the reverse side, its full amount) and onto another
  * one is a re-classification of that line: it must post through the review writer, never as a free journal (rule 3).
  * A draft that touches a cited bank line's account any other way (split amounts, several lines, several bank lines) can't go
@@ -75,7 +89,7 @@ export async function explainControl(db: Db, firmId: string, clientId: string, y
  */
 export async function reclassedBankLine(db: Db, entityId: string, citedIds: string[], entry: NonNullable<ControlExplainAnswer["entry"]>, currency: string): Promise<string | null | "AMBIGUOUS"> {
   if (citedIds.length === 0) return null;
-  const txs = await db.bankTransaction.findMany({ where: { id: { in: citedIds }, entityId, accountCode: { not: null } }, orderBy: { id: "asc" } });
+  const txs = await db.bankTransaction.findMany({ where: { id: { in: await citedBankIds(db, entityId, citedIds) }, entityId, accountCode: { not: null } }, orderBy: { id: "asc" } });
   const offLine = (t: (typeof txs)[number]) => {
     const abs = t.amount < 0n ? -t.amount : t.amount;
     const reverse = t.amount > 0n ? "D" : "K"; // money in was credited to its account: moving it off debits that account
