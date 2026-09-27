@@ -176,4 +176,32 @@ describe("rate table", () => {
     await postImport(db, g.client.id, st.importId);
     expect((await differs()).map((c) => c.message)).toEqual(["Kurs USD→SGD di file berbeda dari tabel Kurs pada 2 tanggal (4 Jan 2023: file 1,36, Kurs 1,31; 3 Jan 2023: file 1,35, Kurs 1,3). tabel Kurs tidak diubah."]);
   });
+
+  it("a draft staged before every stated rate was saved keeps its staged review and still gets the late date", async () => {
+    const g = await makeGroup();
+    await db.entity.update({ where: { id: g.pt.entity.id }, data: { functionalCurrency: "SGD" } });
+    await upsertRate(db, g.firm.id, { ...R("USD", "SGD", 2023, 1, 3, "SPOT", "1.30"), source: "MANUAL" });
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("GL");
+    ws.addRow(["Entity", "Entry Date", "Account Code", "Account Name", "Currency", "Debit", "Credit", "Notes"]);
+    for (const [day, rate] of [[3, "1.35"], [4, "1.36"]] as const) {
+      ws.addRow(["PT Uji", new Date(Date.UTC(2023, 0, day)), "10001", "Bank USD", "USD", 150000, 0, `Ref: D${day}; Rate: ${rate}`]);
+      ws.addRow(["PT Uji", new Date(Date.UTC(2023, 0, day)), "20000", "Loan Payable", "SGD", 0, 150000, ""]);
+    }
+    const st = await stageImport(db, { firmId: g.firm.id, clientId: g.client.id, fileName: "legacy.xlsx", data: Buffer.from(await wb.xlsx.writeBuffer()) });
+    if (st.status !== "STAGED") throw new Error("not staged");
+    const imp = await db.ledgerImport.findUniqueOrThrow({ where: { id: st.importId } });
+    const legacy = { ...(imp.data as Record<string, unknown>) };
+    delete legacy.stated; // as staged by the previous release
+    await db.ledgerImport.update({ where: { id: st.importId }, data: { data: legacy as never } });
+    await upsertFileRate(db, g.firm.id, { ...R("USD", "SGD", 2023, 1, 4, "SPOT", "1.31") });
+    await suggestMappings(db, { firmId: g.firm.id, clientId: g.client.id, provider: null, useAi: false });
+    const src = await importSourceAccounts(db, st.importId);
+    await acceptMappings(db, g.client.id, src.map((x) => ({ sourceAccountId: x.id, accountCode: x.suggestedCode!, method: x.suggestedBy! })));
+    await postImport(db, g.client.id, st.importId);
+    const messages = (await db.importCheck.findMany({ where: { ledgerImportId: st.importId, code: "FX_FILE_RATE_DIFFERS" }, orderBy: { id: "asc" } })).map((c) => c.message);
+    expect(messages).toHaveLength(2);
+    expect(messages[0]).toContain("pada 1 tanggal");
+    expect(messages[1]).toContain("4 Jan 2023: file 1,36, Kurs 1,31");
+  });
 });

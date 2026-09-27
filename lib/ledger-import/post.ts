@@ -314,12 +314,12 @@ export async function postImport(db: Db, clientId: string, importId: string, act
       }
       // Every rate the file states, checked again against the Kurs rows that now stand (known at staging, or filled since by another
       // import or the accountant): the rate-difference reviews become that complete set — no late date unflagged, no stale one kept.
-      // A draft staged before `stated` was saved keeps its staged reviews and only gains pairs they don't mention.
+      // A draft staged before `stated` was saved can't prove its staged reviews complete: it keeps them and gains every review
+      // posting finds that isn't already there word for word.
       const rateReviews = await fileRateChecks(tx as unknown as Db, imp.firmId, saved.stated ?? saved.rates ?? [], imp.currencyMode);
-      const staged = imp.checks.filter((c) => c.code === "FX_FILE_RATE_DIFFERS").map((c) => c.message);
-      const pairOf = (message: string) => message.slice(0, message.indexOf(" di file"));
+      const staged = new Set(imp.checks.filter((c) => c.code === "FX_FILE_RATE_DIFFERS").map((c) => c.message));
       if (saved.stated) await tx.importCheck.deleteMany({ where: { ledgerImportId: imp.id, code: "FX_FILE_RATE_DIFFERS" } });
-      const add = saved.stated ? rateReviews : rateReviews.filter((c) => !staged.some((m) => pairOf(m) === pairOf(c.message)));
+      const add = saved.stated ? rateReviews : rateReviews.filter((c) => !staged.has(c.message));
       if (add.length) await tx.importCheck.createMany({ data: add.map((c) => ({ ledgerImportId: imp.id, severity: c.severity, code: c.code, message: c.message, refs: c.refs })) });
       await tx.ledgerImport.update({ where: { id: imp.id }, data: { status: "POSTED", postedAt: new Date(), postedById: actorId ?? null, groupCount: posted } });
       return { entries: posted };

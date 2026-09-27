@@ -51,6 +51,10 @@ release merges.
   field keeps its staged reviews and only gains unflagged pairs. (2) more than 500 open conflicts are now reported as truncated
   instead of possibly reading as "none". Tests fail on the previous code.
 
+- Review of #40 (4f8411a): for a draft staged before `stated` existed, a pair already flagged still suppressed the late date. Such
+  a draft now keeps its staged reviews and gains every posting-time review that isn't already there word for word. Test simulates
+  a pre-release draft; fails on the previous code.
+
 ## Verification
 - T1: new tests fail on the previous code (2 failed | 10 passed; the rate race reproduces), pass after. Gates: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 437 passed (437); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (55.4s).
 - Review of #40: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 437 passed (437); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (54.8s).
@@ -58,6 +62,7 @@ release merges.
 - Review of #40 (cdb8251): lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 439 passed (439); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (51.8s).
 - Review of #40 (4372a6d): lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 440 passed (440); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (51.7s).
 - Review of #40 (0b133bb): lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 442 passed (442); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (54.2s).
+- Review of #40 (4f8411a): lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 443 passed (443); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (51.5s).
 
 ## Ship Notes
 No migration, no env change. Merges to staging, then rides the open promotion PR #37.
