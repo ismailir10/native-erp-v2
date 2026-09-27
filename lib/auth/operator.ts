@@ -18,6 +18,20 @@ function fail(error: { message: string } | null, fallback: string): never {
   throw new Error(error?.message ? `${fallback} (${error.message})` : fallback);
 }
 
+const PAGE = 1000;
+
+/** Every Auth page is searched: a large project's orphan may sit past the first page. */
+async function findAuthUser(auth: AuthApi, email: string) {
+  if (!auth.admin.listUsers) return undefined;
+  for (let page = 1; ; page++) {
+    const { data, error } = await auth.admin.listUsers({ page, perPage: PAGE });
+    if (error) fail(error, "Daftar pengguna Supabase tidak bisa dibaca.");
+    const users = data?.users ?? [];
+    const found = users.find((u) => u.email?.toLowerCase() === email);
+    if (found || users.length < PAGE) return found;
+  }
+}
+
 /**
  * CLI-only provisioning. Creates the Supabase user (invite email) and the firm member together.
  * A re-invitation of a revoked member lifts the ban and sends a fresh password link.
@@ -46,7 +60,7 @@ export async function inviteUser(db: Db, auth: AuthApi, input: { email: string; 
   if (!userId) {
     // The address may already be in Auth without a member (an earlier invitation whose member insert failed): take it over and
     // send a password link, instead of leaving the person impossible to provision.
-    const orphan = auth.admin.listUsers ? (await auth.admin.listUsers({ page: 1, perPage: 1000 })).data?.users.find((u) => u.email?.toLowerCase() === email) : undefined;
+    const orphan = await findAuthUser(auth, email);
     if (!orphan) fail(invited.error, "Undangan belum terkirim.");
     const unbanned = await auth.admin.updateUserById(orphan.id, { ban_duration: "none" });
     if (unbanned.error) fail(unbanned.error, "Akun yang sudah ada tidak bisa dipulihkan.");
@@ -57,8 +71,9 @@ export async function inviteUser(db: Db, auth: AuthApi, input: { email: string; 
   try {
     return await db.firmMember.create({ data: { userId, email, name, role, firmId: input.firmId } });
   } catch (e) {
-    // Never leave a just-created Auth user without its member; a retry then starts clean.
-    if (fresh) await auth.admin.deleteUser?.(userId).catch(() => undefined);
+    // Never leave a just-created Auth user without its member; a retry then starts clean. A concurrent invitation may have
+    // adopted it in the meantime (its member insert won the race): then the user is theirs and stays.
+    if (fresh && !(await db.firmMember.findUnique({ where: { userId } }).catch(() => null))) await auth.admin.deleteUser?.(userId).catch(() => undefined);
     throw e;
   }
 }
