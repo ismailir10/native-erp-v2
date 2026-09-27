@@ -45,14 +45,14 @@ No catch-all suggestions
       6190 → 61901–61999 then 6191–6199), never a template or special code.
 
 Suggestions always ready
-- [ ] `stageImport()` (both the manual and the evidence handoff paths) computes rule suggestions before returning; the
+- [x] `stageImport()` (both the manual and the evidence handoff paths) computes rule suggestions before returning; the
       panel opens with them. *Minta saran AI* asks only for accounts still without a suggestion.
 
 Mapping panel (`components/app/mapping-panel.tsx`)
-- [ ] Header counts: rules · AI · new accounts to create · without suggestion; the bulk "Terima saran aturan" says how many
+- [x] Header counts: rules · AI · new accounts to create · without suggestion; the bulk "Terima saran aturan" says how many
       accounts it will create. A row whose chosen target's type differs from the account's inferred type shows
       *Sisi akun berbeda* (review colour); a row pointed at a catch-all shows *akun penampung* with the new-account option.
-- [ ] NEW suggestions pre-select "+ Buat akun baru" with the FS line and the client's name filled in.
+- [x] NEW suggestions pre-select "+ Buat akun baru" with the FS line and the client's name filled in.
 
 Verification
 - [ ] `tests/db/mapping.test.ts` updated (generic rules → `{ method: "NEW", fsLine }`; specific rules unchanged) + new tests:
@@ -81,14 +81,16 @@ the AI prompt or budget; a rules editor per client; automatic merging of similar
 ## Tasks
 - [x] T1 Type inference with a learned code scheme + tests — accept: the seven Chickin examples resolve in a unit test; `tests/db/mapping.test.ts` green (`inferType` expectations kept). Reuse `normName`, `inferType`.
 - [x] T2 Generic rules → NEW suggestions, `new:<FS_LINE>` whitelist, wider `RANGES` + tests — accept: `suggestMappings` returns NEW for "Religious Festivity Allowance (THR)" and keeps 7100 for "Bank Charges"; `acceptMappings` creates the account. Depends T1.
-- [ ] T3 Suggestions at staging for both paths + panel counts/warnings/NEW pre-selection — accept: DB test on the evidence handoff draft; browser check on local real Chickin draft at desktop + 390 px; e2e green. Depends T2. Load `ui-rules`.
+- [x] T3 Suggestions at staging for both paths + panel counts/warnings/NEW pre-selection — accept: DB test on the evidence handoff draft; browser check on local real Chickin draft at desktop + 390 px; e2e green. Depends T2. Load `ui-rules`.
 - [ ] T4 `verify-real` mapping-quality report, run on real files; end-of-cycle gates — accept: 0 catch-all suggestions, none of the seven on the wrong side; `build`, `verify:books`, `test:e2e` green.
 
 ## Implementation
 - Plan: T1–T4 sequential, inline in worktree `../native-erp-v2-mapping` (branch `task/mapping-quality`) — the main checkout is in use by another session.
 - T1: `lib/ledger-import/mapping.ts` — `STRONG` / `WEAK` name evidence, `strongType`, `codeDigit`, `learnScheme` (majority type per leading digit, ≥ 3 votes ≥ 80 %), `inferType(code, name, scheme?)` in the order strong → scheme → weak → digit. Strong order: expense (excl. prepaid/accrued/payable/deferred), depreciation (excl. accumulated), payable (+ customer deposits), receivable/prepaid, revenue (excl. article/pph/prepaid), rent/pay, capital. Bare `utang` in exclusions had matched inside "pi**utang**" — word-bounded now. Rules: prepaid-tax matches "Prepaid … Tax/Article", "deferred expense" → 1170. `lib/ledger-import/post.ts` learns the scheme per staged file, stores the type on new source accounts and refreshes it on unmapped existing ones (accepted mappings untouched). Tests: `tests/db/mapping.test.ts` (scheme + the seven Chickin examples; all prior expectations kept).- T2: `lib/ledger-import/mapping.ts` — `generic` marker on the five catch-all rules (1140 → PIUTANG_LAIN, 2120 → UTANG_LAIN, 4110 → PENDAPATAN_USAHA, 4910 → PENDAPATAN_LAIN, 6190 → BEBAN_UMUM_ADM); a generic-only match returns `new:<FS_LINE>` / method `NEW` / 0.7 unless the name is itself a catch-all (`lain-lain`, `other`, `misc`, `sundry`, `umum`, `general`); `NEW_PREFIX`, `newFsLineOf()` whitelist against `FS_LINES` + `RANGES`; `acceptMappings` turns an accepted `new:` code into a created account named after the client's account; `createClientAccount` continues past a full 4-digit range with `<anchor>01…99` (1140 → 114001…, text-sorted right after the anchor). Tests updated (four `1140` expectations → `new:PIUTANG_LAIN`) + new cases (generic → NEW, catch-all names stay, `new:` accept, invalid line refused, 11 accounts past the 9-slot range).
+- T3: `lib/ledger-import/post.ts` — `stageImport` ends with rule-only `suggestMappings` (manual upload and evidence handoff alike); the duplicate call in `stageLedgerAction` removed. `components/app/mapping-panel.tsx` — `NEW` counts as a rule suggestion; `new:<FS_LINE>` pre-selects "+ Buat akun baru" with the line and the client's name; bulk button says "(membuat K akun baru)"; counts line `aturan · akun baru · AI · tanpa saran`; per-row *Sisi akun berbeda* (chosen account's type ≠ the file's type, from the option group) and *Akun penampung* nudge. Type inference: "Accumulated Depreciation/Amortization…" is a strong contra-asset signal ahead of the rent/expense lines (a real row read "Rent Office" as an expense). Test: a freshly staged draft carries suggestions with 0 AI usage.
 
 ## Verification
 - T1: lint + typecheck clean; `npm test` → Test Files 52 passed (52), Tests 382 passed (382).
 - T2: lint + typecheck clean; `npm test` → Test Files 52 passed (52), Tests 383 passed (383).
+- T3: lint + typecheck clean; `npm test` → Test Files 52 passed (52), Tests 384 passed (384). Browser (worktree dev server :3002, local demo DB, real Chickin `20_OPCO_GL_MASTER` staged): draft opens with "Terima 675 saran aturan (membuat 125 akun baru)", counts "aturan 550 · akun baru 125 · AI 0 · tanpa saran 16", NEW rows pre-filled (e.g. 11102 Trade Receivable – Related Parties → + Buat akun baru · Piutang lain-lain), 8 catch-all nudges on the first page, 1 wrong-side flag (the contra-asset false positive, fixed); 390 px: no page overflow. The 47 remaining catch-all suggestions are all catch-all names (Other/Lainnya/General), the specific "Short Term" rule, or APIC → 3110.
 ## Ship Notes

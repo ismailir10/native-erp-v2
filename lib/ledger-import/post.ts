@@ -9,7 +9,7 @@ import { formatRate, formatRateId, isCurrency, parseRate } from "@/lib/fx/curren
 import { ParseError } from "@/lib/import/types";
 import { detectTables, readSheets, readTable } from "@/lib/ledger-import/read";
 import { accountKey, planLedger, planNeraca, type Check, type CurrencyMode, type EntityInfo, type Plan, type PlanEntry } from "@/lib/ledger-import/check";
-import { inferType, learnScheme } from "@/lib/ledger-import/mapping";
+import { inferType, learnScheme, suggestMappings } from "@/lib/ledger-import/mapping";
 import type { NeracaRow, TableCandidate } from "@/lib/ledger-import/types";
 
 /**
@@ -216,6 +216,8 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
   const entityIds = [...entityInfos.values()].map((e) => e.entityId);
   const codes = [...plan.accounts.values()].map((a) => a.code);
   const unmapped = await db.sourceAccount.count({ where: { entityId: { in: entityIds }, code: { in: codes }, accountId: null } });
+  // Rule suggestions are free: every draft (manual upload or evidence handoff) opens with them. AI only on request.
+  await suggestMappings(db, { firmId: input.firmId, clientId: input.clientId, provider: null, useAi: false });
   return { status: "STAGED", importId: imp.id, mode: read.mode, checks: plan.checks, entries: entries.length, sourceAccounts: plan.accounts.size, unmapped };
 }
 

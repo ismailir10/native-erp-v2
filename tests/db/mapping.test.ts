@@ -3,6 +3,8 @@ import { db, makeGroup, resetDb } from "../helpers";
 import { AiAnswerError, MockProvider, type AiProvider } from "@/lib/ai/provider";
 import { acceptMappings, deterministicSuggestion, inferType, learnScheme, MappingError, suggestMappings } from "@/lib/ledger-import/mapping";
 import { COA_TEMPLATE } from "@/lib/coa/template";
+import ExcelJS from "exceljs";
+import { stageImport } from "@/lib/ledger-import/post";
 
 const chart = COA_TEMPLATE.map((a) => ({ code: a.code, name: a.name, type: a.type, fsLine: a.fsLine, isBank: false, isSuspense: !!a.isSuspense, isClearing: !!a.isClearing }));
 const sug = (name: string, code = "99999") => deterministicSuggestion({ code, name, typeHint: null }, { accounts: chart, priorByName: new Map() })?.accountCode ?? null;
@@ -64,6 +66,7 @@ describe("deterministic mapping", () => {
     expect(inferType("15001", "Deferred Expense", scheme)).toBe("ASET"); // deferred = prepaid, scheme digit 1
     expect(inferType("21001", "Customer Deposits", scheme)).toBe("LIABILITAS");
     expect(inferType("41000", "Expense Bank Administration", scheme)).toBe("BEBAN"); // strong word beats a 4 digit
+    expect(inferType("17040", "Accumulated Amortization Chickin Fresh - Rent Office", scheme)).toBe("ASET"); // contra asset, not the rent expense
     expect(inferType("1-1000", "BANK")).toBe("ASET"); // no scheme: weak word still counts
     expect(learnScheme([{ code: "10001", name: "Kas" }, { code: "10002", name: "Bank" }]).size).toBe(0); // < 3 strong votes: no opinion
     const sugWith = (code: string, name: string) => deterministicSuggestion({ code, name, typeHint: inferType(code, name, scheme) }, { accounts: chart, priorByName: new Map() })?.accountCode ?? null;
@@ -166,5 +169,22 @@ describe("suggestMappings + acceptMappings", () => {
     expect(codes).toEqual(["1140", "114001", "114002", "1141", "1142", "1143", "1144", "1145", "1146", "1147", "1148", "1149"]); // text order: the overflow codes sit right after their anchor
     await expect(acceptMappings(db, g.client.id, [{ sourceAccountId: a.id, accountCode: "1999", method: "MANUAL" }])).rejects.toThrow(MappingError);
     await expect(acceptMappings(db, g.client.id, [{ sourceAccountId: a.id, accountCode: "1101", method: "MANUAL" }])).rejects.toThrow(MappingError);
+  });
+
+  it("a freshly staged draft already carries rule suggestions (manual upload and evidence handoff share stageImport)", async () => {
+    const g = await makeGroup();
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("GL");
+    ws.addRow(["Entity", "Entry Date", "Account Code", "Account Name", "Debit", "Credit"]);
+    ws.addRow(["PT Uji", new Date(Date.UTC(2026, 0, 31)), "10000", "Kas Kecil", 100, 0]);
+    ws.addRow(["PT Uji", new Date(Date.UTC(2026, 0, 31)), "63005", "Platform Subscription Expense", 0, 100]);
+    const st = await stageImport(db, { firmId: g.firm.id, clientId: g.client.id, fileName: "gl.xlsx", data: Buffer.from(await wb.xlsx.writeBuffer()) });
+    if (st.status !== "STAGED") throw new Error("not staged");
+    const src = await db.sourceAccount.findMany({ where: { clientId: g.client.id }, orderBy: { code: "asc" } });
+    expect(src.map((s) => [s.suggestedCode, s.suggestedBy, s.accountId])).toEqual([
+      ["1110", "NAME", null], // exact template name
+      ["new:BEBAN_UMUM_ADM", "NEW", null],
+    ]);
+    expect(await db.aiUsage.count()).toBe(0);
   });
 });

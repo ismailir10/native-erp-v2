@@ -33,12 +33,13 @@ export const normName = (s: string) =>
 export type CodeScheme = Map<string, AccountType>;
 
 const STRONG: [RegExp, AccountType, RegExp?][] = [
+  [/(akumulasi|accumulat).*(penyusutan|depreciation|amortis|amortiz|deplesi|depletion)/, "ASET"], // contra asset, before "depreciation" reads as an expense
   [/(expense|beban|biaya|cost of|cogs|hpp|harga pokok|\bloss\b|manfaat pajak|bank charges?|bank fees?|admin(istrasi)? bank|provisi|materai|stamp duty)/, "BEBAN", /(prepaid|dibayar di ?muka|accrued|accured|payable|\butang\b|\bhutang\b|unearned|diterima di ?muka|deferred|ditangguhkan)/],
   [/(depreciation|penyusutan|amortisasi|amortization|amortisation)/, "BEBAN", /(accumulated|akumulasi|accumulat)/],
   [/(payable|\butang\b|\bhutang\b|accrued|accured|masih harus|liabilit|kewajiban|long term|jangka panjang|non ?bank|\bloan\b|pinjaman|diterima di ?muka|unearned|customer deposits?|deposit pelanggan|uang muka pelanggan)/, "LIABILITAS", /(loan to|piutang|receivable)/],
   [/(receivable|piutang|loan to|placement|penempatan|investment|investasi|tax asset|dibayar di ?muka|prepaid|advance|uang muka)/, "ASET"],
   [/(revenue|income|pendapatan|penjualan|\bsales\b|\bgain\b)/, "PENDAPATAN", /(payable|receivable|tax payable|diterima di ?muka|unearned|deferred|article|pasal|\bpph\b|prepaid)/],
-  [/(\bsewa\b|\brent(al)?\b|\bhonor|\bgaji\b|\bupah\b|salar|\bwages\b)/, "BEBAN", /(prepaid|dibayar di ?muka|advance|uang muka|deposit|guarantee|jaminan|receivable|piutang|accrued|accured|payable|\butang\b|\bhutang\b|pembiayaan|liabilit|hak guna|right of use)/],
+  [/(\bsewa\b|\brent(al)?\b|\bhonor|\bgaji\b|\bupah\b|salar|\bwages\b)/, "BEBAN", /(prepaid|dibayar di ?muka|advance|uang muka|deposit|guarantee|jaminan|receivable|piutang|accrued|accured|payable|\butang\b|\bhutang\b|pembiayaan|liabilit|hak guna|right of use|akumulasi|accumulat|depreciation|penyusutan|amorti)/],
   [/(capital|modal|saham|shares?|agio|premium|retained|laba ditahan|saldo laba|earnings|dividen|prive)/, "EKUITAS"],
 ];
 const WEAK: [RegExp, AccountType][] = [

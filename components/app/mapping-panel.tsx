@@ -30,7 +30,13 @@ export type MappingRow = {
 type Option = { code: string; name: string; group: string };
 const NEW = "__new__";
 const NEW_ITEM = [{ value: NEW, label: "+ Buat akun baru" }];
-const RULES = ["PRIOR", "NAME", "KEYWORD"];
+const RULES = ["PRIOR", "NAME", "KEYWORD", "NEW"];
+/** A rule that only knows the side of the books proposes a new account: `new:<FS_LINE>` (lib/ledger-import/mapping.ts). */
+const NEW_PREFIX = "new:";
+const suggestedNewLine = (code: string | null) => (code?.startsWith(NEW_PREFIX) ? code.slice(NEW_PREFIX.length) : null);
+/** One-line catch-alls: right side, no detail. */
+const CATCH_ALLS: Record<string, string> = { "1140": "Piutang lain-lain", "2120": "Utang lain-lain", "4110": "Pendapatan jasa", "4910": "Pendapatan lain-lain", "6190": "Beban umum lain-lain" };
+const TYPE_LABEL: Record<string, string> = { ASET: "Aset", LIABILITAS: "Liabilitas", EKUITAS: "Ekuitas", PENDAPATAN: "Pendapatan", BEBAN: "Beban" };
 const PAGE = 100;
 /** "Buat akun baru" starts on the FS line that fits the account's type. */
 const DEFAULT_FS: Record<string, string> = { ASET: "PIUTANG_LAIN", LIABILITAS: "UTANG_LAIN", EKUITAS: "MODAL", PENDAPATAN: "PENDAPATAN_LAIN", BEBAN: "BEBAN_UMUM_ADM" };
@@ -63,8 +69,11 @@ export function MappingPanel({
 
   const unmapped = rows.filter((r) => !r.mappedCode);
   const ruleReady = unmapped.filter((r) => r.suggestedCode && RULES.includes(r.suggestedBy ?? ""));
+  const newReady = ruleReady.filter((r) => suggestedNewLine(r.suggestedCode));
   const aiReady = unmapped.filter((r) => r.suggestedCode && r.suggestedBy === "AI");
   const noSuggestion = unmapped.filter((r) => !r.suggestedCode);
+  // The type each Buku account belongs to, from the option group label ("Beban · Beban umum & administrasi").
+  const typeOfCode = new Map(options.map((o) => [o.code, o.group.split(" · ")[0]]));
   const visible = (showAll ? rows : unmapped).slice(0, limit);
 
   async function run(key: string, fn: () => Promise<void>) {
@@ -91,7 +100,7 @@ export function MappingPanel({
           disabled={locked || !ruleReady.length || busy !== null}
           onClick={() => accept(ruleReady.map((r) => ({ sourceAccountId: r.id, accountCode: r.suggestedCode!, method: r.suggestedBy! })), "rules")}
         >
-          {busy === "rules" ? <Loader2 className="animate-spin" /> : <Check />} Terima {ruleReady.length} saran aturan
+          {busy === "rules" ? <Loader2 className="animate-spin" /> : <Check />} Terima {ruleReady.length} saran aturan{newReady.length ? ` (membuat ${newReady.length} akun baru)` : ""}
         </Button>
         <Button
           variant="outline"
@@ -121,6 +130,11 @@ export function MappingPanel({
       <div className="flex items-center justify-between gap-2 text-sm">
         <span className="text-muted-foreground">
           {unmapped.length ? `${unmapped.length} dari ${rows.length} akun belum dipetakan` : `Semua ${rows.length} akun sudah dipetakan`}
+          {unmapped.length > 0 && (
+            <span className="ml-2 text-xs" data-testid="mapping-counts">
+              · aturan {ruleReady.length - newReady.length} · akun baru {newReady.length} · AI {aiReady.length} · tanpa saran {noSuggestion.length}
+            </span>
+          )}
         </span>
         <Button variant="ghost" size="sm" onClick={() => { setShowAll((v) => !v); setLimit(PAGE); }}>
           {showAll ? "Tampilkan yang belum saja" : `Tampilkan semua (${rows.length})`}
@@ -140,11 +154,14 @@ export function MappingPanel({
             </TableHeader>
             <TableBody>
               {visible.map((r) => {
-                const value = choice[r.id] ?? r.mappedCode ?? r.suggestedCode ?? "";
+                const newLine = suggestedNewLine(r.suggestedCode);
+                const value = choice[r.id] ?? r.mappedCode ?? (newLine ? NEW : r.suggestedCode) ?? "";
                 const changed = value !== (r.mappedCode ?? "");
                 const low = r.suggestedBy === "AI" && (r.confidence ?? 0) < 0.7 && !r.mappedCode;
                 const creating = value === NEW;
-                const na = newAcc[r.id] ?? { fsLine: DEFAULT_FS[r.typeHint ?? ""] ?? fsLines[0]?.key ?? "", name: r.name };
+                const na = newAcc[r.id] ?? { fsLine: newLine ?? DEFAULT_FS[r.typeHint ?? ""] ?? fsLines[0]?.key ?? "", name: r.name };
+                const sideDiffers = !creating && !!value && !!r.typeHint && !!typeOfCode.get(value) && typeOfCode.get(value) !== TYPE_LABEL[r.typeHint];
+                const catchAll = !creating && !!value && !r.mappedCode && CATCH_ALLS[value];
                 return (
                   <TableRow key={r.id} className="border-t align-top">
                     <TableCell className="whitespace-normal p-2 pl-3">
@@ -176,6 +193,8 @@ export function MappingPanel({
                         </div>
                       )}
                       {low && <div className="mt-1 text-xs text-review">Keyakinan AI rendah ({Math.round((r.confidence ?? 0) * 100)}%). Periksa sebelum menerima.</div>}
+                      {sideDiffers && <div className="mt-1 text-xs text-review" data-testid="side-differs">Sisi akun berbeda: di file {TYPE_LABEL[r.typeHint!]}, akun Buku {typeOfCode.get(value)}.</div>}
+                      {catchAll && <div className="mt-1 text-xs text-muted-foreground" data-testid="catch-all">Akun penampung ({catchAll}) — pilih “+ Buat akun baru” untuk mempertahankan rincian klien.</div>}
                     </TableCell>
                     <TableCell className="whitespace-normal hidden p-2 lg:table-cell">
                       {r.mappedCode ? (
