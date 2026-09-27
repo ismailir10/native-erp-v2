@@ -8,7 +8,7 @@ import type { StatementFile } from "@/lib/demo/writers";
  * Deterministic demo scenario — chickin-shaped (poultry agritech PT + owner) plus two lighter
  * clients. Everything is synthetic. The generator knows the TRUE account of every line, which
  * `npm run verify:books` compares against what the app computed (layer-2 verification).
- * How to add a scenario: .claude/skills/demo-data/SKILL.md
+ * How to add a scenario: .agents/skills/demo-data/SKILL.md
  */
 
 export const DEMO_MONTHS = [3, 4, 5, 6, 7, 8].map((m) => ({ year: 2026, month: m }));

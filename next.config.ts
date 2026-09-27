@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["pg", "exceljs"],
-  // Our CLAUDE.md/AGENTS.md are hand-maintained; stop `next dev` from rewriting them.
+  // AGENTS.md (and its CLAUDE.md symlink) is hand-maintained; stop `next dev` from rewriting it.
   agentRules: false,
   // Keep the dev badge from covering the sidebar footer during demos run from `npm run dev`.
   devIndicators: false,

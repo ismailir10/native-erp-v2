@@ -13,7 +13,7 @@ description: Execute the approved tasks of the current Buku cycle doc one at a t
   Delegate only independent, fully-specified slices (e.g. one parser, one page); the driver reviews the diff.
 
 ## For each unchecked task
-1. **Load context** — only the files this task needs + the governing skill(s) (CLAUDE.md §4). Re-check per task.
+1. **Load context** — only the files this task needs + the governing skill(s) (AGENTS.md §4). Re-check per task.
 2. **Implement** one vertical slice. No drive-by refactors.
 3. **Test it.**
    - Domain logic → Vitest in `tests/unit` (pure) or `tests/db` (Postgres, uses `resetDb()` + `makeGroup()` from `tests/helpers.ts`).

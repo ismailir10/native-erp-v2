@@ -1,4 +1,4 @@
-// Buku data model. Invariants live in .claude/skills/accounting-rules/SKILL.md.
+// Buku data model. Invariants live in .agents/skills/accounting-rules/SKILL.md.
 // Money is BigInt minor units of the entity's functional currency (IDR = whole Rupiah). Balances are never stored — always derived from JournalLine.
 
 generator client {
