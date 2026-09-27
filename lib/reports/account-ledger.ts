@@ -73,9 +73,9 @@ export async function accountLedger(
 const defaultNormal = (type: AccountType | null | undefined): NormalBalance => (type === "ASET" || type === "BEBAN" ? "DEBIT" : "CREDIT");
 
 /**
- * How a client account's ledger reads (normal side; whether it restarts on 1 January), taken from the Buku accounts its lines were
- * actually posted to: a later remap moves no posted line, so it must not reinterpret their history. Posted accounts that disagree
- * fall back to the type in the client's file, then to the earliest posted line. With nothing posted, the current mapping decides.
+ * How a client account's ledger reads (normal side; whether it restarts on 1 January), taken from a Buku account its lines were
+ * actually posted to: a later remap moves no posted line, so it must not reinterpret their history. That account is the earliest
+ * posted one of the type in the client's file, else the earliest posted one. With nothing posted, the current mapping decides.
  */
 export async function sourceLedgerBasis(
   db: Db,
@@ -87,9 +87,8 @@ export async function sourceLedgerBasis(
     orderBy: [{ date: "asc" }, { id: "asc" }],
     select: { account: { select: { type: true, normalBalance: true } } },
   })).map((l) => l.account);
-  const types = new Set(posted.map((a) => a.type));
-  const type = posted.length ? (types.size === 1 ? posted[0].type : src.typeHint ?? posted[0].type) : (src.account?.type ?? src.typeHint);
-  const sides = new Set(posted.filter((a) => a.type === type).map((a) => a.normalBalance));
-  const normalBalance = sides.size === 1 ? [...sides][0] : !posted.length && src.account ? src.account.normalBalance : defaultNormal(type);
+  const basis = posted.find((a) => a.type === src.typeHint) ?? posted[0];
+  const type = basis?.type ?? src.account?.type ?? src.typeHint;
+  const normalBalance = basis?.normalBalance ?? src.account?.normalBalance ?? defaultNormal(type);
   return { normalBalance, isPL: type === "PENDAPATAN" || type === "BEBAN" };
 }

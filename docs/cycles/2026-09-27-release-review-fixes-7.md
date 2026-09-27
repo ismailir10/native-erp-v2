@@ -17,6 +17,9 @@ The review of the staging → main promotion (#37, head 5c52246) found two more 
       were posted to. If those disagree, the file's type decides, then the earliest posted line. With nothing posted, the
       current mapping decides (rule 9a).
 
+- [x] Review round 2 (#44): the basis is always a real posted account: the earliest one of the file's type, otherwise the earliest
+      posted one. That account gives both the type and the side, never a synthesised type or default side.
+
 **Non-goals:** choosing an explicit stop month (needs a schema change); blocking remaps of accounts with postings.
 **Assumptions:**
 - The stop month is the UTC month of `stoppedAt`, the same UTC dates the rest of the ledger uses.
@@ -25,6 +28,7 @@ The review of the staging → main promotion (#37, head 5c52246) found two more 
 ## Tasks
 - [x] T1 Stopped schedules keep installments due through the stop month — accept: new test fails on the old code
 - [x] T2 Client-account ledger reads by posted accounts — accept: new test fails with the old page logic
+- [x] T3 The basis resolves to one posted account — accept: both new cases fail on the previous helper
 
 ## Implementation
 - T1: `lib/adjust/schedules.ts` adds `owed(stoppedAt, i)`, used by both `dueProposals` and `postInstallment`.
@@ -37,6 +41,11 @@ The review of the staging → main promotion (#37, head 5c52246) found two more 
 - T2: `lib/reports/account-ledger.ts` adds `sourceLedgerBasis`, and `app/(app)/clients/[id]/ledger/akun/[sourceAccountId]/page.tsx`
   uses it. Test in `tests/db/client-coa.test.ts`: posted cash remapped to 6180, then to 2110, still reads DEBIT with opening
   1000 and balances 1500/1700. An unposted account follows its mapping. Rule 9a wording updated.
+- T3: `sourceLedgerBasis` picks `posted.find(type === typeHint) ?? posted[0]` and uses that account's type and normal side.
+  Tests:
+  - A contra asset (1219, credit side) posted before a regular asset reads CREDIT.
+  - Lines posted as an asset and then as a liability, under a file type (BEBAN) matching neither, read as the earliest
+    (DEBIT, no January restart).
 
 ## Verification
 - T1: the new test fails on the previous code ("expected [] to deeply equal [ 'Penyusutan (1/12)', …(1) ]") and passes after.
@@ -48,6 +57,14 @@ The review of the staging → main promotion (#37, head 5c52246) found two more 
   - `npm run build` ✓.
   - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
   - `test:e2e` → 10 passed (53.8s).
+- T3: each new case fails on the previous helper (contra: "expected { normalBalance: 'DEBIT', … } to deeply equal …"; mixed:
+  "expected { normalBalance: 'DEBIT', isPL: true } …") and passes after.
+- T3 gates:
+  - Lint and typecheck clean.
+  - `npm test` → Test Files 61 passed (61), Tests 452 passed (452).
+  - `npm run build` ✓.
+  - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
+  - `test:e2e` → 10 passed (49.8s).
 
 ## Ship Notes
 No migration, no env change. Merges to staging, then rides the promotion PR #37.
