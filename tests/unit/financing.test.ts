@@ -11,6 +11,7 @@ describe("financing suggestions", () => {
     expect(code("BUNGA PINJAMAN KMK", "OUT")).toBe("7110");
     expect(code("BIAYA PROVISI PLAFON KREDIT", "OUT")).toBe("7100");
     expect(code("SETORAN MODAL PEMEGANG SAHAM", "IN")).toBe("3100");
+    expect(code("PENCAIRAN PINJAMAN MODAL KERJA", "IN")).toBe("2210"); // working-capital loan, not equity
     expect(code("PINDAH BUKU KE REK 123", "OUT")).toBe("1199");
     expect(financingSuggestion("PENCAIRAN PINJAMAN KMK", "IN")).toMatchObject({ method: "HEURISTIC", confidence: 0.5, taxTag: null });
   });

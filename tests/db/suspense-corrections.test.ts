@@ -45,6 +45,9 @@ describe("1999 corrections for ledger-file differences", () => {
     await expect(postSuspenseCorrection(db, { firmId: g.firm.id, clientId: g.client.id, lineId: c.lineId, accounts: ["2120", smartfarm.account.code] })).rejects.toThrow("Baris 1999");
     const entry = await postSuspenseCorrection(db, { firmId: g.firm.id, clientId: g.client.id, lineId: c.lineId, accounts: c.lines.map((l) => l.accountCode) });
     expect(entry.kind).toBe("ADJUSTMENT");
+    // The correction keeps the imported group's file and rows (rule 15): report numbers still drill to their source.
+    const imported = await db.journalEntry.findFirstOrThrow({ where: { entityId: g.pt.entity.id, ledgerImportId: { not: null }, kind: "IMPORTED" } });
+    expect([entry.ledgerImportId, entry.sourceRef]).toEqual([imported.ledgerImportId, imported.sourceRef]);
     expect(await suspenseNet()).toBe(0n);
     expect((await control()).status).not.toBe("FAIL");
     expect(await suspenseCorrections(db, g.client.id, 2026, 1)).toEqual([]);

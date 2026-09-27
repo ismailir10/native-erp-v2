@@ -65,12 +65,13 @@ export async function openProposals(db: Db, clientId: string, year: number, mont
 }
 
 /** The accountant's click. `accounts` (optional) replaces each line's account code, in order; amounts never change. */
-export async function postProposal(db: Db, input: { clientId: string; proposalId: string; accounts?: string[]; actorId?: string | null }) {
+export async function postProposal(db: Db, input: { clientId: string; proposalId: string; accounts?: string[]; actorId?: string | null; origin?: { ledgerImportId?: string; sourceRef?: string } }) {
   const p = await db.proposedEntry.findFirst({ where: { id: input.proposalId, clientId: input.clientId } });
   if (!p) throw new LedgerError("Usulan tidak ditemukan.");
   if (p.status !== "PROPOSED") throw new LedgerError(p.status === "POSTED" ? "Usulan ini sudah dicatat." : "Usulan ini sudah diabaikan.");
   // An AI draft is only valid for the books it was made from: the control must still flag the same rows.
-  if (p.source === "AI_CONTROL" && p.controlKey && p.snapshot && (await controlSnapshot(db, input.clientId, p.year, p.month, p.controlKey)) !== p.snapshot) {
+  // A draft without a snapshot (made before snapshots existed) can't be proven fresh, so it can't post either.
+  if (p.source === "AI_CONTROL" && (!p.controlKey || !p.snapshot || (await controlSnapshot(db, input.clientId, p.year, p.month, p.controlKey)) !== p.snapshot)) {
     throw new LedgerError("Buku berubah sejak draf ini dibuat. Minta Jelaskan lagi, atau abaikan draf ini.");
   }
   const lines = readLines(p.lines);
@@ -87,7 +88,8 @@ export async function postProposal(db: Db, input: { clientId: string; proposalId
   if (p.bankTransactionId) return postBankReclass(db, p, lines, codes, input.actorId);
   const date = periodBounds(p.year, p.month).end;
   return db.$transaction(async (tx) => {
-    const entry = await postJournal(tx, { entityId: p.entityId, date, kind: "ADJUSTMENT", memo: p.memo, lines: posting, actorId: input.actorId });
+    // `origin` keeps the rule-15 chain when the draft corrects an imported row (its file and sheet!row).
+    const entry = await postJournal(tx, { entityId: p.entityId, date, kind: "ADJUSTMENT", memo: p.memo, lines: posting, actorId: input.actorId, ...input.origin });
     // Only a still-open proposal can be decided: a concurrent click rolls this transaction back.
     const done = await tx.proposedEntry.updateMany({ where: { id: p.id, status: "PROPOSED" }, data: { status: "POSTED", entryId: entry.id, decidedById: input.actorId ?? null, decidedAt: new Date() } });
     if (done.count !== 1) throw new LedgerError("Usulan ini sudah diputuskan.");

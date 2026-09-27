@@ -21,6 +21,8 @@ export type SuspenseCorrection = {
   memo: string;
   reason: string;
   lines: ProposalLine[];
+  /** The imported group it corrects (rule 15): the correction keeps its file and sheet!row. */
+  origin: { ledgerImportId?: string; sourceRef?: string };
 };
 
 async function candidates(db: Db, clientId: string, where: { year: number; month: number } | { lineId: string }): Promise<SuspenseCorrection[]> {
@@ -45,6 +47,7 @@ async function candidates(db: Db, clientId: string, where: { year: number; month
       year: l.date.getUTCFullYear(),
       month: l.date.getUTCMonth() + 1,
       memo: `Koreksi selisih file sumber ${ref}`.slice(0, 120),
+      origin: { ledgerImportId: l.entry.ledgerImportId ?? undefined, sourceRef: l.sourceRef ?? l.entry.sourceRef ?? undefined },
       reason: counter ? `Satu baris ${counter} di grup ${ref} bernilai sama dengan selisihnya: kemungkinan tercatat ganda atau pasangannya tidak ada di file` : `Pilih akun lawan untuk selisih grup ${ref}`,
       // Reverse the 1999 line; the counter side takes the other half.
       lines: [
@@ -73,7 +76,7 @@ export async function postSuspenseCorrection(db: Db, input: { firmId: string; cl
   if (!input.accounts[1]?.trim()) throw new LedgerError("Pilih akun untuk setiap baris.");
   if (input.accounts[1] === c.lines[0].accountCode) throw new LedgerError("Akun lawan tidak boleh 1999.");
   const p = await store(db, input.firmId, input.clientId, c);
-  return postProposal(db, { clientId: input.clientId, proposalId: p.id, accounts: input.accounts, actorId: input.actorId });
+  return postProposal(db, { clientId: input.clientId, proposalId: p.id, accounts: input.accounts, actorId: input.actorId, origin: c.origin });
 }
 
 export async function dismissSuspenseCorrection(db: Db, input: { firmId: string; clientId: string; lineId: string; actorId?: string | null }) {
