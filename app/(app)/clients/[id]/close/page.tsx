@@ -11,6 +11,7 @@ import { revaluationProposals } from "@/lib/fx/revalue";
 import { CloseReviewCard } from "@/components/app/close-review-card";
 import { cachedCloseReview } from "@/lib/controls/ai-review";
 import { resolveAiConfig } from "@/lib/settings/ai";
+import { createHash } from "node:crypto";
 
 export default async function ClosePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, period, periodOptions, base } = await loadClientPage(params, searchParams);
@@ -32,6 +33,8 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
   const flagged = controls.filter((c) => c.status !== "PASS").length;
   const ai = await resolveAiConfig(prisma);
   const aiModel = ai.apiKey && ai.model ? ai.model : null;
+  // Remount the review card whenever the flagged set changes, so a stale review never stays on screen.
+  const reviewKey = createHash("sha1").update(controls.filter((c) => c.status !== "PASS").map((c) => `${c.key}|${c.detail}`).join("\n")).digest("hex");
   const review = !locked && flagged ? await cachedCloseReview(prisma, client.firmId, client.id, period.year, period.month, aiModel, controls) : null;
 
   return (
@@ -66,7 +69,7 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
           }))}
         />
       )}
-      {!locked && flagged > 0 && <CloseReviewCard key={period.key} clientId={client.id} year={period.year} month={period.month} flagged={flagged} aiReady={aiModel !== null} initial={review} />}
+      {!locked && flagged > 0 && <CloseReviewCard key={`${period.key}:${reviewKey}`} clientId={client.id} year={period.year} month={period.month} flagged={flagged} aiReady={aiModel !== null} initial={review} />}
       <ClosePanel
         clientId={client.id}
         year={period.year}

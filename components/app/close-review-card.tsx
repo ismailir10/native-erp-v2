@@ -57,19 +57,24 @@ export function CloseReviewCard({ clientId, year, month, flagged, aiReady, initi
             </ul>
           )}
           {review && items.length === 0 && <p className="text-sm text-muted-foreground">AI tidak memberi penjelasan untuk kontrol yang ditandai. Periksa secara manual.</p>}
-          <Button
-            variant="outline"
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              const res = await closeReviewAction(clientId, year, month);
-              setBusy(false);
-              if (!res.ok) return toast.error(res.error);
-              setReview(res.review);
-            }}
-          >
-            {busy ? "Meninjau… (bisa sampai 1 menit)" : review ? "Tinjau ulang dengan AI" : "Tinjau dengan AI"}
-          </Button>
+          {/* A review is cached per exact input: re-asking before the books change would return the same answer. */}
+          {review ? (
+            <p className="text-xs text-muted-foreground">Tinjauan ini berlaku untuk kondisi buku saat ini. Setelah Anda memperbaiki sesuatu, tinjau lagi dari sini.</p>
+          ) : (
+            <Button
+              variant="outline"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                const res = await closeReviewAction(clientId, year, month);
+                setBusy(false);
+                if (!res.ok) return toast.error(res.error);
+                setReview(res.review);
+              }}
+            >
+              {busy ? "Meninjau… (bisa sampai 1 menit)" : "Tinjau dengan AI"}
+            </Button>
+          )}
         </CardContent>
       )}
     </Card>

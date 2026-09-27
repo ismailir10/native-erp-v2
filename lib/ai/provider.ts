@@ -130,7 +130,7 @@ export function parseCloseReview(text: string, input: CloseReviewInput): CloseRe
   const value = jsonObject(text);
   if (!Array.isArray(value.items)) throw new Error("Tinjauan AI tanpa items");
   const keys = new Set(input.controls.map((c) => c.key));
-  const ids = new Set(input.controls.flatMap((c) => c.rows.map((r) => r.id)));
+  const idsOf = new Map(input.controls.map((c) => [c.key, new Set(c.rows.map((r) => r.id))]));
   const seen = new Set<string>();
   const items: CloseReviewItem[] = [];
   for (const raw of value.items as unknown[]) {
@@ -141,7 +141,8 @@ export function parseCloseReview(text: string, input: CloseReviewInput): CloseRe
     const suggestion = typeof r.suggestion === "string" ? r.suggestion.trim().slice(0, 300) : "";
     if (!keys.has(key) || seen.has(key) || !explanation) continue;
     seen.add(key);
-    const refs = Array.isArray(r.refs) ? [...new Set(r.refs.filter((x): x is string => typeof x === "string" && ids.has(x)))].slice(0, 10) : [];
+    const own = idsOf.get(key)!; // a row counts as evidence only for the control it was sent with
+    const refs = Array.isArray(r.refs) ? [...new Set(r.refs.filter((x): x is string => typeof x === "string" && own.has(x)))].slice(0, 10) : [];
     items.push({ controlKey: key, explanation, suggestion, refs });
   }
   if (items.length === 0) throw new Error("Tinjauan AI kosong");
