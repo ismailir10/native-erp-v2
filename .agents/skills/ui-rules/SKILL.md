@@ -1,18 +1,17 @@
 ---
 name: ui-rules
-description: Buku UI standard — 9fin structure (dark Forest chrome, hairlines, sharp corners, mono micro-labels) in Wise colours, shadcn-first, "Don't Make Me Think" rules and Bahasa copy. Load before touching app/ or components/.
+description: Buku UI standard — 9fin look on a light background (navy ink, one strong blue, hairlines, sharp corners, mono micro-labels), shadcn-first, "Don't Make Me Think" rules and Bahasa copy. Load before touching app/ or components/.
 ---
 
 # UI rules
 
-## Look — 9fin structure, Wise colours (tokens in `app/globals.css`; never hard-code hex in components)
-- Palette = Wise's published tokens (`@transferwise/neptune-tokens`, personal theme). Canvas `--background #F6F7F5`,
-  white cards, 1px hairline `--border #E0E1DD`, text `--foreground #0E0F0C`, secondary text `--muted-foreground #454745`.
-- **Forest Green `--primary #163300`** is the text/interactive colour: links, focus rings, selected states, dark fills.
-- **Bright Green `--brand #9FE870` is a fill only**, always with Forest text (`text-brand-foreground`): the primary button,
-  the active nav item, the logo. Never Bright Green text or icons on a light surface (1.5:1).
-- **Dark app chrome** (9fin): the sidebar is Forest Green; its text uses `sidebar-*` tokens, never `text-muted-foreground`.
-- Status tokens `pass / review / fail` (+ `-subtle`) are Wise sentiments, reserved for control & state — never chart series.
+## Look — 9fin on a light background (tokens in `app/globals.css`; never hard-code hex in components)
+- Light everywhere: canvas `--background #F5F7FA`, white cards and a **white sidebar**, 1px hairline `--border #E3E7ED`,
+  navy ink `--foreground #0B1B32`, secondary text `--muted-foreground #4B5768`.
+- **One strong blue `--primary #1D5BD8`** (5.9:1 on white): links, focus rings, selected states. `--brand` is the same
+  blue as a fill with white text: the primary button, the logo, the `NextStep` marker. No green in the chrome.
+- Sidebar: active item = blue tint (`sidebar-primary`) with dark-blue text, hover = cool grey; text uses `sidebar-*` tokens.
+- Status tokens `pass / review / fail` (+ `-subtle`) are reserved for control & state — never chart series.
 - Sharp corners: `--radius` 4px. Cards are hairline-bordered, no shadow. No gradients.
 - Type: Inter (self-hosted), `.num` = tabular numerals on every amount. **Micro-labels** (table headers, sidebar group
   labels, stat labels, eyebrows) use `.eyebrow`: system monospace, 11px, uppercase, tracked.
