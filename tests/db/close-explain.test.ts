@@ -189,6 +189,16 @@ describe("close copilot — Jelaskan", () => {
     expect(await reclassedBankLine(db, g.pt.entity.id, [`jl:${onRevenue.id}`], oneLine, "IDR")).toBe(first.id);
     expect(await reclassedBankLine(db, g.pt.entity.id, [`je:${onRevenue.entryId}`], oneLine, "IDR")).toBe(first.id);
     expect(await reclassedBankLine(db, g.pt.entity.id, [`jl:${onRevenue.id}`], splitEntry, "IDR")).toBe("AMBIGUOUS");
+    // The taxed line posts a PPN component too: a draft moving only that component moves the bank line, so no draft (and no free
+    // journal) either, and a stored one citing it never posts.
+    const ppn = await db.journalLine.findFirstOrThrow({ where: { entry: { bankTransactionId: second.id }, account: { code: "2130" } } });
+    const ppnAmount = `Rp ${(ppn.credit - ppn.debit).toLocaleString("id-ID")}`;
+    const ppnOnly = { memo: "Pindah PPN", lines: [l("2130", "D", ppnAmount), l("2210", "K", ppnAmount)] };
+    expect(await reclassedBankLine(db, g.pt.entity.id, [`jl:${ppn.id}`], ppnOnly, "IDR")).toBe("AMBIGUOUS");
+    const tax = (ppn.credit - ppn.debit).toString();
+    const stored = await saveProposal(db, { firmId: g.firm.id, clientId: g.client.id, entityId: g.pt.entity.id, year: 2026, month: 8, source: "AI_CONTROL", controlKey: key, key: "AI:ppn", memo: "Pindah PPN", lines: [{ accountCode: "2130", debit: tax, credit: "0" }, { accountCode: "2210", debit: "0", credit: tax }], reason: "PPN pinjaman.", refs: [`jl:${ppn.id}`], snapshot: "lama" });
+    await expect(postProposal(db, { clientId: g.client.id, proposalId: stored.id })).rejects.toThrow("harus lewat Review");
+    await db.proposedEntry.delete({ where: { id: stored.id } });
 
     // One cited → that one, even though the other has the lower id. (Same books: clear the cached answer to ask again.)
     await db.evidenceAiCache.deleteMany();

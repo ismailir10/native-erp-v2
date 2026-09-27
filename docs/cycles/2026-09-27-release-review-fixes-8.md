@@ -14,12 +14,17 @@ while the GL was offset separately (rule 3).
 - [x] Review round 2 (#45): the check also runs when a draft posts. An AI draft with no bank line attached is refused if a bank line
       it cites (directly or through its journal row) sits on an account the draft touches. This covers drafts stored before this fix.
 
+- [x] Review round 3 (#45): every account a bank line posts to (its classification, a tax split, suspense) counts as part of that
+      line, both when a draft is made and when it posts. A draft moving only a cited PPN component gets no draft, and a stored one
+      is refused.
+
 **Non-goals:** changing what the anomaly scans cite.
 **Assumptions:** only the entry's own `bankTransactionId` links a journal row to a bank line (rule 15 lineage).
 
 ## Tasks
 - [x] T1 Resolve `jl:`/`je:` citations to their bank line — accept: new test fails on the old code
 - [x] T2 Refuse stored free drafts that would move a cited bank line — accept: new test fails without the posting check
+- [x] T3 A bank line's tax split counts as the line — accept: both new checks fail on the previous code
 
 ## Implementation
 - T1: `lib/controls/explain.ts` adds `citedBankIds`. It adds to the cited ids the `bankTransactionId` of each cited journal line's
@@ -34,6 +39,11 @@ while the GL was offset separately (rule 3).
   - The duplicate scan cites the bank line's own entry as `je:`.
   - A draft stored the old way (fresh snapshot, grounded, no bank line) is refused.
   - The bank line stays on 4100 and no free journal is written.
+- T3: `lib/controls/cited.ts` adds `bankLineAccounts`, which gives each bank line every non-bank account its postings use.
+  `reclassedBankLine` and the posting check in `postProposal` compare against that set instead of `accountCode` alone.
+  The test covers the taxed line's 2130 component, cited as `jl:`:
+  - A draft moving only that component is AMBIGUOUS.
+  - A stored draft citing it is refused when it posts.
 
 ## Verification
 - T1: the new test fails on the previous code ("expected null to be '<bank tx id>'": the draft would be a free journal) and passes after.
@@ -51,6 +61,14 @@ while the GL was offset separately (rule 3).
   - `npm run build` ✓.
   - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
   - `test:e2e` → 10 passed (52.2s).
+- T3: both checks fail on the previous code (draft: "expected null to be 'AMBIGUOUS'"; posting: it reached the snapshot check,
+  "Buku berubah …", instead of the bank-line refusal) and pass after.
+- T3 gates:
+  - Lint and typecheck clean.
+  - `npm test` → Test Files 61 passed (61), Tests 453 passed (453).
+  - `npm run build` ✓.
+  - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
+  - `test:e2e` → 10 passed (48.8s).
 
 ## Ship Notes
 No migration, no env change. Merges to staging, then rides the promotion PR #37.

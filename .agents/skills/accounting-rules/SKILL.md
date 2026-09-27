@@ -101,7 +101,8 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     Drafts are `ProposedEntry` rows, posted only by the accountant's click (accounts editable, amounts never) through `postJournal()`;
     a draft that moves one cited **bank line** posts through the reviewer's writer instead (RECLASS + Memory, rule 3); one that moves
     cited bank lines any other way (several lines at once) gets no draft, never a free journal. A cited journal line or entry
-    (`jl:`/`je:`, as the ledger anomaly scans cite) counts as its bank line when it came from one. Group-level
+    (`jl:`/`je:`, as the ledger anomaly scans cite) counts as its bank line when it came from one, and every account that line posts
+    to (classification, tax split, suspense) is part of it. Group-level
     controls get words only. Deterministic proposals (e.g. 1999 corrections) use the same table.
 21. Provider is OpenAI-compatible `fetch` (OpenCode Zen default) behind `AiProvider`; swap by config, not code.
     Key + model: **Pengaturan (DB, encrypted) overrides env** — resolve via `resolveAiConfig()` (`lib/settings/ai.ts`).
