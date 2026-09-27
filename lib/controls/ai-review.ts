@@ -34,9 +34,11 @@ async function gather(db: Db, clientId: string, year: number, month: number, con
   const entityOf = (key: string) => client.entities.find((e) => e.id === key.split(":")[1]);
   const links = new Map<string, ReviewLink>();
   let budget = CLOSE_REVIEW_MAX_ROWS;
+  let allowance = ROWS_PER_CONTROL; // shared by every batch added to the current control; reset per control
   const take = <T,>(rows: T[]) => {
-    const n = Math.max(0, Math.min(ROWS_PER_CONTROL, budget, rows.length));
+    const n = Math.max(0, Math.min(allowance, budget, rows.length));
     budget -= n;
+    allowance -= n;
     return rows.slice(0, n);
   };
   const bankRow = (t: { id: string; date: Date; description: string; amount: bigint; accountCode: string | null; suggestedCode: string | null; method: string; confidence: number }, currency: string, entityId: string): CloseReviewRow => {
@@ -48,6 +50,7 @@ async function gather(db: Db, clientId: string, year: number, month: number, con
 
   const reviewed: CloseReviewControl[] = [];
   for (const c of flagged) {
+    allowance = ROWS_PER_CONTROL;
     const kind = c.key.split(":")[0];
     const e = entityOf(c.key);
     let rows: CloseReviewRow[] = [];
@@ -55,14 +58,34 @@ async function gather(db: Db, clientId: string, year: number, month: number, con
       const f = await flaggedBankRows(db, clientId, e.id, start, end);
       rows = take(bySize(kind === "guess" ? f.guesses : f.financing)).map((t) => bankRow(t, e.functionalCurrency, e.id));
     } else if (e && (kind === "nature" || kind === "nature-total")) {
-      // The bank lines that fed the flagged accounts this month: the listed accounts for `nature`, the non-bank assets
-      // for a negative asset total. Nothing else leaves the database (ADR 0009).
+      // Rows that can explain the flag, nothing else (ADR 0009). `nature`: the listed accounts. `nature-total`: a transfer
+      // between two asset accounts can't move the total, so send the asset accounts carrying credit balances and the bank
+      // lines booked to those accounts or to non-asset accounts (expenses, liabilities, equity).
       const assets = kind === "nature-total";
-      const codes = (await db.account.findMany({ where: { clientId, type: { in: assets ? ["ASET"] : ["ASET", "LIABILITAS"] }, isBank: false, isSuspense: false, isClearing: false, isIntercompany: false }, select: { code: true } })).map((a) => a.code);
-      const listed = new Set(c.detail.split("; ").map((part) => part.split(" ")[0]));
-      const flaggedCodes = assets ? [] : codes.filter((code) => listed.has(code));
-      const txs = await db.bankTransaction.findMany({ where: { entityId: e.id, date: { gte: start, lte: end }, accountCode: { in: assets ? codes : flaggedCodes } } });
-      rows = take(bySize(txs)).map((t) => bankRow(t, e.functionalCurrency, e.id));
+      const candidates = await db.account.findMany({ where: { clientId, type: { in: ["ASET", "LIABILITAS"] }, isBank: false, isSuspense: false, isClearing: false, isIntercompany: false } });
+      let flaggedCodes: string[];
+      let bankCodes: string[];
+      if (assets) {
+        const assetIds = candidates.filter((a) => a.type === "ASET").map((a) => a.id);
+        const sums = await db.journalLine.groupBy({ by: ["accountId"], where: { entityId: e.id, date: { lte: end }, accountId: { in: assetIds } }, _sum: { debit: true, credit: true } });
+        const negative = sums.map((x) => ({ account: candidates.find((a) => a.id === x.accountId)!, net: (x._sum.debit ?? 0n) - (x._sum.credit ?? 0n) })).filter((x) => x.net < 0n);
+        flaggedCodes = negative.map((x) => x.account.code);
+        const nonAsset = (await db.account.findMany({ where: { clientId, type: { not: "ASET" } }, select: { code: true } })).map((a) => a.code);
+        bankCodes = [...flaggedCodes, ...nonAsset];
+        rows.push(
+          ...take(bySize(negative.map((x) => ({ ...x, amount: x.net })))).map((x) => {
+            const id = `akun:${e.id}:${x.account.code}`; // entity-scoped: the same code can be negative in two entities
+            links.set(id, { id, label: `${x.account.code} ${x.account.name}`, href: `${base}/ledger/${x.account.code}?period=${pk}&entity=${e.id}` });
+            return { id, date: "", text: `Akun aset ${x.account.code} ${x.account.name} bersaldo kredit`.slice(0, DESCRIPTION), amount: formatMoney(x.net, e.functionalCurrency), account: x.account.code, how: "saldo akhir" };
+          }),
+        );
+      } else {
+        const listed = new Set(c.detail.split("; ").map((part) => part.split(" ")[0]));
+        flaggedCodes = candidates.filter((a) => listed.has(a.code)).map((a) => a.code);
+        bankCodes = flaggedCodes;
+      }
+      const txs = await db.bankTransaction.findMany({ where: { entityId: e.id, date: { gte: start, lte: end }, accountCode: { in: bankCodes } } });
+      rows.push(...take(bySize(txs)).map((t) => bankRow(t, e.functionalCurrency, e.id)));
       // Ledger-fed balances: the client's own accounts that make up each flagged Buku account.
       const parts = await db.journalLine.groupBy({
         by: ["sourceAccountId"],
