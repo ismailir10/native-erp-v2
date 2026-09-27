@@ -30,9 +30,18 @@ Both would leave the books wrong after a click, so they ship before the release 
   reclass gets a draft. `reclassedBankLine` is exported and tested directly (split → no draft, exact reclass → that line); fails on
   the previous code.
 
+- Review of #39 (aa2f241): differences that offset each other (1999 credited 10, debited 5) left no line that fits the remaining
+  balance, so no correction was offered while the import still FAILed. Also, bank lines waiting in Review are parked on 1999, so the
+  balance must leave them out. `lib/controls/suspense-net.ts` `sourceSuspenseNet` (1999 without bank-line entries) now feeds the
+  per-line check, a new **remaining-balance correction** (`net:<entity>:<y>-<m>`, anchored on the month's latest source line for its
+  file and row; offered when no single line fits; posting re-checks the balance is unchanged), and the ledger control's FAIL. Tests:
+  offsetting differences → one correction for the rest, posts to zero; a 1999-parked bank line doesn't hide a correction. Both fail
+  on the previous code.
+
 ## Verification
 - T1: new tests fail on the previous code (2 failed | 7 passed), pass after. Gates: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 433 passed (433); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (56.5s).
 - Review of #39: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 433 passed (433); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (53.5s).
+- Review of #39 (aa2f241): lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 435 passed (435); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (53.5s).
 
 ## Ship Notes
 No migration, no env change. Merges to staging, then rides the open promotion PR #37.

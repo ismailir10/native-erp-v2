@@ -79,7 +79,9 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     Each such 1999 line gets a deterministic correction proposal (`lib/adjust/suspense.ts`, rule 20b): reverse it on 1999 against a
     counter account — prefilled only when one line of the same entry has exactly that amount — posted only by the accountant's click
     (it can't be dismissed: the close FAILs until 1999 is cleared), keeping the group's `ledgerImportId` + `sourceRef`. It is offered
-    and posted only while the entity's 1999 balance still holds that difference (never reversed twice, e.g. after a manual fix).
+    and posted only while the entity's 1999 balance (bank lines waiting in Review left out) still holds that difference — never
+    reversed twice, e.g. after a manual fix; when no single line fits what is left (offsetting differences, a partial fix), the entity
+    gets one correction for the remaining balance, so the FAIL always has a way out.
 16. Parsers detect format from **content**, not file name, and raise `ParseError` with a Bahasa message the UI shows verbatim.
 
 ## AI (credit is limited — treat every call as money)
