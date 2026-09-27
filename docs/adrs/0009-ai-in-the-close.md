@@ -38,3 +38,8 @@ schedules propose each month's depreciation, amortisation and accrual installmen
 follow the same rule — nothing posts until the accountant clicks, and posting goes through `postJournal()` (accounting-rules 5a).
 AI-drafted entries remain a later cycle and will reuse this path.
 
+**Note (27 Sep 2026, cycle close-copilot).** Decision 2's AI-drafted entries now exist: *Jelaskan* on one flagged control may return
+a draft journal, validated before storage (accounts from the chart, never a bank account; balanced; every amount equal to a cited
+row's amount) and stored as a `ProposedEntry`. Only the accountant's click posts it — through `postJournal()`, or through the
+reviewer's writer when the draft re-classifies a single bank line. A draft note only prefills the acknowledgement dialog.
+

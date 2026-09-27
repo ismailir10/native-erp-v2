@@ -26,7 +26,7 @@ export type CloseReviewView = {
 
 type Gathered = { input: CloseReviewInput; links: Map<string, ReviewLink>; flagged: Control[] };
 
-async function gather(db: Db, clientId: string, year: number, month: number, controls?: Control[]): Promise<Gathered> {
+export async function gather(db: Db, clientId: string, year: number, month: number, controls?: Control[]): Promise<Gathered> {
   const { start, end } = periodBounds(year, month);
   const client = await db.client.findUniqueOrThrow({ where: { id: clientId }, include: { entities: true } });
   const base = `/clients/${clientId}`;

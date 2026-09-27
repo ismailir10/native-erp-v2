@@ -21,6 +21,8 @@ import type { TaxTag } from "@/lib/generated/prisma/enums";
 import { RateError, upsertRate, validateRateInput } from "@/lib/fx/rates";
 import { postRevaluation, RevaluationError } from "@/lib/fx/revalue";
 import { reviewClose, type CloseReviewView } from "@/lib/controls/ai-review";
+import { explainControl, ExplainError, type ControlExplanation } from "@/lib/controls/explain";
+import { dismissProposal, postProposal } from "@/lib/adjust/proposals";
 import { AiBudgetError } from "@/lib/ai/budget";
 import { AiAnswerError } from "@/lib/ai/provider";
 import { acceptCheck, LedgerImportError, postImport, stageImport } from "@/lib/ledger-import/post";
@@ -311,6 +313,48 @@ export async function closeReviewAction(clientId: string, year: number, month: n
       console.error(e);
       return { ok: false, error: "AI tidak tersedia saat ini. Kontrol tetap berjalan; coba lagi nanti." };
     }
+    return fail(e);
+  }
+}
+
+/** Close copilot (accounting-rules 20b): one flagged control explained; a draft journal is stored, never posted here. */
+export async function explainControlAction(clientId: string, year: number, month: number, controlKey: string): Promise<Result<{ explanation: ControlExplanation }>> {
+  try {
+    const client = await getClientForFirm(clientId);
+    await periodFor(client.id, year, month, { mustBeOpen: true });
+    const provider = await resolveProvider(prisma);
+    if (!provider) return { ok: false, error: "AI belum diatur di Pengaturan. Kontrol tetap berjalan tanpa AI." };
+    const explanation = await explainControl(prisma, client.firmId, client.id, year, month, controlKey, provider);
+    if (explanation.proposal) revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, explanation };
+  } catch (e) {
+    if (e instanceof AiBudgetError || e instanceof AiAnswerError || e instanceof ExplainError) return { ok: false, error: e.message };
+    if (e instanceof Error && (e.name === "TimeoutError" || /^(AI \d|Model )/.test(e.message))) {
+      console.error(e);
+      return { ok: false, error: "AI tidak tersedia saat ini. Kontrol tetap berjalan; coba lagi nanti." };
+    }
+    return fail(e);
+  }
+}
+
+export async function postProposalAction(clientId: string, proposalId: string, accounts: string[]): Promise<Result> {
+  try {
+    const client = await getClientForFirm(clientId);
+    await postProposal(prisma, { clientId: client.id, proposalId, accounts, actorId: (await getCurrentMember()).id });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function dismissProposalAction(clientId: string, proposalId: string): Promise<Result> {
+  try {
+    const client = await getClientForFirm(clientId);
+    await dismissProposal(prisma, { clientId: client.id, proposalId, actorId: (await getCurrentMember()).id });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
+  } catch (e) {
     return fail(e);
   }
 }

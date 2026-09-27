@@ -85,6 +85,12 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
 20. Tests and the seed **never** call a real model (`MockProvider`, pre-cached answers). `npm run ai:smoke` is the only live call.
 20a. **AI close review** (ADR 0009) may send amounts and ≤ 80-char bank descriptions of the rows behind flagged controls only
     (≤ 40 rows). It explains and proposes; it never posts, acks, ticks or locks. Items citing keys/ids it wasn't given are dropped.
+20b. **Close copilot / proposed entries** (`lib/controls/explain.ts`, `lib/adjust/proposals.ts`): *Jelaskan* sends one flagged control's
+    rows (20a caps) and gets an explanation, an optional note (a prefill the accountant saves) and an optional draft journal —
+    kept only if every account is in the chart (never a bank account), it balances, and **every amount equals a cited row's amount**.
+    Drafts are `ProposedEntry` rows, posted only by the accountant's click (accounts editable, amounts never) through `postJournal()`;
+    a draft that moves one cited **bank line** posts through the reviewer's writer instead (RECLASS + Memory, rule 3). Group-level
+    controls get words only. Deterministic proposals (e.g. 1999 corrections) use the same table.
 21. Provider is OpenAI-compatible `fetch` (OpenCode Zen default) behind `AiProvider`; swap by config, not code.
     Key + model: **Pengaturan (DB, encrypted) overrides env** — resolve via `resolveAiConfig()` (`lib/settings/ai.ts`).
     `AI_BASE_URL` stays **env-only** so a visitor can't redirect the stored key. *Cek koneksi* hits `GET /models` (no tokens).

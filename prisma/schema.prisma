@@ -151,6 +151,7 @@ model Client {
   memories      Memory[]
   ledgerImports LedgerImport[]
   schedules     AdjustmentSchedule[]
+  proposals     ProposedEntry[]
   coaVersion    Int                  @default(1)
 
   @@index([firmId])
@@ -171,6 +172,7 @@ model Entity {
   entries            JournalEntry[]
   sourceAccounts     SourceAccount[]
   schedules          AdjustmentSchedule[]
+  proposals          ProposedEntry[]
 
   @@index([clientId])
 }
@@ -291,6 +293,7 @@ model BankTransaction {
   taxTag        TaxTag?
   matchedTxId   String?
   entries       JournalEntry[]
+  proposals     ProposedEntry[]
   createdAt     DateTime        @default(now())
 
   @@unique([bankAccountId, hash])
@@ -320,6 +323,8 @@ model JournalEntry {
   installment       Int?
   /// Schedules created from this entry (a fixed-asset purchase, a prepayment).
   schedulesFrom     AdjustmentSchedule[] @relation("ScheduleSource")
+  /// The proposal this entry was posted from (close copilot, 1999 correction).
+  proposal          ProposedEntry?
   /// Member who posted it; null for seeds and system postings ("Sistem").
   postedById        String?
   postedBy          FirmMember?          @relation("EntryPostedBy", fields: [postedById], references: [id])
@@ -778,6 +783,7 @@ model FirmMember {
   ledgerPostings   LedgerImport[]       @relation("LedgerPostedBy")
   mappings         SourceAccount[]      @relation("MappingAcceptedBy")
   schedules        AdjustmentSchedule[] @relation("ScheduleCreatedBy")
+  proposalsDecided ProposedEntry[]      @relation("ProposalDecidedBy")
 
   @@index([firmId])
 }
@@ -825,4 +831,48 @@ model AdjustmentSchedule {
 
   @@index([clientId])
   @@index([entityId])
+}
+
+enum ProposalSource {
+  AI_CONTROL
+  SUSPENSE
+}
+
+enum ProposalStatus {
+  PROPOSED
+  POSTED
+  DISMISSED
+}
+
+/// A draft journal (accounting-rules 20b): proposed by the close copilot or a deterministic check, posted only by the accountant's
+/// click through postJournal(). Lines are JSON [{accountCode, debit, credit}] in minor units (strings); only accounts may be edited.
+model ProposedEntry {
+  id                String           @id @default(cuid())
+  firmId            String
+  clientId          String
+  client            Client           @relation(fields: [clientId], references: [id])
+  entityId          String
+  entity            Entity           @relation(fields: [entityId], references: [id])
+  year              Int
+  month             Int
+  source            ProposalSource
+  controlKey        String?
+  /// Dedupe: one proposal per AI answer (input hash) or per suspense line.
+  key               String           @unique
+  memo              String
+  lines             Json
+  reason            String
+  refs              String[]         @default([])
+  status            ProposalStatus   @default(PROPOSED)
+  /// Set when the draft re-classifies one bank line: posting goes through the review writer (rule 3), not a free journal.
+  bankTransactionId String?
+  bankTransaction   BankTransaction? @relation(fields: [bankTransactionId], references: [id])
+  entryId           String?          @unique
+  entry             JournalEntry?    @relation(fields: [entryId], references: [id], onDelete: Restrict)
+  decidedById       String?
+  decidedBy         FirmMember?      @relation("ProposalDecidedBy", fields: [decidedById], references: [id])
+  decidedAt         DateTime?
+  createdAt         DateTime         @default(now())
+
+  @@index([clientId, year, month])
 }

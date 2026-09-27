@@ -11,8 +11,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { StatusPill } from "@/components/app/status";
-import { ackControlAction, lockAction, signoffAction, unlockAction } from "@/app/actions";
+import { ackControlAction, explainControlAction, lockAction, signoffAction, unlockAction } from "@/app/actions";
 import type { Control } from "@/lib/controls";
+import type { ControlExplanation } from "@/lib/controls/explain";
 
 const ORDER = { FAIL: 0, REVIEW: 1, PASS: 2 } as const;
 
@@ -26,12 +27,24 @@ export function ClosePanel(props: {
   locked: boolean;
   lockedAt: string | null;
   blockers: string[];
+  /** AI configured: each flagged row offers "Jelaskan" (accounting-rules 20b). */
+  aiReady?: boolean;
 }) {
   const { clientId, year, month } = props;
   const router = useRouter();
   const [pending, start] = useTransition();
   const [ackFor, setAckFor] = useState<Control | null>(null);
   const [note, setNote] = useState("");
+  const [explained, setExplained] = useState<Record<string, ControlExplanation>>({});
+  const [explaining, setExplaining] = useState<string | null>(null);
+  const explain = async (c: Control) => {
+    setExplaining(c.key);
+    const r = await explainControlAction(clientId, year, month, c.key);
+    setExplaining(null);
+    if (!r.ok) return void toast.error(r.error);
+    setExplained((x) => ({ ...x, [c.key]: r.explanation }));
+    if (r.explanation.proposal) router.refresh();
+  };
   const run = (fn: () => Promise<{ ok: boolean; error?: string }>, success?: string) =>
     start(async () => {
       const r = await fn();
@@ -59,7 +72,7 @@ export function ClosePanel(props: {
                 .map((c) => (
                 <div key={c.key} className="flex flex-wrap items-center gap-3 px-6 py-2.5" data-testid={`control-${c.key.split(":")[0]}`}>
                   <StatusPill status={c.status} />
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 basis-56">
                     <div className="text-sm font-medium">{c.title}</div>
                     <div className="text-xs text-muted-foreground">{c.detail}</div>
                     {c.ack && <div className="mt-1 flex items-center gap-1 text-xs text-foreground"><MessageSquare className="size-3" /> {c.ack}</div>}
@@ -67,10 +80,34 @@ export function ClosePanel(props: {
                   {c.href && c.status !== "PASS" && (
                     <Link href={c.href} className="text-sm font-medium text-primary hover:underline">Periksa</Link>
                   )}
+                  {c.status !== "PASS" && !props.locked && props.aiReady && !explained[c.key] && (
+                    <Button variant="ghost" size="sm" disabled={explaining !== null} onClick={() => explain(c)}>
+                      {explaining === c.key ? "Menjelaskan…" : "Jelaskan"}
+                    </Button>
+                  )}
                   {c.status === "REVIEW" && !props.locked && (
                     <Button variant="outline" size="sm" onClick={() => { setAckFor(c); setNote(c.ack ?? ""); }}>
                       {c.ack ? "Ubah catatan" : "Beri catatan"}
                     </Button>
+                  )}
+                  {explained[c.key] && (
+                    <div className="basis-full space-y-1.5 border-l-2 border-primary/30 pl-3 text-sm" data-testid="control-explanation">
+                      <p>{explained[c.key].explanation}</p>
+                      {explained[c.key].suggestion && <p><span className="font-medium">Usulan AI:</span> {explained[c.key].suggestion}</p>}
+                      {explained[c.key].links.length > 0 && (
+                        <ul className="space-y-0.5 text-xs">
+                          {explained[c.key].links.map((l) => (
+                            <li key={l.id}><Link href={l.href} className="text-muted-foreground underline decoration-border underline-offset-4 hover:text-primary hover:decoration-primary">{l.label} ›</Link></li>
+                          ))}
+                        </ul>
+                      )}
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        {explained[c.key].proposal && <span className="text-xs text-muted-foreground">Draf jurnal dibuat di <span className="font-medium text-foreground">Usulan jurnal koreksi</span>; dicatat setelah Anda klik.</span>}
+                        {c.status === "REVIEW" && explained[c.key].note && (
+                          <Button variant="outline" size="sm" onClick={() => { setAckFor(c); setNote(explained[c.key].note); }}>Pakai sebagai catatan</Button>
+                        )}
+                      </div>
+                    </div>
                   )}
                 </div>
               ))}
