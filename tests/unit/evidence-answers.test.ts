@@ -137,11 +137,13 @@ describe("bounded evidence answers", () => {
     expect(runBudgetedAi).toHaveBeenCalledWith(db, expect.objectContaining({ scope: expect.stringMatching(/^question:/), maxCompletionTokens: 1000, scopeTokenLimit: 12000 }), expect.any(Function));
   });
 
-  it("rejects AI entity override and drops snippets confirmed for another entity", async () => {
+  it("never lets an AI entity override widen the scope, and drops snippets confirmed for another entity", async () => {
     const { db, raw } = setup(true);
     const provider = new MockProvider();
     vi.spyOn(provider, "planEvidenceAnswer").mockResolvedValue({ plan: { intent: "SEARCH", terms: [], entityId: "foreign" }, model: "mock", promptTokens: 2, completionTokens: 2 });
-    await expect(askEvidence(db, "f1", "i1", { question: "Revenue", entityId: "e1" }, provider)).rejects.toThrow(/di luar cakupan/);
+    // The override is ignored (the chosen entity stays) and said so, instead of failing the whole question.
+    const overridden = await askEvidence(db, "f1", "i1", { question: "Revenue", entityId: "e1" }, provider);
+    expect(overridden.limitations).toContain("Rencana AI menyebut entitas di luar cakupan yang dipilih; cakupan pilihan Anda yang digunakan.");
     raw.evidenceSelection.findMany.mockResolvedValue([{ versionId: "v1", unitKey: "FS", entityId: "e1", periodStart: "2023-02-01", periodEnd: "2024-01-31" }, { versionId: "v1", unitKey: "OtherEntity", entityId: "e2", periodStart: "2024-01-01", periodEnd: "2024-01-31" }]);
     raw.$queryRaw.mockResolvedValue([{ versionId: "v1", unitKey: "FS", locator: "FS!B5", text: "Revenue: 100" }, { versionId: "v1", unitKey: "OtherEntity", locator: "OtherEntity!B5", text: "Revenue: 999" }]);
     const answer = await askEvidence(db, "f1", "i1", { question: "Revenue", entityId: "e1", period: "2024-01" });

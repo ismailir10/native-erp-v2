@@ -38,15 +38,15 @@ Transfer window (`lib/classify/transfer.ts`)
       counterparts ±6 calendar days. Nearest date still wins.
 
 Evidence plans (`lib/ai/provider.ts`, `lib/evidence/answers.ts`)
-- [ ] Harmless slips are normalised, not rejected: intent case-insensitive, terms trimmed / over-long dropped / first 8 kept,
+- [x] Harmless slips are normalised, not rejected: intent case-insensitive, terms trimmed / over-long dropped / first 8 kept,
       an account code taken from its leading token ("6180 Beban Penyusutan" → 6180). Unknown keys, invalid dates and unknown
       intents are still rejected (deterministic fallback).
-- [ ] An entity in the plan that is outside the question's scope is **ignored with a limitation line**, never an error.
-- [ ] Plan calls are logged with note "Rencana jawaban" (success and failure alike); **Pengaturan** shows the last 30 days:
+- [x] An entity in the plan that is outside the question's scope is **ignored with a limitation line**, never an error.
+- [x] Plan calls are logged with note "Rencana jawaban" (success and failure alike); **Pengaturan** shows the last 30 days:
       plans requested, rejected, and the rate.
 
 Verification
-- [ ] DB tests: 1999 proposal from an accepted unbalanced ledger group (counter account prefilled when unique; post → 1999 of
+- [x] DB tests: 1999 proposal from an accepted unbalanced ledger group (counter account prefilled when unique; post → 1999 of
       the entity nets 0 and the control no longer FAILs; dismiss); pipeline suggests 2210/7110 for a loan statement with 0 AI
       calls; Friday→Tuesday pair matches, Monday→Friday doesn't; answer with an out-of-scope entity plan answers with a limitation;
       rejection counts.
@@ -70,16 +70,18 @@ allowed.
 ## Tasks
 - [x] T1 1999 correction proposals + card + control text + tests — accept: DB test green.
 - [x] T2 Financing heuristic + business-day transfer window + tests (update tests that relied on the old guess) — accept: tests green; demo `verify:books` ALL PASS.
-- [ ] T3 Evidence plan normalisation, scope fix, rejection metric on Pengaturan + tests — accept: unit + DB tests green.
+- [x] T3 Evidence plan normalisation, scope fix, rejection metric on Pengaturan + tests — accept: unit + DB tests green.
 - [ ] T4 Docs + end-of-cycle gates — accept: rules 13/15a, README; `build`, `verify:books`, `test:e2e` green.
 
 ## Implementation
 - Plan: T1–T4 sequential, inline; branch stacked on `task/close-copilot` (1999 corrections reuse its `ProposedEntry`).
 - T1: `lib/ledger-import/post.ts` exports `SOURCE_DIFFERENCE_MEMO` (the 1999 line's memo). `lib/adjust/suspense.ts` — `suspenseCorrections()` (1999 lines with that memo from a ledger import, dated in the period, without a *decided* proposal `SUSPENSE:<lineId>`; draft reverses the 1999 line; counter prefilled only when exactly one other line of the entry has that amount), `postSuspenseCorrection()` (1999 line fixed, counter required and not 1999; stores then posts through `postProposal`), `dismissSuspenseCorrection()`, `correctionViews()` (stored AI drafts + read-time 1999 corrections for the card). `lib/adjust/proposals.ts` — `proposalViews()` skips SUSPENSE rows (shown from their line, never twice). `app/actions.ts` routes `suspense:<lineId>` ids. `lib/controls/index.ts` — `ledger:` detail now says "koreksi lewat Usulan jurnal koreksi di Tutup Buku". Close page uses `correctionViews()`. Found by the test: a post that fails after storing (no counter / locked month) must not hide the line — only POSTED/DISMISSED decide it; an empty counter is refused before storing. Tests: `tests/db/suspense-corrections.test.ts`.
 - T2: `lib/classify/financing.ts` — `FINANCING` / `FINANCING_COST` moved here (the sanity control re-exports them, so suggestion and control share one word list) and `financingSuggestion()`: interest → 7110, fees → 7100 (money out only), capital in → 3100, loan in → 2210, repayment out → 2210, own-account move → 1199; HEURISTIC 0.5, reason in Bahasa; deposits and income-side interest left alone. `lib/import/pipeline.ts` — accounts read before classification; the financing suggestion applies after transfer/rules/memory and only if its account is in the client chart; those lines skip AI. `lib/classify/transfer.ts` — `businessDaysApart()` and `MATCH_BUSINESS_DAYS = 2`; the pipeline reads open counterparts ±6 calendar days. Tests: `tests/unit/financing.test.ts`, `tests/db/financing-classify.test.ts` (loan statement → 2210 / 7110 / 2210 to review, 0 AI calls); `tests/db/sanity-controls.test.ts` and `tests/db/close-review.test.ts` now book the drawdown to 4100 explicitly (the controls still catch that human mistake; an accepted interest guess still needs its note).
+- T3: `lib/ai/provider.ts` `parseEvidenceAnswerPlan` — intent upper-cased, terms trimmed / over-long and non-text dropped / first 8 kept, an account code taken from its leading token when that token has a digit ("6180 Beban Penyusutan" → 6180; "akun kas" still invalid); unknown keys, invalid dates, unknown intents still rejected (the pinned safety cases unchanged). `lib/evidence/answers.ts` — a planned entity outside the chosen scope is dropped with a limitation line (it used to throw and fail the question; the scope still can't widen); plan calls carry `note: PLAN_NOTE` ("Rencana jawaban"). `lib/ai/budget.ts` — a failed call's note keeps the caller's note as prefix ("Rencana jawaban — AI gagal: …"). `lib/evidence/plan-stats.ts` `planRejections()`; `app/(app)/settings/page.tsx` card *Rencana jawaban AI* (30 days: requested, rejected, %). Tests: `tests/unit/evidence-ai.test.ts` (normalisation), `tests/db/evidence-scope.test.ts` (out-of-scope entity → limitation; 2 plans, 1 rejected → 50 %), `tests/unit/evidence-answers.test.ts` (the override test now asserts the scope stays and the limitation shows, instead of a thrown error).
 
 ## Verification
 - T1: lint + typecheck clean; `npm test` → Test Files 59 passed (59), Tests 418 passed (418).
 - T2: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 423 passed (423); `demo:reset` (same AI call pattern per file) + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
+- T3: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 425 passed (425).
 
 ## Ship Notes

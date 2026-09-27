@@ -31,6 +31,12 @@ describe("evidence AI boundaries", () => {
       '{"intent":"SEARCH","terms":[],"note":null}',
     ]) expect(() => parseEvidenceAnswerPlan(answer)).toThrow();
   });
+  it("normalises harmless plan slips instead of rejecting them", () => {
+    const terms = Array.from({ length: 10 }, (_, i) => `t${i}`);
+    expect(parseEvidenceAnswerPlan(JSON.stringify({ intent: "balance", terms: [...terms, " ", "x".repeat(101), 7], accountCode: "6180 Beban Penyusutan" }))).toEqual({ intent: "BALANCE", terms: terms.slice(0, 8), accountCode: "6180" });
+    expect(() => parseEvidenceAnswerPlan('{"intent":"SEARCH","terms":"penjualan"}')).toThrow();
+    expect(() => parseEvidenceAnswerPlan('{"intent":"SEARCH","terms":[],"accountCode":"akun kas"}')).toThrow();
+  });
   it("treats optional plan fields spelled null or empty as absent", () => {
     expect(parseEvidenceAnswerPlan('{"intent":"SEARCH","terms":["x"],"from":null,"to":null,"entityId":"","accountCode":null}')).toEqual({ intent: "SEARCH", terms: ["x"] });
     expect(parseEvidenceAnswerPlan('{"intent":"SEARCH","terms":["x"],"from":"2024-12-01","to":""}')).toEqual({ intent: "SEARCH", terms: ["x"], from: "2024-12-01", to: "2024-12-01" });

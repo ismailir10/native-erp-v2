@@ -95,7 +95,15 @@ export function parseEvidenceAnswerPlan(text: string): EvidenceAnswerPlan {
   // One date ("per 31 Des 2024") scopes that day; a half-open range would fail the question instead.
   if (value.from !== undefined && value.to === undefined) value.to = value.from;
   if (value.to !== undefined && value.from === undefined) value.from = value.to;
-  if (!EVIDENCE_INTENTS.has(String(value.intent)) || !Array.isArray(value.terms) || value.terms.length > 8 || value.terms.some((term) => typeof term !== "string" || term.length > 100)) throw new Error("Rencana jawaban AI tidak valid");
+  // Harmless slips are normalised, not rejected: intent case, extra / over-long / non-text terms, an account code with its name.
+  if (typeof value.intent === "string") value.intent = value.intent.trim().toUpperCase();
+  if (Array.isArray(value.terms)) value.terms = value.terms.flatMap((t) => (typeof t === "string" && t.trim() && t.trim().length <= 100 ? [t.trim()] : [])).slice(0, 8);
+  if (typeof value.accountCode === "string") {
+    // "6180 Beban Penyusutan" → 6180; a leading word without a digit ("akun kas") is not a code and stays invalid.
+    const code = value.accountCode.trim().match(/^[A-Za-z0-9.-]{1,30}(?=\s|$)/)?.[0];
+    if (code && /\d/.test(code)) value.accountCode = code;
+  }
+  if (!EVIDENCE_INTENTS.has(String(value.intent)) || !Array.isArray(value.terms)) throw new Error("Rencana jawaban AI tidak valid");
   for (const key of Object.keys(value)) if (!["intent", "terms", "accountCode", "from", "to", "entityId"].includes(key)) throw new Error("Rencana jawaban AI memuat perintah tidak dikenal");
   if (value.from !== undefined && !validDate(value.from) || value.to !== undefined && !validDate(value.to)) throw new Error("Tanggal rencana AI tidak valid");
   if (typeof value.from === "string" && typeof value.to === "string" && value.from > value.to) throw new Error("Rentang tanggal AI tidak valid");

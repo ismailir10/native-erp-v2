@@ -21,6 +21,8 @@ export type EvidenceAnswer = {
   limitations: string[];
 };
 const MAX_RESULTS = 30;
+/** `AiUsage.note` of every answer-plan call (ok or rejected): the plan-rejection rate on Pengaturan counts these. */
+export const PLAN_NOTE = "Rencana jawaban";
 const STOP = new Set("apa apakah yang dan atau dengan dari ke untuk ini itu pada saya berapa tolong bagaimana why what the a an of in on is are can me please show compare bandingkan banding tahun lalu dokumen file laporan perusahaan company profile cari find search saldo balance transaksi transaction akun account saat sekarang terakhir latest".split(" "));
 function searchTerms(question: string) {
   return [...new Set(question.toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}.-]*/gu) ?? [])].filter((t) => t.length > 1 && !STOP.has(t)).slice(0, 8);
@@ -126,7 +128,7 @@ export async function askEvidence(db: Db, firmId: string, intakeId: string, inpu
       const cached = await db.evidenceAiCache.findFirst({ where: { key, firmId, scope } });
       if (cached) plan = parseEvidenceAnswerPlan(JSON.stringify(cached.payload));
       else {
-        const result = await runBudgetedAi(db, { firmId, scope: `question:${randomUUID()}`, prompt, maxCompletionTokens: ANSWER_PLAN_MAX_TOKENS, scopeTokenLimit: QUESTION_TOKEN_LIMIT, model: provider.model }, async () => {
+        const result = await runBudgetedAi(db, { firmId, scope: `question:${randomUUID()}`, prompt, maxCompletionTokens: ANSWER_PLAN_MAX_TOKENS, scopeTokenLimit: QUESTION_TOKEN_LIMIT, model: provider.model, note: PLAN_NOTE }, async () => {
           const result = await provider.planEvidenceAnswer!(question, context);
           try { return { ...result, plan: parseEvidenceAnswerPlan(JSON.stringify(result.plan)) }; }
           catch { throw new AiAnswerError("Rencana jawaban AI tidak valid; gunakan pencarian dokumen.", result.promptTokens, result.completionTokens, result.model); }
@@ -138,7 +140,11 @@ export async function askEvidence(db: Db, firmId: string, intakeId: string, inpu
       answer.limitations.push(error instanceof AiBudgetError ? error.message : "AI tidak tersedia atau rencana tidak valid; pencarian deterministik digunakan.");
     }
   }
-  if (plan.entityId && (!entities.some((e) => e.id === plan.entityId) || input.entityId && input.entityId !== plan.entityId)) throw new Error("Entitas jawaban di luar cakupan yang dipilih.");
+  // A plan may only narrow the scope the accountant chose: an entity outside it is ignored, never an error.
+  if (plan.entityId && (!entities.some((e) => e.id === plan.entityId) || input.entityId && input.entityId !== plan.entityId)) {
+    plan = { ...plan, entityId: undefined };
+    answer.limitations.push("Rencana AI menyebut entitas di luar cakupan yang dipilih; cakupan pilihan Anda yang digunakan.");
+  }
   const entityId = input.entityId ?? plan.entityId;
   const selectedEntities = entityId ? entities.filter((e) => e.id === entityId) : entities;
   const compareBooks = plan.intent === "COMPARE" && /\b(?:buku|gl|bulan)\b/i.test(question) && !!intake.clientId && selectedEntities.length > 0;
