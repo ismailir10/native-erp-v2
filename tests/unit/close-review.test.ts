@@ -36,6 +36,11 @@ describe("AI close review prompt and parser", () => {
     ]);
   });
 
+  it("accepts a row only as evidence for the control it was sent with", () => {
+    const text = JSON.stringify({ items: [{ controlKey: "nature-total:e1", explanation: "Pinjaman tercatat sebagai pendapatan.", suggestion: "", refs: ["tx1"] }] });
+    expect(parseCloseReview(text, input)[0].refs).toEqual([]); // tx1 belongs to pl-financing
+  });
+
   it("rejects an answer without a single valid item", () => {
     expect(() => parseCloseReview('{"items":[{"controlKey":"x","explanation":"y"}]}', input)).toThrow(/kosong/);
     expect(() => parseCloseReview('{"answer":"ok"}', input)).toThrow();
