@@ -42,6 +42,9 @@ async function firmFor(db: Db, intoApp: boolean) {
   return (await db.firm.findFirst({ where: { name: "Verifikasi data nyata" } })) ?? db.$transaction((tx) => createFirm(tx, "Verifikasi data nyata"));
 }
 
+/** Month key: the tie-out runs per client account per month (client COA first, cycle 2026-09-27). */
+const month = (d: Date) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+
 const stamp = () => new Date().toISOString().slice(0, 16).replace("T", " ");
 
 /** Default mapping for accounts no rule recognised (AI isn't used here: no credit spent on verification). */
@@ -70,7 +73,7 @@ async function runImport(db: Db, firmId: string, clientId: string, file: string,
 
 // ─── Independent recompute (not Buku's reader) ────────────────────────────────
 
-type Key = string; // entity|code|year
+type Key = string; // entity|code|yyyy-mm
 async function recomputeLedger(file: string, sheets: string[]) {
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.readFile(file);
@@ -90,7 +93,7 @@ async function recomputeLedger(file: string, sheets: string[]) {
       const date = v[head.date] instanceof Date ? (v[head.date] as Date) : null;
       if (!entity || !code || !date) return;
       const cents = (x: unknown) => (typeof x === "number" ? BigInt(Math.round(Number(x.toFixed(6)) * 100)) : x ? BigInt(Math.round(Number(String(x).replace(/,/g, "")) * 100)) : 0n);
-      const k = `${entity}|${code}|${date.getUTCFullYear()}`;
+      const k = `${entity}|${code}|${month(date)}`;
       const cur = sums.get(k) ?? { cents: 0n, rows: 0 };
       cur.cents += cents(v[head.debit]) - cents(v[head.credit]);
       cur.rows++;
@@ -109,7 +112,7 @@ async function bukuBySource(db: Db, clientId: string) {
   const sums = new Map<Key, bigint>();
   for (const l of lines) {
     const e = entities.find((x) => x.id === l.entityId)!;
-    const k = `${e.shortName}|${l.sourceAccount!.code}|${l.date.getUTCFullYear()}`;
+    const k = `${e.shortName}|${l.sourceAccount!.code}|${month(l.date)}`;
     sums.set(k, (sums.get(k) ?? 0n) + l.debit - l.credit);
   }
   return { sums, entities };
@@ -163,12 +166,12 @@ async function chickin(db: Db, intoApp: boolean) {
   }
 
   // Buku vs independent recompute, per entity × account × year.
-  log("\n## Buku vs rekalkulasi independen buku besar workbook (per entitas × akun sumber × tahun)");
+  log("\n## Buku vs rekalkulasi independen buku besar workbook (per entitas × akun klien × bulan)");
   const expected = await recomputeLedger(file, ["04_HC_2022_FOUNDATION", "20_OPCO_GL_MASTER", "10_HC_GL_MASTER"].slice(1));
   const found = await bukuBySource(db, client.id);
   const foundation = await db.journalLine.findMany({ where: { entityId: holdco.id, entry: { kind: "OPENING" } }, select: { debit: true, credit: true, sourceAccount: { select: { code: true } } } });
   for (const l of foundation) {
-    const k = `HOLDCO|${l.sourceAccount?.code}|2022`;
+    const k = `HOLDCO|${l.sourceAccount?.code}|2022-12`;
     found.sums.set(k, (found.sums.get(k) ?? 0n) - (l.debit - l.credit)); // foundation isn't in the GL sheets: leave it out of this comparison
     if (found.sums.get(k) === 0n) found.sums.delete(k);
   }
@@ -253,6 +256,11 @@ async function goers(db: Db, intoApp: boolean) {
     log(`- ${t.code === "TOTAL_OK" ? "✓" : "✗"} ${t.message}`);
   }
   const bs = await balanceSheet(db, { clientId: client.id, entityIds: [entities[0].entity.id] }, dateOnly(2026, 5, 31));
+  // Accounts the file lists under "Long-term Liability" must be presented as long-term (Neraca term hint → mapping).
+  const longTerm = await db.sourceAccount.findMany({ where: { clientId: client.id, typeHint: "LIABILITAS", termHint: "NON_CURRENT" }, include: { account: true } });
+  const wrongSide = longTerm.filter((a) => a.account?.fsLine !== "UTANG_JANGKA_PANJANG");
+  if (wrongSide.length || longTerm.length === 0) failures++;
+  log(`- ${wrongSide.length || !longTerm.length ? "✗" : "✓"} ${longTerm.length} akun di bagian "Long-term Liability" file → Liabilitas jangka panjang Buku${wrongSide.length ? `; salah sisi: ${wrongSide.map((a) => `${a.code} ${a.name} → ${a.account?.code}`).join(", ")}` : ""} · total jangka panjang ${formatMoney(bs.nonCurrentLiabilities.reduce((t, i) => t + i.amount, 0n), "IDR")}`);
   log(`- Neraca Buku 31 Mei 2026: aset ${formatMoney(bs.totals.assets, "IDR")} · liabilitas + ekuitas ${formatMoney(bs.totals.liabilities + bs.totals.equity, "IDR")} · ${bs.totals.difference === 0n ? "seimbang ✓" : "✗"}`);
 }
 
