@@ -69,10 +69,12 @@ describe("schedule candidates from the ledger", () => {
     const twin = await db.$transaction(async (tx) => postJournal(tx, { entityId: pt, date: dateOnly(2026, 8, 24), kind: "ADJUSTMENT", memo: "Dua printer", lines: [{ accountId: await acc("1210"), debit: 15_000_000n }, { accountId: vehicles.id, debit: 15_000_000n }, { accountId: await acc("2110"), credit: 30_000_000n }] }));
     const name = (id: string | null) => (id === buy.id ? "buy" : id === mixed.id ? "mixed" : "twin");
     const pending = async () => (await scheduleCandidates(db, c, 2026, 8)).filter((x) => x.kind !== "ACCRUAL" && name(x.sourceEntryId) !== "twin").map((x) => `${x.kind}:${name(x.sourceEntryId)}:${x.amount}`);
-    const twins = async () => (await scheduleCandidates(db, c, 2026, 8)).filter((x) => x.sourceEntryId === twin.id).length;
-    expect(await twins()).toBe(2);
-    await createSchedule(db, { clientId: c, entityId: pt, kind: "DEPRECIATION", memo: "Penyusutan printer", debitCode: "6180", creditCode: "1219", amount: "15.000.000", months: 36, startYear: 2026, startMonth: 9, sourceEntryId: twin.id });
-    expect(await twins()).toBe(1);
+    const twins = async () => (await scheduleCandidates(db, c, 2026, 8)).filter((x) => x.sourceEntryId === twin.id);
+    const [, second] = await twins();
+    expect([(await twins()).length, second.memo]).toEqual([2, "Penyusutan Kendaraan 24 Agu 2026"]);
+    // Scheduling the second candidate (its memo names Kendaraan) leaves the first one, never the other way round.
+    await createSchedule(db, { clientId: c, entityId: pt, kind: "DEPRECIATION", memo: second.memo, debitCode: "6180", creditCode: "1219", amount: "15.000.000", months: 36, startYear: 2026, startMonth: 9, sourceEntryId: twin.id });
+    expect((await twins()).map((x) => x.memo)).toEqual(["Penyusutan Aset Tetap 24 Agu 2026"]);
     expect(await pending()).toEqual(["DEPRECIATION:buy:48000000", "DEPRECIATION:buy:30000000", "AMORTIZATION:mixed:12000000", "DEPRECIATION:mixed:20000000"]);
 
     // Depreciating the machine leaves the car; amortising the rent leaves the rack.

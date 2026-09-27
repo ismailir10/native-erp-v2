@@ -29,8 +29,13 @@ The review of the staging → main promotion (#37, head e41a53f) found two more 
       count from 1 January; balance-sheet lines count from the start. A client account posted to both kinds therefore closes its
       ledger at its TB row. The posted basis now only chooses the normal side shown.
 
+- [x] Review round 5 (#47): among asset lines of equal amount, a schedule takes the line whose account name its memo carries. A
+      schedule made from a candidate keeps "Penyusutan <account> <date>", so the right line is covered. The first line is the
+      fallback when the memo was edited.
+
 **Non-goals:** storing a schedule's source line (a schema change).
-**Assumptions:** a depreciation schedule whose amount was edited and that isn't the last one for the entry may leave one extra
+**Assumptions:** with equal amounts *and* an edited memo, which of the twin suggestions stays is label-only: both would post the same
+6180/1219 amount. A stored source line would settle it but is a schema change, left out here. Separately, a depreciation schedule whose amount was edited and that isn't the last one for the entry may leave one extra
 suggestion visible. That is harmless: it is only a suggestion.
 
 ## Tasks
@@ -39,6 +44,7 @@ suggestion visible. That is harmless: it is only a suggestion.
 - [x] T3 One-to-one depreciation matching; as-of horizon for the TB basis — accept: both new cases fail on the previous commit
 - [x] T4 The ledger basis uses the same report cutoff — accept: new case fails on the previous helper
 - [x] T5 The ledger opening follows each line's own account — accept: new case fails on the previous ledger
+- [x] T6 Equal-amount asset lines matched by the schedule's memo — accept: new case fails on the previous matching
 
 ## Implementation
 - T1: `lib/adjust/candidates.ts` drops the entry-level filter and adds `covered(line, net)`, based on the entry's schedules.
@@ -65,6 +71,9 @@ suggestion visible. That is harmless: it is only a suggestion.
   - The two ledger pages and tests no longer pass `isPL`.
   - Test: a client account posted to 1110 in November, 6180 in December and 1110 in January. Its TB row and ledger both open at
     10 and close at 30.
+- T6: `lib/adjust/candidates.ts` matches each schedule to an open asset line of its amount. It prefers the line whose account name
+  appears in the memo, longest name first. Test: two 15 jt printers (1210 Aset Tetap, 1211 Kendaraan). Scheduling the second
+  candidate leaves "Penyusutan Aset Tetap …".
 
 ## Verification
 - T1: the new test fails on the old scan ("expected [] to deeply equal [ 'DEPRECIATION:buy:30000000', …"; the car and rack
@@ -101,6 +110,14 @@ suggestion visible. That is harmless: it is only a suggestion.
   - `npm run build` ✓.
   - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
   - `test:e2e` → 10 passed (53.7s).
+- T6: the new case fails on the previous matching ("expected [ 'Penyusutan Kendaraan 24 Agu 2026' ] …": the scheduled asset stayed)
+  and passes after.
+- T6 gates:
+  - Lint and typecheck clean.
+  - `npm test` → Test Files 61 passed (61), Tests 458 passed (458).
+  - `npm run build` ✓.
+  - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
+  - `test:e2e` → 10 passed (52.7s).
 
 ## Ship Notes
 No migration, no env change. Merges to staging, then rides the promotion PR #37.

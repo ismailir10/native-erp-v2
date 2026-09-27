@@ -79,9 +79,13 @@ export async function scheduleCandidates(db: Db, clientId: string, year: number,
       const assets = [...groups.entries()].filter(([, g]) => g.line.entryId === entryId && g.line.account.fsLine === "ASET_TETAP");
       const pool = from.filter((s) => s.sourceEntryId === entryId && s.kind === "DEPRECIATION");
       if (pool.length >= assets.length) { for (const [k] of assets) coveredAssets.add(k); continue; }
-      for (const [k, g] of assets) {
-        const i = pool.findIndex((s) => s.amount === g.net);
-        if (i >= 0) { pool.splice(i, 1); coveredAssets.add(k); }
+      // Each schedule takes one line of its amount. Among equal amounts, the line whose account name its memo carries (a schedule
+      // made from a candidate keeps "Penyusutan <account> <date>"), the longest name first; otherwise the first line.
+      for (const s of pool) {
+        const open = assets.filter(([k, g]) => !coveredAssets.has(k) && g.net === s.amount);
+        const named = open.filter(([, g]) => s.memo.toLowerCase().includes(g.line.account.name.toLowerCase())).sort(([, x], [, y]) => y.line.account.name.length - x.line.account.name.length);
+        const hit = named[0] ?? open[0];
+        if (hit) coveredAssets.add(hit[0]);
       }
     }
     const covered = (k: string, l: (typeof lines)[number]) =>
