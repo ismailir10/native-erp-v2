@@ -20,12 +20,12 @@ export function NextStep({ children, href, cta, tone = "info" }: { children: Rea
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border px-4 py-3 text-sm",
-        tone === "done" ? "border-pass/20 bg-pass-subtle text-pass" : "border-primary/15 bg-primary-subtle text-foreground",
+        "flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border px-4 py-3 text-sm",
+        tone === "done" ? "border-pass/20 bg-pass-subtle text-pass" : "border-border bg-card text-foreground",
       )}
       data-testid="next-step"
     >
-      {tone === "done" && <CircleCheck className="size-4 shrink-0" aria-hidden />}
+      {tone === "done" ? <CircleCheck className="size-4 shrink-0" aria-hidden /> : <span className="size-2 shrink-0 bg-brand ring-1 ring-primary/40" aria-hidden />}
       <div className="min-w-0 flex-1 font-medium">{children}</div>
       {href && cta && (
         <Link href={href} className={buttonVariants({ size: "sm" })}>
@@ -38,8 +38,8 @@ export function NextStep({ children, href, cta, tone = "info" }: { children: Rea
 
 export function Stat({ label, value, hint, className }: { label: string; value: React.ReactNode; hint?: React.ReactNode; className?: string }) {
   return (
-    <div className={cn("rounded-lg border bg-card p-4 shadow-xs", className)}>
-      <div className="text-xs font-medium text-muted-foreground">{label}</div>
+    <div className={cn("rounded-lg border bg-card p-4", className)}>
+      <div className="eyebrow">{label}</div>
       <div className="num mt-1 text-2xl font-semibold tracking-tight">{value}</div>
       {hint && <div className="mt-1 text-xs text-muted-foreground">{hint}</div>}
     </div>

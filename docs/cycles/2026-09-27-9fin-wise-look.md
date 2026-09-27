@@ -21,12 +21,12 @@ Tokens (`app/globals.css`)
 - [ ] Chart palette forest-led, validated with the `dataviz` skill's validator (≥ 3:1 on white for each series used).
 
 Components
-- [ ] **Sidebar = dark app chrome**: Forest Green background, off-white text, active item Bright Green fill with Forest
+- [x] **Sidebar = dark app chrome**: Forest Green background, off-white text, active item Bright Green fill with Forest
       text, group labels monospace uppercase. Everything inside stays legible (no `text-muted-foreground` on dark).
-- [ ] **Primary button** = Bright Green fill + Forest text (Wise signature); outline/ghost unchanged in shape, forest text.
-- [ ] **9fin micro-labels**: table headers, sidebar group labels, `Stat` labels and page-header eyebrows in monospace
+- [x] **Primary button** = Bright Green fill + Forest text (Wise signature); outline/ghost unchanged in shape, forest text.
+- [x] **9fin micro-labels**: table headers, sidebar group labels, `Stat` labels and page-header eyebrows in monospace
       uppercase 11px with letter-spacing; `NextStep` gets the small square marker instead of the tinted blue box.
-- [ ] `BrandMark` Bright Green square with Forest "B". Login page follows the same chrome.
+- [x] `BrandMark` Bright Green square with Forest "B". Login page follows the same chrome.
 - [x] `ui-rules` skill "Look" section and CLAUDE.md §4 row rewritten to the new standard (9fin structure, Wise colours,
       token names, "Bright Green is fill-only").
 
@@ -52,13 +52,15 @@ standard (`ui-rules`, CLAUDE.md §4), which this approval covers.
 
 ## Tasks
 - [x] T1 Tokens + contrast table + docs (`app/globals.css`, `ui-rules`, CLAUDE.md §4) — accept: contrast ratios computed and listed; lint/typecheck/test green.
-- [ ] T2 Shared components: sidebar chrome, button, brand mark, table head, `Stat`/`NextStep`/`PageHeader` micro-labels, login — accept: screenshots desktop + 390px look right; no illegible text on dark chrome.
+- [x] T2 Shared components: sidebar chrome, button, brand mark, table head, `Stat`/`NextStep`/`PageHeader` micro-labels, login — accept: screenshots desktop + 390px look right; no illegible text on dark chrome.
 - [ ] T3 Charts palette (dataviz validator) + visual pass over every main page + end-of-cycle gates — accept: validator passes; `build`, `verify:books`, `test:e2e` green.
 
 ## Implementation
 - Plan: T1–T3 sequential, inline (tokens → components → charts/visual pass depend on each other).
-- T1: `app/globals.css` (Wise tokens, `--brand`/`--brand-foreground`, 4px radius, Forest sidebar tokens, `.eyebrow`, system mono stack), `.claude/skills/ui-rules/SKILL.md` (Look section + description), `CLAUDE.md` §4. `--input` is `#8A8C87` (3.4:1) instead of the spec's `#D3D5D0`, so form field edges meet WCAG 1.4.11's 3:1; hairline `--border` stays decorative. Chart tokens are placeholders until T3's validator run.
+- T1: `app/globals.css` (Wise tokens, `--brand`/`--brand-foreground`, 4px radius, Forest sidebar tokens, `.eyebrow`, system mono stack), `.claude/skills/ui-rules/SKILL.md` (Look section + description), `CLAUDE.md` §4. `--input` is `#8A8C87` (3.4:1) instead of the spec's `#D3D5D0`, so form field edges meet WCAG 1.4.11's 3:1; hairline `--border` stays decorative. Chart tokens are placeholders until T3's validator run.- T2: `components/ui/button.tsx` (default = Bright Green fill, Forest text, no shadow), `components/ui/sidebar.tsx` (active item = `sidebar-primary`, hover = lighter Forest, icons follow text colour, group labels mono uppercase), `components/ui/table.tsx` (headers `.eyebrow`), `components/app/app-sidebar.tsx` (sidebar tokens instead of `text-muted-foreground`, Forest borders), `components/app/page-header.tsx` (`NextStep` white hairline box with a small Bright Green square marker; `Stat` label `.eyebrow`, no shadow), `components/app/status.tsx` (square 9fin tag), `components/app/brand-mark.tsx`, `app/login/page.tsx` (Forest page, white card), card shadows removed in `review-queue` / `fx-missing`.
+
 ## Verification
 - T1 contrast (WCAG, computed): foreground on canvas 17.89 · on card 19.23 · muted-fg on card 9.37 / canvas 8.72 / muted 8.34 · Forest text on card 13.93 / canvas 12.96 / primary-subtle 12.01 · white on Forest 13.93 · Forest on Bright Green 9.45 · sidebar fg on Forest 11.86 · pass on pass-subtle 8.76 · review on review-subtle 10.10 · fail on fail-subtle 4.67 · fail/pass/review on card 5.43/10.01/10.86 · input border on card 3.40 · Bright Green on white 1.47 (hence fill-only).
-- T1: lint + typecheck clean; `npm test` → Test Files 51 passed (51), Tests 384 passed (384).
+- T1: lint + typecheck clean; `npm test` → Test Files 51 passed (51), Tests 384 passed (384).- T2: lint + typecheck clean; `npm test` → 51 files / 384 tests passed. Browser on local `buku_real` (:3001): Beranda, Tutup Buku with *Tinjauan AI*, Laporan Keuangan (Gabungan) at desktop; Beranda + mobile nav sheet at 390 px (scrollWidth = clientWidth = 390); login captured anonymously with Playwright at 1280 and 390.
+
 ## Ship Notes

@@ -7,7 +7,7 @@ export function FxMissing({ error, base, compact }: { error: FxMissingError; bas
   if (compact) {
     // Pages that already show a NextStep: a quiet card, so there's still only one instruction on screen.
     return (
-      <div className="rounded-lg border bg-card p-4 text-sm shadow-xs">
+      <div className="rounded-lg border bg-card p-4 text-sm">
         <div className="font-medium">Angka Gabungan Grup belum bisa dijabarkan ke Rupiah</div>
         <p className="mt-1 text-muted-foreground">
           Kurs belum lengkap: {error.missing.map((m) => `${m.entity} — ${m.need}`).join("; ")}.{" "}
