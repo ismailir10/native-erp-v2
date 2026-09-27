@@ -15,18 +15,18 @@ purchase, a prepayment, a recurring cost missing this month). No AI in this cycl
 
 ## Spec
 Schedules (`lib/adjust/schedules.ts`, new)
-- [ ] **`AdjustmentSchedule`** per entity: kind `DEPRECIATION | AMORTIZATION | ACCRUAL`, memo, debit account, credit account
+- [x] **`AdjustmentSchedule`** per entity: kind `DEPRECIATION | AMORTIZATION | ACCRUAL`, memo, debit account, credit account
       (client COA), total amount (bigint minor units, functional currency), `months` (≥ 1), start year/month, `reverse`
       (ACCRUAL), optional `sourceEntryId` (the purchase / prepayment entry it came from), `stoppedAt`, created by.
-- [ ] **Installments are exact:** k = 1…months, amount = ⌊total / months⌋, the last takes the remainder (Σ = total). A
+- [x] **Installments are exact:** k = 1…months, amount = ⌊total / months⌋, the last takes the remainder (Σ = total). A
       `reverse` schedule adds one reversal installment in the month after the last, sides swapped, dated the 1st.
       Installments post on the period's last day.
-- [ ] **Proposals at read time** (like FX revaluation): for a period, every non-stopped schedule's installment that falls
+- [x] **Proposals at read time** (like FX revaluation): for a period, every non-stopped schedule's installment that falls
       in that month and isn't posted yet. Nothing is stored until the click.
-- [ ] **Post = one click** → `postJournal()` (kind `ADJUSTMENT`, memo `<memo> (k/n)`), with `JournalEntry.scheduleId` +
+- [x] **Post = one click** → `postJournal()` (kind `ADJUSTMENT`, memo `<memo> (k/n)`), with `JournalEntry.scheduleId` +
       `installment`; a DB unique on `(scheduleId, installment)` makes a double click or two tabs post once. Locked periods
       reject it as every write does. **Post all due** for a period in one action (one entry per installment).
-- [ ] **Stop** a schedule (asset sold, contract ended): later installments are no longer proposed; posted ones stay
+- [x] **Stop** a schedule (asset sold, contract ended): later installments are no longer proposed; posted ones stay
       (corrections = new entries). A schedule can't be edited after its first posting — stop it and create a new one.
 
 Candidates from the ledger (deterministic, shown, never created on their own)
@@ -81,14 +81,17 @@ proration); editing a schedule after it has posted; posting on a timer.
    has; the accountant simply doesn't create a schedule.
 
 ## Tasks
-- [ ] T1 Schema + migration + `lib/adjust/schedules.ts` (create / installments / proposals / post / post-all / stop) + DB tests — accept: migration applies on a fresh DB; `tests/db/schedules.test.ts` green. Reuse `postJournal`, `periodBounds`, `parseMoney`.
+- [x] T1 Schema + migration + `lib/adjust/schedules.ts` (create / installments / proposals / post / post-all / stop) + DB tests — accept: migration applies on a fresh DB; `tests/db/schedules.test.ts` green. Reuse `postJournal`, `periodBounds`, `parseMoney`.
 - [ ] T2 Candidates from the ledger + tests — accept: three candidate kinds and look-alikes in tests. Depends T1. Reuse `scanLedger` (C2).
 - [ ] T3 UI + actions: Jurnal Penyesuaian sections, Tutup Buku card + `sched:` control — accept: browser check desktop + 390 px; actions resolve the client via `getClientForFirm`. Depends T1–T2. Load `ui-rules`.
 - [ ] T4 Demo + walk + docs (accounting-rules rule, ADR 0009 note, README close row) — accept: `demo:reset && verify:books` ALL PASS; investor e2e green. Depends T3. Load `demo-data`.
 - [ ] T5 End-of-cycle gates — accept: `build`, `verify:books`, full `test:e2e` green.
 
 ## Implementation
+- Plan: T1–T5 sequential, inline (each layer builds on the previous: schedules → candidates → UI → demo walk).
+- T1: `prisma/schema.prisma` + migration `20260927150000_adjustment_schedules` (enum `ScheduleKind`, table `AdjustmentSchedule`, `JournalEntry.scheduleId` / `installment` with a unique index; CHECKs: amount > 0, 1 ≤ months ≤ 600, start month 1–12, debit ≠ credit account, schedule and installment set together). `lib/ledger/post.ts` — `PostInput` carries `scheduleId` / `installment`. `lib/adjust/schedules.ts` — `installments()` (⌊total/n⌋, remainder on the last; reversal = one swapped installment dated the 1st), `createSchedule()` (entity and accounts of the client, never bank / clearing / 1999, `parseMoney` in the entity's currency, ACCRUAL forced to 1 month + reverse, source entry must be the entity's), `dueProposals()` (running schedules, installment in the month, not yet posted), `postInstallment()` (one `postJournal` ADJUSTMENT, memo `<memo> (k/n)` or `Pembalikan: <memo>`; the unique index turns a second click into "sudah dicatat"), `postAllDue()`, `stopSchedule()`, `listSchedules()` (posted count / amount, remaining, last month). Tests: `tests/db/schedules.test.ts`.
 
 ## Verification
+- T1: fresh DB `prisma migrate deploy` → "All migrations have been successfully applied." with the five CHECK constraints present; lint + typecheck clean; `npm test` → Test Files 54 passed (54), Tests 400 passed (400).
 
 ## Ship Notes
