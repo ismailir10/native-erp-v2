@@ -1,11 +1,12 @@
 import { prisma } from "@/lib/db";
-import { loadClientPage } from "@/lib/client-page";
+import { clientAccountsView, loadClientPage } from "@/lib/client-page";
+import { clientAccountsByAccount, type ClientAccountPart } from "@/lib/reports/source";
 import { type SearchParams, withParams } from "@/lib/scope";
-import { balanceSheet, combinedWorksheet, incomeStatement } from "@/lib/reports/ledger";
+import { balanceSheet, combinedWorksheet, incomeStatement, type FsItem } from "@/lib/reports/ledger";
 import { formatPeriod, monthName } from "@/lib/format";
 import { NextStep, PageHeader } from "@/components/app/page-header";
 import { ScopeBar } from "@/components/app/scope-bar";
-import { FsTable } from "@/components/app/fs-table";
+import { FsTable, type FsParts } from "@/components/app/fs-table";
 import { Money } from "@/components/app/money";
 import { StatusPill } from "@/components/app/status";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -51,6 +52,29 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
     );
   }
   const { isMonth, isYtd, bs, ws } = data;
+  // Client COA first: for one entity with its own accounts, each Buku account opens into the client accounts behind it.
+  const view = await clientAccountsView(scope, sp);
+  const q = { period: period.key, entity: scope.value };
+  const partsOf = (map: Map<string, ClientAccountPart[]> | null, items: FsItem[]): FsParts | undefined => {
+    if (!map) return undefined;
+    const out: FsParts = {};
+    for (const a of items.flatMap((i) => i.accounts)) {
+      const list = map.get(a.code) ?? [];
+      if (!list.some((x) => x.sourceAccountId) || a.amount === 0n) continue;
+      const net = list.reduce((t, x) => t + x.net, 0n);
+      const sign = net === 0n || (a.amount > 0n) === (net > 0n) ? 1n : -1n; // presentation sign of this FS line
+      const rows = list.map((x) => ({ key: `${a.code}:${x.sourceAccountId ?? "-"}`, code: x.sourceAccountId ? x.code : "", name: x.name, amount: x.net * sign, href: x.sourceAccountId ? withParams(`${base}/ledger/akun/${x.sourceAccountId}`, q) : undefined }));
+      const rest = a.amount - net * sign;
+      if (rest !== 0n) rows.push({ key: `${a.code}:rest`, code: "", name: a.code === "3200" ? "Laba (rugi) tahun-tahun sebelumnya" : "Lainnya", amount: rest, href: undefined });
+      out[a.code] = rows;
+    }
+    return out;
+  };
+  const [bsParts, plParts] = view.available
+    ? await Promise.all([clientAccountsByAccount(prisma, scope.value, { to: period.end }), clientAccountsByAccount(prisma, scope.value, { from: period.start, to: period.end })])
+    : [null, null];
+  const plItems = [...isMonth.revenue, ...isMonth.cogs, ...isMonth.opex, ...isMonth.other, ...isMonth.tax];
+  const bsItems = [...bs.currentAssets, ...bs.nonCurrentAssets, ...bs.liabilities, ...bs.equity];
   // The comparison column may lack last month's closing rate; the current period must not be blocked by it.
   const prev = await withFx(() => balanceSheet(prisma, s, prevEnd));
   const bsPrev = prev instanceof FxMissingError ? null : prev;
@@ -80,6 +104,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
               <FsTable
                 accountHref={href}
                 currency={currency}
+                parts={partsOf(plParts, plItems)}
                 columns={[formatPeriod(period.year, period.month), `S.d. ${monthName(period.month)}`]}
                 sections={[
                   { items: [isMonth.revenue, isYtd.revenue], total: { label: "Total pendapatan usaha", values: [isMonth.totals.revenue, isYtd.totals.revenue] } },
@@ -109,11 +134,13 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
               <FsTable
                 accountHref={href}
                 currency={currency}
+                parts={partsOf(bsParts, bsItems)}
                 columns={bsPrev ? [formatPeriod(period.year, period.month), prevLabel] : [formatPeriod(period.year, period.month)]}
                 sections={[
                   { title: "Aset lancar", items: cmp(bs.currentAssets, bsPrev?.currentAssets) },
                   { title: "Aset tidak lancar", items: cmp(bs.nonCurrentAssets, bsPrev?.nonCurrentAssets), total: { label: "Total aset", values: cmp(bs.totals.assets, bsPrev?.totals.assets), strong: true } },
-                  { title: "Liabilitas", items: cmp(bs.liabilities, bsPrev?.liabilities), total: { label: "Total liabilitas", values: cmp(bs.totals.liabilities, bsPrev?.totals.liabilities) } },
+                  { title: "Liabilitas jangka pendek", items: cmp(bs.currentLiabilities, bsPrev?.currentLiabilities) },
+                  { title: "Liabilitas jangka panjang", items: cmp(bs.nonCurrentLiabilities, bsPrev?.nonCurrentLiabilities), total: { label: "Total liabilitas", values: cmp(bs.totals.liabilities, bsPrev?.totals.liabilities) } },
                   { title: "Ekuitas", items: cmp(bs.equity, bsPrev?.equity), total: { label: "Total liabilitas & ekuitas", values: cmp(bs.totals.liabilities + bs.totals.equity, bsPrev ? bsPrev.totals.liabilities + bsPrev.totals.equity : undefined), strong: true } },
                 ]}
               />
