@@ -37,11 +37,11 @@ describe("attribution", () => {
     const entry = await postAdjustment(db, { clientId: g.client.id, entityId: g.pt.entity.id, date: dateOnly(2026, 8, 10), memo: "Koreksi", lines: [{ accountCode: "5100", debit: "1000", credit: "" }, { accountCode: "1101", debit: "", credit: "1000" }], actorId: m.id });
     expect((await db.journalEntry.findUniqueOrThrow({ where: { id: entry.id } })).postedById).toBe(m.id);
     const period = await db.period.findFirstOrThrow({ where: { clientId: g.client.id, year: 2026, month: 8 } });
-    const signoff = await db.closeSignoff.create({ data: { periodId: period.id, key: "tb", doneById: m.id } });
+    const signoff = await db.closeSignoff.create({ data: { periodId: period.id, key: "docs", doneById: m.id } });
     expect((await db.closeSignoff.findUniqueOrThrow({ where: { id: signoff.id }, include: { doneBy: true } })).doneBy?.name).toBe("Budi");
     // lockPeriod runs the controls; an empty August with one balanced entry needs the sign-offs to be complete.
     const { CLOSE_SIGNOFFS } = await import("@/lib/controls");
-    for (const s of CLOSE_SIGNOFFS) if (s.key !== "tb") await db.closeSignoff.create({ data: { periodId: period.id, key: s.key, doneById: m.id } });
+    for (const s of CLOSE_SIGNOFFS) if (s.key !== "docs") await db.closeSignoff.create({ data: { periodId: period.id, key: s.key, doneById: m.id } });
     const controls = await (await import("@/lib/controls")).runControls(db, g.client.id, 2026, 8);
     for (const c of controls) if (c.status === "REVIEW") await db.controlAck.create({ data: { periodId: period.id, controlKey: c.key, note: "Wajar untuk uji", ackedById: m.id } });
     if (controls.every((c) => c.status !== "FAIL")) {
