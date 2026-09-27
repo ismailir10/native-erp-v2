@@ -94,4 +94,29 @@ describe("AI close review", () => {
     expect(nature.rows.map((x) => [x.text, x.amount, x.how])).toEqual([["Akun sumber 21500 Hutang Pemegang Saham", "-Rp 900", "dipetakan ke 1140, jenis di file LIABILITAS"]]);
     expect(r.items.find((i) => i.controlKey === nature.key)!.links[0].href).toBe(`/clients/${g.client.id}/trial-balance?view=source&entity=${g.pt.entity.id}&period=2026-08`);
   });
+
+  it("sends only the bank lines behind the flagged accounts", async () => {
+    const g = await makeGroup();
+    const pdf = makePdf([
+      [
+        ...table(800, [[[40, "PT Bank Mandiri (Persero) Tbk"]], [[40, "Nomor Rekening : 2222222222"]], [[40, "Periode : 01/08/2026 - 31/08/2026"]]]),
+        ...table(740, [
+          [[40, "Tanggal"], [130, "Keterangan"], [360, "Debit"], [440, "Kredit"], [520, "Saldo"]],
+          [[40, "01/08/2026"], [130, "SALDO AWAL"], [500, "0,00"]],
+          [[40, "04/08/2026"], [130, "TRANSFER DARI PT MITRA"], [430, "10.000.000,00"], [510, "10.000.000,00"]],
+          [[40, "05/08/2026"], [130, "BAYAR SEWA DIMUKA"], [360, "4.000.000,00"], [520, "6.000.000,00"]],
+        ]),
+      ],
+    ]);
+    await importStatement(db, { bankAccountId: g.pt.banks[1].id, fileName: "m.pdf", data: pdf, provider: null });
+    const [inTx, outTx] = await db.bankTransaction.findMany({ where: { entityId: g.pt.entity.id }, orderBy: { date: "asc" } });
+    await reviewTransaction(db, { bankTxId: inTx.id, accountCode: "1130", taxTag: null }); // receivable credited: flagged
+    await reviewTransaction(db, { bankTxId: outTx.id, accountCode: "1170", taxTag: null }); // prepaid debited: normal, unrelated
+
+    let seen: CloseReviewInput | null = null;
+    const provider = new MockProvider();
+    await reviewClose(db, g.firm.id, g.client.id, 2026, 8, { model: "mock", classify: provider.classify.bind(provider), mapAccounts: provider.mapAccounts.bind(provider), reviewClose: async (i) => ((seen = i), provider.reviewClose(i)) });
+    const nature = seen!.controls.find((c) => c.key === `nature:${g.pt.entity.id}`)!;
+    expect(nature.rows.map((r) => r.id)).toEqual([inTx.id]);
+  });
 });

@@ -55,10 +55,13 @@ async function gather(db: Db, clientId: string, year: number, month: number, con
       const f = await flaggedBankRows(db, clientId, e.id, start, end);
       rows = take(bySize(kind === "guess" ? f.guesses : f.financing)).map((t) => bankRow(t, e.functionalCurrency, e.id));
     } else if (e && (kind === "nature" || kind === "nature-total")) {
-      // The bank lines that fed the suspicious balance-sheet accounts this month.
-      const codes = (await db.account.findMany({ where: { clientId, type: { in: ["ASET", "LIABILITAS"] }, isBank: false, isSuspense: false, isClearing: false, isIntercompany: false }, select: { code: true } })).map((a) => a.code);
-      const flaggedCodes = codes.filter((code) => c.detail.includes(`${code} `));
-      const txs = await db.bankTransaction.findMany({ where: { entityId: e.id, date: { gte: start, lte: end }, accountCode: { in: codes } } });
+      // The bank lines that fed the flagged accounts this month: the listed accounts for `nature`, the non-bank assets
+      // for a negative asset total. Nothing else leaves the database (ADR 0009).
+      const assets = kind === "nature-total";
+      const codes = (await db.account.findMany({ where: { clientId, type: { in: assets ? ["ASET"] : ["ASET", "LIABILITAS"] }, isBank: false, isSuspense: false, isClearing: false, isIntercompany: false }, select: { code: true } })).map((a) => a.code);
+      const listed = new Set(c.detail.split("; ").map((part) => part.split(" ")[0]));
+      const flaggedCodes = assets ? [] : codes.filter((code) => listed.has(code));
+      const txs = await db.bankTransaction.findMany({ where: { entityId: e.id, date: { gte: start, lte: end }, accountCode: { in: assets ? codes : flaggedCodes } } });
       rows = take(bySize(txs)).map((t) => bankRow(t, e.functionalCurrency, e.id));
       // Ledger-fed balances: the client's own accounts that make up each flagged Buku account.
       const parts = await db.journalLine.groupBy({
