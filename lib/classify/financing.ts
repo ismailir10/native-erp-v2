@@ -11,7 +11,7 @@ import type { Classification } from "@/lib/classify/types";
 /** Words that mark financing or own-money movements — balance-sheet, not Laba Rugi. */
 export const FINANCING = /\b(PINJAMAN|LOAN|PRK|PLAFON|ANGSURAN|POKOK|PENCAIRAN (?:KREDIT|KMK|KI)|PELUNASAN (?:KREDIT|KMK|KI)|SETORAN MODAL|MODAL|DEPOSITO|PENEMPATAN|PINDAH ?BUKU|OVERBOOK\w*|ANTAR REKENING)\b/i;
 /** Interest, fees and taxes on those movements are legitimately P&L. */
-export const FINANCING_COST = /\b(BUNGA|INTEREST|BIAYA|FEE|ADM\w*|PAJAK|TAX|MATERAI|STAMP)\b/i;
+export const FINANCING_COST = /\b(BUNGA|INTEREST|BIAYA|FEE|ADM\w*|PAJAK|TAX|MATERAI|STAMP|PROVISI)\b/i;
 
 const INTEREST = /\b(BUNGA|INTEREST)\b/i;
 const FEES = /\b(BIAYA|FEE|ADM\w*|MATERAI|STAMP|PROVISI)\b/i;

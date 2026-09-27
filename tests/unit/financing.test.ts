@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { financingSuggestion } from "@/lib/classify/financing";
+import { FINANCING_COST, financingSuggestion } from "@/lib/classify/financing";
 import { businessDaysApart, matchTransfers } from "@/lib/classify/transfer";
 
 const code = (d: string, dir: "IN" | "OUT") => financingSuggestion(d, dir)?.accountCode ?? null;
@@ -16,6 +16,13 @@ describe("financing suggestions", () => {
     expect(code("PELUNASAN KREDIT INVESTASI", "OUT")).toBe("2210");
     expect(code("PINDAH BUKU KE REK 123", "OUT")).toBe("1199");
     expect(financingSuggestion("PENCAIRAN PINJAMAN KMK", "IN")).toMatchObject({ method: "HEURISTIC", confidence: 0.5, taxTag: null });
+  });
+
+  it("never suggests a P&L account the sanity control would then flag as financing in Laba Rugi", () => {
+    for (const d of ["BUNGA PINJAMAN KMK", "BIAYA PROVISI PLAFON KREDIT", "PROVISI PINJAMAN", "ADM PINJAMAN KMK", "MATERAI PERJANJIAN KREDIT KMK"]) {
+      const s = financingSuggestion(d, "OUT");
+      expect(s && ["7100", "7110"].includes(s.accountCode) ? FINANCING_COST.test(d) : true).toBe(true);
+    }
   });
 
   it("stays out of ordinary lines and of combinations it can't read", () => {
