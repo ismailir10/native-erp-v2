@@ -115,3 +115,16 @@ export async function dismissProposal(db: Db, input: { clientId: string; proposa
   const done = await db.proposedEntry.updateMany({ where: { id: input.proposalId, clientId: input.clientId, status: "PROPOSED" }, data: { status: "DISMISSED", decidedById: input.actorId ?? null, decidedAt: new Date() } });
   if (done.count !== 1) throw new LedgerError("Usulan tidak ditemukan atau sudah diputuskan.");
 }
+
+/** Plain JSON for the proposals card (bigint as strings). */
+export async function proposalViews(db: Db, clientId: string, year: number, month: number) {
+  const rows = await openProposals(db, clientId, year, month);
+  const txs = new Map((await db.bankTransaction.findMany({ where: { id: { in: rows.flatMap((p) => (p.bankTransactionId ? [p.bankTransactionId] : [])) } }, select: { id: true, accountCode: true } })).map((t) => [t.id, t.accountCode]));
+  return rows.map((p) => {
+    const lines = readLines(p.lines);
+    const current = p.bankTransactionId ? txs.get(p.bankTransactionId) : null;
+    const fixed = current ? lines.findIndex((l) => l.accountCode === current) : -1;
+    return { id: p.id, memo: p.memo, reason: p.reason, source: p.source, entity: p.entity.shortName, currency: p.entity.functionalCurrency, fixed: fixed >= 0 ? fixed : null, lines };
+  });
+}
+

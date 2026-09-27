@@ -9,6 +9,8 @@ import { ClosePanel } from "@/components/app/close-panel";
 import { RevaluationCard } from "@/components/app/revaluation-card";
 import { ScheduleProposals } from "@/components/app/schedule-proposals";
 import { proposalViews } from "@/lib/adjust/view";
+import { proposalViews as draftViews } from "@/lib/adjust/proposals";
+import { ProposalsCard } from "@/components/app/proposals-card";
 import { revaluationProposals } from "@/lib/fx/revalue";
 import { CloseReviewCard } from "@/components/app/close-review-card";
 import { cachedCloseReview } from "@/lib/controls/ai-review";
@@ -33,6 +35,8 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
   const locked = p?.status === "LOCKED";
   const reval = await revaluationProposals(prisma, client.id, period.year, period.month);
   const scheduled = locked ? [] : await proposalViews(prisma, client.id, period.year, period.month);
+  const drafts = locked ? [] : await draftViews(prisma, client.id, period.year, period.month);
+  const chart = drafts.length ? (await prisma.account.findMany({ where: { clientId: client.id, isBank: false }, select: { code: true, name: true }, orderBy: { code: "asc" } })) : [];
   const flagged = controls.filter((c) => c.status !== "PASS").length;
   const ai = await resolveAiConfig(prisma);
   const aiModel = ai.apiKey && ai.model ? ai.model : null;
@@ -72,6 +76,7 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
           }))}
         />
       )}
+      {drafts.length > 0 && <ProposalsCard clientId={client.id} periodLabel={label} items={drafts} accounts={chart} locked={locked} />}
       {scheduled.length > 0 && <ScheduleProposals clientId={client.id} year={period.year} month={period.month} periodLabel={label} items={scheduled} locked={locked} />}
       {!locked && flagged > 0 && <CloseReviewCard key={`${period.key}:${reviewKey}`} clientId={client.id} year={period.year} month={period.month} flagged={flagged} aiReady={aiModel !== null} initial={review} />}
       <ClosePanel
@@ -84,6 +89,7 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
         locked={locked}
         lockedAt={p?.lockedAt ? `${formatDateTime(p.lockedAt)} oleh ${p.lockedBy?.name ?? "Sistem"}` : null}
         blockers={blockers}
+        aiReady={aiModel !== null}
       />
     </div>
   );
