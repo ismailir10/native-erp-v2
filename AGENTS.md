@@ -97,10 +97,11 @@ docs/{cycles,adrs,demo}/   history, decisions, demo script
 
 ## 6. Environment
 
-- Postgres 16 locally (`docker compose up -d` or the sandbox's preinstalled server); Neon in production.
-- `.env` from `.env.example`. `DEMO_MODE=true` enables synthetic demo fixtures; see [operator reset boundaries](README.md#deploy-vercel--neon).
-- AI: `AI_BASE_URL` (env-only, default OpenCode Zen); key + model from **Pengaturan** (encrypted, `SETTINGS_SECRET`, guarded by
-  `ADMIN_PASSCODE`), else `AI_API_KEY` / `AI_MODEL`. No key = rules-only mode, fully working.
+- Postgres 16 locally (`docker compose up -d` or the sandbox's preinstalled server); Supabase Postgres in production ([ADR 0010](docs/adrs/0010-supabase-platform.md)).
+- Login = Supabase Auth, email + password; local dev uses the *staging* project's Auth (keys in `.env`, see `.env.example`). Access = `FirmMember` (role ADMIN | AKUNTAN).
+- `.env` from `.env.example`. `DEMO_MODE=true` enables synthetic demo fixtures; see [operator reset boundaries](README.md#deploy-vercel--supabase).
+- AI: `AI_BASE_URL` (env-only, default OpenCode Zen); key + model from **Pengaturan** (encrypted, `SETTINGS_SECRET`, admin role
+  only), else `AI_API_KEY` / `AI_MODEL`. No key = rules-only mode, fully working.
 - Real client files: only locally or in production, the one real workspace ([ADR 0008](docs/adrs/0008-one-workspace.md)); staging is synthetic. Read [docs/real-data.md](docs/real-data.md) first.
   **Credit is limited** — tests and seed never call a real model (MockProvider + cache). `npm run ai:smoke` makes one real call.
 - Access and environment setup: [README → Invitation operations](README.md#invitation-operations). Session tenancy lives in [`lib/tenant.ts`](lib/tenant.ts), authentication in [`lib/auth/`](lib/auth/).
