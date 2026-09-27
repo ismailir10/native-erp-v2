@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { createSupabaseBrowserClient, readAuthFragment } from "@/lib/supabase/browser";
 
 const MIN = 8;
 
@@ -13,6 +13,7 @@ export function SetPasswordForm({ url, publishableKey, linkError }: { url: strin
   const router = useRouter();
   const supabase = useMemo(() => createSupabaseBrowserClient(url, publishableKey), [url, publishableKey]);
   const [ready, setReady] = useState<"checking" | "ok" | "missing">(linkError ? "missing" : "checking");
+  const [hashError, setHashError] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
@@ -20,14 +21,22 @@ export function SetPasswordForm({ url, publishableKey, linkError }: { url: strin
 
   useEffect(() => {
     if (linkError) return;
-    // The browser client consumes an invite / recovery link's tokens from the URL fragment on creation.
     let cancelled = false;
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => { if (!cancelled && session) setReady("ok"); });
-    const timer = setTimeout(async () => {
+    (async () => {
+      const fragment = readAuthFragment(window.location.hash);
+      if (fragment && "error" in fragment) { setHashError(fragment.error); setReady("missing"); return; }
+      if (fragment) {
+        // Adopt the link's tokens into the cookie session, then drop them from the address bar.
+        const { error } = await supabase.auth.setSession({ access_token: fragment.accessToken, refresh_token: fragment.refreshToken });
+        window.history.replaceState(null, "", window.location.pathname);
+        if (!cancelled) setReady(error ? "missing" : "ok");
+        return;
+      }
+      // A PKCE link was already exchanged by /auth/callback; the session is in the cookies.
       const { data } = await supabase.auth.getSession();
       if (!cancelled) setReady(data.session ? "ok" : "missing");
-    }, 1500);
-    return () => { cancelled = true; clearTimeout(timer); listener.subscription.unsubscribe(); };
+    })();
+    return () => { cancelled = true; };
   }, [supabase, linkError]);
 
   async function submit() {
@@ -44,8 +53,8 @@ export function SetPasswordForm({ url, publishableKey, linkError }: { url: strin
   }
 
   if (ready === "missing") return <div className="space-y-4">
-    <p role="alert" className="text-sm text-fail">{linkError === "expired" ? "Tautan sudah kedaluwarsa." : "Tautan tidak berlaku atau sudah dipakai."} Minta tautan baru untuk melanjutkan.</p>
-    <Button render={<Link href="/login/lupa" />} className="w-full">Minta tautan baru</Button>
+    <p role="alert" className="text-sm text-fail">{(linkError ?? hashError) === "expired" ? "Tautan sudah kedaluwarsa." : "Tautan tidak berlaku atau sudah dipakai."} Minta tautan baru untuk melanjutkan.</p>
+    <Button render={<Link href="/login/lupa" />} nativeButton={false} className="w-full">Minta tautan baru</Button>
   </div>;
 
   return <form onSubmit={event => { event.preventDefault(); void submit(); }} className="space-y-5" aria-busy={busy || ready === "checking"}>

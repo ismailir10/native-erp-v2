@@ -18,7 +18,8 @@ function loginError(error: { code?: string; status?: number }) {
 }
 
 export async function signInAction(_previous: FormState, formData: FormData): Promise<FormState> {
-  const parsed = credentials.safeParse({ email: String(formData.get("email") ?? "").trim().toLowerCase(), password: formData.get("password") });
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const parsed = credentials.safeParse({ email, password: formData.get("password") });
   if (!parsed.success) return { error: "Isi email yang valid dan kata sandi." };
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.auth.signInWithPassword(parsed.data);
