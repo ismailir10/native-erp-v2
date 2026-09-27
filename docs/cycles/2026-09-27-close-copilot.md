@@ -1,0 +1,79 @@
+# Close copilot — "Jelaskan" per control, with a draft fix the accountant posts
+
+## Context
+The AI close review (ADR 0009) explains *all* flagged controls in one card, as prose. The accountant then still has to turn
+"reclassify the Rp 100 jt loan drawdown from 4100 to 2210" into a journal by hand, and to type the note that acknowledges a
+REVIEW control. Two gaps: the explanation isn't next to the control it is about, and a proposed fix isn't something you can
+post. ADR 0009 decision 2 already allows it: *proposed entries are drafts the accountant accepts; posting still goes through
+`postJournal()`*.
+
+Outcome: every FAIL/REVIEW row on Tutup Buku has **Jelaskan**. One AI call for that control returns a diagnosis citing its rows,
+and either a **draft adjusting / reclass journal** (stored as a proposal, posted only by the accountant's click, accounts editable)
+or a **draft note** (fills the acknowledgement dialog, saved only by the accountant). This is also where reclass proposals live
+(the "reclass" part of C4).
+
+Approved in advance by the owner's request ("make sure these are done … finished until it merged to main").
+
+## Spec
+Proposals (`lib/adjust/proposals.ts`, new)
+- [ ] **`ProposedEntry`**: firm, client, entity, period (year/month), source (`AI_CONTROL` now; `SUSPENSE` next cycle), control
+      key, dedupe `key` (unique), memo, lines (JSON: account code, debit, credit as minor-unit strings), reason, cited ids, status
+      `PROPOSED | POSTED | DISMISSED`, posted `entryId` (unique FK to `JournalEntry`), decided by/at.
+- [ ] **Post** (click): status must be PROPOSED; the accountant may change each line's **account** (never the amounts); accounts
+      must be in the client chart and not bank accounts; balanced, ≥ 2 lines; `postJournal()` kind `ADJUSTMENT`; proposal →
+      POSTED with `entryId` in the same transaction (a second click fails cleanly). Locked period refused as every write.
+- [ ] **Dismiss** (click): PROPOSED → DISMISSED. Nothing else changes a proposal.
+
+Jelaskan (`lib/controls/explain.ts`, reuses `gather()` of the close review for the one control)
+- [ ] Input: that control's rows only (same ADR 0009 caps: ≤ 10 rows, 80-char texts) + the client chart (codes + names).
+- [ ] Output, validated before anything is stored: explanation (≤ 400), suggestion (≤ 300), refs ⊆ the control's row ids,
+      optional **note** (≤ 300, for REVIEW controls), optional **entry** `{memo, lines:[{accountCode, side, amount}]}`:
+      entity-scoped controls only; every account in the chart, never a bank account; balanced; **every line amount equals the
+      amount of a cited row** (the AI can't invent numbers); ≥ 2 lines. An invalid entry is dropped, the explanation kept.
+- [ ] Money discipline (rule 18/20a): `runBudgetedAi` with the close scope limit, cached by input hash + model + prompt version
+      (re-asking is free), `AiUsage` logged, no retries. The draft entry is stored once per cache key (`key` unique).
+- [ ] Prompt names the fix types it may draft: reclass between P&L and balance sheet, correcting a 1999 difference, an
+      accrual/reversal, or "no journal — here is why it is fine" (note).
+
+UI (Tutup Buku)
+- [ ] Each FAIL/REVIEW row: **Jelaskan** (when AI is configured, period open) → inline panel under the row: explanation,
+      suggestion, cited rows as links, **Pakai sebagai catatan** (opens the note dialog prefilled; the accountant saves) and, if
+      a draft was made, "Draf jurnal dibuat di *Usulan jurnal koreksi*".
+- [ ] Card **Usulan jurnal koreksi {periode}**: PROPOSED proposals of the period — memo, reason, lines with an account select
+      each, amounts fixed; **Catat jurnal** / **Abaikan**. Shown only when there is one.
+- [ ] Existing "Tinjauan AI" card stays (one call for all); Jelaskan is the per-control path.
+
+Verification
+- [ ] `tests/unit/close-explain.test.ts`: parser keeps a grounded balanced entry; drops an entry with an invented amount, an
+      unknown or bank account, unbalanced lines, or for a group control; refs outside the control dropped; note length.
+- [ ] `tests/db/close-explain.test.ts` (MockProvider): Jelaskan on the loan-in-revenue control stores one proposal
+      (Dr 4100 / Cr 2210 of the cited amount), a second call is served from cache (1 `AiUsage`, still 1 proposal); post with an
+      edited account creates the ADJUSTMENT entry and marks POSTED; double post refused; dismiss; locked period refused; never
+      posts/acks/locks on its own.
+- [ ] e2e: none of the investor walk changes (AI isn't configured in e2e); `verify:books` ALL PASS (no number changes).
+
+**Gate-reopeners:** **schema migration** — enums `ProposalSource`, `ProposalStatus`, table `ProposedEntry` (unique `key`, unique
+`entryId`). **AI**: a new paid call type within ADR 0009's bounds (one control's rows, same caps, budget, cache); an amended ADR
+0009 note + accounting-rules 20b. No dependency, no change to posting invariants (posting only via `postJournal()` on click).
+
+**Non-goals:** AI posting or acknowledging anything; editing amounts of a draft (post it and adjust with a free-form journal, or
+dismiss); proposals for group-level controls (1199/1190/suspense queue — their fix is elsewhere); deterministic 1999 proposals
+(next cycle, same table); a queue of proposals across periods.
+
+**Assumptions:**
+1. Grounding by amount equality is strict on purpose: a split across two accounts is still expressible when the parts are cited
+   rows; anything else the accountant types as a free-form journal.
+2. The draft note is only a prefill; a REVIEW control still needs the accountant's own save.
+3. The proposal's entity is the control's entity (`kind:<entityId>` keys).
+
+## Tasks
+- [ ] T1 Schema + migration + `lib/adjust/proposals.ts` (post / dismiss / list) + DB tests — accept: migration on a fresh DB; tests green.
+- [ ] T2 `explainControl` (gather one control, provider method + parser + prompt, cache, store proposal) + unit/DB tests — accept: tests green with MockProvider. Depends T1.
+- [ ] T3 UI: Jelaskan per row, inline panel, note prefill, *Usulan jurnal koreksi* card + actions — accept: browser check 1440/390 with a mock-configured AI on local demo. Depends T2. Load `ui-rules`.
+- [ ] T4 Docs + end-of-cycle gates — accept: ADR note, rule 20b, README; `build`, `verify:books`, `test:e2e` green.
+
+## Implementation
+
+## Verification
+
+## Ship Notes
