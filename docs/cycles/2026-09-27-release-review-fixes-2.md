@@ -25,8 +25,14 @@ Both would leave the books wrong after a click, so they ship before the release 
   `tests/db/suspense-corrections.test.ts` (a difference cleared by a manual adjustment is neither offered nor postable).
   Rules 15a / 20b wording.
 
+- Review of #39: a split reversal of a cited bank line (e.g. Rp 60 jt + Rp 40 jt off 4100) matched no full-amount line and slipped
+  through as a free ADJUSTMENT. Now any line on a cited bank line's current account counts as moving it; only the single two-line
+  reclass gets a draft. `reclassedBankLine` is exported and tested directly (split → no draft, exact reclass → that line); fails on
+  the previous code.
+
 ## Verification
 - T1: new tests fail on the previous code (2 failed | 7 passed), pass after. Gates: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 433 passed (433); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (56.5s).
+- Review of #39: lint + typecheck clean; `npm test` → Test Files 61 passed (61), Tests 433 passed (433); `npm run build` ✓; `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth; `test:e2e` → 10 passed (53.5s).
 
 ## Ship Notes
 No migration, no env change. Merges to staging, then rides the open promotion PR #37.

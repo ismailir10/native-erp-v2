@@ -3,7 +3,7 @@ import { db, makeGroup, resetDb } from "../helpers";
 import { makePdf, table } from "../pdf-fixture";
 import { importStatement } from "@/lib/import/pipeline";
 import { reviewTransaction } from "@/lib/review";
-import { explainControl } from "@/lib/controls/explain";
+import { explainControl, reclassedBankLine } from "@/lib/controls/explain";
 import { postProposal, proposalViews } from "@/lib/adjust/proposals";
 import { runControls } from "@/lib/controls";
 import { MockProvider, parseControlExplain, type AiProvider } from "@/lib/ai/provider";
@@ -149,6 +149,13 @@ describe("close copilot — Jelaskan", () => {
     };
     const multi = await explainControl(db, g.firm.id, g.client.id, 2026, 8, key, four);
     expect([multi.explanation, multi.proposal, await db.proposedEntry.count()]).toEqual(["Dua pinjaman di pendapatan.", null, 0]);
+
+    // Nor a split reversal of one cited line (Rp 100 jt off 4100 in two pieces): it still moves that bank line.
+    const l = (accountCode: string, side: "D" | "K", amount: string) => ({ accountCode, side: side as "D" | "K", amount });
+    const splitEntry = { memo: "Reklasifikasi bertahap", lines: [l("4100", "D", "Rp 60.000.000"), l("4100", "D", "Rp 40.000.000"), l("2210", "K", "Rp 100.000.000")] };
+    expect(await reclassedBankLine(db, g.pt.entity.id, [first.id], splitEntry, "IDR")).toBe("AMBIGUOUS");
+    const oneLine = { memo: "Reklasifikasi", lines: [l("4100", "D", "Rp 100.000.000"), l("2210", "K", "Rp 100.000.000")] };
+    expect(await reclassedBankLine(db, g.pt.entity.id, [first.id], oneLine, "IDR")).toBe(first.id);
 
     // One cited → that one, even though the other has the lower id. (Same books: clear the cached answer to ask again.)
     await db.evidenceAiCache.deleteMany();

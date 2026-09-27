@@ -70,10 +70,10 @@ export async function explainControl(db: Db, firmId: string, clientId: string, y
 /**
  * A two-line draft that takes a cited bank line off its current account (the reverse side, its full amount) and onto another
  * one is a re-classification of that line: it must post through the review writer, never as a free journal (rule 3).
- * A draft that moves a cited bank line any other way (several lines, several bank lines) can't go through that writer, so it
- * gets no draft at all ("AMBIGUOUS") rather than a free journal that would leave the lines mis-coded.
+ * A draft that touches a cited bank line's account any other way (split amounts, several lines, several bank lines) can't go
+ * through that writer, so it gets no draft at all ("AMBIGUOUS") rather than a free journal that would leave the lines mis-coded.
  */
-async function reclassedBankLine(db: Db, entityId: string, citedIds: string[], entry: NonNullable<ControlExplainAnswer["entry"]>, currency: string): Promise<string | null | "AMBIGUOUS"> {
+export async function reclassedBankLine(db: Db, entityId: string, citedIds: string[], entry: NonNullable<ControlExplainAnswer["entry"]>, currency: string): Promise<string | null | "AMBIGUOUS"> {
   if (citedIds.length === 0) return null;
   const txs = await db.bankTransaction.findMany({ where: { id: { in: citedIds }, entityId, accountCode: { not: null } }, orderBy: { id: "asc" } });
   const offLine = (t: (typeof txs)[number]) => {
@@ -81,10 +81,12 @@ async function reclassedBankLine(db: Db, entityId: string, citedIds: string[], e
     const reverse = t.amount > 0n ? "D" : "K"; // money in was credited to its account: moving it off debits that account
     return { abs, from: entry.lines.find((l) => l.accountCode === t.accountCode && l.side === reverse && amountOf(l.amount, currency) === abs) };
   };
-  const touched = txs.filter((t) => offLine(t).from);
+  // Conservative: any line on a cited bank line's current account moves that line (in one piece or split), so only the one
+  // shape the reviewer's writer can post — the full amount off, the same amount onto one other account — gets a draft.
+  const touched = txs.filter((t) => entry.lines.some((l) => l.accountCode === t.accountCode));
   if (touched.length === 0) return null;
   const [t] = touched;
   const { abs, from } = offLine(t);
-  const single = touched.length === 1 && entry.lines.length === 2 && entry.lines.some((l) => l !== from && l.accountCode !== t.accountCode && amountOf(l.amount, currency) === abs);
+  const single = touched.length === 1 && entry.lines.length === 2 && !!from && entry.lines.some((l) => l !== from && l.accountCode !== t.accountCode && amountOf(l.amount, currency) === abs);
   return single ? t.id : "AMBIGUOUS";
 }
