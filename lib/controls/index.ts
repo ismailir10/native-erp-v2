@@ -6,6 +6,7 @@ import { FxMissingError } from "@/lib/reports/fx";
 import { revaluationProposals } from "@/lib/fx/revalue";
 import { balanceSheet, combinedWorksheet, trialBalance } from "@/lib/reports/ledger";
 import { sanityControls } from "@/lib/controls/sanity";
+import { anomalyControls } from "@/lib/controls/anomaly";
 
 /**
  * Close controls (analog of belifi 16_CONTROLS). PASS / REVIEW / FAIL.
@@ -106,7 +107,15 @@ export async function runControls(db: Db, clientId: string, year: number, month:
       ack: acks.get(clKey),
     });
 
-    controls.push(...(await sanityControls(db, { clientId, entity: e, tb, start, end, base, acks, statementMissing })));
+    const sane = [
+      ...(await sanityControls(db, { clientId, entity: e, tb, start, end, base, acks, statementMissing })),
+      ...(await anomalyControls(db, { clientId, entity: e, year, month, base, acks })),
+    ];
+    controls.push(
+      ...(sane.length
+        ? sane
+        : [{ key: `sanity:${e.id}`, title: "Kewajaran pembukuan", scope: e.shortName, status: "PASS" as const, detail: "Tidak ada saldo janggal, pembiayaan di Laba Rugi, bulan kosong, tebakan yang diterima begitu saja, fluktuasi atau jurnal ganda" }]),
+    );
   }
 
   // Ledger / Neraca imports (rule 15a): accepted source differences stay FAIL until 1999 is cleared; REVIEW checks need a note.

@@ -21,20 +21,20 @@ of the month, read on the account's normal side; **OPENING entries never count a
 months before** the period, counting only months in which the entity has any non-opening line.
 Materiality **M** per entity-month = **1 % of the baseline's average monthly P&L volume** (Σ over P&L accounts of |movement|);
 no baseline month → the scans that need one are skipped.
-- [ ] **Flux** `flux:<entity>` — P&L accounts (7190/7200 exempt) whose month movement differs from the baseline average by
+- [x] **Flux** `flux:<entity>` — P&L accounts (7190/7200 exempt) whose month movement differs from the baseline average by
       ≥ M **and** ≥ 50 % of |average|. Needs ≥ 2 baseline months. REVIEW, detail lists the top 5 by |Δ|:
       `6110 Beban Gaji Rp 45.000.000 vs rata-rata 3 bln Rp 20.000.000 (+125%)`.
-- [ ] **Sign against nature** `flip:<entity>` — P&L accounts whose month movement runs against their `normalBalance`
+- [x] **Sign against nature** `flip:<entity>` — P&L accounts whose month movement runs against their `normalBalance`
       (revenue net debit, expense net credit), |movement| ≥ M; 7190/7200 exempt. (Balance-sheet accounts are already
       covered by `nature`.) REVIEW.
-- [ ] **New / reactivated account** `dormant:<entity>` — |movement| ≥ M on an account that had no movement in the 3 prior
+- [x] **New / reactivated account** `dormant:<entity>` — |movement| ≥ M on an account that had no movement in the 3 prior
       calendar months (all 3 must have entity activity), either never before (*akun baru*) or with earlier movement
       (*aktif lagi*). Bank, suspense, clearing, intercompany, 7190/7200 exempt. REVIEW.
-- [ ] **Possible duplicate** `dup:<entity>` — two entries of the period (the second may look back 3 days) with the same
+- [x] **Possible duplicate** `dup:<entity>` — two entries of the period (the second may look back 3 days) with the same
       line signature (account, debit, credit per line) and dates ≤ 3 days apart, amount ≥ M. Two **bank-derived** entries
       never pair (the statement's running balance proves each row happened); two lines of **the same ledger file** pair only
       when their memos match too. OPENING and RECLASS never pair. REVIEW, top 5 pairs with dates, amounts and sources.
-- [ ] Each scan emits a row only when it flags; `sanity:<entity>` PASS text extends to say the ledger scans found nothing.
+- [x] Each scan emits a row only when it flags; `sanity:<entity>` PASS text extends to say the ledger scans found nothing.
       Controls follow `runControls`' shape (key, title, scope, detail, href to the account's ledger for the period, ack).
 
 AI close review (ADR 0009, extended, not a new path)
@@ -48,7 +48,7 @@ AI close review (ADR 0009, extended, not a new path)
       lines behind flagged anomaly controls may be sent, under the same caps and budget.
 
 Verification
-- [ ] `tests/db/anomaly-controls.test.ts`: each scan flags its planted case and ignores the look-alike (bank pair,
+- [x] `tests/db/anomaly-controls.test.ts`: each scan flags its planted case and ignores the look-alike (bank pair,
       same-file different memo, below M, 7190, OPENING, < 2 baseline months, contra account on its normal side); a period
       with a flagged scan can lock only after a note; `runControls` output for a clean entity unchanged apart from the
       PASS text.
@@ -78,14 +78,17 @@ flagged controls in one call).
 4. Real-data runs (`verify-real`) happen on the owner's machine; this cycle's evidence is tests + demo.
 
 ## Tasks
-- [ ] T1 `lib/controls/anomaly.ts` scans + wiring into `runControls` + DB tests — accept: `tests/db/anomaly-controls.test.ts` green; demo August inspected (`demo:reset`, controls listed). Reuse `periodBounds`, `formatMoney`, `Control`, sanity's `control()` shape.
+- [x] T1 `lib/controls/anomaly.ts` scans + wiring into `runControls` + DB tests — accept: `tests/db/anomaly-controls.test.ts` green; demo August inspected (`demo:reset`, controls listed). Reuse `periodBounds`, `formatMoney`, `Control`, sanity's `control()` shape.
 - [ ] T2 AI review rows + prompt v2 + tests — accept: `tests/db/close-review.test.ts` new cases green with MockProvider. Depends T1. Reuse `gather()`'s `take`/`bySize`/`links`.
 - [ ] T3 Docs + real-data report: ADR 0009 amendment, accounting-rules 22b, `verify-real` anomaly section, demo walk/doc if T1 found a flag — accept: typecheck; e2e green.
 - [ ] T4 End-of-cycle gates — accept: `build`, `demo:reset`, `verify:books` ALL PASS, `test:e2e` green.
 
 ## Implementation
 - Plan: T1–T4 sequential, inline (each task builds on the previous one's control keys; small enough to review as one diff).
+- T1: `lib/controls/anomaly.ts` — `scanLedger()` (per account natural movement per month via `groupBy`, OPENING excluded; baseline = active months among the 3 before; materiality 1 % of the baseline's average P&L volume; flux / flip / dormant / dup findings, shared with the AI review in T2) and `anomalyControls()` (REVIEW rows `flux:` `flip:` `dormant:` `dup:` with top-5 details and a ledger link for the period). *Akun baru* = nothing on the account before the period at all; an opening balance or older movement reads *bergerak lagi setelah ≥ 3 bulan diam*. `lib/controls/index.ts` runs it after the sanity checks; the entity's single PASS row (`sanity:`) moved from `sanity.ts` to `runControls` and now also names the ledger scans. Tests: `tests/db/anomaly-controls.test.ts` (clean month, flux vs small-amount look-alike, < 2 baseline months, flip vs 7190, new vs opening-balance account vs below materiality, duplicates vs bank pair / 19 days apart / same file different memo, lock blocked by the unacknowledged duplicate only).
+- Demo inspection (`demo:reset`, controls May–Aug 2026 for every client): one flag — PT Jasa Kreatif Juli `flux` 6170 Rp 17.450.000 vs rata-rata Rp 11.466.666 (+52%), a closed month the seed acknowledges. Ayam August is clean as seeded, but the walk's review books the planted *mesin pakan* (Rp 185.000.000) to 1210 Aset Tetap, which only had an opening balance, so `dormant` should flag it after the review step — a genuine capex signal; confirmed and handled in the walk in T3.
 
 ## Verification
+- T1: lint + typecheck clean; `npm test` → Test Files 53 passed (53), Tests 392 passed (392).
 
 ## Ship Notes
