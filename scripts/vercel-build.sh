@@ -4,8 +4,9 @@
 set -euo pipefail
 
 # The Supabase ↔ Vercel integration injects POSTGRES_PRISMA_URL (pooled) and POSTGRES_URL_NON_POOLING (direct).
-export DATABASE_URL="${DATABASE_URL:-${POSTGRES_PRISMA_URL:-${POSTGRES_URL:-}}}"
-DIRECT_URL="${DIRECT_URL:-${POSTGRES_URL_NON_POOLING:-$DATABASE_URL}}"
+# They win over a leftover DATABASE_URL from an older database integration.
+export DATABASE_URL="${POSTGRES_PRISMA_URL:-${POSTGRES_URL:-${DATABASE_URL:-}}}"
+DIRECT_URL="${POSTGRES_URL_NON_POOLING:-${DIRECT_URL:-$DATABASE_URL}}"
 if [ -z "$DATABASE_URL" ]; then
   echo "✗ No database URL. Connect the Supabase project to this Vercel project (Integrations → Supabase) and redeploy." >&2
   exit 1
