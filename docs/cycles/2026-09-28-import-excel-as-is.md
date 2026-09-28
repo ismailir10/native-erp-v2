@@ -80,7 +80,7 @@ password-protected .xls; foreign-currency statements; changing how the generic p
       in `pdf.ts` — accept: unit tests on synthetic fixtures reproducing the Belifi layout (3 sheets, book direction, no year),
       an HTML .xls, a BIFF .xls, Dec→Jan rollover, a gap at a sheet boundary, and a letter-spaced BCA PDF; existing parser tests green.
       Depends T1.
-- [ ] T3 Schema + pipeline: migration `import_sheet_notes`; `importStatement` accepts `year`, stores `sourceSheet` and
+- [x] T3 Schema + pipeline: migration `import_sheet_notes`; `importStatement` accepts `year`, stores `sourceSheet` and
       `parseNotes`, returns notes + months in `ImportSummary`; ledger drill shows the sheet — accept: DB test imports the synthetic
       Belifi workbook → 3 months posted, recon PASS per month, notes stored; a sheet-boundary gap → continuity REVIEW. Depends T2.
 - [ ] T4 Actions + UI: `importAction` passes `year`; `fail()` returns `needsYear` + guess; `ImportForm` shows the year field,
@@ -96,8 +96,10 @@ password-protected .xls; foreign-currency statements; changing how the generic p
 ## Implementation
 - Plan: tasks T1–T6 sequential, done inline (each builds on the previous parser change; one driver keeps the invariants straight).
 - T1: `package.json`, `package-lock.json` (hand-added entry: `npm install` on npm 11 prunes other platforms' optional bindings), `lib/import/workbook.ts`, `tests/xls-fixture.ts`, `tests/unit/workbook.test.ts` — bytes → PDF/XLSX/XLS/MARKUP/TEXT; BIFF/HTML/XML → .xlsx with serial dates kept (no time-zone shift, checked in Asia/Jakarta and America/Los_Angeles) and markup cells as text.- T2: `lib/import/parsers/{index,tabular,pdf}.ts`, `lib/import/{types,normalize,workbook}.ts`, `scripts/inspect-statement.ts` (`--year`, notes, sheets — pulled forward from T6 to test on the real file), `tests/unit/import-workbook.test.ts`, `tests/unit/pdf.test.ts` — format from bytes only; every sheet read (ExcelJS rows are sparse: `Array.from` keeps unlabeled columns); SALDO AWAL/AKHIR rows; year from period line → sheet name → the accountant (`YearNeededError` with a file-name prefill); a year-less month rolls the year only when it falls ≥ 6 months (Des → Jan), so reordered rows never jump a year; direction verdict per sheet (the SALDO AWAL row counts as a balance), sheets that can't tell inherit the account's, disagreement is a note; sheets of one account joined; `.xls` must be a real OLE2 container; BCA letter-spaced header detected with capitals `BCA` standing apart ("SUBCATEGORY" is not BCA).
+- T3: `prisma/schema.prisma`, `prisma/migrations/20260928150000_import_sheet_notes` (additive: `BankTransaction.sourceSheet`, `StatementImport.parseNotes`), `lib/import/pipeline.ts` (`year`, notes, months), `lib/reports/account-ledger.ts` + `components/app/ledger-table.tsx` ("File X, lembar JUN, baris 3"), `tests/db/import-workbook.test.ts`.
 
 ## Verification
 - T1 gate: lint ✓ typecheck ✓ `Test Files 63 passed (63) · Tests 471 passed (471)`.- T2 gate: lint ✓ typecheck ✓ `Test Files 64 passed (64) · Tests 493 passed (493)`. Real files (local, `inspect:statement`): Belifi workbook → `Lembar MAY, JUN, JUL`, direction note, 135 rows, `NYAMBUNG ✓`, closing Rp 359.000 = the August PDF's opening; both BCA PDFs → `Format BCA`, `NYAMBUNG ✓`; SMBC combined PDF unchanged (3 × `NYAMBUNG ✓`).
+- T3: `prisma migrate diff` DB ↔ schema: empty. Gate: lint ✓ typecheck ✓ `Test Files 65 passed (65) · Tests 495 passed (495)` — the DB test posts May–Jul from one .xls with recon PASS for each month and a sheet-boundary gap as continuity REVIEW.
 
 ## Ship Notes

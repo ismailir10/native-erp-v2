@@ -25,6 +25,10 @@ export type ImportSummary = {
   continuityNote: string | null;
   /** Combined statements: the other account sections in the file, not imported into this bank account. */
   otherSections: string[];
+  /** Choices the parser made (direction read from the balance, sheets joined): stored on the import and shown. */
+  notes: string[];
+  /** The months the statement covers ("Mei 2026"), first to last. */
+  months: string[];
 };
 
 const HEURISTIC: Record<Direction, Classification> = {
@@ -34,7 +38,7 @@ const HEURISTIC: Record<Direction, Classification> = {
 
 export async function importStatement(
   db: Db,
-  args: { evidenceVersionId?: string; evidenceUnitKey?: string; bankAccountId: string; fileName: string; data: Buffer; provider: AiProvider | null; password?: string; actorId?: string | null },
+  args: { evidenceVersionId?: string; evidenceUnitKey?: string; bankAccountId: string; fileName: string; data: Buffer; provider: AiProvider | null; password?: string; year?: number; actorId?: string | null },
 ): Promise<ImportSummary> {
   const bankAccount = await db.bankAccount.findUniqueOrThrow({
     where: { id: args.bankAccountId },
@@ -43,7 +47,7 @@ export async function importStatement(
   const entity = bankAccount.entity;
   const client = entity.client;
 
-  const sections = await parseStatementSections(args.fileName, args.data, { password: args.password });
+  const sections = await parseStatementSections(args.fileName, args.data, { password: args.password, year: args.year });
   const digits = (s: string | null) => (s ?? "").replace(/\D/g, "");
   const st = sections.length === 1 ? sections[0] : sections.find((s) => digits(s.accountNumber) === digits(bankAccount.number));
   if (!st) {
@@ -164,6 +168,7 @@ export async function importStatement(
           duplicateCount: st.rows.length - fresh.length,
           continuityOk: continuity.ok,
           continuityNote: continuity.note,
+          parseNotes: st.notes ?? [],
           importedById: args.actorId ?? null,
         },
       });
@@ -184,6 +189,7 @@ export async function importStatement(
             amount: it.amount,
             balance: it.row.balance,
             rowNumber: it.row.rowNumber,
+            sourceSheet: it.row.sheet ?? null,
             rawRow: it.row.rawRow,
             hash: it.hash,
             status: auto ? "POSTED" : "NEEDS_REVIEW",
@@ -235,5 +241,14 @@ export async function importStatement(
     continuityOk: continuity.ok,
     continuityNote: continuity.note,
     otherSections,
+    notes: st.notes ?? [],
+    months: monthsOf(st.periodStart, st.periodEnd),
   };
+}
+
+function monthsOf(start: Date, end: Date): string[] {
+  const index = (d: Date) => d.getUTCFullYear() * 12 + d.getUTCMonth();
+  const out: string[] = [];
+  for (let k = index(start); k <= index(end); k++) out.push(formatPeriod(Math.floor(k / 12), (k % 12) + 1));
+  return out;
 }

@@ -19,7 +19,7 @@ export type LedgerRow = {
   credit: string;
   balance: string;
   entry: { lines: { code: string; name: string; debit: string; credit: string }[] };
-  source: null | { fileName: string; rowNumber: number; rawRow: string; description: string; amount: string; bank: string; method: string; reason: string; status: string };
+  source: null | { fileName: string; sheet: string | null; rowNumber: number; rawRow: string; description: string; amount: string; bank: string; method: string; reason: string; status: string };
   /** Ledger / Neraca import: file, entry rows, this line's row, the client's own account, and the original fx amount. */
   fileSource?: null | { fileName: string; entryRef: string; lineRef: string | null; sourceAccount: string | null; lineMemo: string | null; fx: string | null };
 };
@@ -79,7 +79,7 @@ export function LedgerTable({ rows, opening, currency = "IDR" }: { rows: LedgerR
                     <h3 className="mb-2 text-sm font-semibold">Sumber: baris rekening koran</h3>
                     <dl className="grid grid-cols-3 gap-y-1.5 text-sm">
                       <dt className="text-muted-foreground">Rekening</dt><dd className="col-span-2">{open.source.bank}</dd>
-                      <dt className="text-muted-foreground">File</dt><dd className="col-span-2 font-mono text-xs">{open.source.fileName}, baris {open.source.rowNumber}</dd>
+                      <dt className="text-muted-foreground">File</dt><dd className="col-span-2 font-mono text-xs">{open.source.fileName}, {open.source.sheet ? `lembar ${open.source.sheet}, ` : ""}baris {open.source.rowNumber}</dd>
                       <dt className="text-muted-foreground">Nominal</dt><dd className="num col-span-2">{formatMoney(BigInt(open.source.amount), currency)}</dd>
                       <dt className="text-muted-foreground">Klasifikasi</dt><dd className="col-span-2 flex items-center gap-2"><MethodBadge method={open.source.method} /> <span className="text-xs text-muted-foreground">{open.source.reason}</span></dd>
                     </dl>

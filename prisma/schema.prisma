@@ -259,6 +259,8 @@ model StatementImport {
   duplicateCount    Int               @default(0)
   continuityOk      Boolean
   continuityNote    String?
+  /// Choices the parser made that change how the file is read (direction from the balance, sheets joined), shown to the accountant.
+  parseNotes        String[]          @default([])
   importedById      String?
   importedBy        FirmMember?       @relation("StatementImportedBy", fields: [importedById], references: [id])
   createdAt         DateTime          @default(now())
@@ -283,6 +285,8 @@ model BankTransaction {
   amount        BigInt
   balance       BigInt?
   rowNumber     Int
+  /// Workbook sources: the sheet the row is on; rowNumber counts within it.
+  sourceSheet   String?
   rawRow        String
   hash          String
   status        TxStatus
