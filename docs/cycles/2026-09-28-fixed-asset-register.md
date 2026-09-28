@@ -73,7 +73,7 @@ feeds the tax cycle); intangible assets (1250) — same mechanics later; leases 
 - [x] T2 Register core: `lib/assets/register.ts` — `createAsset` (source line / existing schedule / by hand, schedule in the same
       transaction, reuse `createSchedule` checks), `assetRegister(period, entity)`, `assetCandidates` — accept: DB tests for the three
       ways in, GL-derived accumulated depreciation, due-but-unposted, candidates disappearing once registered. Depends T1.
-- [ ] T3 Disposal: `disposeAsset` — accept: DB tests for gain, loss, zero proceeds, land, refusal with unposted installments,
+- [x] T3 Disposal: `disposeAsset` — accept: DB tests for gain, loss, zero proceeds, land, refusal with unposted installments,
       locked month, 7300 created once / picker when the code is taken; the schedule stops. Depends T2.
 - [ ] T4 Close control `fa:` in `runControls` — accept: DB test PASS when equal, REVIEW with both figures when a typed journal moves 1210.
       Depends T2.
@@ -86,8 +86,10 @@ feeds the tax cycle); intangible assets (1250) — same mechanics later; leases 
 ## Implementation
 - Plan: T1–T6 sequential, inline (each layer uses the one before; the invariants need one driver).
 - T1: `prisma/schema.prisma`, `prisma/migrations/20260928160000_fixed_assets` (FixedAsset, AssetTaxGroup, FiscalMethod; CHECKs cost > 0, 0 ≤ residual < cost, 0 ≤ opening accumulated ≤ cost − residual, life 1–600, disposal recorded whole), `lib/assets/fiscal.ts`, `lib/coa/template.ts` (7300 + `ACCOUNT_CODES.DISPOSAL_GAIN_LOSS`), `tests/unit/fiscal-depreciation.test.ts`.- T2: `lib/assets/register.ts` (`createAsset` three ways in, `assetRegister`, `registerVsLedger`, `assetCandidates`, `unregisteredSchedules`), `lib/adjust/schedules.ts` (`amountMinor`, `inTx` hook, `owed` exported), migration `20260928161000_fixed_asset_accumulated_account` (found while testing: a fully depreciated Saldo Awal asset has no schedule, so the asset keeps its accumulated-depreciation account; CHECK land ⇔ none), `tests/db/assets.test.ts`. Fiscal straight line changed to a yearly amount (rate × cost, pro rata, half-up; last year the rest), spread by month inside the year — a full year is exactly 12,5 % of cost, not twelve rounded months.
+- T3: `lib/assets/dispose.ts`, `tests/db/asset-disposal.test.ts` — the schedule row is locked while the posted total is read (serialised with an installment click); "posted after the disposal" compares months (installments are dated the month's last day); 7300 is used only when its name says *pelepasan aset*, created on the first disposal when the code is free, otherwise the accountant picks a P&L account.
 
 ## Verification
 - T1: `prisma migrate diff` DB ↔ schema empty. Gate: lint ✓ typecheck ✓ `Test Files 66 passed (66) · Tests 503 passed (503)`. Worked example (Kelompok 1 saldo menurun, Rp 100 jt from Jul 2024): 25 / 37,5 / 18,75 / 9,375 / 9,375 jt, Σ = cost.- T2 gate: lint ✓ typecheck ✓ `Test Files 67 passed (67) · Tests 507 passed (507)`.
+- T3 gate: lint ✓ typecheck ✓ `Test Files 68 passed (68) · Tests 512 passed (512)`.
 
 ## Ship Notes
