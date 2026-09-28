@@ -12,9 +12,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Money } from "@/components/app/money";
+import { originOf, sourceFor, type FormOrigin } from "@/lib/adjust/form";
 import { createScheduleAction, stopScheduleAction } from "@/app/actions";
 import { formatMoney, parseMoney } from "@/lib/money";
 import type { CandidateView, ScheduleView } from "@/lib/adjust/view";
+import type { AccountType } from "@/lib/generated/prisma/enums";
 
 type Kind = "DEPRECIATION" | "AMORTIZATION" | "ACCRUAL";
 const KINDS: { kind: Kind; label: string; debit: string; credit: string; months: number; memo: string }[] = [
@@ -22,18 +24,18 @@ const KINDS: { kind: Kind; label: string; debit: string; credit: string; months:
   { kind: "AMORTIZATION", label: "Amortisasi", debit: "", credit: "1170", months: 12, memo: "Amortisasi " },
   { kind: "ACCRUAL", label: "Akrual", debit: "", credit: "2150", months: 1, memo: "Akrual " },
 ];
-type Form = { kind: Kind; entityId: string; memo: string; debitCode: string; creditCode: string; amount: string; months: string; start: string; sourceEntryId: string | null };
+type Form = { kind: Kind; entityId: string; memo: string; debitCode: string; creditCode: string; amount: string; months: string; start: string; origin: FormOrigin };
 
 const STATUS_LABEL = { BERJALAN: "Berjalan", SELESAI: "Selesai", DIHENTIKAN: "Dihentikan" } as const;
 
 /** Candidates from the ledger, the client's schedules, and the form that creates one (nothing posts from here). */
-export function SchedulePanel(props: { clientId: string; entities: { id: string; name: string; currency: string }[]; accounts: { code: string; name: string }[]; candidates: CandidateView[]; schedules: ScheduleView[]; nextMonth: string }) {
+export function SchedulePanel(props: { clientId: string; entities: { id: string; name: string; currency: string }[]; accounts: { code: string; name: string; type: AccountType; fsLine: string }[]; candidates: CandidateView[]; schedules: ScheduleView[]; nextMonth: string }) {
   const router = useRouter();
   const [form, setForm] = useState<Form | null>(null);
   const [busy, setBusy] = useState(false);
   const [stopping, setStopping] = useState<ScheduleView | null>(null);
-  const blank = (): Form => ({ kind: "DEPRECIATION", entityId: props.entities[0]?.id ?? "", memo: KINDS[0].memo, debitCode: KINDS[0].debit, creditCode: KINDS[0].credit, amount: "", months: String(KINDS[0].months), start: props.nextMonth, sourceEntryId: null });
-  const fromCandidate = (c: CandidateView): Form => ({ kind: c.kind, entityId: c.entityId, memo: c.memo, debitCode: c.debitCode ?? "", creditCode: c.creditCode, amount: c.amount, months: String(c.months), start: c.start, sourceEntryId: c.sourceEntryId });
+  const blank = (): Form => ({ kind: "DEPRECIATION", entityId: props.entities[0]?.id ?? "", memo: KINDS[0].memo, debitCode: KINDS[0].debit, creditCode: KINDS[0].credit, amount: "", months: String(KINDS[0].months), start: props.nextMonth, origin: null });
+  const fromCandidate = (c: CandidateView): Form => ({ kind: c.kind, entityId: c.entityId, memo: c.memo, debitCode: c.debitCode ?? "", creditCode: c.creditCode, amount: c.amount, months: String(c.months), start: c.start, origin: originOf(c) });
   const set = (patch: Partial<Form>) => setForm((f) => (f ? { ...f, ...patch } : f));
 
   const currency = props.entities.find((e) => e.id === form?.entityId)?.currency ?? "IDR";
@@ -51,7 +53,7 @@ export function SchedulePanel(props: { clientId: string; entities: { id: string;
     if (!form) return;
     const [y, m] = form.start.split("-").map(Number);
     setBusy(true);
-    const r = await createScheduleAction({ clientId: props.clientId, entityId: form.entityId, kind: form.kind, memo: form.memo, debitCode: form.debitCode, creditCode: form.creditCode, amount: form.amount, months, startYear: y, startMonth: m, sourceEntryId: form.sourceEntryId });
+    const r = await createScheduleAction({ clientId: props.clientId, entityId: form.entityId, kind: form.kind, memo: form.memo, debitCode: form.debitCode, creditCode: form.creditCode, amount: form.amount, months, startYear: y, startMonth: m, ...sourceFor(form.origin, form, props.accounts) });
     setBusy(false);
     if (!r.ok) return void toast.error(r.error);
     toast.success("Jadwal dibuat");
@@ -156,7 +158,7 @@ export function SchedulePanel(props: { clientId: string; entities: { id: string;
               </Field>
               <Field>
                 <FieldLabel>Entitas</FieldLabel>
-                <Select value={form.entityId} onValueChange={(v) => set({ entityId: v as string, sourceEntryId: null })}>
+                <Select value={form.entityId} onValueChange={(v) => set({ entityId: v as string })}>
                   <SelectTrigger className="w-full" aria-label="Entitas"><SelectValue /></SelectTrigger>
                   <SelectContent>{props.entities.map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}</SelectContent>
                 </Select>

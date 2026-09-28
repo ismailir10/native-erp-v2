@@ -23,7 +23,7 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     and reverses on the 1st of the next. Each month's installment is **proposed at read time and posted only by the accountant's click**
     through `postJournal()` (kind `ADJUSTMENT`), carrying `scheduleId` + `installment` (unique: posts once). Never edited after posting —
     stop and create a new one (a stop is checked under a row lock when posting; installments due through the month of the stop stay owed and proposed until posted, later ones are dropped; a stopped accrual still reverses what it posted). An installment stays proposed from its month until posted, in every later month too, unless its month is locked; a schedule with any installment (or reversal) in an already locked month is refused at creation (under a per-client close lock that closing a month also takes; a close refuses if a schedule due by that month, overdue ones included, appeared while its controls ran). Candidates (fixed-asset purchase, prepayment, deferred revenue, recurring cost missing this month) are
-    deterministic suggestions only. A due, unposted installment is a REVIEW control `sched:`.
+    deterministic suggestions only; a schedule made from an entry stores that line (`sourceEntryId` + `sourceAccountId`, which it must release: an asset by depreciation — an expense debited, accumulated depreciation or that asset credited — a prepayment or deferred revenue by amortisation, the prepayment on credit, the deferred revenue on debit) and covers only it; schedules made before the line was stored are matched one to one by memo, then amount. A due, unposted installment is a REVIEW control `sched:`.
 
 ## Money
 6. `bigint` **minor units of the entity's functional currency** everywhere in the domain (ADR 0006). IDR has exponent 0,
@@ -48,8 +48,9 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
    **1999** suspense (Belum Terklasifikasi), **3200** retained earnings, bank GL accounts **1101–1109**,
    overdraft (PRK) bank accounts **2201–2209**, **7190** rounding, **7200** FX gain/loss, **3900** translation difference.
 9a. An entity's own codes live in `SourceAccount` (per entity), each mapped to exactly one client account. Imported lines keep
-   `sourceAccountId`; the *Akun sumber* TB groups by it, and a client account's ledger reads by the accounts its lines were posted to
-   (a remap moves no posted line, so it never reinterprets history). Mapping suggestions (rules → AI on **names only**) are applied only by the
+   `sourceAccountId`; the *Akun sumber* TB groups by it, and a client account's ledger (and its *Akun sumber* TB row) reads by the accounts its lines were posted to
+   (a remap moves no posted line, so it never reinterprets history); its opening follows each line's own account, like the TBs
+   (income & expense from 1 January, balance sheet from the start). Mapping suggestions (rules → AI on **names only**) are applied only by the
    accountant's explicit click; an import can't post while any source account is unmapped. A rule that only knows the
    side of the books ("expense", "payable") proposes a **new client account** named after the file's account
    (`suggestedCode = new:<FS_LINE>`) instead of a catch-all; the account exists only after that click. Types come from

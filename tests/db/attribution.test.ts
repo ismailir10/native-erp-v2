@@ -26,7 +26,7 @@ describe("attribution", () => {
     expect((await db.journalEntry.findUniqueOrThrow({ where: { id: withActor.id } })).postedById).toBe(m.id);
     expect((await db.journalEntry.findUniqueOrThrow({ where: { id: system.id } })).postedById).toBeNull();
     // Amounts are untouched by attribution: the ledger still balances and names the poster.
-    const ledger = await accountLedger(db, { entityIds: [g.pt.entity.id], start: dateOnly(2026, 8, 1), end: dateOnly(2026, 8, 31), normalBalance: "DEBIT", isPL: true, accountId: expense.id });
+    const ledger = await accountLedger(db, { entityIds: [g.pt.entity.id], start: dateOnly(2026, 8, 1), end: dateOnly(2026, 8, 31), normalBalance: "DEBIT", accountId: expense.id });
     expect(ledger.rows.map((r) => r.postedBy?.split(" · ")[0])).toEqual(["Sari", "Sistem"]);
     expect(ledger.rows.map((r) => r.debit)).toEqual(["1000", "1000"]);
   });
