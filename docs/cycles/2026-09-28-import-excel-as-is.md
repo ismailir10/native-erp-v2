@@ -19,35 +19,35 @@ Outcome: an accountant drops the file they already have (xls, xlsx, per-month sh
 with every choice the parser made stated in plain Bahasa.
 
 ## Spec
-- [ ] **Old Excel and disguised Excel are read.** A spreadsheet is recognised from its bytes, not its name: `PK` → xlsx;
+- [x] **Old Excel and disguised Excel are read.** A spreadsheet is recognised from its bytes, not its name: `PK` → xlsx;
       OLE2 (`D0 CF 11 E0`) → legacy BIFF .xls; `<` (HTML table or SpreadsheetML 2003 XML) → read as a table with every cell kept
       as text (so `1.234.567,00` is never parsed as 1.234); plain text → CSV/TSV (tab, `;` or `,`). Legacy/HTML/XML are converted
       to an in-memory .xlsx and flow through the existing ExcelJS code unchanged. Applies to **Impor Mutasi**, **Impor buku
       besar / neraca** and **Dokumen** (evidence upload + Drive).
-- [ ] **One workbook, several months.** Each sheet with a transaction table is read on its own. Sheets whose account number is
+- [x] **One workbook, several months.** Each sheet with a transaction table is read on its own. Sheets whose account number is
       the same (or absent) are one account's months: they are joined in date order into **one** statement (opening = first
       sheet's opening, closing = last sheet's closing) and imported all-or-nothing in one transaction. The running-balance check
       runs across the sheet boundary, so a June `SALDO AWAL` that differs from May's closing shows as a gap. Sheets with
       different account numbers stay separate sections, like combined PDFs (the one matching the chosen rekening is imported).
-- [ ] **Traceability per sheet.** Each bank row keeps its sheet: `BankTransaction.sourceSheet` (nullable); the ledger drill shows
+- [x] **Traceability per sheet.** Each bank row keeps its sheet: `BankTransaction.sourceSheet` (nullable); the ledger drill shows
       "File X, lembar JUN, baris 7".
-- [ ] **`SALDO AWAL` / `SALDO AKHIR` rows** (in any text column, with no debit/credit amount) set the opening / closing and are not
+- [x] **`SALDO AWAL` / `SALDO AKHIR` rows** (in any text column, with no debit/credit amount) set the opening / closing and are not
       transactions. Unlabeled text columns between the date and the first amount column join the description ("TRSF E-BANKING
       CR · 0205/FTSCY/…"). `SISA SALDO` is a balance header. Numeric cells are read as numbers (never re-parsed from text).
-- [ ] **Dates without a year.** `dd/MM` (and `dd-MM`) take the year from the content first (a period line, a sheet name like
+- [x] **Dates without a year.** `dd/MM` (and `dd-MM`) take the year from the content first (a period line, a sheet name like
       "MEI 2026"). If the content has none, the import stops with a question, not a guess: **"File ini tidak mencantumkan tahun
       (tanggal hanya hari/bulan). Isi tahun bulan pertamanya."** with a year field prefilled from the file name when it holds one
       (`202608`, `2026`, `MAY_26`). Months that go backwards (Des → Jan) roll the year forward. Evidence imports pass the year of
       the source selection's period.
-- [ ] **Debet/kredit direction decided by the balance.** With a balance column (≥ 2 balances), the parser reads the rows the bank's
+- [x] **Debet/kredit direction decided by the balance.** With a balance column (≥ 2 balances), the parser reads the rows the bank's
       way (kredit = masuk) and the books' way (debet = masuk); it keeps the bank's way unless only the books' way makes the running
       balance continuous. The choice is a **note on the import**: "Kolom Debet dibaca sebagai uang masuk (sudut pandang
       pembukuan): hanya dengan cara itu saldo berjalan nyambung." Notes are stored on `StatementImport.parseNotes` and shown in
       the import result and the import history. Without a balance column nothing changes.
-- [ ] **BCA e-statement PDFs are labelled BCA.** Letter-spaced header text ("B C A", "K C P") is collapsed before the bank is detected.
-- [ ] **Form + tools.** Upload accepts `.xls`; the result card shows the notes and the months read; `inspect:statement` takes
+- [x] **BCA e-statement PDFs are labelled BCA.** Letter-spaced header text ("B C A", "K C P") is collapsed before the bank is detected.
+- [x] **Form + tools.** Upload accepts `.xls`; the result card shows the notes and the months read; `inspect:statement` takes
       `--year 2026`, prints the notes and each sheet. Docs (`docs/real-data.md`, README supported list) updated.
-- [ ] **Proof on real files (local only):** `inspect:statement` on the Belifi workbook shows 3 sheets joined, direction note, and
+- [x] **Proof on real files (local only):** `inspect:statement` on the Belifi workbook shows 3 sheets joined, direction note, and
       `Kesinambungan NYAMBUNG ✓`; the Belifi PDF shows `Format BCA`; a local import of the workbook into a scratch client on
       localhost posts May–Jul with the bank reconciliation PASS for each month.
 
@@ -89,7 +89,7 @@ password-protected .xls; foreign-currency statements; changing how the generic p
 - [x] T5 Ledger import + evidence accept .xls: `readSheets` and `extractEvidence` sniff and convert; Drive accepts `.xls`;
       evidence bank import passes the selection's year — accept: unit tests (ledger read of a BIFF .xls, evidence extract of an
       HTML .xls, Drive no longer rejects .xls). Depends T1.
-- [ ] T6 Tools + docs + real-file proof: `inspect:statement --year`, notes/sheets output; `docs/real-data.md`, README; run the
+- [x] T6 Tools + docs + real-file proof: `inspect:statement --year`, notes/sheets output; `docs/real-data.md`, README; run the
       real Belifi files locally and record results (no client data in the doc) — accept: end-of-cycle gates green; Verification filled.
       Depends T2–T5.
 
@@ -99,11 +99,19 @@ password-protected .xls; foreign-currency statements; changing how the generic p
 - T3: `prisma/schema.prisma`, `prisma/migrations/20260928150000_import_sheet_notes` (additive: `BankTransaction.sourceSheet`, `StatementImport.parseNotes`), `lib/import/pipeline.ts` (`year`, notes, months), `lib/reports/account-ledger.ts` + `components/app/ledger-table.tsx` ("File X, lembar JUN, baris 3"), `tests/db/import-workbook.test.ts`.
 - T4: `app/actions.ts` (`year` validated 2000–2100, `needsYear` + `yearGuess`), `components/app/import-form.tsx` (year field prefilled once, never overwriting what was typed; `.xls`; period + "Cara file dibaca" on the result), `app/(app)/clients/[id]/import/page.tsx` (notes in the history), `e2e/import-xls.spec.ts`. The ledger-import form's `.xls` moved to T5 with its reader.
 - T5: `lib/ledger-import/read.ts` (kind from bytes, legacy/HTML via `asXlsx`, TSV, a PDF gets its own message), `lib/evidence/extract.ts` (.xls read through the converted workbook; stored bytes stay original), `lib/evidence/drive.ts` (.xls allowed), `lib/evidence/review.ts` (bank import takes the year of the confirmed source range), `components/app/ledger-import-form.tsx` (.xls), tests in `tests/unit/{ledger-read,evidence-extract,evidence-drive}.test.ts`.
+- T6: `docs/real-data.md` (supported list, working copies, year and direction notes, `--year`), `README.md`, `docs/evidence-workspace.md`. Real-file proof by a local script against `buku_real` (not committed).
 
 ## Verification
 - T1 gate: lint ✓ typecheck ✓ `Test Files 63 passed (63) · Tests 471 passed (471)`.- T2 gate: lint ✓ typecheck ✓ `Test Files 64 passed (64) · Tests 493 passed (493)`. Real files (local, `inspect:statement`): Belifi workbook → `Lembar MAY, JUN, JUL`, direction note, 135 rows, `NYAMBUNG ✓`, closing Rp 359.000 = the August PDF's opening; both BCA PDFs → `Format BCA`, `NYAMBUNG ✓`; SMBC combined PDF unchanged (3 × `NYAMBUNG ✓`).
 - T3: `prisma migrate diff` DB ↔ schema: empty. Gate: lint ✓ typecheck ✓ `Test Files 65 passed (65) · Tests 495 passed (495)` — the DB test posts May–Jul from one .xls with recon PASS for each month and a sheet-boundary gap as continuity REVIEW.
 - T4: `npx playwright test e2e/import-xls.spec.ts` → `1 passed` (fresh client → .xls upload → year asked, prefilled 2026 from the name → "Mei 2026 – Juli 2026 (3 bulan)", Nyambung, both notes on the result and in the history). Screenshot checked by eye (kept locally, not committed).
 - T5 gate: lint ✓ typecheck ✓ `Test Files 65 passed (65) · Tests 497 passed (497)`.
+- Real files, local only (`buku_real`, scratch client, no AI): the Belifi workbook imports as one statement, `rows 135`, `months Mei–Juli 2026`, continuity ✓; the August BCA PDF follows with 210 rows, continuity ✓. `runControls` → Rekonsiliasi **PASS** for 2026-05, -06, -07 and -08, each month's closing equal to the next sheet's SALDO AWAL (Rp 156.680.500 → Rp 4.635.500 → Rp 359.000 → Rp 1.151.728.582); Kelengkapan mutasi PASS each month.
+- End of cycle: lint ✓ · typecheck ✓ · `Test Files 65 passed (65) · Tests 497 passed (497)` · `npm run build` ✓ · `verify:books` → `ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.` · `npx playwright test` → `11 passed (39.1s)`.
 
 ## Ship Notes
+- **Migration:** `20260928150000_import_sheet_notes` — additive (`BankTransaction.sourceSheet TEXT NULL`, `StatementImport.parseNotes TEXT[] DEFAULT '{}'`). Safe on existing data; applied by the build's `prisma migrate deploy`.
+- **Dependency:** `xlsx` 0.20.3 from `https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz` (integrity pinned in the lockfile). The lockfile entry was added by hand: `npm install` on npm 11 drops the other platforms' optional bindings (rolldown, lightningcss) and would break CI on Linux — don't regenerate the lockfile on a Mac.
+- **Env:** none. **AI:** none.
+- **Manual steps:** none. Ask Syaukani for one month of each other bank his clients use (BNI, BRI, Mandiri, CIMB, Permata, BSI…) in the format they receive — the next import cycle adds parsers from those samples.
+- **Rollback:** revert the merge; the two columns can stay (nullable/defaulted, unused by older code).

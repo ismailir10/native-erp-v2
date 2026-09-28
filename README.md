@@ -25,7 +25,7 @@ Buku **imports existing ledgers and maintains its own double-entry general ledge
 
 Document evidence remains distinct: an uploaded financial statement records **what that source reports**; it does not automatically create journal entries or become a Buku financial report. Company profiles provide context, not balances. AI proposes classifications, mappings, and explanations; accountants review AI suggestions, while deterministic services calculate amounts and enforce posting rules. Report figures drill through the ledger to their sources; document answers cite the relevant evidence.
 
-Supported evidence formats include text PDFs, XLSX, CSV, Google Docs/Sheets, TXT, and Markdown. **Support depends on document structure:** scans require a text export, and ambiguous financial layouts remain searchable evidence rather than guessed figures. See [document support and limits](docs/evidence-workspace.md#supported-input-and-limits).
+Supported evidence formats include text PDFs, XLSX, XLS, CSV, Google Docs/Sheets, TXT, and Markdown. **Support depends on document structure:** scans require a text export, and ambiguous financial layouts remain searchable evidence rather than guessed figures. See [document support and limits](docs/evidence-workspace.md#supported-input-and-limits).
 
 ### Current experience and limits
 
@@ -40,8 +40,8 @@ Review the [standalone, clickable HTML prototype](docs/prototypes/buku-workspace
 ## What it does
 | Area | |
 |---|---|
-| **Import** | PDF e-statements (text, password-protected, combined multi-account e.g. SMBC), KlikBCA CSV, Mandiri XLSX, BRI CSV, generic column detection · running-balance continuity check · dedupe on re-upload |
-| **Ledger / Neraca import** | GL or Neraca from Jurnal/Accurate/Excel (XLSX, CSV) · source checks with row refs (unbalanced groups, broken cells, reused codes, foreign lines without rate) · each entity keeps its own chart, mapped to Buku's by rules (type from the file's own numbering; a generic match proposes a new Buku account named after the client's) → AI (names only) → accountant · all-or-nothing posting · Neraca sub-headings (current / long-term) steer suggestions · an entity with its own chart opens Buku Besar and Neraca Saldo in *Akun klien*, each with its own ledger down to `sheet!row` |
+| **Import** | PDF e-statements (text, password-protected, combined multi-account e.g. SMBC), KlikBCA CSV, Mandiri XLSX, BRI CSV, generic column detection for CSV/TSV/XLSX/XLS (old Excel and HTML-as-.xls) · accountants' working copies: one sheet per month joined, year asked when the file has none, debet/kredit direction from the running balance · running-balance continuity check · dedupe on re-upload |
+| **Ledger / Neraca import** | GL or Neraca from Jurnal/Accurate/Excel (XLSX, XLS, CSV) · source checks with row refs (unbalanced groups, broken cells, reused codes, foreign lines without rate) · each entity keeps its own chart, mapped to Buku's by rules (type from the file's own numbering; a generic match proposes a new Buku account named after the client's) → AI (names only) → accountant · all-or-nothing posting · Neraca sub-headings (current / long-term) steer suggestions · an entity with its own chart opens Buku Besar and Neraca Saldo in *Akun klien*, each with its own ledger down to `sheet!row` |
 | **Multi-currency** | functional currency per entity · fx lines with rate · Kurs page (typed-in / from file, never fetched) · month-end revaluation on click · Gabungan translated to IDR (closing / average / historical, CTA line) |
 | **Onboarding** | Tambah klien (entities + bank accounts, template COA) · Saldo Awal per entity (plug to 3200) |
 | **Classify** | transfer matcher (own accounts → 1199, group entities → 1190, within 2 business days) → rules → learned memory → financing text (loans, capital, own-account moves → balance sheet, no AI call) → LLM (cached, capped) → review |
