@@ -3,11 +3,12 @@ import { dateOnly } from "@/lib/format";
 import { parseCents } from "@/lib/money";
 import { readCsv } from "@/lib/import/parsers/common";
 import { ParseError } from "@/lib/import/types";
+import { asXlsx, sniffFile } from "@/lib/import/workbook";
 import type { AccountType } from "@/lib/generated/prisma/enums";
 import type { Columns, ColumnKey, LedgerRow, NeracaRow, NeracaTotal, RawCell, RawSheet, ReadResult, TableCandidate } from "@/lib/ledger-import/types";
 
 /**
- * Ledger / Neraca files (XLSX, CSV) → rows with `sheet!row` references. No DB, no AI (accounting-rules §15a, §16):
+ * Ledger / Neraca files (XLSX, legacy/HTML XLS, CSV/TSV) → rows with `sheet!row` references. No DB, no AI (accounting-rules §15a, §16):
  * the table is found by header names from content, and every problem reading a row is kept on the row for the checks.
  */
 
@@ -51,12 +52,14 @@ function toRaw(v: ExcelJS.CellValue): RawCell {
   return String(v);
 }
 
-export async function readSheets(fileName: string, data: Buffer): Promise<RawSheet[]> {
-  if (/\.xls$/i.test(fileName)) throw new ParseError("File .xls (Excel lama) belum didukung. Buka di Excel lalu simpan sebagai .xlsx atau CSV.");
-  if (/\.xlsx$/i.test(fileName) || data.subarray(0, 2).toString("latin1") === "PK") {
+/** The file's kind comes from its bytes (a `.xls` may be old Excel, an HTML table or text); the name is only shown. */
+export async function readSheets(_fileName: string, data: Buffer): Promise<RawSheet[]> {
+  if (sniffFile(data) === "PDF") throw new ParseError("File PDF tidak bisa dibaca sebagai buku besar atau neraca. Unggah XLSX, XLS, atau CSV.");
+  const xlsx = asXlsx(data);
+  if (xlsx) {
     const wb = new ExcelJS.Workbook();
     try {
-      await wb.xlsx.load(data as unknown as ArrayBuffer);
+      await wb.xlsx.load(xlsx as unknown as ArrayBuffer);
     } catch {
       throw new ParseError("File Excel tidak bisa dibuka. Simpan ulang sebagai .xlsx lalu coba lagi.");
     }
@@ -70,7 +73,8 @@ export async function readSheets(fileName: string, data: Buffer): Promise<RawShe
     });
   }
   const text = data.toString("utf8");
-  const delimiter = text.split("\n")[0].includes(";") ? ";" : ",";
+  const first = text.split("\n")[0];
+  const delimiter = first.includes("\t") ? "\t" : first.includes(";") ? ";" : ",";
   return [{ name: "CSV", rows: readCsv(text, delimiter).map((r) => r.map((c) => (c === "" ? null : EXCEL_ERROR.test(c) ? { error: c } : c))) }];
 }
 

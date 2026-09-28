@@ -21,15 +21,26 @@ file to a closed month.
 npm run inspect:statement -- data/private/bca-agustus.pdf
 PDF_PASSWORD=01011980 npm run inspect:statement -- data/private/mandiri.pdf   # password-protected PDF
 npm run inspect:statement -- data/private/bri.pdf --lines                       # raw PDF text with x positions
+npm run inspect:statement -- data/private/belifi-mei-juli.xls --year=2026       # dates without a year (dd/MM)
 ```
 Look for `Kesinambungan NYAMBUNG ✓`. That means opening + every row = every printed balance = closing, so no row was
 lost or misread. `ADA CELAH ✗` names the broken rows. Exit code 2 means a gap.
 
-Supported: text PDF e-statements (BCA / Mandiri / BRI-style layouts), KlikBCA CSV, Mandiri XLSX, BRI CSV, and any CSV/XLSX
-with tanggal / keterangan / debet-kredit (or mutasi) / saldo columns. Combined PDFs with several accounts (e.g. SMBC
-"Laporan Konsolidasi Rekening") print one block per account; each is checked on its own and the import takes the section
-whose number matches the selected bank account. Foreign-currency sections are listed but not imported.
-Not supported: scanned PDFs (no text layer) and `.xls` (save as `.xlsx`). Both get a clear message.
+Supported: text PDF e-statements (BCA / Mandiri / BRI-style layouts), KlikBCA CSV, Mandiri XLSX, BRI CSV, and any
+CSV/TSV/XLSX/XLS with tanggal / keterangan / debet-kredit (or mutasi) / saldo columns. `.xls` may be old Excel or an HTML
+table saved as .xls (common in internet-banking exports); the kind is read from the bytes, not the name. Combined PDFs with
+several accounts (e.g. SMBC "Laporan Konsolidasi Rekening") print one block per account; each is checked on its own and the
+import takes the section whose number matches the selected bank account. Foreign-currency sections are listed but not imported.
+
+**Accountants' working copies** are read as they are: one sheet per month (joined into one import when the sheets print the
+same account number or none), `SALDO AWAL` rows, an unlabeled column with the transaction type, a formula balance. Two
+choices are made from the file and shown as notes (`Catatan` here, *Cara file dibaca* in the app, kept in the import history):
+- **Year.** `dd/MM` dates take the year from the file (a period line, a sheet name like "MEI 2026"). If the file has none,
+  the import asks for the year of the first month, prefilled from the file name when it holds one; Des → Jan rolls forward.
+- **Direction.** Debet is read as money out (the bank's side) unless only debet = money in (the books' side) makes the
+  running balance continuous.
+
+Not supported: scanned PDFs (no text layer) and password-protected Excel files. Both get a clear message.
 
 **If a format fails**, send only the column header line and one anonymised row from `--lines`, with amounts and names
 changed. That's enough to add the layout.
@@ -55,7 +66,7 @@ The controls show whether the books match the bank:
 - *Kliring 1199* stays open until both sides of a transfer between own accounts are imported.
 
 ## 5. Ledger or Neraca from the client's old system (Jurnal, Accurate, Excel)
-**Impor → Buku besar / neraca**. XLSX or CSV. A ledger needs tanggal, kode/nama akun, debit, kredit (optional: entitas,
+**Impor → Buku besar / neraca**. XLSX, XLS or CSV. A ledger needs tanggal, kode/nama akun, debit, kredit (optional: entitas,
 no. bukti, mata uang, kurs, notes with `Rate: 1.31`). A Neraca needs kode/nama akun and saldo (Jurnal's export works as is).
 1. **Periksa file.** Nothing is posted yet. Choose the sheet if the file holds several tables.
 2. **Pemeriksaan file.** BLOCK items stop the import: fix the file, or for an unbalanced journal *Terima & catat selisih ke 1999*

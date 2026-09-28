@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import ExcelJS from "exceljs";
 import { detectTables, readSheets, readTable } from "@/lib/ledger-import/read";
+import { htmlXls, workbook as legacyWorkbook } from "@/tests/xls-fixture";
 
 async function workbook(sheets: Record<string, unknown[][]>): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
@@ -61,8 +62,20 @@ describe("ledger reader", () => {
     ]);
   });
 
-  it("refuses .xls", async () => {
-    await expect(readSheets("old.xls", Buffer.from("x"))).rejects.toThrow(/\.xls/);
+  it("reads a legacy .xls and an HTML table saved as .xls like an .xlsx", async () => {
+    const aoa = [["Tanggal", "Kode Akun", "Nama Akun", "Debit", "Kredit"], ["31/08/2026", "1110", "Kas", "150.000.000,00", "0"], ["31/08/2026", "3100", "Modal", "0", "150.000.000,00"]];
+    for (const data of [legacyWorkbook([{ name: "GL", rows: aoa }], "biff8"), htmlXls(aoa)]) {
+      const sheets = await readSheets("gl-lama.xls", data);
+      const res = readTable(sheets, detectTables(sheets)[0]);
+      if (res.mode !== "LEDGER") throw new Error("mode");
+      // Sen at this stage (the reader keeps cents until the entity currency is known).
+      expect(res.rows.map((r) => [r.code, r.debit, r.credit])).toEqual([["1110", 15_000_000_000n, 0n], ["3100", 0n, 15_000_000_000n]]);
+    }
+  });
+
+  it("explains a PDF and an unreadable .xls", async () => {
+    await expect(readSheets("gl.pdf", Buffer.from("%PDF-1.7"))).rejects.toThrow(/PDF tidak bisa dibaca sebagai buku besar/);
+    await expect(readSheets("old.xls", Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 1, 2, 3]))).rejects.toThrow(/simpan sebagai \.xlsx/);
   });
 });
 

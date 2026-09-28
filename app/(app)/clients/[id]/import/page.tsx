@@ -126,7 +126,10 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
               )}
               {imports.map((i) => (
                 <TableRow key={i.id}>
-                  <TableCell className="pl-6 font-mono text-xs">{i.fileName}</TableCell>
+                  <TableCell className="pl-6">
+                    <span className="font-mono text-xs">{i.fileName}</span>
+                    {i.parseNotes.map((n) => <span key={n} className="mt-1 block max-w-md text-xs text-muted-foreground">{n}</span>)}
+                  </TableCell>
                   <TableCell>{i.bankAccount.label} <span className="text-muted-foreground">· {i.bankAccount.entity.shortName}</span></TableCell>
                   <TableCell className="text-muted-foreground">{formatDate(i.periodStart)} – {formatDate(i.periodEnd)}</TableCell>
                   <TableCell className="num text-right">{i.rowCount}{i.duplicateCount ? <span className="text-muted-foreground"> ({i.duplicateCount} duplikat)</span> : null}</TableCell>

@@ -25,10 +25,14 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
   const [file, setFileState] = useState<File | null>(null);
   const [password, setPassword] = useState("");
   const [needsPassword, setNeedsPassword] = useState(false);
+  const [year, setYear] = useState("");
+  const [yearHint, setYearHint] = useState<{ guessed: boolean } | null>(null);
   const setFile = (f: File | null) => {
     setFileState(f);
     setPassword("");
     setNeedsPassword(false);
+    setYear("");
+    setYearHint(null);
   };
   const [drag, setDrag] = useState(false);
   const [result, setResult] = useState<ImportSummary | null>(null);
@@ -39,6 +43,15 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
   const done = (r: Awaited<ReturnType<typeof importAction>>) => {
     if (!r.ok) {
       if (r.needsPassword) setNeedsPassword(true);
+      if (r.needsYear) {
+        // Only prefill on the first ask; never overwrite what the accountant typed.
+        if (!yearHint) {
+          setYear(r.yearGuess ? String(r.yearGuess) : "");
+          setYearHint({ guessed: !!r.yearGuess });
+        }
+        toast.error(r.error);
+        return;
+      }
       toast.error(r.error);
       return;
     }
@@ -56,6 +69,7 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
       fd.set("bankAccountId", bankId);
       fd.set("file", file);
       if (password) fd.set("password", password);
+      if (yearHint && year) fd.set("year", year);
       done(await importAction(fd));
     });
 
@@ -64,7 +78,7 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
       <Card className="lg:col-span-3">
         <CardHeader>
           <CardTitle>Unggah rekening koran</CardTitle>
-          <CardDescription>PDF e-statement, CSV KlikBCA, Excel Mandiri, CSV BRI, atau file lain yang punya kolom tanggal, keterangan, debet/kredit, dan saldo.</CardDescription>
+          <CardDescription>PDF e-statement, CSV KlikBCA, CSV BRI, Excel (.xlsx atau .xls, termasuk salinan kerja satu lembar per bulan), atau file lain yang punya kolom tanggal, keterangan, debet/kredit, dan saldo.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
           <Field>
@@ -111,7 +125,7 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
               {file ? <span className="font-medium">{file.name}</span> : <span><span className="font-medium text-primary">Pilih file</span> atau tarik ke sini</span>}
               <span className="text-xs text-muted-foreground">Maks. 5 MB · baris yang sudah pernah diimpor otomatis dilewati</span>
             </button>
-            <input ref={inputRef} type="file" accept=".pdf,.csv,.xlsx" className="sr-only" data-testid="file-input" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            <input ref={inputRef} type="file" accept=".pdf,.csv,.xlsx,.xls" className="sr-only" data-testid="file-input" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
             <FieldDescription>Saldo berjalan dicek di setiap baris. Kalau ada baris yang hilang, hasilnya ditandai Ada celah.</FieldDescription>
           </Field>
           {needsPassword && (
@@ -121,8 +135,17 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
               <FieldDescription>Biasanya tanggal lahir atau kode dari bank. Hanya dipakai untuk membuka file ini, tidak disimpan.</FieldDescription>
             </Field>
           )}
+          {yearHint && (
+            <Field>
+              <FieldLabel htmlFor="statement-year">Tahun bulan pertama di file</FieldLabel>
+              <Input id="statement-year" inputMode="numeric" maxLength={4} autoFocus className="w-32" value={year} onChange={(e) => setYear(e.target.value.replace(/\D/g, ""))} onKeyDown={(e) => e.key === "Enter" && submit()} />
+              <FieldDescription>
+                Tanggal di file ini hanya hari dan bulan. {yearHint.guessed ? "Tahun diisi dari nama file; pastikan benar sebelum memproses." : "Isi tahunnya, misalnya 2026."} Bulan berikutnya mengikuti, termasuk pergantian Desember ke Januari.
+              </FieldDescription>
+            </Field>
+          )}
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant={result ? "outline" : "default"} onClick={submit} disabled={!file || !bankId || pending || (needsPassword && !password)}>
+            <Button variant={result ? "outline" : "default"} onClick={submit} disabled={!file || !bankId || pending || (needsPassword && !password) || (!!yearHint && year.length !== 4)}>
               {pending ? <Loader2 className="animate-spin" /> : <FileUp />} Proses mutasi
             </Button>
             {sample && (
@@ -162,6 +185,16 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
                 <StatusPill status={result.continuityOk ? "PASS" : "REVIEW"} label={result.continuityOk ? "Nyambung" : "Ada celah"} />
               </div>
               {result.continuityNote && <p className="text-xs text-review">{result.continuityNote}</p>}
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-muted-foreground">Periode</span>
+                <span className="text-right">{result.months.length > 1 ? `${result.months[0]} – ${result.months.at(-1)} (${result.months.length} bulan)` : result.months[0]}</span>
+              </div>
+              {result.notes.length > 0 && (
+                <div className="space-y-1 rounded-md border px-3 py-2 text-xs" data-testid="import-notes">
+                  <div className="eyebrow">Cara file dibaca</div>
+                  <ul className="list-disc space-y-1 pl-4 text-muted-foreground">{result.notes.map((n) => <li key={n}>{n}</li>)}</ul>
+                </div>
+              )}
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Panggilan AI</span>
                 <span className="num">{result.ai.calls} panggilan · {result.ai.cacheHits} dari jawaban tersimpan</span>

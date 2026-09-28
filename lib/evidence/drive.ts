@@ -212,7 +212,7 @@ export async function downloadDriveFile(accessToken: string, file: DriveFile): P
     const extension = sheet ? ".xlsx" : ".txt";
     if (!name.toLowerCase().endsWith(extension)) name += extension;
   } else {
-    if (file.mimeType.startsWith("application/vnd.google-apps.") || !/\.(pdf|xlsx|csv|txt|md|markdown)$/i.test(name)) throw new DriveError("Format belum didukung. Unggah PDF berteks, XLSX, CSV, TXT, atau Markdown; ekspor dokumen lain ke salah satu format tersebut.", "UNSUPPORTED");
+    if (file.mimeType.startsWith("application/vnd.google-apps.") || !/\.(pdf|xlsx|xls|csv|txt|md|markdown)$/i.test(name)) throw new DriveError("Format belum didukung. Unggah PDF berteks, XLSX, XLS, CSV, TXT, atau Markdown; ekspor dokumen lain ke salah satu format tersebut.", "UNSUPPORTED");
     url.search = new URLSearchParams({ alt: "media", supportsAllDrives: "true" }).toString();
   }
   const response = await checkedResponse(await request(url, { headers: driveHeaders(accessToken, id, file.resourceKey) }));
