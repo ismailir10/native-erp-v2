@@ -58,7 +58,7 @@ settlement by non-bank entries (netting), documents → invoice drafts (a later 
 ## Tasks
 - [x] T1 Schema: migration `receivables` (Contact, Invoice, InvoiceSettlement, enums, EntryKind INVOICE, CHECKs), ledger kind label, ADR 0004
       amendment — accept: `prisma migrate diff` empty; gate green.
-- [ ] T2 Invoices: `lib/receivables/invoices.ts` — `createInvoice` (posts the journal; Saldo Awal without), contacts upserted by name —
+- [x] T2 Invoices: `lib/receivables/invoices.ts` — `createInvoice` (posts the journal; Saldo Awal without), contacts upserted by name —
       accept: DB tests (sales with PPN, purchase to an asset account, Saldo Awal, duplicate number, due before issue, locked month,
       wrong account types). Depends T1.
 - [ ] T3 Settlements: `lib/receivables/settle.ts` — `settle` (locks, limits, direction, account), `settleWithReclass`, `unsettle`,
@@ -72,7 +72,9 @@ settlement by non-bank entries (netting), documents → invoice drafts (a later 
 
 ## Implementation
 - Plan: T1–T6 sequential, inline (one driver keeps the invariants straight; each layer uses the previous).
-- T1: `prisma/schema.prisma`, migration `20260929010000_receivables` (Contact, Invoice, InvoiceSettlement, `InvoiceDirection`, `EntryKind` + INVOICE, CHECKs), `components/app/ledger-table.tsx` (*Faktur* label), ADR 0004 amendment.
+- T1: `prisma/schema.prisma`, migration `20260929010000_receivables` (Contact, Invoice, InvoiceSettlement, `InvoiceDirection`, `EntryKind` + INVOICE, CHECKs), `components/app/ledger-table.tsx` (*Faktur* label), ADR 0004 amendment.- T2: `lib/receivables/invoices.ts` (`createInvoice`, `ppnFor`; contact upserted by normalised name; Saldo Awal items must be dated by the entity's opening entry), `tests/db/invoices.test.ts`.
+
 ## Verification
-- T1: `prisma migrate diff` DB ↔ schema empty. Gate: lint ✓ typecheck ✓ `Test Files 68 passed (68) · Tests 513 passed (513)`.
+- T1: `prisma migrate diff` DB ↔ schema empty. Gate: lint ✓ typecheck ✓ `Test Files 68 passed (68) · Tests 513 passed (513)`.- T2 gate: lint ✓ typecheck ✓ `Test Files 69 passed (69) · Tests 518 passed (518)`.
+
 ## Ship Notes
