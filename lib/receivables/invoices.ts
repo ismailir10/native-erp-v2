@@ -93,7 +93,9 @@ export async function createInvoice(db: Db, input: InvoiceInput) {
     return await db.$transaction(async (tx) => {
       if (openingMonth) {
         await closeLock(tx, input.clientId);
-        const locked = await tx.period.findFirst({ where: { clientId: input.clientId, status: "LOCKED", year: openingMonth.year, month: openingMonth.month } });
+        // It stays in every later month's list, so any locked month from the opening on would change after the fact.
+        const { year: y, month: m } = openingMonth;
+        const locked = await tx.period.findFirst({ where: { clientId: input.clientId, status: "LOCKED", OR: [{ year: { gt: y } }, { year: y, month: { gte: m } }] }, orderBy: [{ year: "asc" }, { month: "asc" }] });
         if (locked) throw new LedgerError(`${formatPeriod(locked.year, locked.month)} sudah dikunci, dan rincian saldo awal mengubah daftar ${sales ? "piutang" : "utang"} bulan itu. Buka kunci bulan itu dulu.`);
       }
       const contact = await tx.contact.upsert({

@@ -42,6 +42,10 @@ describe("invoices", () => {
     await db.period.update({ where: { clientId_year_month: { clientId: g.client.id, year: 2026, month: 6 } }, data: { status: "LOCKED" } });
     await expect(sale(g, { opening: true, issueDate: "2026-06-20" })).rejects.toThrow(/Juni 2026 sudah dikunci/);
     await db.period.update({ where: { clientId_year_month: { clientId: g.client.id, year: 2026, month: 6 } }, data: { status: "OPEN" } });
+    // A later locked month counts too: the item stays in July's list.
+    await db.period.create({ data: { firmId: g.firm.id, clientId: g.client.id, year: 2026, month: 7, status: "LOCKED" } });
+    await expect(sale(g, { opening: true, issueDate: "2026-06-20" })).rejects.toThrow(/Juli 2026 sudah dikunci/);
+    await db.period.update({ where: { clientId_year_month: { clientId: g.client.id, year: 2026, month: 7 } }, data: { status: "OPEN" } });
     const inv = await sale(g, { opening: true, issueDate: "2026-06-20" });
     expect(inv).toMatchObject({ opening: true, entryId: null });
     expect(await db.journalEntry.count({ where: { kind: "INVOICE" } })).toBe(0);
