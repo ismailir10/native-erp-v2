@@ -169,6 +169,8 @@ describe("schedule candidates from the ledger", () => {
     await expect(createSchedule(db, { ...base, sourceAccountCode: "2160" })).rejects.toThrow("Jurnal sumber tidak punya baris akun 2160.");
     await expect(createSchedule(db, { ...base, debitCode: "1170", creditCode: "2110", sourceAccountCode: "1170" })).rejects.toThrow("Jadwal ini tidak melepas saldo 1170");
     await expect(createSchedule(db, { ...base, sourceAccountCode: "1210" })).rejects.toThrow("Jadwal ini tidak melepas saldo 1210");
+    // A depreciation whose accounts depreciate nothing (rent to payables) can't claim the asset line either.
+    await expect(createSchedule(db, { ...base, kind: "DEPRECIATION", debitCode: "6120", creditCode: "2110", sourceAccountCode: "1210" })).rejects.toThrow("Jadwal ini tidak melepas saldo 1210");
     const ok = await createSchedule(db, { ...base, sourceAccountCode: "1170" });
     expect(ok.sourceAccountId).toBe(await acc("1170"));
     // The database keeps the pair together too.

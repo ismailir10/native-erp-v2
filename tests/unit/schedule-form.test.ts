@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { originOf, sourceFor } from "@/lib/adjust/form";
+import { originOf, sourceFor as source } from "@/lib/adjust/form";
+
+const accounts = [
+  { code: "1170", type: "ASET" as const, fsLine: "BIAYA_DIBAYAR_DIMUKA" },
+  { code: "1210", type: "ASET" as const, fsLine: "ASET_TETAP" },
+  { code: "1219", type: "ASET" as const, fsLine: "AKUM_PENYUSUTAN" },
+  { code: "2110", type: "LIABILITAS" as const, fsLine: "UTANG_USAHA" },
+  { code: "6120", type: "BEBAN" as const, fsLine: "BEBAN_UMUM_ADM" },
+  { code: "6180", type: "BEBAN" as const, fsLine: "BEBAN_UMUM_ADM" },
+];
+const sourceFor = (o: Parameters<typeof source>[0], f: Parameters<typeof source>[1]) => source(o, f, accounts);
 
 const prepaid = originOf({ kind: "AMORTIZATION", entityId: "pt", sourceEntryId: "entry-1", key: "AMORTIZATION:pt:entry-1:1170", debitCode: null, creditCode: "1170" });
 const deferred = originOf({ kind: "AMORTIZATION", entityId: "pt", sourceEntryId: "entry-3", key: "AMORTIZATION:pt:entry-3:2160", debitCode: "2160", creditCode: "4110" });
@@ -22,6 +32,9 @@ describe("schedule form source line", () => {
     // A depreciation keeps its asset line whatever its memo: the line is stored, not read back from the memo.
     const dep = { kind: "DEPRECIATION" as const, entityId: "pt", debitCode: "6180", creditCode: "1219" };
     expect(sourceFor(asset, dep)).toEqual(src("entry-2", "1210"));
+    expect(sourceFor(asset, { ...dep, creditCode: "1210" })).toEqual(src("entry-2", "1210")); // written down directly
+    expect(sourceFor(asset, { ...dep, debitCode: "6120", creditCode: "2110" })).toBeNull(); // rent to payables depreciates nothing
+    expect(sourceFor(asset, { ...dep, debitCode: "1170" })).toBeNull(); // no expense on the debit side
     expect(sourceFor(null, dep)).toBeNull(); // a blank form never cites one
   });
 });

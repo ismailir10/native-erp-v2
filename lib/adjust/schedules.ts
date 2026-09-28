@@ -4,6 +4,7 @@ import type { ScheduleKind } from "@/lib/generated/prisma/enums";
 import { LedgerError, postJournal } from "@/lib/ledger/post";
 import { dateOnly, formatPeriod, periodBounds } from "@/lib/format";
 import { parseMoney } from "@/lib/money";
+import { depreciates } from "@/lib/adjust/form";
 
 /**
  * Adjustment schedules (accounting-rules 5a): depreciation, amortisation and accruals as a recurring adjusting entry.
@@ -97,7 +98,8 @@ export async function createSchedule(db: Db, input: ScheduleInput) {
     const src = await db.journalEntry.findFirst({ where: { id: input.sourceEntryId, entityId: entity.id } });
     if (!src) throw new LedgerError("Jurnal sumber tidak termasuk entitas ini.");
   }
-  // The source line: an account with a line in the source entry, which the schedule releases — an asset by depreciation, a
+  // The source line: an account with a line in the source entry, which the schedule releases — an asset by depreciation (an expense
+  // debited, accumulated depreciation or the asset credited), a
   // prepayment by crediting it, deferred revenue by debiting it (the other side would grow the balance, not release it).
   let sourceAccountId: string | null = null;
   if (input.sourceAccountCode) {
@@ -105,8 +107,8 @@ export async function createSchedule(db: Db, input: ScheduleInput) {
     const line = await db.journalLine.findFirst({ where: { entryId: input.sourceEntryId, account: { clientId: input.clientId, code: input.sourceAccountCode } }, include: { account: true } });
     if (!line) throw new LedgerError(`Jurnal sumber tidak punya baris akun ${input.sourceAccountCode}.`);
     const a = line.account;
-    const releases = a.fsLine === "ASET_TETAP" ? input.kind === "DEPRECIATION" : a.fsLine === "BIAYA_DIBAYAR_DIMUKA" ? credit.id === a.id : debit.id === a.id;
-    if (!releases) throw new LedgerError(`Jadwal ini tidak melepas saldo ${a.code} ${a.name}: aset tetap lewat penyusutan, dibayar di muka di sisi kredit, diterima di muka di sisi debit.`);
+    const releases = a.fsLine === "ASET_TETAP" ? input.kind === "DEPRECIATION" && depreciates(debit, credit) : a.fsLine === "BIAYA_DIBAYAR_DIMUKA" ? credit.id === a.id : debit.id === a.id;
+    if (!releases) throw new LedgerError(`Jadwal ini tidak melepas saldo ${a.code} ${a.name}: aset tetap lewat penyusutan (beban di debit, akumulasi penyusutan di kredit), dibayar di muka di sisi kredit, diterima di muka di sisi debit.`);
     sourceAccountId = a.id;
   }
   // Every installment (and an accrual's reversal) must still be postable: one in a locked month could never post, and later months

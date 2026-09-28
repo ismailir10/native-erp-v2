@@ -16,6 +16,7 @@ import { originOf, sourceFor, type FormOrigin } from "@/lib/adjust/form";
 import { createScheduleAction, stopScheduleAction } from "@/app/actions";
 import { formatMoney, parseMoney } from "@/lib/money";
 import type { CandidateView, ScheduleView } from "@/lib/adjust/view";
+import type { AccountType } from "@/lib/generated/prisma/enums";
 
 type Kind = "DEPRECIATION" | "AMORTIZATION" | "ACCRUAL";
 const KINDS: { kind: Kind; label: string; debit: string; credit: string; months: number; memo: string }[] = [
@@ -28,7 +29,7 @@ type Form = { kind: Kind; entityId: string; memo: string; debitCode: string; cre
 const STATUS_LABEL = { BERJALAN: "Berjalan", SELESAI: "Selesai", DIHENTIKAN: "Dihentikan" } as const;
 
 /** Candidates from the ledger, the client's schedules, and the form that creates one (nothing posts from here). */
-export function SchedulePanel(props: { clientId: string; entities: { id: string; name: string; currency: string }[]; accounts: { code: string; name: string }[]; candidates: CandidateView[]; schedules: ScheduleView[]; nextMonth: string }) {
+export function SchedulePanel(props: { clientId: string; entities: { id: string; name: string; currency: string }[]; accounts: { code: string; name: string; type: AccountType; fsLine: string }[]; candidates: CandidateView[]; schedules: ScheduleView[]; nextMonth: string }) {
   const router = useRouter();
   const [form, setForm] = useState<Form | null>(null);
   const [busy, setBusy] = useState(false);
@@ -52,7 +53,7 @@ export function SchedulePanel(props: { clientId: string; entities: { id: string;
     if (!form) return;
     const [y, m] = form.start.split("-").map(Number);
     setBusy(true);
-    const r = await createScheduleAction({ clientId: props.clientId, entityId: form.entityId, kind: form.kind, memo: form.memo, debitCode: form.debitCode, creditCode: form.creditCode, amount: form.amount, months, startYear: y, startMonth: m, ...sourceFor(form.origin, form) });
+    const r = await createScheduleAction({ clientId: props.clientId, entityId: form.entityId, kind: form.kind, memo: form.memo, debitCode: form.debitCode, creditCode: form.creditCode, amount: form.amount, months, startYear: y, startMonth: m, ...sourceFor(form.origin, form, props.accounts) });
     setBusy(false);
     if (!r.ok) return void toast.error(r.error);
     toast.success("Jadwal dibuat");

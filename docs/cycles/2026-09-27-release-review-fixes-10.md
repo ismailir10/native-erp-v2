@@ -94,6 +94,7 @@ its side). A depreciation keeps its line whatever its memo.
 - [x] T15 Amount collisions only with open lines, whatever the creation order — accept: the new case fails on the previous matcher
 - [x] T16 Store the schedule's source line (schema) — accept: the equal-amount twin with an edited memo fails on the previous matcher
 - [x] T17 Older schedules: collisions only with candidate-direction lines — accept: the reclassed-prepayment case fails on the previous matcher
+- [x] T18 A depreciation's accounts must depreciate; the client-account ledger links to its period's posted account — accept: the new checks fail on the previous code
 
 ## Implementation
 - T1: `lib/adjust/candidates.ts` drops the entry-level filter and adds `covered(line, net)`, based on the entry's schedules.
@@ -186,6 +187,17 @@ its side). A depreciation keeps its line whatever its memo.
 - T17: in `lib/adjust/candidates.ts`, the older-schedule matching weighs only lines that could be a candidate: a prepayment moving
   on the debit side, deferred revenue on the credit side. Test: an entry debiting 1210 and crediting 1170 for 20 jt (a prepayment
   reclassed into an asset), with an older depreciation "Susut rak gudang" of 20 jt. The entry gets no candidate.
+- T18:
+  - `lib/adjust/form.ts` adds `depreciates(debit, credit)`: an expense (BEBAN) debited, and accumulated depreciation or the asset
+    credited. Both `sourceFor`, which now takes the account list, and `createSchedule` require it before a depreciation keeps an
+    asset line. `components/app/schedule-panel.tsx` receives each account's type and fsLine from `journals/new/page.tsx`.
+  - `lib/reports/account-ledger.ts`: `sourceLedgerBasis` also returns the basis `account` (code and name). The client-account ledger
+    page links to it instead of the current mapping.
+  - `accounting-rules` rule 5a is updated.
+  - Tests:
+    - Unit: rent to payables and a non-expense debit record no line; a direct write-down does.
+    - DB: the writer refuses a 6120/2110 "depreciation" claiming 1210. A remapped client account links to 2110 for January, 1110 for
+      February and the current mapping before any posting. The basis test now checks the linked account.
 
 ## Verification
 - T1: the new test fails on the old scan ("expected [] to deeply equal [ 'DEPRECIATION:buy:30000000', …"; the car and rack
@@ -309,6 +321,15 @@ its side). A depreciation keeps its line whatever its memo.
   - `npm run build` ✓.
   - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
   - `test:e2e` → 10 passed (52.5s).
+
+- T18: the new checks fail on the previous code (4 failed | 17 passed across `schedule-form`, `schedule-candidates` and
+  `client-coa`). After e2e, the schedule saved from the candidate in the UI still stores 1210.
+- T18 gates:
+  - Lint and typecheck clean.
+  - `npm test` → Test Files 62 passed (62), Tests 466 passed (466).
+  - `npm run build` ✓.
+  - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
+  - `test:e2e` → 10 passed (53.6s).
 
 ## Ship Notes
 - **Migration:** `20260928010000_schedule_source_line` is additive: a nullable column, a foreign key and a CHECK that existing rows

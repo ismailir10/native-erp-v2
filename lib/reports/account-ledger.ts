@@ -84,22 +84,25 @@ export const postedBasis = <T extends { type: AccountType }>(posted: T[], typeHi
 /**
  * How a client account's ledger reads (normal side; whether it restarts on 1 January), taken from a Buku account its lines were
  * actually posted to: a later remap moves no posted line, so it must not reinterpret their history. That account is the earliest
- * posted one of the type in the client's file, else the earliest posted one. With nothing posted, the current mapping decides.
+ * posted one of the type in the client's file, else the earliest posted one, and it is the account the page links to. With nothing
+ * posted, the current mapping decides.
  */
 export async function sourceLedgerBasis(
   db: Db,
-  src: { id: string; typeHint: AccountType | null; account: { type: AccountType; normalBalance: NormalBalance } | null },
+  src: { id: string; typeHint: AccountType | null; account: { code: string; name: string; type: AccountType; normalBalance: NormalBalance } | null },
   asOf?: Date,
-): Promise<{ normalBalance: NormalBalance; isPL: boolean }> {
+): Promise<{ normalBalance: NormalBalance; isPL: boolean; account: { code: string; name: string } | null }> {
   // Only lines up to the report date count, the same horizon as the client-account TB row it drills from.
   const posted = (await db.journalLine.findMany({
     where: { sourceAccountId: src.id, ...(asOf ? { date: { lte: asOf } } : {}) },
     distinct: ["accountId"],
     orderBy: [{ date: "asc" }, { id: "asc" }],
-    select: { account: { select: { type: true, normalBalance: true } } },
+    select: { account: { select: { code: true, name: true, type: true, normalBalance: true } } },
   })).map((l) => l.account);
   const basis = postedBasis(posted, src.typeHint);
   const type = basis?.type ?? src.account?.type ?? src.typeHint;
   const normalBalance = basis?.normalBalance ?? src.account?.normalBalance ?? defaultNormal(type);
-  return { normalBalance, isPL: type === "PENDAPATAN" || type === "BEBAN" };
+  // The Buku account the row drills to: the posted basis for this period, the current mapping only when nothing was posted yet.
+  const account = basis ?? src.account;
+  return { normalBalance, isPL: type === "PENDAPATAN" || type === "BEBAN", account: account ? { code: account.code, name: account.name } : null };
 }

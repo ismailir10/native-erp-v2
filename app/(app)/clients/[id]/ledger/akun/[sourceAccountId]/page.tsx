@@ -17,8 +17,8 @@ export default async function ClientAccountLedger({ params, searchParams }: { pa
   const { client, period, periodOptions, base } = await loadClientPage(params, searchParams);
   const src = await prisma.sourceAccount.findFirst({ where: { id: sourceAccountId, clientId: client.id }, include: { account: true, entity: true } });
   if (!src) notFound();
-  // Read by the accounts its lines were posted to, so a later remap doesn't reinterpret history.
-  const { normalBalance } = await sourceLedgerBasis(prisma, src, period.end);
+  // Read by, and linked to, the account its lines were posted to by this period, so a later remap doesn't reinterpret history.
+  const { normalBalance, account } = await sourceLedgerBasis(prisma, src, period.end);
   const { opening, rows } = await accountLedger(prisma, { sourceAccountId: src.id, entityIds: [src.entityId], start: period.start, end: period.end, normalBalance });
   const q = { period: period.key, entity: src.entityId };
   return (
@@ -31,9 +31,9 @@ export default async function ClientAccountLedger({ params, searchParams }: { pa
         description={`${src.entity.name} · akun klien · ${formatPeriod(period.year, period.month)} · klik baris untuk melihat sumbernya`}
         actions={<ScopeBar entities={[]} periods={periodOptions} period={period.key} />}
       />
-      {src.account ? (
-        <NextStep href={withParams(`${base}/ledger/${src.account.code}`, q)} cta={`Lihat ${src.account.code}`}>
-          Di laporan keuangan akun ini masuk {src.account.code} {src.account.name}.
+      {account ? (
+        <NextStep href={withParams(`${base}/ledger/${account.code}`, q)} cta={`Lihat ${account.code}`}>
+          Di laporan keuangan akun ini masuk {account.code} {account.name}.
         </NextStep>
       ) : (
         <NextStep>Akun ini belum dipetakan ke bagan akun Buku.</NextStep>
