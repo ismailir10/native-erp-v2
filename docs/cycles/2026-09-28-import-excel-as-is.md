@@ -71,7 +71,7 @@ password-protected .xls; foreign-currency statements; changing how the generic p
 5. The 5 MB upload limit stays.
 
 ## Tasks
-- [ ] T1 Dependency + spreadsheet sniffing: add `xlsx` from the SheetJS tarball; `lib/import/workbook.ts` —
+- [x] T1 Dependency + spreadsheet sniffing: add `xlsx` from the SheetJS tarball; `lib/import/workbook.ts` —
       `sniffSpreadsheet(data)` and `toXlsx(data)` (BIFF / HTML / XML → .xlsx buffer, HTML/XML cells as raw text) — accept:
       unit tests build a BIFF8 file and an HTML "xls" with SheetJS and get the same rows through ExcelJS; lint/typecheck/test green.
 - [ ] T2 Statement parser: content sniffing in `parsers/index.ts` (no more file-name switch), TSV, `xlsxToSheets` (all sheets,
@@ -94,5 +94,8 @@ password-protected .xls; foreign-currency statements; changing how the generic p
       Depends T2–T5.
 
 ## Implementation
+- Plan: tasks T1–T6 sequential, done inline (each builds on the previous parser change; one driver keeps the invariants straight).
+- T1: `package.json`, `package-lock.json` (hand-added entry: `npm install` on npm 11 prunes other platforms' optional bindings), `lib/import/workbook.ts`, `tests/xls-fixture.ts`, `tests/unit/workbook.test.ts` — bytes → PDF/XLSX/XLS/MARKUP/TEXT; BIFF/HTML/XML → .xlsx with serial dates kept (no time-zone shift, checked in Asia/Jakarta and America/Los_Angeles) and markup cells as text.
 ## Verification
+- T1 gate: lint ✓ typecheck ✓ `Test Files 63 passed (63) · Tests 471 passed (471)`.
 ## Ship Notes
