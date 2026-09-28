@@ -24,7 +24,7 @@ export type LedgerRow = {
   fileSource?: null | { fileName: string; entryRef: string; lineRef: string | null; sourceAccount: string | null; lineMemo: string | null; fx: string | null };
 };
 
-const KIND: Record<string, string> = { OPENING: "Saldo awal", BANK: "Mutasi bank", RECLASS: "Reklasifikasi", ADJUSTMENT: "Penyesuaian", IMPORTED: "Impor buku besar" };
+const KIND: Record<string, string> = { OPENING: "Saldo awal", BANK: "Mutasi bank", RECLASS: "Reklasifikasi", ADJUSTMENT: "Penyesuaian", IMPORTED: "Impor buku besar", INVOICE: "Faktur" };
 
 /** Every GL line opens its source: the full journal and — for bank lines — the original statement row, for imports the file row. */
 export function LedgerTable({ rows, opening, currency = "IDR" }: { rows: LedgerRow[]; opening: string; currency?: string }) {
