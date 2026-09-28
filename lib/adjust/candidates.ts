@@ -79,12 +79,15 @@ export async function scheduleCandidates(db: Db, clientId: string, year: number,
       const assets = [...groups.entries()].filter(([, g]) => g.line.entryId === entryId && g.line.account.fsLine === "ASET_TETAP");
       const pool = from.filter((s) => s.sourceEntryId === entryId && s.kind === "DEPRECIATION");
       if (pool.length >= assets.length) { for (const [k] of assets) coveredAssets.add(k); continue; }
-      // Each schedule takes one line of its amount. Among equal amounts, the line whose account name its memo carries (a schedule
-      // made from a candidate keeps "Penyusutan <account> <date>"), the longest name first; otherwise the first line.
+      // Each schedule takes one line of its amount. Among equal amounts, the line whose account code its memo carries (a schedule
+      // made from a candidate keeps "Penyusutan <code> <account> <date>", the code never cut off), then one whose name it carries,
+      // the longest first; otherwise the first line.
+      const words = (memo: string) => new Set(memo.toLowerCase().split(/\s+/));
       for (const s of pool) {
         const open = assets.filter(([k, g]) => !coveredAssets.has(k) && g.net === s.amount);
+        const coded = open.filter(([, g]) => words(s.memo).has(g.line.account.code.toLowerCase()));
         const named = open.filter(([, g]) => s.memo.toLowerCase().includes(g.line.account.name.toLowerCase())).sort(([, x], [, y]) => y.line.account.name.length - x.line.account.name.length);
-        const hit = named[0] ?? open[0];
+        const hit = coded[0] ?? named[0] ?? open[0];
         if (hit) coveredAssets.add(hit[0]);
       }
     }
@@ -97,8 +100,9 @@ export async function scheduleCandidates(db: Db, clientId: string, year: number,
       const what = (l.entry.bankTransaction?.description ?? l.memo ?? l.entry.memo).replace(/^Reklasifikasi:\s*/i, "").slice(0, 90);
       const label = `${l.account.name} ${when}`;
       const base = { entity: ent, sourceEntryId: l.entry.id, startYear: nm.year, startMonth: nm.month };
+      // The depreciation memo leads with the account code: it survives the 80-character cut and identifies the line (see covered).
       if (l.account.fsLine === "ASET_TETAP" && net >= floor && codes.has(DEPRECIATION_EXPENSE) && codes.has(ACCUMULATED_DEPRECIATION)) {
-        out.push({ ...base, key: `DEPRECIATION:${e.id}:${l.entry.id}:${l.account.code}`, kind: "DEPRECIATION", reason: `Pembelian ${l.account.code} ${l.account.name} ${when}: ${what}`, memo: `Penyusutan ${label}`.slice(0, 80), debitCode: DEPRECIATION_EXPENSE, creditCode: ACCUMULATED_DEPRECIATION, amount: net, months: DEFAULT_MONTHS.DEPRECIATION });
+        out.push({ ...base, key: `DEPRECIATION:${e.id}:${l.entry.id}:${l.account.code}`, kind: "DEPRECIATION", reason: `Pembelian ${l.account.code} ${l.account.name} ${when}: ${what}`, memo: `Penyusutan ${l.account.code} ${label}`.slice(0, 80), debitCode: DEPRECIATION_EXPENSE, creditCode: ACCUMULATED_DEPRECIATION, amount: net, months: DEFAULT_MONTHS.DEPRECIATION });
       } else if (l.account.fsLine === "BIAYA_DIBAYAR_DIMUKA" && net >= floor) {
         out.push({ ...base, key: `AMORTIZATION:${e.id}:${l.entry.id}:${l.account.code}`, kind: "AMORTIZATION", reason: `Dibayar di muka ke ${l.account.code} ${when}: ${what}`, memo: `Amortisasi ${label}`.slice(0, 80), debitCode: null, creditCode: l.account.code, amount: net, months: DEFAULT_MONTHS.AMORTIZATION });
       } else if (l.account.type === "LIABILITAS" && (l.account.code === DEFERRED_REVENUE || DEFERRED_NAME.test(l.account.name)) && -net >= floor && codes.has(SERVICE_REVENUE)) {

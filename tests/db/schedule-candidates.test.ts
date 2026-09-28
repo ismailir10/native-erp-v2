@@ -46,7 +46,7 @@ describe("schedule candidates from the ledger", () => {
       ["ACCRUAL", "6120", "2150", 3_000_000n, 1, "2026-8"],
       // depreciation (1 jt a month, missing too) is below materiality Rp 1.090.000
     ]);
-    expect(found[0]).toMatchObject({ sourceEntryId: machine.id, reason: "Pembelian 1210 Aset Tetap 19 Agu 2026: Mesin pakan otomatis", memo: "Penyusutan Aset Tetap 19 Agu 2026" });
+    expect(found[0]).toMatchObject({ sourceEntryId: machine.id, reason: "Pembelian 1210 Aset Tetap 19 Agu 2026: Mesin pakan otomatis", memo: "Penyusutan 1210 Aset Tetap 19 Agu 2026" });
     expect(found[3].reason).toBe("6120 Beban Sewa tercatat tiap bulan (2026-05, 2026-06, 2026-07), bulan ini belum");
   });
 
@@ -66,15 +66,17 @@ describe("schedule candidates from the ledger", () => {
     const buy = await db.$transaction(async (tx) => postJournal(tx, { entityId: pt, date: dateOnly(2026, 8, 19), kind: "ADJUSTMENT", memo: "Mesin dan mobil", lines: [{ accountId: await acc("1210"), debit: 48_000_000n }, { accountId: vehicles.id, debit: 30_000_000n }, { accountId: await acc("2110"), credit: 78_000_000n }] }));
     const mixed = await db.$transaction(async (tx) => postJournal(tx, { entityId: pt, date: dateOnly(2026, 8, 22), kind: "ADJUSTMENT", memo: "Sewa dan rak", lines: [{ accountId: await acc("1170"), debit: 12_000_000n }, { accountId: await acc("1210"), debit: 20_000_000n }, { accountId: await acc("2110"), credit: 32_000_000n }] }));
     // Two fixed assets of the same amount on one entry: one schedule covers one of them, never both.
-    const twin = await db.$transaction(async (tx) => postJournal(tx, { entityId: pt, date: dateOnly(2026, 8, 24), kind: "ADJUSTMENT", memo: "Dua printer", lines: [{ accountId: await acc("1210"), debit: 15_000_000n }, { accountId: vehicles.id, debit: 15_000_000n }, { accountId: await acc("2110"), credit: 30_000_000n }] }));
+    // The second asset's name is long: its memo is cut at 80 characters, but the account code at the front survives.
+    const long = await db.account.create({ data: { firmId: g.firm.id, clientId: c, code: "1212", name: "Peralatan Kantor dan Perlengkapan Cetak Digital Kapasitas Besar untuk Gudang Pusat", type: "ASET", normalBalance: "DEBIT", fsLine: "ASET_TETAP" } });
+    const twin = await db.$transaction(async (tx) => postJournal(tx, { entityId: pt, date: dateOnly(2026, 8, 24), kind: "ADJUSTMENT", memo: "Dua printer", lines: [{ accountId: await acc("1210"), debit: 15_000_000n }, { accountId: long.id, debit: 15_000_000n }, { accountId: await acc("2110"), credit: 30_000_000n }] }));
     const name = (id: string | null) => (id === buy.id ? "buy" : id === mixed.id ? "mixed" : "twin");
     const pending = async () => (await scheduleCandidates(db, c, 2026, 8)).filter((x) => x.kind !== "ACCRUAL" && name(x.sourceEntryId) !== "twin").map((x) => `${x.kind}:${name(x.sourceEntryId)}:${x.amount}`);
     const twins = async () => (await scheduleCandidates(db, c, 2026, 8)).filter((x) => x.sourceEntryId === twin.id);
     const [, second] = await twins();
-    expect([(await twins()).length, second.memo]).toEqual([2, "Penyusutan Kendaraan 24 Agu 2026"]);
-    // Scheduling the second candidate (its memo names Kendaraan) leaves the first one, never the other way round.
+    expect([(await twins()).length, second.memo.length, second.memo.startsWith("Penyusutan 1212 ")]).toEqual([2, 80, true]);
+    // Scheduling the second candidate (its memo carries 1212) leaves the first one, never the other way round.
     await createSchedule(db, { clientId: c, entityId: pt, kind: "DEPRECIATION", memo: second.memo, debitCode: "6180", creditCode: "1219", amount: "15.000.000", months: 36, startYear: 2026, startMonth: 9, sourceEntryId: twin.id });
-    expect((await twins()).map((x) => x.memo)).toEqual(["Penyusutan Aset Tetap 24 Agu 2026"]);
+    expect((await twins()).map((x) => x.memo)).toEqual(["Penyusutan 1210 Aset Tetap 24 Agu 2026"]);
     expect(await pending()).toEqual(["DEPRECIATION:buy:48000000", "DEPRECIATION:buy:30000000", "AMORTIZATION:mixed:12000000", "DEPRECIATION:mixed:20000000"]);
 
     // Depreciating the machine leaves the car; amortising the rent leaves the rack.

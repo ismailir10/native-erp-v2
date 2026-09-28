@@ -33,6 +33,9 @@ The review of the staging → main promotion (#37, head e41a53f) found two more 
       schedule made from a candidate keeps "Penyusutan <account> <date>", so the right line is covered. The first line is the
       fallback when the memo was edited.
 
+- [x] Review round 6 (#47): a candidate depreciation memo leads with the account code ("Penyusutan 1210 Aset Tetap 19 Agu 2026").
+      The code survives the 80-character cut. Matching tries the code first, then the name (older memos), then the first line.
+
 **Non-goals:** storing a schedule's source line (a schema change).
 **Assumptions:** with equal amounts *and* an edited memo, which of the twin suggestions stays is label-only: both would post the same
 6180/1219 amount. A stored source line would settle it but is a schema change, left out here. Separately, a depreciation schedule whose amount was edited and that isn't the last one for the entry may leave one extra
@@ -45,6 +48,7 @@ suggestion visible. That is harmless: it is only a suggestion.
 - [x] T4 The ledger basis uses the same report cutoff — accept: new case fails on the previous helper
 - [x] T5 The ledger opening follows each line's own account — accept: new case fails on the previous ledger
 - [x] T6 Equal-amount asset lines matched by the schedule's memo — accept: new case fails on the previous matching
+- [x] T7 The memo carries the account code, matched first — accept: the truncated-name case fails on the previous commit
 
 ## Implementation
 - T1: `lib/adjust/candidates.ts` drops the entry-level filter and adds `covered(line, net)`, based on the entry's schedules.
@@ -74,6 +78,10 @@ suggestion visible. That is harmless: it is only a suggestion.
 - T6: `lib/adjust/candidates.ts` matches each schedule to an open asset line of its amount. It prefers the line whose account name
   appears in the memo, longest name first. Test: two 15 jt printers (1210 Aset Tetap, 1211 Kendaraan). Scheduling the second
   candidate leaves "Penyusutan Aset Tetap …".
+- T7: `lib/adjust/candidates.ts` uses the memo `Penyusutan <code> <account> <date>` and matches on the code as a whole word.
+  - Test: the second printer's account name is long, so its memo is cut to 80 characters but still starts "Penyusutan 1212 ".
+    Scheduling it leaves "Penyusutan 1210 Aset Tetap …".
+  - `e2e/investor-demo.spec.ts` expects the new memo text.
 
 ## Verification
 - T1: the new test fails on the old scan ("expected [] to deeply equal [ 'DEPRECIATION:buy:30000000', …"; the car and rack
@@ -118,6 +126,14 @@ suggestion visible. That is harmless: it is only a suggestion.
   - `npm run build` ✓.
   - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
   - `test:e2e` → 10 passed (52.7s).
+- T7: the new case fails on the previous commit (its memo carried no code and the cut removed the name, so the wrong printer stayed)
+  and passes after.
+- T7 gates:
+  - Lint and typecheck clean.
+  - `npm test` → Test Files 61 passed (61), Tests 458 passed (458).
+  - `npm run build` ✓.
+  - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
+  - `test:e2e` → 10 passed (52.6s).
 
 ## Ship Notes
 No migration, no env change. Merges to staging, then rides the promotion PR #37.

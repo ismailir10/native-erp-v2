@@ -84,7 +84,7 @@ test("statement in → reviewed → traceable reports → combined → closed", 
   await expect(page.getByLabel("Bulan mulai")).toHaveValue("2026-09");
   await page.getByRole("button", { name: "Simpan jadwal" }).click();
   await expect(page.getByText("Jadwal dibuat")).toBeVisible();
-  await expect(page.getByTestId("schedules")).toContainText("Penyusutan Aset Tetap 19 Agu 2026");
+  await expect(page.getByTestId("schedules")).toContainText("Penyusutan 1210 Aset Tetap 19 Agu 2026");
   await expect(page.getByTestId("schedule-candidates")).toHaveCount(0);
 
   // 7. Close: arithmetic passes; the ledger scan flags the machine bought in August (Aset Tetap moves for the first time
