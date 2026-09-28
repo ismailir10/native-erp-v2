@@ -97,6 +97,7 @@ its side). A depreciation keeps its line whatever its memo.
 - [x] T18 A depreciation's accounts must depreciate; the client-account ledger links to its period's posted account — accept: the new checks fail on the previous code
 - [x] T19 A direct write-down must credit the cited asset — accept: the other-asset case fails on the previous predicate
 - [x] T20 A new schedule cites its entry and line together — accept: entry-without-line fails on the previous writer
+- [x] T21 Prepaid and deferred-revenue lines are released only by an amortisation — accept: the accrual case fails on the previous writer
 
 ## Implementation
 - T1: `lib/adjust/candidates.ts` drops the entry-level filter and adds `covered(line, net)`, based on the entry's schedules.
@@ -208,6 +209,9 @@ its side). A depreciation keeps its line whatever its memo.
 - T20: `createSchedule` refuses a `sourceEntryId` without `sourceAccountCode` ("Jurnal sumber perlu baris sumbernya."). Only rows
   made before the migration lack the line. The candidate tests that exercise the older matching now build such rows through a
   `legacy()` helper: create the schedule, then set only its entry. `schedules.test.ts` passes the line.
+- T21: `createSchedule` accepts a prepaid or deferred-revenue source line only on an AMORTIZATION, with the account on its releasing
+  side. An accrual reverses the next month, so it would release nothing. Test: an ACCRUAL crediting 1170 and claiming 1170 is
+  refused.
 
 ## Verification
 - T1: the new test fails on the old scan ("expected [] to deeply equal [ 'DEPRECIATION:buy:30000000', …"; the car and rack
@@ -356,6 +360,14 @@ its side). A depreciation keeps its line whatever its memo.
   - `npm run build` ✓.
   - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
   - `test:e2e` → 10 passed (53.0s).
+
+- T21: the new check fails on the previous writer (1 failed | 12 passed).
+- T21 gates:
+  - Lint and typecheck clean.
+  - `npm test` → Test Files 62 passed (62), Tests 466 passed (466).
+  - `npm run build` ✓.
+  - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
+  - `test:e2e` → 10 passed (52.2s).
 
 ## Ship Notes
 - **Migration:** `20260928010000_schedule_source_line` is additive: a nullable column, a foreign key and a CHECK that existing rows

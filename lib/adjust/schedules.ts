@@ -99,8 +99,8 @@ export async function createSchedule(db: Db, input: ScheduleInput) {
     if (!src) throw new LedgerError("Jurnal sumber tidak termasuk entitas ini.");
   }
   // The source line: an account with a line in the source entry, which the schedule releases — an asset by depreciation (an expense
-  // debited, accumulated depreciation or that asset credited), a
-  // prepayment by crediting it, deferred revenue by debiting it (the other side would grow the balance, not release it).
+  // debited, accumulated depreciation or that asset credited), a prepayment or deferred revenue by amortisation, crediting the
+  // prepayment or debiting the deferred revenue (the other side would grow the balance; an accrual would reverse next month).
   // A schedule cites an entry and its line together (only schedules made before the line was stored lack it).
   if (input.sourceEntryId && !input.sourceAccountCode) throw new LedgerError("Jurnal sumber perlu baris sumbernya.");
   let sourceAccountId: string | null = null;
@@ -109,8 +109,11 @@ export async function createSchedule(db: Db, input: ScheduleInput) {
     const line = await db.journalLine.findFirst({ where: { entryId: input.sourceEntryId, account: { clientId: input.clientId, code: input.sourceAccountCode } }, include: { account: true } });
     if (!line) throw new LedgerError(`Jurnal sumber tidak punya baris akun ${input.sourceAccountCode}.`);
     const a = line.account;
-    const releases = a.fsLine === "ASET_TETAP" ? input.kind === "DEPRECIATION" && depreciates(debit, credit, a.code) : a.fsLine === "BIAYA_DIBAYAR_DIMUKA" ? credit.id === a.id : debit.id === a.id;
-    if (!releases) throw new LedgerError(`Jadwal ini tidak melepas saldo ${a.code} ${a.name}: aset tetap lewat penyusutan (beban di debit, akumulasi penyusutan di kredit), dibayar di muka di sisi kredit, diterima di muka di sisi debit.`);
+    const releases =
+      a.fsLine === "ASET_TETAP"
+        ? input.kind === "DEPRECIATION" && depreciates(debit, credit, a.code)
+        : input.kind === "AMORTIZATION" && (a.fsLine === "BIAYA_DIBAYAR_DIMUKA" ? credit.id === a.id : debit.id === a.id);
+    if (!releases) throw new LedgerError(`Jadwal ini tidak melepas saldo ${a.code} ${a.name}: aset tetap lewat penyusutan (beban di debit, akumulasi penyusutan di kredit), dibayar di muka dan diterima di muka lewat amortisasi (di sisi kredit dan debit).`);
     sourceAccountId = a.id;
   }
   // Every installment (and an accrual's reversal) must still be postable: one in a locked month could never post, and later months

@@ -182,6 +182,8 @@ describe("schedule candidates from the ledger", () => {
     const other = await db.account.create({ data: { firmId: (await db.client.findUniqueOrThrow({ where: { id: c } })).firmId, clientId: c, code: "1211", name: "Kendaraan", type: "ASET", normalBalance: "DEBIT", fsLine: "ASET_TETAP" } });
     await expect(createSchedule(db, { ...base, kind: "DEPRECIATION", debitCode: "6180", creditCode: other.code, sourceAccountCode: "1210" })).rejects.toThrow("Jadwal ini tidak melepas saldo 1210");
     expect((await createSchedule(db, { ...base, kind: "DEPRECIATION", memo: "Susut rak langsung", debitCode: "6180", creditCode: "1210", amount: "20.000.000", sourceAccountCode: "1210" })).sourceAccountId).toBe(await acc("1210"));
+    // An accrual reverses next month, so it never releases a prepayment: only an amortisation does.
+    await expect(createSchedule(db, { ...base, kind: "ACCRUAL", sourceAccountCode: "1170" })).rejects.toThrow("Jadwal ini tidak melepas saldo 1170");
     const ok = await createSchedule(db, { ...base, sourceAccountCode: "1170" });
     expect(ok.sourceAccountId).toBe(await acc("1170"));
     // The database keeps the pair together too.
