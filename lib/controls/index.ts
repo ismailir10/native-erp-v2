@@ -10,6 +10,7 @@ import { sanityControls } from "@/lib/controls/sanity";
 import { anomalyControls } from "@/lib/controls/anomaly";
 import { closeLock, dueProposals, schedulesDueBy } from "@/lib/adjust/schedules";
 import { registerVsLedger } from "@/lib/assets/register";
+import { subledgerVsLedger } from "@/lib/receivables/aging";
 
 /**
  * Close controls (analog of belifi 16_CONTROLS). PASS / REVIEW / FAIL.
@@ -152,6 +153,26 @@ export async function runControls(db: Db, clientId: string, year: number, month:
         detail: fa.equal ? `Harga perolehan ${fmt(fa.register.cost)}, akumulasi penyusutan ${fmt(fa.register.accumulated)}` : `${diff.join("; ")}. Aset yang belum didaftarkan atau jurnal manual di akun aset menjelaskan selisih ini`,
         href: `${base}/assets?period=${year}-${String(month).padStart(2, "0")}&entity=${e.id}`,
         ack: acks.get(faKey),
+      });
+    }
+
+    // Receivable/payable subledger (rule 5c): open invoices against the GL accounts they use, for entities with invoices.
+    for (const direction of ["SALES", "PURCHASE"] as const) {
+      const [sub] = await subledgerVsLedger(db, clientId, direction, end, [e.id]);
+      if (!sub) continue;
+      const sales = direction === "SALES";
+      const key = `${sales ? "ar" : "ap"}:${e.id}`;
+      const what = sales ? "Piutang" : "Utang";
+      controls.push({
+        key,
+        title: sales ? "Piutang usaha = daftar faktur" : "Utang usaha = daftar tagihan",
+        scope: e.shortName,
+        status: sub.equal ? "PASS" : "REVIEW",
+        detail: sub.equal
+          ? `${what} terbuka ${fmt(sub.subledger)} (${sub.accounts.join(", ")})`
+          : `${what} terbuka: daftar ${fmt(sub.subledger)} vs buku besar ${fmt(sub.ledger)} (${sub.accounts.join(", ")})${sub.unsettledLines ? `; ${sub.unsettledLines} mutasi bank di akun itu belum dicocokkan ke faktur` : ""}`,
+        href: `${base}/receivables?period=${year}-${String(month).padStart(2, "0")}&entity=${e.id}&tab=${sales ? "piutang" : "utang"}`,
+        ack: acks.get(key),
       });
     }
   }

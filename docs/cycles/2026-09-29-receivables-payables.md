@@ -64,7 +64,7 @@ settlement by non-bank entries (netting), documents → invoice drafts (a later 
 - [x] T3 Settlements: `lib/receivables/settle.ts` — `settle` (locks, limits, direction, account), `settleWithReclass`, `unsettle`,
       `matchSuggestions` — accept: DB tests (partial, one receipt for two invoices, over-settlement refused, wrong direction, reclass
       from 1999 in one transaction, locked month, suggestions ranked by name). Depends T2.
-- [ ] T4 Aging + control: `lib/receivables/aging.ts` (`openItems`, `aging`, `subledgerVsLedger`), `ar:`/`ap:` in `runControls` —
+- [x] T4 Aging + control: `lib/receivables/aging.ts` (`openItems`, `aging`, `subledgerVsLedger`), `ar:`/`ap:` in `runControls` —
       accept: DB tests (buckets at a date, settlements after the date ignored, PASS/REVIEW with the unsettled count). Depends T3.
 - [ ] T5 UI: page, components, actions, sidebar — accept: e2e walk (sales invoice → bank receipt reviewed → cocokkan → aging and control;
       purchase invoice partly paid), screenshots at 1440 and 390 px. Depends T4.
@@ -74,9 +74,11 @@ settlement by non-bank entries (netting), documents → invoice drafts (a later 
 - Plan: T1–T6 sequential, inline (one driver keeps the invariants straight; each layer uses the previous).
 - T1: `prisma/schema.prisma`, migration `20260929010000_receivables` (Contact, Invoice, InvoiceSettlement, `InvoiceDirection`, `EntryKind` + INVOICE, CHECKs), `components/app/ledger-table.tsx` (*Faktur* label), ADR 0004 amendment.- T2: `lib/receivables/invoices.ts` (`createInvoice`, `ppnFor`; contact upserted by normalised name; Saldo Awal items must be dated by the entity's opening entry), `tests/db/invoices.test.ts`.
 - T3: `lib/receivables/settle.ts` (`settle`, `settleWithReclass` via `reviewTransactionTx` in one transaction, `unsettle`, `settleCandidates` — named = every distinctive word of the contact (PT/CV dropped) or the invoice number; exact = unsettled amount equals the open amount), `tests/db/settlements.test.ts` (bank lines imported through the real pipeline).
+- T4: `lib/receivables/aging.ts` (`invoicesAt`, `agingByContact`, `bucketOf`, `subledgerVsLedger`), `lib/controls/index.ts` (`ar:`/`ap:` per entity with invoices of that direction), `tests/db/aging.test.ts`.
 
 ## Verification
 - T1: `prisma migrate diff` DB ↔ schema empty. Gate: lint ✓ typecheck ✓ `Test Files 68 passed (68) · Tests 513 passed (513)`.- T2 gate: lint ✓ typecheck ✓ `Test Files 69 passed (69) · Tests 518 passed (518)`.
 - T3 gate: lint ✓ typecheck ✓ `Test Files 70 passed (70) · Tests 521 passed (521)`.
+- T4 gate: lint ✓ typecheck ✓ `Test Files 71 passed (71) · Tests 523 passed (523)`.
 
 ## Ship Notes
