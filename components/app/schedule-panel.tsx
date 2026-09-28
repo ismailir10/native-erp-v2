@@ -52,7 +52,7 @@ export function SchedulePanel(props: { clientId: string; entities: { id: string;
     if (!form) return;
     const [y, m] = form.start.split("-").map(Number);
     setBusy(true);
-    const r = await createScheduleAction({ clientId: props.clientId, entityId: form.entityId, kind: form.kind, memo: form.memo, debitCode: form.debitCode, creditCode: form.creditCode, amount: form.amount, months, startYear: y, startMonth: m, sourceEntryId: sourceFor(form.origin, form) });
+    const r = await createScheduleAction({ clientId: props.clientId, entityId: form.entityId, kind: form.kind, memo: form.memo, debitCode: form.debitCode, creditCode: form.creditCode, amount: form.amount, months, startYear: y, startMonth: m, ...sourceFor(form.origin, form) });
     setBusy(false);
     if (!r.ok) return void toast.error(r.error);
     toast.success("Jadwal dibuat");

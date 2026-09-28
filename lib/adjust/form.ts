@@ -13,16 +13,14 @@ export function originOf(c: { kind: ScheduleKind; entityId: string; sourceEntryI
 }
 
 /**
- * The source entry a schedule cites when saved: the candidate's own entry only while the schedule still identifies that
- * candidate's line — same kind and entity, and the line's account still on the side it amortises on (prepaid credit /
- * deferred-revenue debit) or, for a depreciation (6180/1219, no asset account), still named by its code in the memo. Anything else cites no
- * entry, so a schedule never cites an entry whose line it no longer identifies (the candidate then stays proposed).
+ * The source a schedule records when saved: the candidate's entry and line (its account), only while the schedule still releases
+ * that line — same kind and entity, and for a prepayment or deferred revenue the account still on the side it amortises on
+ * (prepaid credit / deferred-revenue debit). A depreciation (6180/1219, no asset account) keeps its line whatever its memo, since
+ * the line is stored. Anything else records no source, so a schedule never cites a line it doesn't release (the candidate then
+ * stays proposed).
  */
-export function sourceFor(origin: FormOrigin, form: { kind: ScheduleKind; entityId: string; memo: string; debitCode: string; creditCode: string }): string | null {
+export function sourceFor(origin: FormOrigin, form: { kind: ScheduleKind; entityId: string; debitCode: string; creditCode: string }): { sourceEntryId: string; sourceAccountCode: string } | null {
   if (!origin?.sourceEntryId || origin.kind !== form.kind || origin.entityId !== form.entityId) return null;
-  const identifies =
-    form.kind === "DEPRECIATION"
-      ? form.memo.toLowerCase().split(/\s+/).includes(origin.code.toLowerCase())
-      : (origin.side === "credit" ? form.creditCode : form.debitCode) === origin.code;
-  return identifies ? origin.sourceEntryId : null;
+  const releases = form.kind === "DEPRECIATION" || (origin.side === "credit" ? form.creditCode : form.debitCode) === origin.code;
+  return releases ? { sourceEntryId: origin.sourceEntryId, sourceAccountCode: origin.code } : null;
 }

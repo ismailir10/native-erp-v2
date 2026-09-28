@@ -137,6 +137,37 @@ describe("schedule candidates from the ledger", () => {
     expect((await scheduleCandidates(db, c, 2026, 8)).filter((x) => x.sourceEntryId === first.id || x.sourceEntryId === second.id)).toEqual([]);
   });
 
+  it("a schedule that stores its source line covers exactly that line, whatever its memo and amount", async () => {
+    const { g, pt, c } = await books();
+    const acc = (code: string) => accountId(c, code);
+    const printers = await db.account.create({ data: { firmId: g.firm.id, clientId: c, code: "1212", name: "Printer", type: "ASET", normalBalance: "DEBIT", fsLine: "ASET_TETAP" } });
+    const twin = await db.$transaction(async (tx) => postJournal(tx, { entityId: pt, date: dateOnly(2026, 8, 24), kind: "ADJUSTMENT", memo: "Mesin dan printer", lines: [{ accountId: await acc("1210"), debit: 15_000_000n }, { accountId: printers.id, debit: 15_000_000n }, { accountId: await acc("1170"), debit: 15_000_000n }, { accountId: await acc("2110"), credit: 45_000_000n }] }));
+    const mine = async () => (await scheduleCandidates(db, c, 2026, 8)).filter((x) => x.sourceEntryId === twin.id).map((x) => `${x.kind}:${x.creditCode === "1170" ? "1170" : x.key.split(":").at(-1)}`);
+    expect(await mine()).toEqual(["DEPRECIATION:1210", "DEPRECIATION:1212", "AMORTIZATION:1170"]);
+    // The second printer scheduled with an edited memo and an equal amount: it, not the first, is covered.
+    const base = { clientId: c, entityId: pt, kind: "DEPRECIATION" as const, debitCode: "6180", creditCode: "1219", amount: "15.000.000", months: 36, startYear: 2026, startMonth: 9, sourceEntryId: twin.id };
+    await createSchedule(db, { ...base, memo: "Susut peralatan", sourceAccountCode: "1212" });
+    expect(await mine()).toEqual(["DEPRECIATION:1210", "AMORTIZATION:1170"]);
+    // A stored line wins over a memo naming the prepayment: this depreciation covers 1210, the prepayment stays proposed.
+    await createSchedule(db, { ...base, memo: "Amortisasi Uang Muka & Biaya Dibayar di Muka", sourceAccountCode: "1210" });
+    expect(await mine()).toEqual(["AMORTIZATION:1170"]);
+  });
+
+  it("refuses a source line the entry doesn't have or the schedule doesn't release", async () => {
+    const { pt, c } = await books();
+    const acc = (code: string) => accountId(c, code);
+    const mixed = await db.$transaction(async (tx) => postJournal(tx, { entityId: pt, date: dateOnly(2026, 8, 22), kind: "ADJUSTMENT", memo: "Sewa dan rak", lines: [{ accountId: await acc("1170"), debit: 12_000_000n }, { accountId: await acc("1210"), debit: 20_000_000n }, { accountId: await acc("2110"), credit: 32_000_000n }] }));
+    const base = { clientId: c, entityId: pt, kind: "AMORTIZATION" as const, memo: "Sewa", debitCode: "6120", creditCode: "1170", amount: "12.000.000", months: 12, startYear: 2026, startMonth: 9, sourceEntryId: mixed.id };
+    await expect(createSchedule(db, { ...base, sourceEntryId: null, sourceAccountCode: "1170" })).rejects.toThrow("Baris sumber perlu jurnal sumbernya.");
+    await expect(createSchedule(db, { ...base, sourceAccountCode: "2160" })).rejects.toThrow("Jurnal sumber tidak punya baris akun 2160.");
+    await expect(createSchedule(db, { ...base, debitCode: "1170", creditCode: "2110", sourceAccountCode: "1170" })).rejects.toThrow("Jadwal ini tidak melepas saldo 1170");
+    await expect(createSchedule(db, { ...base, sourceAccountCode: "1210" })).rejects.toThrow("Jadwal ini tidak melepas saldo 1210");
+    const ok = await createSchedule(db, { ...base, sourceAccountCode: "1170" });
+    expect(ok.sourceAccountId).toBe(await acc("1170"));
+    // The database keeps the pair together too.
+    await expect(db.adjustmentSchedule.update({ where: { id: ok.id }, data: { sourceEntryId: null } })).rejects.toThrow(/AdjustmentSchedule_source_line_check/);
+  });
+
   it("drops an accrual candidate once that month's accrual is created", async () => {
     const { pt, c } = await books();
     await createSchedule(db, { clientId: c, entityId: pt, kind: "ACCRUAL", memo: "Akrual sewa Agustus", debitCode: "6120", creditCode: "2150", amount: "3.000.000", months: 1, startYear: 2026, startMonth: 8 });

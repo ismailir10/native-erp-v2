@@ -8,7 +8,7 @@ import { installments } from "@/lib/adjust/schedules";
 /**
  * Candidates for new adjustment schedules, read from the period's ledger (deterministic, cycle adjustment-schedules).
  * Shown as suggestions with a prefilled form; nothing is created until the accountant clicks, and they never block the
- * close. A candidate disappears once a schedule cites its source entry (accruals: once an accrual for that account starts
+ * close. A candidate disappears once a schedule covers its source line (accruals: once an accrual for that account starts
  * this month).
  */
 
@@ -70,7 +70,7 @@ export async function scheduleCandidates(db: Db, clientId: string, year: number,
       groups.set(k, g);
     }
     // A schedule made from an entry covers only the line it came from, so a compound entry's other lines stay proposed. Schedules are
-    // matched to lines one to one, in creation order: a schedule covers at most one line, and a line is covered by one schedule.
+    // matched to lines one to one: a schedule covers at most one line, and a line is covered by one schedule.
     const from = await db.adjustmentSchedule.findMany({ where: { entityId: e.id, sourceEntryId: { in: [...new Set(lines.map((l) => l.entryId))] } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
     const coveredLines = new Set<string>();
     const words = (memo: string) => new Set(memo.toLowerCase().split(/\s+/));
@@ -80,9 +80,16 @@ export async function scheduleCandidates(db: Db, clientId: string, year: number,
       const inEntry = [...groups.entries()].filter(([, g]) => g.line.entryId === entryId);
       const assets = inEntry.filter(([, g]) => g.line.account.fsLine === "ASET_TETAP");
       const others = inEntry.filter(([, g]) => g.line.account.fsLine !== "ASET_TETAP");
-      // Schedules that name their line's account go first, so a depreciation is weighed only against the lines still open.
       const cited = from.filter((x) => x.sourceEntryId === entryId);
-      for (const s of [...cited.filter((x) => x.kind !== "DEPRECIATION"), ...cited.filter((x) => x.kind === "DEPRECIATION")]) {
+      // A schedule that stores its source line covers exactly that line.
+      for (const s of cited.filter((x) => x.sourceAccountId)) {
+        const k = `${entryId}|${s.sourceAccountId}`;
+        if (groups.has(k)) coveredLines.add(k);
+      }
+      // Schedules made before the line was stored are matched by what they carry. Those that name their line's account go first,
+      // so a depreciation is weighed only against the lines still open.
+      const legacy = cited.filter((x) => !x.sourceAccountId);
+      for (const s of [...legacy.filter((x) => x.kind !== "DEPRECIATION"), ...legacy.filter((x) => x.kind === "DEPRECIATION")]) {
         // A prepayment is released by crediting its account, deferred revenue by debiting it: only a schedule with the account on
         // that side can cover the line (one on the other side would grow the balance). When a schedule fits two such lines (it
         // credits a prepayment and debits deferred revenue), its memo, then its amount, picks the one it came from.
@@ -116,7 +123,7 @@ export async function scheduleCandidates(db: Db, clientId: string, year: number,
       const what = (l.entry.bankTransaction?.description ?? l.memo ?? l.entry.memo).replace(/^Reklasifikasi:\s*/i, "").slice(0, 90);
       const label = `${l.account.name} ${when}`;
       const base = { entity: ent, sourceEntryId: l.entry.id, startYear: nm.year, startMonth: nm.month };
-      // The depreciation memo leads with the account code: it survives the 80-character cut and identifies the line (see the matching above).
+      // The depreciation memo leads with the account code: it survives the 80-character cut and identifies the line of a schedule made before the line was stored (see the matching above).
       if (l.account.fsLine === "ASET_TETAP" && net >= floor && codes.has(DEPRECIATION_EXPENSE) && codes.has(ACCUMULATED_DEPRECIATION)) {
         out.push({ ...base, key: `DEPRECIATION:${e.id}:${l.entry.id}:${l.account.code}`, kind: "DEPRECIATION", reason: `Pembelian ${l.account.code} ${l.account.name} ${when}: ${what}`, memo: `Penyusutan ${l.account.code} ${label}`.slice(0, 80), debitCode: DEPRECIATION_EXPENSE, creditCode: ACCUMULATED_DEPRECIATION, amount: net, months: DEFAULT_MONTHS.DEPRECIATION });
       } else if (l.account.fsLine === "BIAYA_DIBAYAR_DIMUKA" && net >= floor) {

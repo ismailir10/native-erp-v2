@@ -199,6 +199,7 @@ model Account {
   sourceAccounts  SourceAccount[]
   scheduleDebits  AdjustmentSchedule[] @relation("ScheduleDebit")
   scheduleCredits AdjustmentSchedule[] @relation("ScheduleCredit")
+  scheduleSources AdjustmentSchedule[] @relation("ScheduleSourceAccount")
 
   @@unique([clientId, code])
 }
@@ -823,6 +824,10 @@ model AdjustmentSchedule {
   /// The entry it came from (fixed-asset purchase, prepayment) — the rule 15 chain.
   sourceEntryId   String?
   sourceEntry     JournalEntry?  @relation("ScheduleSource", fields: [sourceEntryId], references: [id])
+  /// The account of the source entry's line it came from: with sourceEntryId it names that one line (null on schedules made
+  /// before it was stored, and on schedules without a source).
+  sourceAccountId String?
+  sourceAccount   Account?       @relation("ScheduleSourceAccount", fields: [sourceAccountId], references: [id])
   stoppedAt       DateTime?
   createdById     String?
   createdBy       FirmMember?    @relation("ScheduleCreatedBy", fields: [createdById], references: [id])

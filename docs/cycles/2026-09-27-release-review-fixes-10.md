@@ -65,10 +65,16 @@ The review of the staging → main promotion (#37, head e41a53f) found two more 
 - [x] Review round 13 (#47): schedules that name their line's account are matched first. A depreciation's amount then collides
       only with lines still open; a memo naming another line still points away.
 
-**Non-goals:** storing a schedule's source line (a schema change).
-**Assumptions:** with equal amounts *and* an edited memo, which of the twin suggestions stays is label-only: both would post the same
-6180/1219 amount. A stored source line would settle it but is a schema change, left out here. Separately, a depreciation schedule whose amount was edited and that isn't the last one for the entry may leave one extra
-suggestion visible. That is harmless: it is only a suggestion.
+- [x] Schema change, approved by the user on 2026-09-28 ("do the schema change, approved, build and ship it"). A schedule stores
+      its source line: `AdjustmentSchedule.sourceAccountId`, with `sourceEntryId`, plus a DB CHECK that the account never stands
+      without the entry. `createSchedule` accepts `sourceAccountCode` only when the entry has a line on that account and the
+      schedule releases it: an asset by depreciation, a prepayment on the credit side, deferred revenue on the debit side. A
+      schedule that stores its line covers exactly that line. The memo and amount matching remains only for schedules made
+      before the line was stored.
+
+**Non-goals:** backfilling `sourceAccountId` on existing schedules. Older schedules keep the one-to-one memo and amount matching.
+**Assumptions:** the schedule form records the line only while the schedule still releases it (same kind and entity, account on
+its side). A depreciation keeps its line whatever its memo.
 
 ## Tasks
 - [x] T1 Candidates: a schedule covers only its own line — accept: new test fails on the old scan
@@ -86,6 +92,7 @@ suggestion visible. That is harmless: it is only a suggestion.
 - [x] T13 A schedule citing a single-asset entry covers that asset — accept: the legacy-schedule case fails on the previous matcher
 - [x] T14 One line per schedule for every kind; no amount match that points elsewhere — accept: both new cases fail on the previous matcher
 - [x] T15 Amount collisions only with open lines, whatever the creation order — accept: the new case fails on the previous matcher
+- [x] T16 Store the schedule's source line (schema) — accept: the equal-amount twin with an edited memo fails on the previous matcher
 
 ## Implementation
 - T1: `lib/adjust/candidates.ts` drops the entry-level filter and adds `covered(line, net)`, based on the entry's schedules.
@@ -161,6 +168,20 @@ suggestion visible. That is harmless: it is only a suggestion.
   that is still open, while a memo naming another line still counts. Test: two entries, each with 1170 20 jt and 1210 20 jt. Each
   gets an amortisation and an older-style depreciation ("Susut rak gudang", 20 jt), created in opposite orders. No candidate
   remains for either entry.
+- T16:
+  - `prisma/schema.prisma` and migration `20260928010000_schedule_source_line` add `sourceAccountId`: a foreign key to Account,
+    `ON DELETE SET NULL` like `sourceEntryId`, plus the CHECK `AdjustmentSchedule_source_line_check`.
+  - `lib/adjust/schedules.ts`: `createSchedule` validates and stores `sourceAccountCode`.
+  - `lib/adjust/form.ts`: `sourceFor` returns `{ sourceEntryId, sourceAccountCode }`. The depreciation memo is no longer read.
+  - `components/app/schedule-panel.tsx` sends both.
+  - `lib/adjust/candidates.ts` covers the stored line first, then matches older schedules as before.
+  - `accounting-rules` rule 5a is updated.
+  - Tests:
+    - Twin 15 jt assets plus a prepayment. Scheduling 1212 with the memo "Susut peralatan" leaves 1210. A stored 1210 line wins
+      over a memo naming the prepayment.
+    - The writer refuses a line without its entry, an account the entry lacks, a prepayment on the debit side, and an asset under
+      an amortisation. The CHECK refuses clearing the entry.
+    - The unit test covers the new return shape.
 
 ## Verification
 - T1: the new test fails on the old scan ("expected [] to deeply equal [ 'DEPRECIATION:buy:30000000', …"; the car and rack
@@ -267,5 +288,19 @@ suggestion visible. That is harmless: it is only a suggestion.
   - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
   - `test:e2e` → 10 passed (51.9s).
 
+- T16: the stored-line case fails on the previous matcher (1 failed | 11 passed). `prisma migrate diff` from the migrated DB to
+  the schema is empty. After e2e, the schedule saved from the candidate in the UI stores 1210 as its line
+  (`Penyusutan 1210 Aset Tetap 19 Agu 2026|t|1210`).
+- T16 gates:
+  - Lint and typecheck clean.
+  - `npm test` → Test Files 62 passed (62), Tests 465 passed (465).
+  - `npm run build` ✓.
+  - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
+  - `test:e2e` → 10 passed (53.1s).
+
 ## Ship Notes
-No migration, no env change. Merges to staging, then rides the promotion PR #37.
+- **Migration:** `20260928010000_schedule_source_line` is additive: a nullable column, a foreign key and a CHECK that existing rows
+  satisfy, since the new column is null. `scripts/vercel-build.sh` applies it with `prisma migrate deploy`.
+- **Env:** no change.
+- **Rollback:** revert the PR. The column can stay, because nothing else reads it.
+- **Release:** merges to staging, then rides the promotion PR #37.
