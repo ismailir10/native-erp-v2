@@ -41,6 +41,10 @@ The review of the staging → main promotion (#37, head e41a53f) found two more 
       in every candidate memo it is no longer needed, and a prepayment candidate turned into a depreciation no longer hides a real
       asset. Changing the kind in the schedule dialog also drops the candidate's source entry.
 
+- [x] Review round 8 (#47): the schedule form remembers where it was opened from. Switching the kind away from the candidate's
+      drops the source entry, and switching back restores it. A schedule identical to its candidate always cites the entry, so
+      the candidate can't be offered twice.
+
 **Non-goals:** storing a schedule's source line (a schema change).
 **Assumptions:** with equal amounts *and* an edited memo, which of the twin suggestions stays is label-only: both would post the same
 6180/1219 amount. A stored source line would settle it but is a schema change, left out here. Separately, a depreciation schedule whose amount was edited and that isn't the last one for the entry may leave one extra
@@ -56,6 +60,7 @@ suggestion visible. That is harmless: it is only a suggestion.
 - [x] T7 The memo carries the account code, matched first — accept: the truncated-name case fails on the previous commit
 - [x] T8 CI pins the Supabase CLI — accept: the setup step no longer resolves "latest" through the GitHub API
 - [x] T9 A schedule hides only the asset line it identifies — accept: the converted-prepayment case fails on the previous matcher
+- [x] T10 The form restores the candidate's source on returning to its kind — accept: unit test of `sourceForKind`
 
 ## Implementation
 - T1: `lib/adjust/candidates.ts` drops the entry-level filter and adds `covered(line, net)`, based on the entry's schedules.
@@ -98,6 +103,10 @@ suggestion visible. That is harmless: it is only a suggestion.
   - `components/app/schedule-panel.tsx` clears `sourceEntryId` when the kind changes.
   - Test: the edited-amount car schedule carries "1211". A prepayment turned into a depreciation (12 jt, prepaid memo) leaves the
     20 jt rack proposed.
+- T10: `lib/adjust/form.ts` adds `sourceForKind(origin, kind)`. `components/app/schedule-panel.tsx` keeps `origin` (the candidate's kind
+  and entry) and uses it on every kind change. Test: `tests/unit/schedule-form.test.ts`. The previous handler kept the source only
+  when the kind was unchanged, so switching away and back lost it; the helper is new, so the test pins the new rule rather than
+  failing on old code.
 
 ## Verification
 - T1: the new test fails on the old scan ("expected [] to deeply equal [ 'DEPRECIATION:buy:30000000', …"; the car and rack
@@ -158,6 +167,12 @@ suggestion visible. That is harmless: it is only a suggestion.
   - `npm run build` ✓.
   - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
   - `test:e2e` → 10 passed (55.2s).
+- T10 gates:
+  - Lint and typecheck clean.
+  - `npm test` → Test Files 62 passed (62), Tests 459 passed (459).
+  - `npm run build` ✓.
+  - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
+  - `test:e2e` → 10 passed (52.2s).
 
 ## Ship Notes
 No migration, no env change. Merges to staging, then rides the promotion PR #37.
