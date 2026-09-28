@@ -49,6 +49,7 @@ suggestion visible. That is harmless: it is only a suggestion.
 - [x] T5 The ledger opening follows each line's own account — accept: new case fails on the previous ledger
 - [x] T6 Equal-amount asset lines matched by the schedule's memo — accept: new case fails on the previous matching
 - [x] T7 The memo carries the account code, matched first — accept: the truncated-name case fails on the previous commit
+- [x] T8 CI pins the Supabase CLI — accept: the setup step no longer resolves "latest" through the GitHub API
 
 ## Implementation
 - T1: `lib/adjust/candidates.ts` drops the entry-level filter and adds `covered(line, net)`, based on the entry's schedules.
@@ -82,6 +83,9 @@ suggestion visible. That is harmless: it is only a suggestion.
   - Test: the second printer's account name is long, so its memo is cut to 80 characters but still starts "Penyusutan 1212 ".
     Scheduling it leaves "Penyusutan 1210 Aset Tetap …".
   - `e2e/investor-demo.spec.ts` expects the new memo text.
+- T8: CI on f641073 passed all 458 tests, then failed in `supabase/setup-cli` with "Failed to resolve latest Supabase CLI release:
+  rate limit exceeded", before e2e ran. The job couldn't be re-run from here (403). `.github/workflows/ci.yml` now pins
+  `version: 2.118.0`, the CLI the local e2e runs use, so setup downloads that release directly.
 
 ## Verification
 - T1: the new test fails on the old scan ("expected [] to deeply equal [ 'DEPRECIATION:buy:30000000', …"; the car and rack
