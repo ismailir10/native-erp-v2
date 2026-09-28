@@ -94,6 +94,13 @@ describe("schedule candidates from the ledger", () => {
     expect(await pending()).toEqual(["DEPRECIATION:mixed:20000000"]);
   });
 
+  it("an older depreciation with a custom memo and an adjusted amount still covers its entry's only asset line", async () => {
+    const { pt, c } = await books();
+    const machine = await post(pt, c, dateOnly(2026, 8, 19), "1210", "2110", 48_000_000n, "Mesin pakan otomatis");
+    await createSchedule(db, { clientId: c, entityId: pt, kind: "DEPRECIATION", memo: "Susut mesin pakan (nilai sisa 8 jt)", debitCode: "6180", creditCode: "1219", amount: "40.000.000", months: 48, startYear: 2026, startMonth: 9, sourceEntryId: machine.id });
+    expect((await scheduleCandidates(db, c, 2026, 8)).filter((x) => x.sourceEntryId === machine.id)).toEqual([]);
+  });
+
   it("drops an accrual candidate once that month's accrual is created", async () => {
     const { pt, c } = await books();
     await createSchedule(db, { clientId: c, entityId: pt, kind: "ACCRUAL", memo: "Akrual sewa Agustus", debitCode: "6120", creditCode: "2150", amount: "3.000.000", months: 1, startYear: 2026, startMonth: 8 });

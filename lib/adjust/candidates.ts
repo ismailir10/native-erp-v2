@@ -80,13 +80,18 @@ export async function scheduleCandidates(db: Db, clientId: string, year: number,
       // A schedule hides only the asset line it identifies, never one it merely might be: first by the account code its memo carries
       // (a schedule made from a candidate keeps "Penyusutan <code> <account> <date>", the code never cut off, whatever amount it was
       // given), then by the account name (longest first), then by its exact amount. A schedule that identifies no line hides none,
-      // so at worst a suggestion stays visible.
+      // so at worst a suggestion stays visible. An entry with a single asset line needs no memo: a schedule citing it covers that
+      // line (older schedules carry custom memos and adjusted amounts), unless the schedule identifies another line of the entry
+      // (e.g. a prepayment candidate turned into a depreciation).
       const words = (memo: string) => new Set(memo.toLowerCase().split(/\s+/));
+      const others = [...groups.values()].filter((g) => g.line.entryId === entryId && g.line.account.fsLine !== "ASET_TETAP");
       for (const s of pool) {
         const open = assets.filter(([k]) => !coveredAssets.has(k));
         const coded = open.filter(([, g]) => words(s.memo).has(g.line.account.code.toLowerCase()));
         const named = open.filter(([, g]) => s.memo.toLowerCase().includes(g.line.account.name.toLowerCase())).sort(([, x], [, y]) => y.line.account.name.length - x.line.account.name.length);
-        const hit = coded[0] ?? named.find(([, g]) => g.net === s.amount) ?? named[0] ?? open.find(([, g]) => g.net === s.amount);
+        const elsewhere = others.some((g) => g.net === s.amount || -g.net === s.amount || words(s.memo).has(g.line.account.code.toLowerCase()) || s.memo.toLowerCase().includes(g.line.account.name.toLowerCase()));
+        const sole = assets.length === 1 && open.length === 1 && !elsewhere ? open[0] : undefined;
+        const hit = coded[0] ?? named.find(([, g]) => g.net === s.amount) ?? named[0] ?? open.find(([, g]) => g.net === s.amount) ?? sole;
         if (hit) coveredAssets.add(hit[0]);
       }
     }
