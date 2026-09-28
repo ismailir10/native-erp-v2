@@ -9,10 +9,12 @@ import { ParseError } from "@/lib/import/types";
 export type FileKind = "PDF" | "XLSX" | "XLS" | "MARKUP" | "TEXT";
 
 const OLE2 = Buffer.from("d0cf11e0", "hex");
+const ZIP = Buffer.from("504b0304", "hex");
 
 export function sniffFile(data: Buffer): FileKind {
   if (data.subarray(0, 5).toString("latin1") === "%PDF-") return "PDF";
-  if (data.subarray(0, 2).toString("latin1") === "PK") return "XLSX";
+  // A ZIP local-file header, not just "PK" (a CSV may start with a "PK…" column).
+  if (data.subarray(0, 4).equals(ZIP)) return "XLSX";
   if (data.subarray(0, 4).equals(OLE2)) return "XLS";
   const head = stripBom(data.subarray(0, 512)).toString("utf8").trimStart().toLowerCase();
   if (/^<(\?xml|!doctype html|html|table|meta|head|body)/.test(head) || (head.startsWith("<") && /<table|<workbook|urn:schemas-microsoft-com:office/.test(head))) return "MARKUP";

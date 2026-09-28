@@ -152,7 +152,15 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
     const r = rows[i];
     const dateText = r[cDate] ?? "";
     const text = descCols.map((c) => (r[c] ?? "").trim()).filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
-    const noMovement = split ? !r[cDb] && !r[cCr] : !r[cAmt];
+    // Movement from the parsed values: "0" or "0,00" in a SALDO AWAL row is no movement (unreadable text counts as movement).
+    const isZero = (c: number) => {
+      try {
+        return num(r, c) === 0n;
+      } catch {
+        return false;
+      }
+    };
+    const noMovement = split ? isZero(cDb) && isZero(cCr) : isZero(cAmt);
     const label = OPENING_ROW.test(dateText) || OPENING_ROW.test(text) ? "open" : CLOSING_ROW.test(dateText) || CLOSING_ROW.test(text) ? "close" : TOTAL_ROW.test(dateText) ? "total" : null;
     if (label && (noMovement || !dateParts(dateText))) {
       const bal = cBal >= 0 && r[cBal] ? parseRupiah(r[cBal]) : null;
@@ -163,6 +171,8 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
     if (!dateText || /saldo|total/i.test(dateText)) continue;
     const parts = dateParts(dateText);
     if (!parts) throw new ParseError(`Format tanggal tidak dikenali di baris ${i + 1}: "${dateText}"`);
+    // A dated row that moves no money is no transaction (it could never post); the rows around it carry the balance.
+    if (noMovement) continue;
     const debit = split ? num(r, cDb) : 0n;
     const credit = split ? num(r, cCr) : 0n;
     drafts.push({
@@ -298,8 +308,15 @@ export function parseWorkbook(sheets: Sheet[], ctx: { year?: number; fileName?: 
   }
   if (!read.length) throw firstError ?? new NoTableError();
   const digits = (s: string | null) => (s ?? "").replace(/\D/g, "");
+  // Sheets without an account number belong to the one account the others print; with several accounts they are ambiguous.
+  const numbered = [...new Set(read.map((r) => digits(r.st.accountNumber)).filter(Boolean))];
+  const unnumbered = read.filter((r) => !digits(r.st.accountNumber));
+  if (unnumbered.length && numbered.length > 1) {
+    throw new ParseError(`Lembar ${unnumbered.map((r) => r.sheet.name).join(", ")} tidak mencantumkan nomor rekening, sementara lembar lain berisi beberapa rekening (${numbered.join(", ")}). Pisahkan file per rekening atau tulis nomor rekening di tiap lembar.`);
+  }
+  const keyOf = (r: (typeof read)[number]) => digits(r.st.accountNumber) || (numbered[0] ?? "");
   const groups = new Map<string, typeof read>();
-  for (const r of read) groups.set(digits(r.st.accountNumber), [...(groups.get(digits(r.st.accountNumber)) ?? []), r]);
+  for (const r of read) groups.set(keyOf(r), [...(groups.get(keyOf(r)) ?? []), r]);
   const joined = [...groups.values()].map((group) => {
     // One account's sheets follow one convention: sheets that can't tell take the one the others show.
     const verdicts = new Set(group.map((g) => g.st.verdict).filter((v) => v !== "UNKNOWN"));
