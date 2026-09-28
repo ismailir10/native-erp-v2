@@ -95,8 +95,11 @@ export async function createAsset(db: Db, input: AssetInput) {
   const effective = opening && +acquiredOn < +opening.date ? opening.date : acquiredOn;
   const monthIndex = (d: Date) => d.getUTCFullYear() * 12 + d.getUTCMonth() + 1;
   // A locked month's register can't change after the fact (rule 4): refuse an asset that would enter it. Checked under the close lock.
+  // The asset is listed in every register from its effective month on, so any locked month from then on would change after the fact.
   const assertOpen = async (tx: Tx) => {
-    const locked = await tx.period.findFirst({ where: { clientId: input.clientId, status: "LOCKED", year: effective.getUTCFullYear(), month: effective.getUTCMonth() + 1 } });
+    const y = effective.getUTCFullYear();
+    const m = effective.getUTCMonth() + 1;
+    const locked = await tx.period.findFirst({ where: { clientId: input.clientId, status: "LOCKED", OR: [{ year: { gt: y } }, { year: y, month: { gte: m } }] }, orderBy: [{ year: "asc" }, { month: "asc" }] });
     if (locked) throw new LedgerError(`${formatPeriod(locked.year, locked.month)} sudah dikunci, dan aset ini masuk daftar aset bulan itu. Buka kunci bulan itu dulu.`);
   };
   const guarded = <T,>(write: (tx: Tx) => Promise<T>) =>
@@ -380,4 +383,59 @@ export async function unregisteredSchedules(db: Db, clientId: string, entityIds?
     include: { entity: { select: { id: true, shortName: true, functionalCurrency: true } }, debitAccount: { select: { code: true, name: true } }, creditAccount: { select: { code: true, name: true } }, sourceAccount: { select: { code: true } }, sourceEntry: { select: { date: true } } },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   });
+}
+
+export type AssetMovement = {
+  kind: "ACQUIRED" | "OPENING" | "DEPRECIATION" | "DISPOSAL";
+  date: Date;
+  label: string;
+  /** Cost booked (acquisition) or taken off (disposal, negative). */
+  cost: bigint;
+  /** Accumulated depreciation added (depreciation, opening) or taken off (disposal, negative). */
+  accumulated: bigint;
+  /** The entry behind it and the ledger (account, month) where it shows; null for Saldo Awal detail without its own entry line. */
+  entryId: string | null;
+  ledger: { code: string; year: number; month: number } | null;
+};
+
+/**
+ * Everything behind an asset's register figures, oldest first (the drill for cost, accumulated depreciation, book value and the
+ * year's depreciation): the purchase or the Saldo Awal, every posted installment, the disposal. Read from the GL, like the register.
+ */
+export async function assetDetail(db: Db, clientId: string, assetId: string) {
+  const a = await db.fixedAsset.findFirst({
+    where: { id: assetId, clientId },
+    include: {
+      entity: { select: { id: true, name: true, shortName: true, functionalCurrency: true } },
+      assetAccount: { select: { code: true, name: true } },
+      accumulatedAccount: { select: { code: true, name: true } },
+      sourceEntry: { select: { id: true, date: true, memo: true, bankTransaction: { select: { description: true } } } },
+      disposalEntry: { select: { id: true, date: true, memo: true } },
+      schedule: { include: { entries: { select: { id: true, date: true, memo: true, installment: true, lines: { select: { accountId: true, credit: true, debit: true } } }, orderBy: { date: "asc" } } } },
+    },
+  });
+  if (!a) return null;
+  const ym = (d: Date) => ({ year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 });
+  const opening = await db.journalEntry.findFirst({ where: { entityId: a.entityId, kind: "OPENING" }, orderBy: { date: "asc" }, select: { id: true, date: true } });
+  const moves: AssetMovement[] = [];
+  const fromOpening = opening && +a.acquiredOn < +opening.date;
+  if (a.sourceEntry) {
+    moves.push({ kind: "ACQUIRED", date: a.sourceEntry.date, label: a.sourceEntry.bankTransaction?.description ?? a.sourceEntry.memo, cost: a.cost, accumulated: 0n, entryId: a.sourceEntry.id, ledger: { code: a.assetAccount.code, ...ym(a.sourceEntry.date) } });
+  } else {
+    const at = fromOpening ? opening.date : a.acquiredOn;
+    moves.push({ kind: fromOpening ? "OPENING" : "ACQUIRED", date: at, label: fromOpening ? "Saldo Awal (termasuk di jurnal saldo awal)" : "Didaftarkan tanpa jurnal sumber", cost: a.cost, accumulated: a.openingAccumulated, entryId: fromOpening ? opening.id : null, ledger: { code: a.assetAccount.code, ...ym(at) } });
+  }
+  const s = a.schedule;
+  for (const e of (s?.entries ?? []).filter((x) => x.installment !== null && x.installment <= s!.months)) {
+    const amount = e.lines.filter((l) => l.accountId === s!.creditAccountId).reduce((t, l) => t + l.credit - l.debit, 0n);
+    moves.push({ kind: "DEPRECIATION", date: e.date, label: e.memo, cost: 0n, accumulated: amount, entryId: e.id, ledger: a.accumulatedAccount ? { code: a.accumulatedAccount.code, ...ym(e.date) } : null });
+  }
+  if (a.disposalEntry) {
+    const before = moves.reduce((t, m) => t + m.accumulated, 0n);
+    moves.push({ kind: "DISPOSAL", date: a.disposalEntry.date, label: a.disposalEntry.memo, cost: -a.cost, accumulated: -before, entryId: a.disposalEntry.id, ledger: { code: a.assetAccount.code, ...ym(a.disposalEntry.date) } });
+  }
+  // The disposal is always the last event (its month's installment is dated the month's last day, after it); acquisition first.
+  const rank = { OPENING: 0, ACQUIRED: 0, DEPRECIATION: 1, DISPOSAL: 2 } as const;
+  moves.sort((x, y) => Number(x.kind === "DISPOSAL") - Number(y.kind === "DISPOSAL") || +x.date - +y.date || rank[x.kind] - rank[y.kind]);
+  return { asset: a, moves };
 }

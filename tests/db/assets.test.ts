@@ -3,7 +3,7 @@ import { db, makeGroup, resetDb } from "../helpers";
 import { postJournal } from "@/lib/ledger/post";
 import { postOpening } from "@/lib/opening";
 import { createSchedule, postInstallment } from "@/lib/adjust/schedules";
-import { assetCandidates, assetRegister, createAsset, registerVsLedger, unregisteredSchedules } from "@/lib/assets/register";
+import { assetCandidates, assetDetail, assetRegister, createAsset, registerVsLedger, unregisteredSchedules } from "@/lib/assets/register";
 import { dateOnly } from "@/lib/format";
 import { runControls } from "@/lib/controls";
 
@@ -43,6 +43,12 @@ describe("fixed-asset register", () => {
     [row] = await assetRegister(db, g.client.id, 2026, 10);
     expect(row.unposted).toBe(1);
     expect(await registerVsLedger(db, g.client.id, 2026, 9)).toMatchObject([{ register: { cost: 48_000_000n, accumulated: 1_000_000n }, ledger: { cost: 48_000_000n, accumulated: 1_000_000n }, equal: true }]);
+    // The drill behind those figures: the purchase line, then the installment, each on its ledger month.
+    const detail = await assetDetail(db, g.client.id, asset.id);
+    expect(detail?.moves.map((m) => [m.kind, m.cost, m.accumulated, m.entryId, m.ledger])).toEqual([
+      ["ACQUIRED", 48_000_000n, 0n, entry.id, { code: "1210", year: 2026, month: 8 }],
+      ["DEPRECIATION", 0n, 1_000_000n, expect.any(String), { code: "1219", year: 2026, month: 9 }],
+    ]);
   });
 
   it("registers Saldo Awal assets by hand: the remaining value over the remaining life, or none when fully depreciated", async () => {
@@ -117,6 +123,11 @@ describe("fixed-asset register guards", () => {
     await expect(createAsset(db, { ...base(g), name: "Laptop", acquiredOn: "2026-08-10", cost: "48000000", sourceEntryId: entry.id })).rejects.toThrow(/Agustus 2026 sudah dikunci/);
     expect(await db.fixedAsset.count()).toBe(0);
     expect(await db.adjustmentSchedule.count()).toBe(0); // the schedule rolled back with it
+    // A later locked month counts too: the asset would enter September's register as well.
+    await db.period.update({ where: { clientId_year_month: { clientId: g.client.id, year: 2026, month: 8 } }, data: { status: "OPEN" } });
+    await db.period.create({ data: { firmId: g.firm.id, clientId: g.client.id, year: 2026, month: 9, status: "LOCKED" } });
+    await expect(createAsset(db, { ...base(g), name: "Tanah", taxGroup: "TANAH", acquiredOn: "2026-08-02", cost: "1000" })).rejects.toThrow(/September 2026 sudah dikunci/);
+    expect(await db.fixedAsset.count()).toBe(0);
   });
 
   it("counts opening accumulation only from the opening date and never starts depreciation before it or before acquisition", async () => {

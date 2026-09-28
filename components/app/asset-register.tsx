@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus } from "lucide-react";
+import { ChevronRight, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -199,9 +199,10 @@ export function AssetRegister(props: {
 
       {props.registers.map((reg) => {
         const cur = reg.entity.currency;
-        // Every booked figure drills to its ledger (the purchase and the depreciation entries); the fiscal figures are an estimate.
-        const drill = (code: string | null, node: React.ReactNode, label: string) =>
-          code ? <Link href={`/clients/${props.clientId}/ledger/${code}?entity=${reg.entity.id}&period=${props.periodKey}`} aria-label={label} className="underline-offset-2 hover:text-primary hover:underline">{node}</Link> : node;
+        // Every booked figure drills to the asset's page: the purchase or Saldo Awal, each posted installment and the disposal, each
+        // linked to its ledger month (a single account or month can't explain a book value or a year's depreciation). The fiscal
+        // figures are an estimate.
+        const drill = (id: string, node: React.ReactNode, label: string) => <Link href={`/clients/${props.clientId}/assets/${id}?period=${props.periodKey}&entity=${reg.entity.id}`} aria-label={label} className="underline-offset-2 hover:text-primary hover:underline">{node}</Link>;
         const fiscal = reg.totals.fiscalYtd !== null;
         return (
           <Card key={reg.entity.id} data-testid={`register-${reg.entity.shortName}`}>
@@ -230,7 +231,7 @@ export function AssetRegister(props: {
                   {reg.rows.map((r) => (
                     <TableRow key={r.id}>
                       <TableCell className="pl-6 whitespace-normal">
-                        <div className="font-medium">{r.name}</div>
+                        <Link href={`/clients/${props.clientId}/assets/${r.id}?period=${props.periodKey}&entity=${reg.entity.id}`} className="inline-flex items-center gap-1 font-medium hover:text-primary">{r.name} <ChevronRight className="size-3.5" aria-hidden /></Link>
                         <div className="text-xs text-muted-foreground">
                           {r.groupLabel}{r.methodLabel !== "–" ? ` · fiskal ${r.methodLabel.toLowerCase()}` : ""} · diperoleh {r.acquired}{r.lifeMonths ? ` · ${r.lifeMonths} bulan` : ""}
                         </div>
@@ -241,10 +242,10 @@ export function AssetRegister(props: {
                           </Link>
                         )}
                       </TableCell>
-                      <TableCell className="hidden text-right md:table-cell">{drill(r.assetCode, <Money value={BigInt(r.cost)} currency={cur} />, `Buku besar ${r.assetCode} untuk ${r.name}`)}</TableCell>
-                      <TableCell className="hidden text-right md:table-cell">{drill(r.accumulatedCode, <Money value={-BigInt(r.accumulated)} currency={cur} />, `Buku besar ${r.accumulatedCode} untuk ${r.name}`)}</TableCell>
-                      <TableCell className="text-right">{drill(r.assetCode, <Money value={BigInt(r.bookValue)} currency={cur} />, `Buku besar ${r.assetCode} untuk ${r.name}`)}</TableCell>
-                      <TableCell className="hidden text-right lg:table-cell">{drill(r.accumulatedCode, <Money value={BigInt(r.bookYtd)} currency={cur} />, `Penyusutan ${r.name} di buku besar ${r.accumulatedCode}`)}</TableCell>
+                      <TableCell className="hidden text-right md:table-cell">{drill(r.id, <Money value={BigInt(r.cost)} currency={cur} />, `Harga perolehan ${r.name}`)}</TableCell>
+                      <TableCell className="hidden text-right md:table-cell">{drill(r.id, <Money value={-BigInt(r.accumulated)} currency={cur} />, `Akumulasi penyusutan ${r.name}`)}</TableCell>
+                      <TableCell className="text-right">{drill(r.id, <Money value={BigInt(r.bookValue)} currency={cur} />, `Nilai buku ${r.name}`)}</TableCell>
+                      <TableCell className="hidden text-right lg:table-cell">{drill(r.id, <Money value={BigInt(r.bookYtd)} currency={cur} />, `Penyusutan tahun ini ${r.name}`)}</TableCell>
                       {fiscal && <TableCell className="hidden text-right lg:table-cell"><Money value={BigInt(r.fiscalYtd ?? "0")} currency={cur} /></TableCell>}
                       {fiscal && <TableCell className="hidden text-right lg:table-cell"><Money value={BigInt(r.difference ?? "0")} currency={cur} /></TableCell>}
                       <TableCell className="pr-6 text-right">
