@@ -96,6 +96,7 @@ its side). A depreciation keeps its line whatever its memo.
 - [x] T17 Older schedules: collisions only with candidate-direction lines — accept: the reclassed-prepayment case fails on the previous matcher
 - [x] T18 A depreciation's accounts must depreciate; the client-account ledger links to its period's posted account — accept: the new checks fail on the previous code
 - [x] T19 A direct write-down must credit the cited asset — accept: the other-asset case fails on the previous predicate
+- [x] T20 A new schedule cites its entry and line together — accept: entry-without-line fails on the previous writer
 
 ## Implementation
 - T1: `lib/adjust/candidates.ts` drops the entry-level filter and adds `covered(line, net)`, based on the entry's schedules.
@@ -204,6 +205,9 @@ its side). A depreciation keeps its line whatever its memo.
   - Tests:
     - Unit: crediting 1211 for a 1210 candidate records no line.
     - DB: the writer refuses 6180/1211 claiming 1210, and accepts a direct 6180/1210 write-down.
+- T20: `createSchedule` refuses a `sourceEntryId` without `sourceAccountCode` ("Jurnal sumber perlu baris sumbernya."). Only rows
+  made before the migration lack the line. The candidate tests that exercise the older matching now build such rows through a
+  `legacy()` helper: create the schedule, then set only its entry. `schedules.test.ts` passes the line.
 
 ## Verification
 - T1: the new test fails on the old scan ("expected [] to deeply equal [ 'DEPRECIATION:buy:30000000', …"; the car and rack
@@ -344,6 +348,14 @@ its side). A depreciation keeps its line whatever its memo.
   - `npm run build` ✓.
   - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
   - `test:e2e` → 10 passed (52.5s).
+
+- T20: the new check fails on the previous writer (1 failed | 12 passed).
+- T20 gates:
+  - Lint and typecheck clean.
+  - `npm test` → Test Files 62 passed (62), Tests 466 passed (466).
+  - `npm run build` ✓.
+  - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
+  - `test:e2e` → 10 passed (53.0s).
 
 ## Ship Notes
 - **Migration:** `20260928010000_schedule_source_line` is additive: a nullable column, a foreign key and a CHECK that existing rows

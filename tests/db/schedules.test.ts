@@ -207,9 +207,9 @@ describe("adjustment schedules", () => {
       const { postJournal } = await import("@/lib/ledger/post");
       return postJournal(tx, { entityId: g.pt.entity.id, date: dateOnly(2026, 8, 19), kind: "ADJUSTMENT", memo: "Beli mesin", lines: [{ accountId: await acc("1210"), debit: 48_000_000n }, { accountId: await acc("2110"), credit: 48_000_000n }] });
     });
-    const s = await createSchedule(db, { clientId: g.client.id, entityId: g.pt.entity.id, kind: "DEPRECIATION", memo: "Penyusutan mesin", debitCode: "6180", creditCode: "1219", amount: "48.000.000", months: 48, startYear: 2026, startMonth: 9, sourceEntryId: buy.id });
+    const s = await createSchedule(db, { clientId: g.client.id, entityId: g.pt.entity.id, kind: "DEPRECIATION", memo: "Penyusutan mesin", debitCode: "6180", creditCode: "1219", amount: "48.000.000", months: 48, startYear: 2026, startMonth: 9, sourceEntryId: buy.id, sourceAccountCode: "1210" });
     expect(s.sourceEntryId).toBe(buy.id);
-    await expect(createSchedule(db, { clientId: g.client.id, entityId: g.owner.entity.id, kind: "DEPRECIATION", memo: "x", debitCode: "6180", creditCode: "1219", amount: "1", months: 1, startYear: 2026, startMonth: 9, sourceEntryId: buy.id })).rejects.toThrow("Jurnal sumber");
+    await expect(createSchedule(db, { clientId: g.client.id, entityId: g.owner.entity.id, kind: "DEPRECIATION", memo: "x", debitCode: "6180", creditCode: "1219", amount: "1", months: 1, startYear: 2026, startMonth: 9, sourceEntryId: buy.id, sourceAccountCode: "1210" })).rejects.toThrow("Jurnal sumber tidak termasuk entitas ini.");
     await expect(postInstallment(db, { clientId: other.client.id, scheduleId: s.id, k: 1 })).rejects.toThrow("Jadwal tidak ditemukan");
     await expect(stopSchedule(db, { clientId: other.client.id, scheduleId: s.id })).rejects.toThrow("Jadwal tidak ditemukan");
   });

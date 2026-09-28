@@ -101,6 +101,8 @@ export async function createSchedule(db: Db, input: ScheduleInput) {
   // The source line: an account with a line in the source entry, which the schedule releases — an asset by depreciation (an expense
   // debited, accumulated depreciation or that asset credited), a
   // prepayment by crediting it, deferred revenue by debiting it (the other side would grow the balance, not release it).
+  // A schedule cites an entry and its line together (only schedules made before the line was stored lack it).
+  if (input.sourceEntryId && !input.sourceAccountCode) throw new LedgerError("Jurnal sumber perlu baris sumbernya.");
   let sourceAccountId: string | null = null;
   if (input.sourceAccountCode) {
     if (!input.sourceEntryId) throw new LedgerError("Baris sumber perlu jurnal sumbernya.");

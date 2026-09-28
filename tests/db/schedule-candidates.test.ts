@@ -25,6 +25,12 @@ async function books() {
   return { g, pt, c };
 }
 
+/** A schedule made before the source line was stored: only its entry is recorded (new schedules must store both). */
+const legacy = async (input: Parameters<typeof createSchedule>[1]) => {
+  const { sourceEntryId, ...rest } = input;
+  const s = await createSchedule(db, rest);
+  return db.adjustmentSchedule.update({ where: { id: s.id }, data: { sourceEntryId } });
+};
 const summary = (xs: Awaited<ReturnType<typeof scheduleCandidates>>) => xs.map((x) => [x.kind, x.debitCode, x.creditCode, x.amount, x.months, `${x.startYear}-${x.startMonth}`]);
 
 describe("schedule candidates from the ledger", () => {
@@ -53,7 +59,7 @@ describe("schedule candidates from the ledger", () => {
   it("drops a candidate once a schedule cites its entry, and skips accounts a running schedule covers", async () => {
     const { pt, c } = await books();
     const machine = await post(pt, c, dateOnly(2026, 8, 19), "1210", "2110", 48_000_000n, "Mesin pakan otomatis");
-    await createSchedule(db, { clientId: c, entityId: pt, kind: "DEPRECIATION", memo: "Penyusutan mesin", debitCode: "6180", creditCode: "1219", amount: "48.000.000", months: 48, startYear: 2026, startMonth: 9, sourceEntryId: machine.id });
+    await legacy({ clientId: c, entityId: pt, kind: "DEPRECIATION", memo: "Penyusutan mesin", debitCode: "6180", creditCode: "1219", amount: "48.000.000", months: 48, startYear: 2026, startMonth: 9, sourceEntryId: machine.id });
     await createSchedule(db, { clientId: c, entityId: pt, kind: "AMORTIZATION", memo: "Sewa kantor", debitCode: "6120", creditCode: "1170", amount: "36.000.000", months: 12, startYear: 2026, startMonth: 8 });
     expect(summary(await scheduleCandidates(db, c, 2026, 8))).toEqual([]);
   });
@@ -75,29 +81,29 @@ describe("schedule candidates from the ledger", () => {
     const [, second] = await twins();
     expect([(await twins()).length, second.memo.length, second.memo.startsWith("Penyusutan 1212 ")]).toEqual([2, 80, true]);
     // Scheduling the second candidate (its memo carries 1212) leaves the first one, never the other way round.
-    await createSchedule(db, { clientId: c, entityId: pt, kind: "DEPRECIATION", memo: second.memo, debitCode: "6180", creditCode: "1219", amount: "15.000.000", months: 36, startYear: 2026, startMonth: 9, sourceEntryId: twin.id });
+    await legacy({ clientId: c, entityId: pt, kind: "DEPRECIATION", memo: second.memo, debitCode: "6180", creditCode: "1219", amount: "15.000.000", months: 36, startYear: 2026, startMonth: 9, sourceEntryId: twin.id });
     expect((await twins()).map((x) => x.memo)).toEqual(["Penyusutan 1210 Aset Tetap 24 Agu 2026"]);
     expect(await pending()).toEqual(["DEPRECIATION:buy:48000000", "DEPRECIATION:buy:30000000", "AMORTIZATION:mixed:12000000", "DEPRECIATION:mixed:20000000"]);
 
     // A schedule with the prepaid account on the debit side grows the prepayment instead of releasing it: it covers nothing.
-    await createSchedule(db, { clientId: c, entityId: pt, kind: "AMORTIZATION", memo: "Salah sisi", debitCode: "1170", creditCode: "2110", amount: "12.000.000", months: 12, startYear: 2026, startMonth: 9, sourceEntryId: mixed.id });
+    await legacy({ clientId: c, entityId: pt, kind: "AMORTIZATION", memo: "Salah sisi", debitCode: "1170", creditCode: "2110", amount: "12.000.000", months: 12, startYear: 2026, startMonth: 9, sourceEntryId: mixed.id });
     expect(await pending()).toContain("AMORTIZATION:mixed:12000000");
     // Depreciating the machine leaves the car; amortising the rent leaves the rack.
-    await createSchedule(db, { clientId: c, entityId: pt, kind: "DEPRECIATION", memo: "Penyusutan mesin", debitCode: "6180", creditCode: "1219", amount: "48.000.000", months: 48, startYear: 2026, startMonth: 9, sourceEntryId: buy.id });
-    await createSchedule(db, { clientId: c, entityId: pt, kind: "AMORTIZATION", memo: "Sewa", debitCode: "6120", creditCode: "1170", amount: "12.000.000", months: 12, startYear: 2026, startMonth: 9, sourceEntryId: mixed.id });
+    await legacy({ clientId: c, entityId: pt, kind: "DEPRECIATION", memo: "Penyusutan mesin", debitCode: "6180", creditCode: "1219", amount: "48.000.000", months: 48, startYear: 2026, startMonth: 9, sourceEntryId: buy.id });
+    await legacy({ clientId: c, entityId: pt, kind: "AMORTIZATION", memo: "Sewa", debitCode: "6120", creditCode: "1170", amount: "12.000.000", months: 12, startYear: 2026, startMonth: 9, sourceEntryId: mixed.id });
     expect(await pending()).toEqual(["DEPRECIATION:buy:30000000", "DEPRECIATION:mixed:20000000"]);
     // A depreciation created with an edited amount (residual value) still counts when its memo carries the asset's code.
-    await createSchedule(db, { clientId: c, entityId: pt, kind: "DEPRECIATION", memo: "Penyusutan 1211 mobil", debitCode: "6180", creditCode: "1219", amount: "25.000.000", months: 60, startYear: 2026, startMonth: 9, sourceEntryId: buy.id });
+    await legacy({ clientId: c, entityId: pt, kind: "DEPRECIATION", memo: "Penyusutan 1211 mobil", debitCode: "6180", creditCode: "1219", amount: "25.000.000", months: 60, startYear: 2026, startMonth: 9, sourceEntryId: buy.id });
     expect(await pending()).toEqual(["DEPRECIATION:mixed:20000000"]);
     // A prepayment candidate turned into a depreciation (its memo and amount name no asset line) hides no asset line.
-    await createSchedule(db, { clientId: c, entityId: pt, kind: "DEPRECIATION", memo: "Amortisasi Uang Muka & Biaya Dibayar di Muka 22 Agu 2026", debitCode: "6180", creditCode: "1219", amount: "12.000.000", months: 12, startYear: 2026, startMonth: 9, sourceEntryId: mixed.id });
+    await legacy({ clientId: c, entityId: pt, kind: "DEPRECIATION", memo: "Amortisasi Uang Muka & Biaya Dibayar di Muka 22 Agu 2026", debitCode: "6180", creditCode: "1219", amount: "12.000.000", months: 12, startYear: 2026, startMonth: 9, sourceEntryId: mixed.id });
     expect(await pending()).toEqual(["DEPRECIATION:mixed:20000000"]);
   });
 
   it("an older depreciation with a custom memo and an adjusted amount still covers its entry's only asset line", async () => {
     const { pt, c } = await books();
     const machine = await post(pt, c, dateOnly(2026, 8, 19), "1210", "2110", 48_000_000n, "Mesin pakan otomatis");
-    await createSchedule(db, { clientId: c, entityId: pt, kind: "DEPRECIATION", memo: "Susut mesin pakan (nilai sisa 8 jt)", debitCode: "6180", creditCode: "1219", amount: "40.000.000", months: 48, startYear: 2026, startMonth: 9, sourceEntryId: machine.id });
+    await legacy({ clientId: c, entityId: pt, kind: "DEPRECIATION", memo: "Susut mesin pakan (nilai sisa 8 jt)", debitCode: "6180", creditCode: "1219", amount: "40.000.000", months: 48, startYear: 2026, startMonth: 9, sourceEntryId: machine.id });
     expect((await scheduleCandidates(db, c, 2026, 8)).filter((x) => x.sourceEntryId === machine.id)).toEqual([]);
   });
 
@@ -108,7 +114,7 @@ describe("schedule candidates from the ledger", () => {
     const mine = async () => (await scheduleCandidates(db, c, 2026, 8)).filter((x) => x.sourceEntryId === both.id);
     const prepaid = (await mine()).find((x) => x.creditCode === "1170")!;
     // The accountant picks 2160 as the account the prepayment is released into: the schedule credits 1170 and debits 2160.
-    await createSchedule(db, { clientId: c, entityId: pt, kind: "AMORTIZATION", memo: prepaid.memo, debitCode: "2160", creditCode: "1170", amount: "12.000.000", months: 12, startYear: 2026, startMonth: 9, sourceEntryId: both.id });
+    await legacy({ clientId: c, entityId: pt, kind: "AMORTIZATION", memo: prepaid.memo, debitCode: "2160", creditCode: "1170", amount: "12.000.000", months: 12, startYear: 2026, startMonth: 9, sourceEntryId: both.id });
     expect((await mine()).map((x) => [x.debitCode, x.creditCode, x.amount])).toEqual([["2160", "4110", 6_000_000n]]);
   });
 
@@ -119,7 +125,7 @@ describe("schedule candidates from the ledger", () => {
     const mine = async () => (await scheduleCandidates(db, c, 2026, 8)).filter((x) => x.sourceEntryId === even.id).map((x) => `${x.kind}:${x.amount}`);
     const prepaid = (await scheduleCandidates(db, c, 2026, 8)).find((x) => x.sourceEntryId === even.id && x.kind === "AMORTIZATION")!;
     // An older schedule: the prepayment candidate turned into a depreciation, keeping its memo and amount.
-    await createSchedule(db, { clientId: c, entityId: pt, kind: "DEPRECIATION", memo: prepaid.memo, debitCode: "6180", creditCode: "1219", amount: "20.000.000", months: 12, startYear: 2026, startMonth: 9, sourceEntryId: even.id });
+    await legacy({ clientId: c, entityId: pt, kind: "DEPRECIATION", memo: prepaid.memo, debitCode: "6180", creditCode: "1219", amount: "20.000.000", months: 12, startYear: 2026, startMonth: 9, sourceEntryId: even.id });
     expect(await mine()).toEqual(["AMORTIZATION:20000000", "DEPRECIATION:20000000"]);
   });
 
@@ -128,8 +134,8 @@ describe("schedule candidates from the ledger", () => {
     const acc = (code: string) => accountId(c, code);
     const entry = async (day: number) => db.$transaction(async (tx) => postJournal(tx, { entityId: pt, date: dateOnly(2026, 8, day), kind: "ADJUSTMENT", memo: "Sewa dan rak", lines: [{ accountId: await acc("1170"), debit: 20_000_000n }, { accountId: await acc("1210"), debit: 20_000_000n }, { accountId: await acc("2110"), credit: 40_000_000n }] }));
     const [first, second] = [await entry(22), await entry(23)];
-    const depreciate = (id: string) => createSchedule(db, { clientId: c, entityId: pt, kind: "DEPRECIATION", memo: "Susut rak gudang", debitCode: "6180", creditCode: "1219", amount: "20.000.000", months: 48, startYear: 2026, startMonth: 9, sourceEntryId: id });
-    const amortise = (id: string) => createSchedule(db, { clientId: c, entityId: pt, kind: "AMORTIZATION", memo: "Sewa gudang", debitCode: "6120", creditCode: "1170", amount: "20.000.000", months: 12, startYear: 2026, startMonth: 9, sourceEntryId: id });
+    const depreciate = (id: string) => legacy({ clientId: c, entityId: pt, kind: "DEPRECIATION", memo: "Susut rak gudang", debitCode: "6180", creditCode: "1219", amount: "20.000.000", months: 48, startYear: 2026, startMonth: 9, sourceEntryId: id });
+    const amortise = (id: string) => legacy({ clientId: c, entityId: pt, kind: "AMORTIZATION", memo: "Sewa gudang", debitCode: "6120", creditCode: "1170", amount: "20.000.000", months: 12, startYear: 2026, startMonth: 9, sourceEntryId: id });
     await amortise(first.id);
     await depreciate(first.id);
     await depreciate(second.id);
@@ -140,7 +146,7 @@ describe("schedule candidates from the ledger", () => {
   it("an older depreciation still covers the asset a prepayment was reclassed into", async () => {
     const { pt, c } = await books();
     const reclass = await post(pt, c, dateOnly(2026, 8, 22), "1210", "1170", 20_000_000n, "Uang muka rak jadi aset");
-    await createSchedule(db, { clientId: c, entityId: pt, kind: "DEPRECIATION", memo: "Susut rak gudang", debitCode: "6180", creditCode: "1219", amount: "20.000.000", months: 48, startYear: 2026, startMonth: 9, sourceEntryId: reclass.id });
+    await legacy({ clientId: c, entityId: pt, kind: "DEPRECIATION", memo: "Susut rak gudang", debitCode: "6180", creditCode: "1219", amount: "20.000.000", months: 48, startYear: 2026, startMonth: 9, sourceEntryId: reclass.id });
     expect((await scheduleCandidates(db, c, 2026, 8)).filter((x) => x.sourceEntryId === reclass.id)).toEqual([]);
   });
 
@@ -166,6 +172,7 @@ describe("schedule candidates from the ledger", () => {
     const mixed = await db.$transaction(async (tx) => postJournal(tx, { entityId: pt, date: dateOnly(2026, 8, 22), kind: "ADJUSTMENT", memo: "Sewa dan rak", lines: [{ accountId: await acc("1170"), debit: 12_000_000n }, { accountId: await acc("1210"), debit: 20_000_000n }, { accountId: await acc("2110"), credit: 32_000_000n }] }));
     const base = { clientId: c, entityId: pt, kind: "AMORTIZATION" as const, memo: "Sewa", debitCode: "6120", creditCode: "1170", amount: "12.000.000", months: 12, startYear: 2026, startMonth: 9, sourceEntryId: mixed.id };
     await expect(createSchedule(db, { ...base, sourceEntryId: null, sourceAccountCode: "1170" })).rejects.toThrow("Baris sumber perlu jurnal sumbernya.");
+    await expect(createSchedule(db, base)).rejects.toThrow("Jurnal sumber perlu baris sumbernya."); // a new schedule stores its line
     await expect(createSchedule(db, { ...base, sourceAccountCode: "2160" })).rejects.toThrow("Jurnal sumber tidak punya baris akun 2160.");
     await expect(createSchedule(db, { ...base, debitCode: "1170", creditCode: "2110", sourceAccountCode: "1170" })).rejects.toThrow("Jadwal ini tidak melepas saldo 1170");
     await expect(createSchedule(db, { ...base, sourceAccountCode: "1210" })).rejects.toThrow("Jadwal ini tidak melepas saldo 1210");
