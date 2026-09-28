@@ -10,7 +10,7 @@ import { CloseError, lockPeriod } from "@/lib/controls";
 import { LedgerError } from "@/lib/ledger/post";
 import { postAdjustment } from "@/lib/ledger/adjustment";
 import { createSchedule, postAllDue, postInstallment, stopSchedule, type ScheduleInput } from "@/lib/adjust/schedules";
-import { ParseError } from "@/lib/import/types";
+import { ParseError, YearNeededError } from "@/lib/import/types";
 import { PdfPasswordError } from "@/lib/import/parsers/pdf";
 import { MoneyError } from "@/lib/money";
 import { dateOnly } from "@/lib/format";
@@ -35,10 +35,11 @@ import type { MapMethod } from "@/lib/generated/prisma/enums";
  * Server actions — the only write path from the UI. Each returns {ok, …} or {ok:false, error}
  * with a Bahasa message the UI shows verbatim. Domain errors are expected; others are bugs.
  */
-type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string; needsPassword?: boolean; fields?: Record<string, string> };
+type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string; needsPassword?: boolean; needsYear?: boolean; yearGuess?: number | null; fields?: Record<string, string> };
 
-function fail(e: unknown): { ok: false; error: string; needsPassword?: boolean } {
+function fail(e: unknown): { ok: false; error: string; needsPassword?: boolean; needsYear?: boolean; yearGuess?: number | null } {
   if (e instanceof PdfPasswordError) return { ok: false, error: e.message, needsPassword: true };
+  if (e instanceof YearNeededError) return { ok: false, error: e.message, needsYear: true, yearGuess: e.guess };
   if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError || e instanceof MoneyError || e instanceof RateError || e instanceof RevaluationError || e instanceof LedgerImportError || e instanceof MappingError) return { ok: false, error: e.message };
   console.error(e);
   return { ok: false, error: "Terjadi kesalahan tak terduga. Coba lagi." };
@@ -52,11 +53,14 @@ export async function importAction(formData: FormData): Promise<Result<{ summary
     const bankAccountId = String(formData.get("bankAccountId"));
     const file = formData.get("file");
     const password = String(formData.get("password") ?? "") || undefined; // used once to open the PDF, never stored
+    const yearText = String(formData.get("year") ?? "").trim();
+    const year = yearText ? Number(yearText) : undefined;
+    if (year !== undefined && !(Number.isInteger(year) && year >= 2000 && year <= 2100)) return { ok: false, error: "Tahun harus 4 angka, misalnya 2026.", needsYear: true };
     const client = await getClientForFirm(clientId);
     if (!client.entities.some((e) => e.bankAccounts.some((b) => b.id === bankAccountId))) return { ok: false, error: "Pilih rekening bank dulu." };
-    if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Pilih file rekening koran (PDF, CSV, atau XLSX)." };
+    if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Pilih file rekening koran (PDF, CSV, XLS, atau XLSX)." };
     if (file.size > MAX_UPLOAD) return { ok: false, error: "File terlalu besar (maks. 5 MB)." };
-    const summary = await importStatement(prisma, { bankAccountId, fileName: file.name, data: Buffer.from(await file.arrayBuffer()), provider: await resolveProvider(prisma), password, actorId: (await getCurrentMember()).id });
+    const summary = await importStatement(prisma, { bankAccountId, fileName: file.name, data: Buffer.from(await file.arrayBuffer()), provider: await resolveProvider(prisma), password, year, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${clientId}`, "layout");
     return { ok: true, summary };
   } catch (e) {
