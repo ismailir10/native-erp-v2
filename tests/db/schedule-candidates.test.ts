@@ -79,6 +79,9 @@ describe("schedule candidates from the ledger", () => {
     expect((await twins()).map((x) => x.memo)).toEqual(["Penyusutan 1210 Aset Tetap 24 Agu 2026"]);
     expect(await pending()).toEqual(["DEPRECIATION:buy:48000000", "DEPRECIATION:buy:30000000", "AMORTIZATION:mixed:12000000", "DEPRECIATION:mixed:20000000"]);
 
+    // A schedule with the prepaid account on the debit side grows the prepayment instead of releasing it: it covers nothing.
+    await createSchedule(db, { clientId: c, entityId: pt, kind: "AMORTIZATION", memo: "Salah sisi", debitCode: "1170", creditCode: "2110", amount: "12.000.000", months: 12, startYear: 2026, startMonth: 9, sourceEntryId: mixed.id });
+    expect(await pending()).toContain("AMORTIZATION:mixed:12000000");
     // Depreciating the machine leaves the car; amortising the rent leaves the rack.
     await createSchedule(db, { clientId: c, entityId: pt, kind: "DEPRECIATION", memo: "Penyusutan mesin", debitCode: "6180", creditCode: "1219", amount: "48.000.000", months: 48, startYear: 2026, startMonth: 9, sourceEntryId: buy.id });
     await createSchedule(db, { clientId: c, entityId: pt, kind: "AMORTIZATION", memo: "Sewa", debitCode: "6120", creditCode: "1170", amount: "12.000.000", months: 12, startYear: 2026, startMonth: 9, sourceEntryId: mixed.id });

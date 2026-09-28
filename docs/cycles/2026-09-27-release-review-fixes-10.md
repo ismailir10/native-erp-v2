@@ -50,6 +50,10 @@ The review of the staging → main promotion (#37, head e41a53f) found two more 
       or, for a depreciation, the asset's code in the memo. Editing the entity, the account or the memo drops the citation, so the
       candidate stays proposed rather than being cited by a schedule that doesn't cover it.
 
+- [x] Review round 10 (#47): the account must stay on the side it amortises on. A prepayment is credited and deferred revenue is
+      debited. Both the candidate matcher and the form rule check the side, so a schedule that would grow the balance neither
+      hides the candidate nor cites its entry.
+
 **Non-goals:** storing a schedule's source line (a schema change).
 **Assumptions:** with equal amounts *and* an edited memo, which of the twin suggestions stays is label-only: both would post the same
 6180/1219 amount. A stored source line would settle it but is a schema change, left out here. Separately, a depreciation schedule whose amount was edited and that isn't the last one for the entry may leave one extra
@@ -67,6 +71,7 @@ suggestion visible. That is harmless: it is only a suggestion.
 - [x] T9 A schedule hides only the asset line it identifies — accept: the converted-prepayment case fails on the previous matcher
 - [x] T10 The form restores the candidate's source on returning to its kind — accept: unit test of `sourceForKind`
 - [x] T11 One save-time rule for citing a candidate's entry — accept: unit test covers kind, entity, account and memo edits
+- [x] T12 The amortised account must stay on its side — accept: both new checks fail on the previous code
 
 ## Implementation
 - T1: `lib/adjust/candidates.ts` drops the entry-level filter and adds `covered(line, net)`, based on the entry's schedules.
@@ -117,6 +122,13 @@ suggestion visible. That is harmless: it is only a suggestion.
   `components/app/schedule-panel.tsx` no longer tracks `sourceEntryId` per change; it computes it when saving. Test:
   `tests/unit/schedule-form.test.ts`, covering another kind, another entity, the amortised account edited away and back, a
   depreciation memo without the code, and a blank form.
+- T12:
+  - `lib/adjust/candidates.ts` `covered` matches prepaid lines by the schedule's credit account and deferred-revenue lines by its
+    debit account.
+  - `lib/adjust/form.ts` gives `FormOrigin` a `side`, derived from the candidate; `sourceFor` checks that side.
+  - Tests:
+    - A 1170-on-debit schedule leaves the rent candidate proposed.
+    - The unit test covers a prepaid account moved to debit and a deferred-revenue account moved to credit.
 
 ## Verification
 - T1: the new test fails on the old scan ("expected [] to deeply equal [ 'DEPRECIATION:buy:30000000', …"; the car and rack
@@ -189,6 +201,14 @@ suggestion visible. That is harmless: it is only a suggestion.
   - `npm run build` ✓.
   - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
   - `test:e2e` → 10 passed (51.8s).
+- T12: both new checks fail on the previous code (DB: "expected [ … ] to include 'AMORTIZATION:mixed:12000000'"; unit: "expected
+  'entry-1' to be null") and pass after.
+- T12 gates:
+  - Lint and typecheck clean.
+  - `npm test` → Test Files 62 passed (62), Tests 459 passed (459).
+  - `npm run build` ✓.
+  - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
+  - `test:e2e` → 10 passed (50.8s).
 
 ## Ship Notes
 No migration, no env change. Merges to staging, then rides the promotion PR #37.

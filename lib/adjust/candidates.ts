@@ -90,8 +90,12 @@ export async function scheduleCandidates(db: Db, clientId: string, year: number,
         if (hit) coveredAssets.add(hit[0]);
       }
     }
+    // A prepayment amortises by crediting its account, deferred revenue by debiting its account: only a schedule with the account
+    // on that side covers the line (one on the other side would grow the balance, not release it).
     const covered = (k: string, l: (typeof lines)[number]) =>
-      l.account.fsLine === "ASET_TETAP" ? coveredAssets.has(k) : from.some((s) => s.sourceEntryId === l.entryId && (s.debitAccountId === l.accountId || s.creditAccountId === l.accountId));
+      l.account.fsLine === "ASET_TETAP"
+        ? coveredAssets.has(k)
+        : from.some((s) => s.sourceEntryId === l.entryId && (l.account.fsLine === "BIAYA_DIBAYAR_DIMUKA" ? s.creditAccountId === l.accountId : s.debitAccountId === l.accountId));
     for (const [k, { line: l, net }] of groups) {
       if (covered(k, l)) continue;
       const when = formatDate(l.entry.date);
