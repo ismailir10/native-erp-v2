@@ -62,6 +62,7 @@ export async function settleWithReclass(db: Db, input: SettleInput) {
   return db.$transaction(async (tx) => {
     const { invoice, t } = await load(tx, input);
     if (t.status === "NEEDS_REVIEW" || t.accountCode !== invoice.arApAccount.code) {
+      // The reviewer's writer refuses to move a line away from invoices it already settles on another account (one line, one account).
       await reviewTransactionTx(tx, { bankTxId: t.id, accountCode: invoice.arApAccount.code, taxTag: null, actorId: input.actorId });
     }
     return settleTx(tx, input);

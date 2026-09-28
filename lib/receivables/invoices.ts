@@ -2,7 +2,8 @@ import type { Db } from "@/lib/db";
 import type { InvoiceDirection } from "@/lib/generated/prisma/enums";
 import { LedgerError, postJournal, type PostLine } from "@/lib/ledger/post";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
-import { dateOnly, formatDate } from "@/lib/format";
+import { dateOnly, formatDate, formatPeriod } from "@/lib/format";
+import { closeLock } from "@/lib/adjust/schedules";
 import { parseMoney, PPN_EFFECTIVE_PERCENT } from "@/lib/money";
 
 /**
@@ -77,15 +78,24 @@ export async function createInvoice(db: Db, input: InvoiceInput) {
   const ppnAccount = ppn > 0n ? byCode(sales ? ACCOUNT_CODES.PPN_KELUARAN : ACCOUNT_CODES.PPN_MASUKAN) : null;
   if (ppn > 0n && !ppnAccount) throw new LedgerError(`Akun ${sales ? ACCOUNT_CODES.PPN_KELUARAN : ACCOUNT_CODES.PPN_MASUKAN} tidak ada di bagan akun klien.`);
 
+  // A Saldo Awal item enters the subledger at the opening date; without a journal, postJournal's period check doesn't run, so the
+  // month is checked here (under the close lock, inside the write below).
+  let openingMonth: { year: number; month: number } | null = null;
   if (input.opening) {
     const opening = await db.journalEntry.findFirst({ where: { entityId: entity.id, kind: "OPENING" }, orderBy: { date: "asc" } });
     if (!opening) throw new LedgerError("Catat Saldo Awal entitas ini dulu; faktur saldo awal adalah rincian saldonya.");
     if (+issueDate > +opening.date) throw new LedgerError(`Faktur saldo awal harus bertanggal paling lambat ${formatDate(opening.date)} (tanggal Saldo Awal).`);
+    openingMonth = { year: opening.date.getUTCFullYear(), month: opening.date.getUTCMonth() + 1 };
   }
 
   const description = input.description?.trim() || (sales ? `Penjualan kepada ${contactName}` : `Pembelian dari ${contactName}`);
   try {
     return await db.$transaction(async (tx) => {
+      if (openingMonth) {
+        await closeLock(tx, input.clientId);
+        const locked = await tx.period.findFirst({ where: { clientId: input.clientId, status: "LOCKED", year: openingMonth.year, month: openingMonth.month } });
+        if (locked) throw new LedgerError(`${formatPeriod(locked.year, locked.month)} sudah dikunci, dan rincian saldo awal mengubah daftar ${sales ? "piutang" : "utang"} bulan itu. Buka kunci bulan itu dulu.`);
+      }
       const contact = await tx.contact.upsert({
         where: { clientId_name: { clientId: input.clientId, name: contactName } },
         update: input.contactNpwp?.trim() ? { npwp: input.contactNpwp.trim() } : {},

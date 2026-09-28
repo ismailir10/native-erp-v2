@@ -78,6 +78,8 @@ settlement by non-bank entries (netting), documents → invoice drafts (a later 
 - T5: `app/(app)/clients/[id]/receivables/page.tsx` (tab in the URL), `components/app/receivables.tsx` (aging per entity with the ledger row, unmatched bank lines, open and paid invoices with their settlements behind a visible chevron, invoice form with *Hitung 11%*, matching dialog with editable amounts), `lib/receivables/view.ts`, `app/actions.ts` (`createInvoiceAction`, `settleCandidatesAction`, `settleAction`, `unsettleAction`, tenant-checked), sidebar *Piutang & Utang*, `e2e/receivables.spec.ts`. Found on the 390 px screenshot: keeping only the *Belum jatuh tempo* bucket on phones showed "–" while the amount sat in a hidden bucket — phones now show party and total only.
 - T6: `.agents/skills/accounting-rules/SKILL.md` (rule 5c), `README.md` (Piutang & Utang row, close controls); ADR 0004 amendment in T1.
 
+- Review of #50: a Saldo Awal invoice checks its opening month under the close lock (no journal, so `postJournal` never did); the reviewer's writer refuses to move a bank line away from the account of invoices it settles, so one receipt can't be split across receivable accounts by reclassifying it, nor pulled away on the Review page. Tests in `tests/db/{invoices,settlements}.test.ts`; gates: `Tests 524 passed`, build ✓, e2e 13 passed, `verify:books` ALL PASS after `demo:reset`.
+
 ## Verification
 - T1: `prisma migrate diff` DB ↔ schema empty. Gate: lint ✓ typecheck ✓ `Test Files 68 passed (68) · Tests 513 passed (513)`.- T2 gate: lint ✓ typecheck ✓ `Test Files 69 passed (69) · Tests 518 passed (518)`.
 - T3 gate: lint ✓ typecheck ✓ `Test Files 70 passed (70) · Tests 521 passed (521)`.

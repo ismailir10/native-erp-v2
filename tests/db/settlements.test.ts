@@ -3,6 +3,7 @@ import { db, makeGroup, resetDb } from "../helpers";
 import { importStatement } from "@/lib/import/pipeline";
 import { createInvoice } from "@/lib/receivables/invoices";
 import { settle, settleCandidates, settleWithReclass, unsettle } from "@/lib/receivables/settle";
+import { reviewTransaction } from "@/lib/review";
 
 type G = Awaited<ReturnType<typeof makeGroup>>;
 
@@ -80,5 +81,19 @@ describe("settlements", () => {
     await expect(unsettle(db, { clientId: g.client.id, settlementId: again.id })).rejects.toThrow(/sudah ditutup/);
     await expect(settleWithReclass(db, { clientId: g.client.id, invoiceId: b.id, bankTransactionId: (await tx("TOKO SEJAHTERA")).id })).rejects.toThrow(/Agustus 2026 sudah ditutup/);
     expect(await settleCandidates(db, g.client.id, b.id)).toEqual([]);
+  });
+
+  it("keeps a settled line on its invoices' account: no reclass away, by matching or by review", async () => {
+    const g = await makeGroup();
+    const { tx, inv } = await setup(g);
+    await db.account.create({ data: { firmId: g.firm.id, clientId: g.client.id, code: "1131", name: "Piutang Usaha Grup", type: "ASET", normalBalance: "DEBIT", fsLine: "PIUTANG_USAHA" } });
+    const receipt = await tx("TOKO SEJAHTERA");
+    const a = await inv("T-1", "Toko Sejahtera", "3000000");
+    const b = await createInvoice(db, { clientId: g.client.id, entityId: g.pt.entity.id, direction: "SALES", contactName: "Toko Sejahtera", number: "T-2", issueDate: "2026-08-05", dpp: "2000000", counterCode: "4100", arApCode: "1131" });
+    await settleWithReclass(db, { clientId: g.client.id, invoiceId: a.id, bankTransactionId: receipt.id });
+    await expect(settleWithReclass(db, { clientId: g.client.id, invoiceId: b.id, bankTransactionId: receipt.id })).rejects.toThrow(/melunasi T-1 di akun 1130/);
+    await expect(reviewTransaction(db, { bankTxId: receipt.id, accountCode: "4100", taxTag: null })).rejects.toThrow(/Hapus pencocokannya dulu/);
+    expect(await db.bankTransaction.findUniqueOrThrow({ where: { id: receipt.id } })).toMatchObject({ accountCode: "1130" });
+    expect(await db.invoiceSettlement.count()).toBe(1);
   });
 });

@@ -39,6 +39,9 @@ describe("invoices", () => {
     await expect(sale(g, { opening: true, issueDate: "2026-06-20" })).rejects.toThrow(/Catat Saldo Awal/);
     await postOpening(db, { clientId: g.client.id, entityId: g.pt.entity.id, date: dateOnly(2026, 6, 30), lines: [{ accountCode: "1130", debit: "11100000", credit: "0" }] });
     await expect(sale(g, { opening: true, issueDate: "2026-07-02" })).rejects.toThrow(/paling lambat 30 Jun 2026/);
+    await db.period.update({ where: { clientId_year_month: { clientId: g.client.id, year: 2026, month: 6 } }, data: { status: "LOCKED" } });
+    await expect(sale(g, { opening: true, issueDate: "2026-06-20" })).rejects.toThrow(/Juni 2026 sudah dikunci/);
+    await db.period.update({ where: { clientId_year_month: { clientId: g.client.id, year: 2026, month: 6 } }, data: { status: "OPEN" } });
     const inv = await sale(g, { opening: true, issueDate: "2026-06-20" });
     expect(inv).toMatchObject({ opening: true, entryId: null });
     expect(await db.journalEntry.count({ where: { kind: "INVOICE" } })).toBe(0);
