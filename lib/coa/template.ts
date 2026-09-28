@@ -31,6 +31,7 @@ export const ACCOUNT_CODES = {
   TRANSLATION: "3900",
   ROUNDING: "7190",
   FX_GAIN_LOSS: "7200",
+  DISPOSAL_GAIN_LOSS: "7300",
 } as const;
 
 export const FS_LINES = {
@@ -130,6 +131,7 @@ export const COA_TEMPLATE: AccountSeed[] = [
   a("7110", "Beban Bunga Pinjaman", "BEBAN", "BEBAN_LAIN"),
   a("7190", "Selisih Pembulatan", "BEBAN", "BEBAN_LAIN"),
   a("7200", "Laba/Rugi Selisih Kurs", "BEBAN", "BEBAN_LAIN"),
+  a("7300", "Laba/Rugi Pelepasan Aset Tetap", "BEBAN", "BEBAN_LAIN"),
   a("8100", "Beban Pajak Penghasilan", "BEBAN", "BEBAN_PAJAK", { taxTag: "PPH_25" }),
   a("8200", "Beban Pajak Final PPh 4(2)", "BEBAN", "BEBAN_PAJAK", { taxTag: "PPH_4_2" }),
 ];

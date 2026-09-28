@@ -152,6 +152,7 @@ model Client {
   ledgerImports LedgerImport[]
   schedules     AdjustmentSchedule[]
   proposals     ProposedEntry[]
+  fixedAssets   FixedAsset[]
   coaVersion    Int                  @default(1)
 
   @@index([firmId])
@@ -173,6 +174,7 @@ model Entity {
   sourceAccounts     SourceAccount[]
   schedules          AdjustmentSchedule[]
   proposals          ProposedEntry[]
+  fixedAssets        FixedAsset[]
 
   @@index([clientId])
 }
@@ -200,6 +202,7 @@ model Account {
   scheduleDebits  AdjustmentSchedule[] @relation("ScheduleDebit")
   scheduleCredits AdjustmentSchedule[] @relation("ScheduleCredit")
   scheduleSources AdjustmentSchedule[] @relation("ScheduleSourceAccount")
+  fixedAssets     FixedAsset[]         @relation("AssetAccount")
 
   @@unique([clientId, code])
 }
@@ -328,6 +331,9 @@ model JournalEntry {
   installment       Int?
   /// Schedules created from this entry (a fixed-asset purchase, a prepayment).
   schedulesFrom     AdjustmentSchedule[] @relation("ScheduleSource")
+  /// Fixed assets registered from this entry (its purchase line), and the asset this entry disposed of.
+  assetsFrom        FixedAsset[]         @relation("AssetSource")
+  assetDisposal     FixedAsset?          @relation("AssetDisposal")
   /// The proposal this entry was posted from (close copilot, 1999 correction).
   proposal          ProposedEntry?
   /// Member who posted it; null for seeds and system postings ("Sistem").
@@ -788,6 +794,7 @@ model FirmMember {
   ledgerPostings   LedgerImport[]       @relation("LedgerPostedBy")
   mappings         SourceAccount[]      @relation("MappingAcceptedBy")
   schedules        AdjustmentSchedule[] @relation("ScheduleCreatedBy")
+  fixedAssets      FixedAsset[]         @relation("AssetCreatedBy")
   proposalsDecided ProposedEntry[]      @relation("ProposalDecidedBy")
 
   @@index([firmId])
@@ -837,6 +844,8 @@ model AdjustmentSchedule {
   createdBy       FirmMember?    @relation("ScheduleCreatedBy", fields: [createdById], references: [id])
   createdAt       DateTime       @default(now())
   entries         JournalEntry[] @relation("ScheduleEntries")
+  /// The fixed asset this schedule depreciates (accounting-rules 5b).
+  asset           FixedAsset?    @relation("AssetSchedule")
 
   @@index([clientId])
   @@index([entityId])
@@ -886,4 +895,62 @@ model ProposedEntry {
   createdAt         DateTime         @default(now())
 
   @@index([clientId, year, month])
+}
+
+/// Fiscal asset groups (UU PPh Pasal 11, PMK 72/2023): the useful life and rates of the fiscal depreciation estimate.
+enum AssetTaxGroup {
+  KELOMPOK_1
+  KELOMPOK_2
+  KELOMPOK_3
+  KELOMPOK_4
+  BANGUNAN_PERMANEN
+  BANGUNAN_TIDAK_PERMANEN
+  TANAH
+}
+
+enum FiscalMethod {
+  GARIS_LURUS
+  SALDO_MENURUN
+}
+
+/// Fixed-asset register (accounting-rules 5b). Book depreciation is the asset's AdjustmentSchedule (rule 5a); accumulated
+/// depreciation and book value are read from the GL, never stored. The fiscal figures are computed (lib/assets/fiscal.ts).
+/// Amounts are minor units of the entity's functional currency. CHECKs in the migration: cost > 0, 0 <= residual < cost,
+/// openingAccumulated >= 0.
+model FixedAsset {
+  id                 String              @id @default(cuid())
+  firmId             String
+  clientId           String
+  client             Client              @relation(fields: [clientId], references: [id])
+  entityId           String
+  entity             Entity              @relation(fields: [entityId], references: [id])
+  name               String
+  taxGroup           AssetTaxGroup
+  fiscalMethod       FiscalMethod
+  acquiredOn         DateTime            @db.Date
+  cost               BigInt
+  residual           BigInt              @default(0)
+  /// Book useful life (PSAK 16, the entity's estimate); null for land.
+  usefulLifeMonths   Int?
+  /// Assets from Saldo Awal: accumulated book depreciation at the opening date (already in the opening entry).
+  openingAccumulated BigInt              @default(0)
+  assetAccountId     String
+  assetAccount       Account             @relation("AssetAccount", fields: [assetAccountId], references: [id])
+  /// Book depreciation; null for land.
+  scheduleId         String?             @unique
+  schedule           AdjustmentSchedule? @relation("AssetSchedule", fields: [scheduleId], references: [id], onDelete: Restrict)
+  /// The purchase entry whose debit on assetAccount this asset is (rule 15 chain); one asset per purchase line.
+  sourceEntryId      String?
+  sourceEntry        JournalEntry?       @relation("AssetSource", fields: [sourceEntryId], references: [id], onDelete: Restrict)
+  disposedOn         DateTime?           @db.Date
+  proceeds           BigInt?
+  disposalEntryId    String?             @unique
+  disposalEntry      JournalEntry?       @relation("AssetDisposal", fields: [disposalEntryId], references: [id], onDelete: Restrict)
+  createdById        String?
+  createdBy          FirmMember?         @relation("AssetCreatedBy", fields: [createdById], references: [id])
+  createdAt          DateTime            @default(now())
+
+  @@unique([sourceEntryId, assetAccountId])
+  @@index([clientId])
+  @@index([entityId])
 }

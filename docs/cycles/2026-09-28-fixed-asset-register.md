@@ -68,7 +68,7 @@ feeds the tax cycle); intangible assets (1250) — same mechanics later; leases 
    bangunan permanen 20 th 5 %, tidak permanen 10 th 10 %.
 
 ## Tasks
-- [ ] T1 Schema + fiscal math: migration `fixed_assets` (model, enums, CHECKs), 7300 in the COA template, `lib/assets/fiscal.ts` —
+- [x] T1 Schema + fiscal math: migration `fixed_assets` (model, enums, CHECKs), 7300 in the COA template, `lib/assets/fiscal.ts` —
       accept: unit tests with worked examples (Kelompok 1 saldo menurun from July, Kelompok 2 garis lurus, bangunan, tanah, year the
       life ends, pro rata first year); `prisma migrate diff` empty; gate green.
 - [ ] T2 Register core: `lib/assets/register.ts` — `createAsset` (source line / existing schedule / by hand, schedule in the same
@@ -85,5 +85,8 @@ feeds the tax cycle); intangible assets (1250) — same mechanics later; leases 
       gates (build, `verify:books` ALL PASS, full e2e). Depends T5.
 
 ## Implementation
+- Plan: T1–T6 sequential, inline (each layer uses the one before; the invariants need one driver).
+- T1: `prisma/schema.prisma`, `prisma/migrations/20260928160000_fixed_assets` (FixedAsset, AssetTaxGroup, FiscalMethod; CHECKs cost > 0, 0 ≤ residual < cost, 0 ≤ opening accumulated ≤ cost − residual, life 1–600, disposal recorded whole), `lib/assets/fiscal.ts`, `lib/coa/template.ts` (7300 + `ACCOUNT_CODES.DISPOSAL_GAIN_LOSS`), `tests/unit/fiscal-depreciation.test.ts`.
 ## Verification
+- T1: `prisma migrate diff` DB ↔ schema empty. Gate: lint ✓ typecheck ✓ `Test Files 66 passed (66) · Tests 503 passed (503)`. Worked example (Kelompok 1 saldo menurun, Rp 100 jt from Jul 2024): 25 / 37,5 / 18,75 / 9,375 / 9,375 jt, Σ = cost.
 ## Ship Notes
