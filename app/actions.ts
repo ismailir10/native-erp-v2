@@ -10,6 +10,8 @@ import { CloseError, lockPeriod } from "@/lib/controls";
 import { LedgerError } from "@/lib/ledger/post";
 import { postAdjustment } from "@/lib/ledger/adjustment";
 import { createSchedule, postAllDue, postInstallment, stopSchedule, type ScheduleInput } from "@/lib/adjust/schedules";
+import { createAsset, type AssetInput } from "@/lib/assets/register";
+import { disposeAsset, type DisposalInput } from "@/lib/assets/dispose";
 import { ParseError, YearNeededError } from "@/lib/import/types";
 import { PdfPasswordError } from "@/lib/import/parsers/pdf";
 import { MoneyError } from "@/lib/money";
@@ -198,6 +200,30 @@ export async function createScheduleAction(input: Omit<ScheduleInput, "actorId">
     const s = await createSchedule(prisma, { ...input, clientId: client.id, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true, scheduleId: s.id };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Register a fixed asset (and its depreciation schedule, in the same transaction). Nothing posts. */
+export async function createAssetAction(input: Omit<AssetInput, "actorId">): Promise<Result<{ assetId: string }>> {
+  try {
+    const client = await getClientForFirm(input.clientId);
+    const a = await createAsset(prisma, { ...input, clientId: client.id, actorId: (await getCurrentMember()).id });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, assetId: a.id };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** The accountant's click: one disposal entry (rule 5b). */
+export async function disposeAssetAction(input: Omit<DisposalInput, "actorId">): Promise<Result<{ entryId: string }>> {
+  try {
+    const client = await getClientForFirm(input.clientId);
+    const r = await disposeAsset(prisma, { ...input, clientId: client.id, actorId: (await getCurrentMember()).id });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, entryId: r.entryId };
   } catch (e) {
     return fail(e);
   }

@@ -26,6 +26,20 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     deterministic suggestions only; a schedule made from an entry stores that line (`sourceEntryId` + `sourceAccountId`, which it must release: an asset by depreciation — an expense debited, accumulated depreciation or that asset credited — a prepayment or deferred revenue by amortisation, the prepayment on credit, the deferred revenue on debit) and covers only it; schedules made before the line was stored are matched one to one by memo, then amount. A due, unposted installment is a REVIEW control `sched:`.
 
 ## Money
+5b. **Fixed-asset register** (`lib/assets`): a `FixedAsset` per entity (fiscal group, fiscal method, acquisition date, cost, residual,
+    book life, asset account, accumulated-depreciation account — none for land). Its book depreciation **is** its `AdjustmentSchedule`
+    (rule 5a, straight line of cost − residual − opening accumulated), created with the asset in one transaction, or an existing
+    depreciation schedule linked when it depreciates exactly that amount. Accumulated depreciation and book value are **read from the GL**
+    (opening accumulated + the schedule's posted installments at the date asked), never stored. One asset per purchase line
+    (`sourceEntryId` + asset account, rule 15). **Fiscal depreciation** (`lib/assets/fiscal.ts`, UU PPh Pasal 11 / PMK 72/2023) is an
+    estimate for the tax computation, never posted: from the acquisition month; a yearly amount = the group's rate on the cost (straight
+    line) or on the fiscal book value at the start of the year (declining balance), pro rata by months, half-up; the year the life ends
+    takes the rest; buildings straight line only, land none. **Disposal** = one `ADJUSTMENT` entry by the accountant's click: Dr
+    accumulated to date, Dr proceeds (a non-bank account; the bank receipt is classified to it), Cr the asset at cost, the difference on
+    **7300 Laba/Rugi Pelepasan Aset Tetap** (used only when named so; created on the first disposal if the code is free, else the
+    accountant picks). Refused while an installment through the disposal month is unposted; the schedule stops; the asset keeps
+    `disposalEntryId`. The close control `fa:<entity>` compares the register's cost and accumulated depreciation with the GL accounts it
+    uses: equal = PASS, else REVIEW (never FAIL: unregistered assets and typed journals explain a difference).
 6. `bigint` **minor units of the entity's functional currency** everywhere in the domain (ADR 0006). IDR has exponent 0,
    so for IDR entities that is whole Rupiah, as before. Parse with `parseRupiah()` / `parseMinor()` (handles `1.234.567,00`,
    `1,234,567.00`, `(2.500)`), format with `formatRupiah()` / `formatMoney(value, currency)`. Convert to `Number` only for chart
@@ -44,7 +58,7 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
 8. PPN split: tagged lines split gross → DPP + PPN at `PPN_EFFECTIVE_PERCENT` (11% = 12% × 11/12). `dpp + ppn === gross` always. It's an estimate — label it.
 
 ## Chart of accounts (per client, shared by its entities so combined reports line up)
-9. Special codes are load-bearing — never renumber: **1190** intercompany, **1199** transfer clearing,
+9. Special codes are load-bearing — never renumber: **7300** disposal gain/loss, **1190** intercompany, **1199** transfer clearing,
    **1999** suspense (Belum Terklasifikasi), **3200** retained earnings, bank GL accounts **1101–1109**,
    overdraft (PRK) bank accounts **2201–2209**, **7190** rounding, **7200** FX gain/loss, **3900** translation difference.
 9a. An entity's own codes live in `SourceAccount` (per entity), each mapped to exactly one client account. Imported lines keep

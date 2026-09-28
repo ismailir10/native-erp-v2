@@ -9,6 +9,7 @@ import { balanceSheet, combinedWorksheet, trialBalance } from "@/lib/reports/led
 import { sanityControls } from "@/lib/controls/sanity";
 import { anomalyControls } from "@/lib/controls/anomaly";
 import { closeLock, dueProposals, schedulesDueBy } from "@/lib/adjust/schedules";
+import { registerVsLedger } from "@/lib/assets/register";
 
 /**
  * Close controls (analog of belifi 16_CONTROLS). PASS / REVIEW / FAIL.
@@ -132,6 +133,25 @@ export async function runControls(db: Db, clientId: string, year: number, month:
         detail: `${due.length} angsuran: ${list.join("; ")}${due.length > 3 ? `; +${due.length - 3} lainnya` : ""}`,
         href: `${base}/journals/new?period=${year}-${String(month).padStart(2, "0")}`,
         ack: acks.get(sKey),
+      });
+    }
+
+    // Fixed-asset register (rule 5b): its cost and accumulated depreciation against the GL accounts it uses, for entities with assets.
+    const [fa] = await registerVsLedger(db, clientId, year, month, [e.id]);
+    if (fa) {
+      const faKey = `fa:${e.id}`;
+      const diff = [
+        fa.register.cost !== fa.ledger.cost ? `Harga perolehan: daftar ${fmt(fa.register.cost)} vs buku besar ${fmt(fa.ledger.cost)} (${fa.assetAccounts.join(", ")})` : "",
+        fa.register.accumulated !== fa.ledger.accumulated ? `Akumulasi penyusutan: daftar ${fmt(fa.register.accumulated)} vs buku besar ${fmt(fa.ledger.accumulated)} (${fa.accumulatedAccounts.join(", ")})` : "",
+      ].filter(Boolean);
+      controls.push({
+        key: faKey,
+        title: "Daftar aset tetap = buku besar",
+        scope: e.shortName,
+        status: fa.equal ? "PASS" : "REVIEW",
+        detail: fa.equal ? `Harga perolehan ${fmt(fa.register.cost)}, akumulasi penyusutan ${fmt(fa.register.accumulated)}` : `${diff.join("; ")}. Aset yang belum didaftarkan atau jurnal manual di akun aset menjelaskan selisih ini`,
+        href: `${base}/assets?period=${year}-${String(month).padStart(2, "0")}&entity=${e.id}`,
+        ack: acks.get(faKey),
       });
     }
   }
