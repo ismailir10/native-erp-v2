@@ -203,6 +203,7 @@ model Account {
   scheduleCredits AdjustmentSchedule[] @relation("ScheduleCredit")
   scheduleSources AdjustmentSchedule[] @relation("ScheduleSourceAccount")
   fixedAssets     FixedAsset[]         @relation("AssetAccount")
+  fixedAssetsAcc  FixedAsset[]         @relation("AssetAccumulatedAccount")
 
   @@unique([clientId, code])
 }
@@ -918,37 +919,40 @@ enum FiscalMethod {
 /// Amounts are minor units of the entity's functional currency. CHECKs in the migration: cost > 0, 0 <= residual < cost,
 /// openingAccumulated >= 0.
 model FixedAsset {
-  id                 String              @id @default(cuid())
-  firmId             String
-  clientId           String
-  client             Client              @relation(fields: [clientId], references: [id])
-  entityId           String
-  entity             Entity              @relation(fields: [entityId], references: [id])
-  name               String
-  taxGroup           AssetTaxGroup
-  fiscalMethod       FiscalMethod
-  acquiredOn         DateTime            @db.Date
-  cost               BigInt
-  residual           BigInt              @default(0)
+  id                   String              @id @default(cuid())
+  firmId               String
+  clientId             String
+  client               Client              @relation(fields: [clientId], references: [id])
+  entityId             String
+  entity               Entity              @relation(fields: [entityId], references: [id])
+  name                 String
+  taxGroup             AssetTaxGroup
+  fiscalMethod         FiscalMethod
+  acquiredOn           DateTime            @db.Date
+  cost                 BigInt
+  residual             BigInt              @default(0)
   /// Book useful life (PSAK 16, the entity's estimate); null for land.
-  usefulLifeMonths   Int?
+  usefulLifeMonths     Int?
   /// Assets from Saldo Awal: accumulated book depreciation at the opening date (already in the opening entry).
-  openingAccumulated BigInt              @default(0)
-  assetAccountId     String
-  assetAccount       Account             @relation("AssetAccount", fields: [assetAccountId], references: [id])
+  openingAccumulated   BigInt              @default(0)
+  assetAccountId       String
+  assetAccount         Account             @relation("AssetAccount", fields: [assetAccountId], references: [id])
+  /// Where its accumulated depreciation sits (AKUM_PENYUSUTAN); null for land.
+  accumulatedAccountId String?
+  accumulatedAccount   Account?            @relation("AssetAccumulatedAccount", fields: [accumulatedAccountId], references: [id])
   /// Book depreciation; null for land.
-  scheduleId         String?             @unique
-  schedule           AdjustmentSchedule? @relation("AssetSchedule", fields: [scheduleId], references: [id], onDelete: Restrict)
+  scheduleId           String?             @unique
+  schedule             AdjustmentSchedule? @relation("AssetSchedule", fields: [scheduleId], references: [id], onDelete: Restrict)
   /// The purchase entry whose debit on assetAccount this asset is (rule 15 chain); one asset per purchase line.
-  sourceEntryId      String?
-  sourceEntry        JournalEntry?       @relation("AssetSource", fields: [sourceEntryId], references: [id], onDelete: Restrict)
-  disposedOn         DateTime?           @db.Date
-  proceeds           BigInt?
-  disposalEntryId    String?             @unique
-  disposalEntry      JournalEntry?       @relation("AssetDisposal", fields: [disposalEntryId], references: [id], onDelete: Restrict)
-  createdById        String?
-  createdBy          FirmMember?         @relation("AssetCreatedBy", fields: [createdById], references: [id])
-  createdAt          DateTime            @default(now())
+  sourceEntryId        String?
+  sourceEntry          JournalEntry?       @relation("AssetSource", fields: [sourceEntryId], references: [id], onDelete: Restrict)
+  disposedOn           DateTime?           @db.Date
+  proceeds             BigInt?
+  disposalEntryId      String?             @unique
+  disposalEntry        JournalEntry?       @relation("AssetDisposal", fields: [disposalEntryId], references: [id], onDelete: Restrict)
+  createdById          String?
+  createdBy            FirmMember?         @relation("AssetCreatedBy", fields: [createdById], references: [id])
+  createdAt            DateTime            @default(now())
 
   @@unique([sourceEntryId, assetAccountId])
   @@index([clientId])

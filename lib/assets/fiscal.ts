@@ -3,8 +3,8 @@ import type { AssetTaxGroup, FiscalMethod } from "@/lib/generated/prisma/enums";
 /**
  * Fiscal depreciation estimate (accounting-rules 5b): UU PPh Pasal 11 with the groups of PMK 72/2023. It starts in the month of
  * acquisition; straight line spreads the cost evenly over the fiscal life in months; declining balance applies the group's rate to
- * the fiscal book value at the start of each year (the first year pro rata by months) and takes what is left in full in the year the
- * life ends. Buildings are straight line only, land is not depreciated. Pure bigint math in minor units — a figure for the tax
+ * the fiscal book value at the start of each year; both pro rata by months in the first year, and the year the life ends takes what
+ * is left. Buildings are straight line only, land is not depreciated. Pure bigint math in minor units — a figure for the tax
  * computation (koreksi fiskal), never posted.
  */
 export type TaxGroupInfo = { label: string; lifeYears: number | null; straightBp: number | null; decliningBp: number | null };
@@ -35,29 +35,30 @@ const monthIndex = (d: Date) => d.getUTCFullYear() * 12 + d.getUTCMonth();
 /** a / b rounded half up, both ≥ 0. */
 const halfUp = (a: bigint, b: bigint) => (2n * a + b) / (2n * b);
 
-/** Fiscal depreciation per month index (year × 12 + month − 1), from acquisition to the end of life or the disposal month. */
+/**
+ * Fiscal depreciation per month index (year × 12 + month − 1). Each fiscal year gets one amount — the rate on the cost (straight line)
+ * or on the fiscal book value at the start of the year (declining balance), pro rata by the months the asset is held that year,
+ * rounded half up — and the year the life ends takes what is left. A year's amount is spread evenly over its months (remainder on
+ * its last month), so a figure "through month m" is part of the year's amount; a disposal cuts it at the disposal month.
+ */
 function monthly(asset: FiscalAsset): Map<number, bigint> {
   const info = TAX_GROUPS[asset.taxGroup];
   const out = new Map<number, bigint>();
   if (info.lifeYears === null) return out;
+  const declining = asset.fiscalMethod === "SALDO_MENURUN" && info.decliningBp !== null;
+  const bp = BigInt(declining ? info.decliningBp! : info.straightBp!);
   const first = monthIndex(asset.acquiredOn);
-  const lifeMonths = info.lifeYears * 12;
-  const lastOfLife = first + lifeMonths - 1;
+  const lastOfLife = first + info.lifeYears * 12 - 1;
   const stop = asset.disposedOn ? Math.min(lastOfLife, monthIndex(asset.disposedOn)) : lastOfLife;
-  if (asset.fiscalMethod === "GARIS_LURUS" || info.decliningBp === null) {
-    const base = asset.cost / BigInt(lifeMonths);
-    for (let m = first; m <= stop; m++) out.set(m, m === lastOfLife ? asset.cost - base * BigInt(lifeMonths - 1) : base);
-    return out;
-  }
-  // Declining balance: one amount per year, spread evenly over that year's months (the remainder on its last month).
   let bookValue = asset.cost;
   for (let year = Math.floor(first / 12); year * 12 <= lastOfLife; year++) {
     const from = Math.max(first, year * 12);
     const to = Math.min(lastOfLife, year * 12 + 11);
     const months = to - from + 1;
-    const annual = to === lastOfLife ? bookValue : halfUp(bookValue * BigInt(info.decliningBp) * BigInt(months), 10_000n * 12n);
-    const base = annual / BigInt(months);
-    for (let m = from; m <= to; m++) if (m <= stop) out.set(m, m === to ? annual - base * BigInt(months - 1) : base);
+    const base = declining ? bookValue : asset.cost;
+    const annual = to === lastOfLife ? bookValue : halfUp(base * bp * BigInt(months), 10_000n * 12n);
+    const each = annual / BigInt(months);
+    for (let m = from; m <= to; m++) if (m <= stop) out.set(m, m === to ? annual - each * BigInt(months - 1) : each);
     bookValue -= annual;
   }
   return out;

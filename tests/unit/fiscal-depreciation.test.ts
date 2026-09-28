@@ -21,9 +21,12 @@ describe("fiscal depreciation (PMK 72/2023)", () => {
     expect(years(truck, 2026, 2034).reduce((s, x) => s + x, 0n)).toBe(96_000_000n);
   });
 
-  it("puts the straight-line remainder on the last month", () => {
-    const a: FiscalAsset = { taxGroup: "KELOMPOK_1", fiscalMethod: "GARIS_LURUS", acquiredOn: d("2026-01-01"), cost: 100n };
-    expect(years(a, 2026, 2029)).toEqual([24n, 24n, 24n, 28n]);
+  it("rounds a straight-line year half up and leaves the rest to the year the life ends", () => {
+    // 99 × 25 % × 6/12 = 12,375 → 12; 24,75 → 25; …; the last half year takes 99 − 87 = 12.
+    const a: FiscalAsset = { taxGroup: "KELOMPOK_1", fiscalMethod: "GARIS_LURUS", acquiredOn: d("2026-07-01"), cost: 99n };
+    expect(years(a, 2026, 2030)).toEqual([12n, 25n, 25n, 25n, 12n]);
+    // A full year is exactly the rate on the cost (12,5 % of 100 jt), not twelve rounded months.
+    expect(fiscalDepreciation({ taxGroup: "KELOMPOK_2", fiscalMethod: "GARIS_LURUS", acquiredOn: d("2023-01-10"), cost: 100_000_000n }, 2026).depreciation).toBe(12_500_000n);
   });
 
   it("buildings are straight line (5 % permanent, 10 % not); land is not depreciated", () => {

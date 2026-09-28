@@ -50,8 +50,9 @@ export type ScheduleInput = {
   memo: string;
   debitCode: string;
   creditCode: string;
-  /** Typed in major units of the entity's functional currency (parsed here, rule 6). */
+  /** Typed in major units of the entity's functional currency (parsed here, rule 6); or `amountMinor`, already in minor units. */
   amount: string;
+  amountMinor?: bigint;
   months: number;
   startYear: number;
   startMonth: number;
@@ -74,7 +75,8 @@ export async function schedulesDueBy(db: Db | Tx, clientId: string, year: number
   return all.filter((s) => installments(s).some((i) => i.year * 12 + i.month <= upTo)).map((s) => s.id);
 }
 
-export async function createSchedule(db: Db, input: ScheduleInput) {
+/** `inTx` runs in the creating transaction, after the schedule row exists (the fixed-asset register links its asset there). */
+export async function createSchedule(db: Db, input: ScheduleInput, inTx?: (tx: Tx, schedule: AdjustmentSchedule) => Promise<void>) {
   const entity = await db.entity.findFirst({ where: { id: input.entityId, clientId: input.clientId } });
   if (!entity) throw new LedgerError("Pilih entitas.");
   const memo = input.memo.trim();
@@ -85,7 +87,7 @@ export async function createSchedule(db: Db, input: ScheduleInput) {
   if (!debit || !credit) throw new LedgerError("Pilih akun debit dan kredit dari bagan akun klien.");
   if (debit.id === credit.id) throw new LedgerError("Akun debit dan kredit harus berbeda.");
   if ([debit, credit].some((a) => a.isBank || a.isSuspense || a.isClearing)) throw new LedgerError("Jadwal penyesuaian tidak memakai akun bank, kliring atau 1999.");
-  const amount = parseMoney(input.amount, entity.functionalCurrency);
+  const amount = input.amountMinor ?? parseMoney(input.amount, entity.functionalCurrency);
   if (amount <= 0n) throw new LedgerError("Nominal harus lebih dari nol.");
   // An accrual is one month, reversed on the 1st of the next (assumption 3 of the cycle).
   const accrual = input.kind === "ACCRUAL";
@@ -126,7 +128,7 @@ export async function createSchedule(db: Db, input: ScheduleInput) {
       orderBy: [{ year: "asc" }, { month: "asc" }],
     });
     if (locked) throw new LedgerError(`${formatPeriod(locked.year, locked.month)} sudah dikunci, jadi cicilan di bulan itu tidak bisa dicatat. Buka kunci bulan itu atau mulai jadwal setelahnya.`);
-    return tx.adjustmentSchedule.create({
+    const created = await tx.adjustmentSchedule.create({
       data: {
         firmId: entity.firmId,
         clientId: input.clientId,
@@ -145,6 +147,8 @@ export async function createSchedule(db: Db, input: ScheduleInput) {
         createdById: input.actorId ?? null,
       },
     });
+    if (inTx) await inTx(tx, created);
+    return created;
   });
 }
 
@@ -181,7 +185,7 @@ export async function dueProposals(db: Db, clientId: string, year: number, month
  * ones are dropped. A stopped accrual still owes the reversal of an accrual it posted.
  */
 const stopMonth = (stoppedAt: Date) => stoppedAt.getUTCFullYear() * 12 + stoppedAt.getUTCMonth() + 1;
-const owed = (stoppedAt: Date | null, i: Installment) => !stoppedAt || i.reversal || i.year * 12 + i.month <= stopMonth(stoppedAt);
+export const owed = (stoppedAt: Date | null, i: Installment) => !stoppedAt || i.reversal || i.year * 12 + i.month <= stopMonth(stoppedAt);
 
 const isUniqueViolation = (e: unknown) => typeof e === "object" && e !== null && (e as { code?: string }).code === "P2002";
 

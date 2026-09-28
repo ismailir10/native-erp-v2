@@ -28,8 +28,7 @@ Register (`lib/assets/`, new; `FixedAsset` model)
       schedule's posted installments to that date — read from the GL, never stored), book value, book depreciation this year (posted),
       **fiscal depreciation this year** (estimate, computed), and the **difference** book − fiscal ("koreksi fiskal", positive = add
       back). Installments due but not posted are shown as such (link to Jurnal Penyesuaian). Disposed assets drop out after their month.
-- [ ] **Fiscal depreciation** (`lib/assets/fiscal.ts`, pure, bigint): starts in the month of acquisition; straight line = cost ÷ life
-      months per month (remainder on the last month); declining balance = the group's rate (50 / 25 / 12,5 / 10 %) on the fiscal book
+- [ ] **Fiscal depreciation** (`lib/assets/fiscal.ts`, pure, bigint): starts in the month of acquisition; straight line = the group's rate on the cost each year; declining balance = the group's rate (50 / 25 / 12,5 / 10 %) on the fiscal book
       value at the start of each year, the first year pro rata by months, and the remaining value taken in full in the year the life
       ends; buildings 5 % / 10 % straight line; land none. Rounded half-up per asset per year. Labelled **estimasi fiskal** — a figure
       for the tax computation, never posted. Shown for IDR entities only.
@@ -71,7 +70,7 @@ feeds the tax cycle); intangible assets (1250) — same mechanics later; leases 
 - [x] T1 Schema + fiscal math: migration `fixed_assets` (model, enums, CHECKs), 7300 in the COA template, `lib/assets/fiscal.ts` —
       accept: unit tests with worked examples (Kelompok 1 saldo menurun from July, Kelompok 2 garis lurus, bangunan, tanah, year the
       life ends, pro rata first year); `prisma migrate diff` empty; gate green.
-- [ ] T2 Register core: `lib/assets/register.ts` — `createAsset` (source line / existing schedule / by hand, schedule in the same
+- [x] T2 Register core: `lib/assets/register.ts` — `createAsset` (source line / existing schedule / by hand, schedule in the same
       transaction, reuse `createSchedule` checks), `assetRegister(period, entity)`, `assetCandidates` — accept: DB tests for the three
       ways in, GL-derived accumulated depreciation, due-but-unposted, candidates disappearing once registered. Depends T1.
 - [ ] T3 Disposal: `disposeAsset` — accept: DB tests for gain, loss, zero proceeds, land, refusal with unposted installments,
@@ -86,7 +85,9 @@ feeds the tax cycle); intangible assets (1250) — same mechanics later; leases 
 
 ## Implementation
 - Plan: T1–T6 sequential, inline (each layer uses the one before; the invariants need one driver).
-- T1: `prisma/schema.prisma`, `prisma/migrations/20260928160000_fixed_assets` (FixedAsset, AssetTaxGroup, FiscalMethod; CHECKs cost > 0, 0 ≤ residual < cost, 0 ≤ opening accumulated ≤ cost − residual, life 1–600, disposal recorded whole), `lib/assets/fiscal.ts`, `lib/coa/template.ts` (7300 + `ACCOUNT_CODES.DISPOSAL_GAIN_LOSS`), `tests/unit/fiscal-depreciation.test.ts`.
+- T1: `prisma/schema.prisma`, `prisma/migrations/20260928160000_fixed_assets` (FixedAsset, AssetTaxGroup, FiscalMethod; CHECKs cost > 0, 0 ≤ residual < cost, 0 ≤ opening accumulated ≤ cost − residual, life 1–600, disposal recorded whole), `lib/assets/fiscal.ts`, `lib/coa/template.ts` (7300 + `ACCOUNT_CODES.DISPOSAL_GAIN_LOSS`), `tests/unit/fiscal-depreciation.test.ts`.- T2: `lib/assets/register.ts` (`createAsset` three ways in, `assetRegister`, `registerVsLedger`, `assetCandidates`, `unregisteredSchedules`), `lib/adjust/schedules.ts` (`amountMinor`, `inTx` hook, `owed` exported), migration `20260928161000_fixed_asset_accumulated_account` (found while testing: a fully depreciated Saldo Awal asset has no schedule, so the asset keeps its accumulated-depreciation account; CHECK land ⇔ none), `tests/db/assets.test.ts`. Fiscal straight line changed to a yearly amount (rate × cost, pro rata, half-up; last year the rest), spread by month inside the year — a full year is exactly 12,5 % of cost, not twelve rounded months.
+
 ## Verification
-- T1: `prisma migrate diff` DB ↔ schema empty. Gate: lint ✓ typecheck ✓ `Test Files 66 passed (66) · Tests 503 passed (503)`. Worked example (Kelompok 1 saldo menurun, Rp 100 jt from Jul 2024): 25 / 37,5 / 18,75 / 9,375 / 9,375 jt, Σ = cost.
+- T1: `prisma migrate diff` DB ↔ schema empty. Gate: lint ✓ typecheck ✓ `Test Files 66 passed (66) · Tests 503 passed (503)`. Worked example (Kelompok 1 saldo menurun, Rp 100 jt from Jul 2024): 25 / 37,5 / 18,75 / 9,375 / 9,375 jt, Σ = cost.- T2 gate: lint ✓ typecheck ✓ `Test Files 67 passed (67) · Tests 507 passed (507)`.
+
 ## Ship Notes
