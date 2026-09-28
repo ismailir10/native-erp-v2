@@ -190,14 +190,17 @@ function nearest(cols: Column[], cell: Cell, kinds: ColKind[]): Column | null {
 }
 
 function detectFormat(headerText: string): BankCode {
+  // BCA e-statements print their notes letter-spaced ("B C A b e r h a k …"), which loses the word breaks: collapsed, the
+  // capitals "BCA" still stand apart from the lowercase text around them.
+  const collapsed = headerText.replace(/(\p{L}) (?=\p{L}(?: |$))/gmu, "$1");
   if (/\bSMBC\b|bank smbc indonesia|jenius|\bBTPN\b/i.test(headerText)) return "SMBC";
   if (/mandiri/i.test(headerText)) return "MANDIRI";
   if (/\bBRI\b|bank rakyat/i.test(headerText)) return "BRI";
-  if (/\bBCA\b|bank central asia|klikbca/i.test(headerText)) return "BCA";
+  if (/\bBCA\b|bank central asia|klikbca/i.test(headerText) || /(?<![A-Z])BCA(?![A-Z])/.test(collapsed)) return "BCA";
   return "GENERIC";
 }
 
-function periodOf(text: string): { start: Date; end: Date } | null {
+export function periodOf(text: string): { start: Date; end: Date } | null {
   const range = periodFromText(text);
   if (range) return range;
   // "01 MEI 2026 - 31 MEI 2026" (SMBC and others print month names)

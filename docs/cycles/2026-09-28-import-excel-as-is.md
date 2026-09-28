@@ -74,7 +74,7 @@ password-protected .xls; foreign-currency statements; changing how the generic p
 - [x] T1 Dependency + spreadsheet sniffing: add `xlsx` from the SheetJS tarball; `lib/import/workbook.ts` —
       `sniffSpreadsheet(data)` and `toXlsx(data)` (BIFF / HTML / XML → .xlsx buffer, HTML/XML cells as raw text) — accept:
       unit tests build a BIFF8 file and an HTML "xls" with SheetJS and get the same rows through ExcelJS; lint/typecheck/test green.
-- [ ] T2 Statement parser: content sniffing in `parsers/index.ts` (no more file-name switch), TSV, `xlsxToSheets` (all sheets,
+- [x] T2 Statement parser: content sniffing in `parsers/index.ts` (no more file-name switch), TSV, `xlsxToSheets` (all sheets,
       numbers as numbers), `parseTabular` gains SALDO AWAL/AKHIR rows, unlabeled description columns, `SISA SALDO`, year-less dates
       with `YearNeededError(guess)`, direction-by-continuity + `notes`, per-sheet sections joined per account; BCA letter-spacing
       in `pdf.ts` — accept: unit tests on synthetic fixtures reproducing the Belifi layout (3 sheets, book direction, no year),
@@ -95,7 +95,9 @@ password-protected .xls; foreign-currency statements; changing how the generic p
 
 ## Implementation
 - Plan: tasks T1–T6 sequential, done inline (each builds on the previous parser change; one driver keeps the invariants straight).
-- T1: `package.json`, `package-lock.json` (hand-added entry: `npm install` on npm 11 prunes other platforms' optional bindings), `lib/import/workbook.ts`, `tests/xls-fixture.ts`, `tests/unit/workbook.test.ts` — bytes → PDF/XLSX/XLS/MARKUP/TEXT; BIFF/HTML/XML → .xlsx with serial dates kept (no time-zone shift, checked in Asia/Jakarta and America/Los_Angeles) and markup cells as text.
+- T1: `package.json`, `package-lock.json` (hand-added entry: `npm install` on npm 11 prunes other platforms' optional bindings), `lib/import/workbook.ts`, `tests/xls-fixture.ts`, `tests/unit/workbook.test.ts` — bytes → PDF/XLSX/XLS/MARKUP/TEXT; BIFF/HTML/XML → .xlsx with serial dates kept (no time-zone shift, checked in Asia/Jakarta and America/Los_Angeles) and markup cells as text.- T2: `lib/import/parsers/{index,tabular,pdf}.ts`, `lib/import/{types,normalize,workbook}.ts`, `scripts/inspect-statement.ts` (`--year`, notes, sheets — pulled forward from T6 to test on the real file), `tests/unit/import-workbook.test.ts`, `tests/unit/pdf.test.ts` — format from bytes only; every sheet read (ExcelJS rows are sparse: `Array.from` keeps unlabeled columns); SALDO AWAL/AKHIR rows; year from period line → sheet name → the accountant (`YearNeededError` with a file-name prefill); a year-less month rolls the year only when it falls ≥ 6 months (Des → Jan), so reordered rows never jump a year; direction verdict per sheet (the SALDO AWAL row counts as a balance), sheets that can't tell inherit the account's, disagreement is a note; sheets of one account joined; `.xls` must be a real OLE2 container; BCA letter-spaced header detected with capitals `BCA` standing apart ("SUBCATEGORY" is not BCA).
+
 ## Verification
-- T1 gate: lint ✓ typecheck ✓ `Test Files 63 passed (63) · Tests 471 passed (471)`.
+- T1 gate: lint ✓ typecheck ✓ `Test Files 63 passed (63) · Tests 471 passed (471)`.- T2 gate: lint ✓ typecheck ✓ `Test Files 64 passed (64) · Tests 493 passed (493)`. Real files (local, `inspect:statement`): Belifi workbook → `Lembar MAY, JUN, JUL`, direction note, 135 rows, `NYAMBUNG ✓`, closing Rp 359.000 = the August PDF's opening; both BCA PDFs → `Format BCA`, `NYAMBUNG ✓`; SMBC combined PDF unchanged (3 × `NYAMBUNG ✓`).
+
 ## Ship Notes

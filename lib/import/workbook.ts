@@ -8,12 +8,12 @@ import { ParseError } from "@/lib/import/types";
  */
 export type FileKind = "PDF" | "XLSX" | "XLS" | "MARKUP" | "TEXT";
 
-const OLE2 = Buffer.from("d0cf11e0a1b11ae1", "hex");
+const OLE2 = Buffer.from("d0cf11e0", "hex");
 
 export function sniffFile(data: Buffer): FileKind {
   if (data.subarray(0, 5).toString("latin1") === "%PDF-") return "PDF";
   if (data.subarray(0, 2).toString("latin1") === "PK") return "XLSX";
-  if (data.subarray(0, 8).equals(OLE2)) return "XLS";
+  if (data.subarray(0, 4).equals(OLE2)) return "XLS";
   const head = stripBom(data.subarray(0, 512)).toString("utf8").trimStart().toLowerCase();
   if (/^<(\?xml|!doctype html|html|table|meta|head|body)/.test(head) || (head.startsWith("<") && /<table|<workbook|urn:schemas-microsoft-com:office/.test(head))) return "MARKUP";
   return "TEXT";
@@ -33,6 +33,8 @@ export function asXlsx(data: Buffer): Buffer | null {
   if (kind !== "XLS" && kind !== "MARKUP") return null;
   let wb: XLSX.WorkBook;
   try {
+    // An .xls must be a real OLE2 container; without this check SheetJS would read stray bytes as text.
+    if (kind === "XLS") XLSX.CFB.read(data, { type: "buffer" });
     wb = XLSX.read(data, { type: "buffer", raw: true, cellDates: false, cellNF: true, cellFormula: false, cellHTML: false, WTF: false });
   } catch (e) {
     if (/password|encrypt/i.test((e as Error).message)) throw new ParseError("File Excel ini dikunci kata sandi. Buka di Excel, hapus kata sandinya, lalu unggah lagi.");

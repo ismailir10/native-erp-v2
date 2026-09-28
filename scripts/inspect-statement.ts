@@ -4,19 +4,22 @@ import { parseStatementSections } from "@/lib/import/parsers";
 import { readLines } from "@/lib/import/parsers/pdf";
 import { checkContinuity } from "@/lib/import/normalize";
 import { formatRupiah } from "@/lib/money";
+import { YearNeededError } from "@/lib/import/types";
 
 /**
- * npm run inspect:statement -- <file> [--password=…] [--lines]   (or PDF_PASSWORD=… to keep it out of shell history)
+ * npm run inspect:statement -- <file> [--password=…] [--year=2026] [--lines]   (or PDF_PASSWORD=… to keep it out of shell history)
  * Parses a bank statement WITHOUT touching the database: prints what Buku would import and whether
- * the running balance holds. `--lines` dumps the raw PDF text with x positions, for tuning a new layout.
+ * the running balance holds. `--year` answers the year question for `dd/MM` files. `--lines` dumps the raw PDF text with x positions, for tuning a new layout.
  * Real client files live in data/private/ (gitignored). Don't paste their output into commits or issues.
  */
 async function main() {
   const args = process.argv.slice(2);
   const file = args.find((a) => !a.startsWith("--"));
   const password = args.find((a) => a.startsWith("--password="))?.slice("--password=".length) ?? process.env.PDF_PASSWORD;
+  const yearArg = args.find((a) => a.startsWith("--year="))?.slice("--year=".length);
+  const year = yearArg ? Number(yearArg) : undefined;
   if (!file) {
-    console.error("Usage: npm run inspect:statement -- <file> [--password=…] [--lines]");
+    console.error("Usage: npm run inspect:statement -- <file> [--password=…] [--year=2026] [--lines]");
     process.exit(1);
   }
   const data = readFileSync(file);
@@ -28,7 +31,7 @@ async function main() {
     return;
   }
 
-  const sections = await parseStatementSections(basename(file), data, { password });
+  const sections = await parseStatementSections(basename(file), data, { password, year });
   const iso = (d: Date) => d.toISOString().slice(0, 10);
   console.log(`File        ${basename(file)}${sections.length > 1 ? ` · ${sections.length} rekening dalam satu file` : ""}`);
   let broken = false;
@@ -44,16 +47,19 @@ async function main() {
     console.log(`Saldo awal  ${formatRupiah(st.openingBalance)}`);
     console.log(`Mutasi      ${st.rows.length} baris, bersih ${formatRupiah(sum)}`);
     console.log(`Saldo akhir ${formatRupiah(st.closingBalance)}`);
+    if (st.sheets?.length) console.log(`Lembar      ${st.sheets.join(", ")}`);
+    for (const n of st.notes ?? []) console.log(`Catatan     ${n}`);
     console.log(`Kesinambungan ${c.ok ? "NYAMBUNG ✓" : `ADA CELAH ✗ — ${c.note}`}`);
     const show = st.rows.length > 10 ? [...st.rows.slice(0, 5), null, ...st.rows.slice(-5)] : st.rows;
     for (const r of show) {
       if (!r) console.log("  …");
-      else console.log(`  ${String(r.rowNumber).padStart(4)}  ${iso(r.date)}  ${formatRupiah(r.amount).padStart(18)}  ${(r.balance === null ? "" : formatRupiah(r.balance)).padStart(18)}  ${r.description.slice(0, 60)}`);
+      else console.log(`  ${(r.sheet ? `${r.sheet}!${r.rowNumber}` : String(r.rowNumber)).padStart(8)}  ${iso(r.date)}  ${formatRupiah(r.amount).padStart(18)}  ${(r.balance === null ? "" : formatRupiah(r.balance)).padStart(18)}  ${r.description.slice(0, 60)}`);
     }
   }
   if (broken) process.exitCode = 2;
 }
 main().catch((e) => {
   console.error((e as Error).message);
+  if (e instanceof YearNeededError) console.error(`Ulangi dengan --year=${e.guess ?? "<tahun>"}${e.guess ? " (tebakan dari nama file — pastikan benar)" : ""}.`);
   process.exit(1);
 });

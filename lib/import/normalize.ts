@@ -39,17 +39,19 @@ export type ContinuityResult = { ok: boolean; note: string | null; brokenRows: n
 export function checkContinuity(st: ParsedStatement): ContinuityResult {
   let running = st.openingBalance;
   const broken: number[] = [];
+  const labels: string[] = [];
   for (const r of st.rows) {
     running += r.amount;
     if (r.balance !== null && r.balance !== running) {
       broken.push(r.rowNumber);
+      labels.push(r.sheet ? `${r.sheet}!${r.rowNumber}` : String(r.rowNumber));
       running = r.balance;
     }
   }
   const endOk = running === st.closingBalance;
   if (broken.length === 0 && endOk) return { ok: true, note: null, brokenRows: [] };
   const parts: string[] = [];
-  if (broken.length) parts.push(`Saldo berjalan tidak nyambung di baris ${broken.slice(0, 5).join(", ")}${broken.length > 5 ? "…" : ""}`);
+  if (broken.length) parts.push(`Saldo berjalan tidak nyambung di baris ${labels.slice(0, 5).join(", ")}${labels.length > 5 ? "…" : ""}`);
   if (!endOk) parts.push("Saldo akhir tidak sama dengan saldo awal + mutasi");
   return { ok: false, note: parts.join(". "), brokenRows: broken };
 }

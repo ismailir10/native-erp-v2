@@ -100,7 +100,7 @@ describe("PDF e-statements", () => {
     await expect(parseStatement("surat.pdf", prose)).rejects.toThrow(/Tabel transaksi di PDF tidak dikenali/);
   });
 
-  it("rejects legacy .xls with a way out", async () => {
+  it("explains an unreadable legacy .xls with a way out", async () => {
     await expect(parseStatement("mutasi.xls", Buffer.from([0xd0, 0xcf, 0x11, 0xe0]))).rejects.toThrow(/simpan sebagai \.xlsx/);
   });
 });
