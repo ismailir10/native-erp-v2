@@ -80,7 +80,9 @@ export async function scheduleCandidates(db: Db, clientId: string, year: number,
       const inEntry = [...groups.entries()].filter(([, g]) => g.line.entryId === entryId);
       const assets = inEntry.filter(([, g]) => g.line.account.fsLine === "ASET_TETAP");
       const others = inEntry.filter(([, g]) => g.line.account.fsLine !== "ASET_TETAP");
-      for (const s of from.filter((x) => x.sourceEntryId === entryId)) {
+      // Schedules that name their line's account go first, so a depreciation is weighed only against the lines still open.
+      const cited = from.filter((x) => x.sourceEntryId === entryId);
+      for (const s of [...cited.filter((x) => x.kind !== "DEPRECIATION"), ...cited.filter((x) => x.kind === "DEPRECIATION")]) {
         // A prepayment is released by crediting its account, deferred revenue by debiting it: only a schedule with the account on
         // that side can cover the line (one on the other side would grow the balance). When a schedule fits two such lines (it
         // credits a prepayment and debits deferred revenue), its memo, then its amount, picks the one it came from.
@@ -99,7 +101,8 @@ export async function scheduleCandidates(db: Db, clientId: string, year: number,
           const open = assets.filter(([k]) => !coveredLines.has(k));
           const coded = open.filter(([, g]) => words(s.memo).has(g.line.account.code.toLowerCase()));
           const named = open.filter(([, g]) => s.memo.toLowerCase().includes(g.line.account.name.toLowerCase())).sort(([, x], [, y]) => y.line.account.name.length - x.line.account.name.length);
-          const elsewhere = others.some(([, g]) => size(g.net) === s.amount || mentions(s.memo, g));
+          // A memo naming another line always points away; an equal amount only while that line is still open.
+          const elsewhere = others.some(([k, g]) => mentions(s.memo, g) || (!coveredLines.has(k) && size(g.net) === s.amount));
           const byAmount = elsewhere ? undefined : (open.find(([, g]) => g.net === s.amount) ?? (assets.length === 1 && open.length === 1 ? open[0] : undefined));
           hit = coded[0] ?? named.find(([, g]) => g.net === s.amount) ?? named[0] ?? byAmount ?? released;
         }

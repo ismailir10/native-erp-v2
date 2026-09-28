@@ -62,6 +62,9 @@ The review of the staging → main promotion (#37, head e41a53f) found two more 
       debits deferred revenue covers one of the two, the one its memo (then amount) names. A depreciation whose amount points at
       another line of the entry no longer consumes an asset line of the same amount.
 
+- [x] Review round 13 (#47): schedules that name their line's account are matched first. A depreciation's amount then collides
+      only with lines still open; a memo naming another line still points away.
+
 **Non-goals:** storing a schedule's source line (a schema change).
 **Assumptions:** with equal amounts *and* an edited memo, which of the twin suggestions stays is label-only: both would post the same
 6180/1219 amount. A stored source line would settle it but is a schema change, left out here. Separately, a depreciation schedule whose amount was edited and that isn't the last one for the entry may leave one extra
@@ -82,6 +85,7 @@ suggestion visible. That is harmless: it is only a suggestion.
 - [x] T12 The amortised account must stay on its side — accept: both new checks fail on the previous code
 - [x] T13 A schedule citing a single-asset entry covers that asset — accept: the legacy-schedule case fails on the previous matcher
 - [x] T14 One line per schedule for every kind; no amount match that points elsewhere — accept: both new cases fail on the previous matcher
+- [x] T15 Amount collisions only with open lines, whatever the creation order — accept: the new case fails on the previous matcher
 
 ## Implementation
 - T1: `lib/adjust/candidates.ts` drops the entry-level filter and adds `covered(line, net)`, based on the entry's schedules.
@@ -152,6 +156,11 @@ suggestion visible. That is harmless: it is only a suggestion.
     - An entry with 1170 12 jt and 2160 6 jt. A schedule credits 1170 and debits 2160, with the prepaid memo. The deferred-revenue
       candidate stays proposed.
     - An entry with 1170 20 jt and 1210 20 jt. A depreciation carries the prepaid memo and 20 jt. Both candidates stay proposed.
+- T15: `lib/adjust/candidates.ts` handles the schedules citing an entry in two passes. The non-depreciation schedules go first,
+  since their account identifies the line; the depreciations follow. In `elsewhere`, an equal amount counts only against a line
+  that is still open, while a memo naming another line still counts. Test: two entries, each with 1170 20 jt and 1210 20 jt. Each
+  gets an amortisation and an older-style depreciation ("Susut rak gudang", 20 jt), created in opposite orders. No candidate
+  remains for either entry.
 
 ## Verification
 - T1: the new test fails on the old scan ("expected [] to deeply equal [ 'DEPRECIATION:buy:30000000', …"; the car and rack
@@ -248,6 +257,15 @@ suggestion visible. That is harmless: it is only a suggestion.
   - `npm run build` ✓.
   - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
   - `test:e2e` → 10 passed (52.8s).
+
+- T15: the new case fails on the previous matcher (1 failed | 9 passed). An intermediate version that ignored covered lines for
+  memo mentions too broke the T9 converted-prepayment case, so memo mentions still count.
+- T15 gates:
+  - Lint and typecheck clean.
+  - `npm test` → Test Files 62 passed (62), Tests 463 passed (463).
+  - `npm run build` ✓.
+  - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
+  - `test:e2e` → 10 passed (51.9s).
 
 ## Ship Notes
 No migration, no env change. Merges to staging, then rides the promotion PR #37.

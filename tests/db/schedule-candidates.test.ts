@@ -123,6 +123,20 @@ describe("schedule candidates from the ledger", () => {
     expect(await mine()).toEqual(["AMORTIZATION:20000000", "DEPRECIATION:20000000"]);
   });
 
+  it("a prepayment already amortised no longer blocks the amount match of an older depreciation, whichever came first", async () => {
+    const { pt, c } = await books();
+    const acc = (code: string) => accountId(c, code);
+    const entry = async (day: number) => db.$transaction(async (tx) => postJournal(tx, { entityId: pt, date: dateOnly(2026, 8, day), kind: "ADJUSTMENT", memo: "Sewa dan rak", lines: [{ accountId: await acc("1170"), debit: 20_000_000n }, { accountId: await acc("1210"), debit: 20_000_000n }, { accountId: await acc("2110"), credit: 40_000_000n }] }));
+    const [first, second] = [await entry(22), await entry(23)];
+    const depreciate = (id: string) => createSchedule(db, { clientId: c, entityId: pt, kind: "DEPRECIATION", memo: "Susut rak gudang", debitCode: "6180", creditCode: "1219", amount: "20.000.000", months: 48, startYear: 2026, startMonth: 9, sourceEntryId: id });
+    const amortise = (id: string) => createSchedule(db, { clientId: c, entityId: pt, kind: "AMORTIZATION", memo: "Sewa gudang", debitCode: "6120", creditCode: "1170", amount: "20.000.000", months: 12, startYear: 2026, startMonth: 9, sourceEntryId: id });
+    await amortise(first.id);
+    await depreciate(first.id);
+    await depreciate(second.id);
+    await amortise(second.id);
+    expect((await scheduleCandidates(db, c, 2026, 8)).filter((x) => x.sourceEntryId === first.id || x.sourceEntryId === second.id)).toEqual([]);
+  });
+
   it("drops an accrual candidate once that month's accrual is created", async () => {
     const { pt, c } = await books();
     await createSchedule(db, { clientId: c, entityId: pt, kind: "ACCRUAL", memo: "Akrual sewa Agustus", debitCode: "6120", creditCode: "2150", amount: "3.000.000", months: 1, startYear: 2026, startMonth: 8 });
