@@ -14,38 +14,40 @@ the ledger at close. Deterministic; no AI.
 
 ## Spec
 Register (`lib/assets/`, new; `FixedAsset` model)
-- [ ] An asset belongs to one entity: name, **fiscal group** (Kelompok 1–4, Bangunan permanen, Bangunan tidak permanen, Tanah),
+- [x] An asset belongs to one entity: name, **fiscal group** (Kelompok 1–4, Bangunan permanen, Bangunan tidak permanen, Tanah),
       fiscal method (garis lurus / saldo menurun; buildings straight line only, land none), acquisition date, cost, residual value
       (default 0), book useful life in months (default from the group: 48 / 96 / 192 / 240 / 240 / 120; land none), asset account
       (ASET_TETAP), and — except land — a book depreciation schedule (expense account, accumulated-depreciation account, start month;
       default the month after acquisition).
-- [ ] **Creating an asset creates its schedule in the same transaction** through the existing schedule code (rule 5a unchanged:
+- [x] **Creating an asset creates its schedule in the same transaction** through the existing schedule code (rule 5a unchanged:
       exact straight-line installments of cost − residual − opening accumulated, proposed monthly, posted by a click). Three ways in:
       from a **purchase line** in the ledger (a debit on an ASET_TETAP account not cited by a schedule or asset: source entry + line kept,
       rule 15), **from an existing depreciation schedule** (links it; no new schedule), or **by hand** for assets in Saldo Awal
       (with accumulated depreciation at the opening date; the schedule spreads the remaining book value over the remaining life).
-- [ ] **Register at a period end** (per entity, and per asset): cost, accumulated book depreciation (opening accumulated + the
+- [x] **Register at a period end** (per entity, and per asset): cost, accumulated book depreciation (opening accumulated + the
       schedule's posted installments to that date — read from the GL, never stored), book value, book depreciation this year (posted),
       **fiscal depreciation this year** (estimate, computed), and the **difference** book − fiscal ("koreksi fiskal", positive = add
       back). Installments due but not posted are shown as such (link to Jurnal Penyesuaian). Disposed assets drop out after their month.
-- [ ] **Fiscal depreciation** (`lib/assets/fiscal.ts`, pure, bigint): starts in the month of acquisition; straight line = the group's rate on the cost each year; declining balance = the group's rate (50 / 25 / 12,5 / 10 %) on the fiscal book
+- [x] **Fiscal depreciation** (`lib/assets/fiscal.ts`, pure, bigint): starts in the month of acquisition; straight line = the group's rate on the cost each year; declining balance = the group's rate (50 / 25 / 12,5 / 10 %) on the fiscal book
       value at the start of each year, the first year pro rata by months, and the remaining value taken in full in the year the life
       ends; buildings 5 % / 10 % straight line; land none. Rounded half-up per asset per year. Labelled **estimasi fiskal** — a figure
       for the tax computation, never posted. Shown for IDR entities only.
-- [ ] **Pelepasan (disposal)** of an asset at a date with proceeds (≥ 0) to a chosen non-bank account (default 1140 Piutang
+- [x] **Pelepasan (disposal)** of an asset at a date with proceeds (≥ 0) to a chosen non-bank account (default 1140 Piutang
       Lain-lain; the bank receipt is classified to the same account): refused while an installment due through that month is unposted
       or the month is locked. One `ADJUSTMENT` entry through `postJournal()`: Dr accumulated depreciation (to date), Dr proceeds account,
       Cr asset (cost), and the gain (Cr) or loss (Dr) on **7300 Laba/Rugi Pelepasan Aset Tetap**. The schedule stops; the asset keeps
       `disposalEntryId` (the drill from the entry to the asset and back). 7300 joins the COA template; an existing client gets it on its
       first disposal if the code is free (else the accountant picks the account).
-- [ ] **Close control** `fa:<entity>` (only when the entity has registered assets): register cost vs the GL balance of the asset
+- [x] **Close control** `fa:<entity>` (only when the entity has registered assets): register cost vs the GL balance of the asset
       accounts the register uses, register accumulated vs the GL balance of their accumulated-depreciation accounts, at the period
       end. Equal = PASS; different = **REVIEW** with both figures (assets not yet registered or typed journals explain it; a note acks it).
-- [ ] **UI:** *Aset Tetap* page under Akuntansi (ScopeBar period + entity): NextStep, the register with totals and the GL comparison,
+- [x] **UI:** *Aset Tetap* page under Akuntansi (ScopeBar period + entity): NextStep, the register with totals and the GL comparison,
       *Pembelian aset belum terdaftar* (Daftarkan → prefilled form), *Jadwal penyusutan tanpa aset* (Jadikan aset), *Tambah aset*, and
       per asset *Lepas aset*. The fiscal columns carry the estimate label. Works at 390 px (secondary columns hidden).
-- [ ] **Demo:** the demo seed registers Grup Ayam's existing depreciation schedule as an asset (no GL change: `verify:books` ALL PASS
-      with the same numbers).
+- [ ] ~~**Demo:** the demo seed registers Grup Ayam's existing depreciation schedule as an asset (no GL change).~~ **Dropped in build:** the
+      demo's opening book value (1210 Rp 1,15 M − 1219 Rp 310 jt = Rp 840 jt) and its schedule total (Rp 1,14 M over 120 months) belong to
+      no single asset, so linking would either change the demo ledger (investor walk, ground truth) or show a false register ≠ ledger.
+      The schedule appears under *Jadwal penyusutan tanpa aset*; making the demo data coherent is its own demo-data change.
 
 **Gate-reopeners (flagged):** schema migration (new `FixedAsset`, enums `AssetTaxGroup` + `FiscalMethod`, CHECKs `cost > 0`,
 `0 ≤ residual < cost`, `openingAccumulated ≥ 0`); a new accounting rule **5b** in `accounting-rules` (register, fiscal estimate, disposal);
@@ -80,7 +82,7 @@ feeds the tax cycle); intangible assets (1250) — same mechanics later; leases 
 - [x] T5 UI: `app/(app)/clients/[id]/assets/page.tsx`, components, actions, sidebar — accept: e2e walk on a fresh client (Saldo Awal
       asset by hand → register → post depreciation → dispose with a gain → register and control), screenshot checked at 1440 and 390 px.
       Depends T2–T4.
-- [ ] T6 Demo + rules + docs: seed registers Grup Ayam's schedule as an asset; `accounting-rules` rule 5b; README — accept: end-of-cycle
+- [x] T6 Demo + rules + docs: seed registers Grup Ayam's schedule as an asset; `accounting-rules` rule 5b; README — accept: end-of-cycle
       gates (build, `verify:books` ALL PASS, full e2e). Depends T5.
 
 ## Implementation
@@ -89,11 +91,19 @@ feeds the tax cycle); intangible assets (1250) — same mechanics later; leases 
 - T3: `lib/assets/dispose.ts`, `tests/db/asset-disposal.test.ts` — the schedule row is locked while the posted total is read (serialised with an installment click); "posted after the disposal" compares months (installments are dated the month's last day); 7300 is used only when its name says *pelepasan aset*, created on the first disposal when the code is free, otherwise the accountant picks a P&L account.
 - T4: `lib/controls/index.ts` (`fa:<entity>` after the schedule control, only for entities with registered assets; the detail names each differing figure and its accounts), test in `tests/db/assets.test.ts`.
 - T5: `app/(app)/clients/[id]/assets/page.tsx`, `components/app/asset-register.tsx` (candidates, schedules without an asset, register per entity with totals and the ledger row, add-asset dialog in three modes, disposal dialog), `lib/assets/view.ts`, `app/actions.ts` (`createAssetAction`, `disposeAssetAction`, tenant-checked), sidebar *Aset Tetap* under Akuntansi, `e2e/fixed-assets.spec.ts`.
+- T6: `.agents/skills/accounting-rules/SKILL.md` (rule 5b; 7300 among the load-bearing codes), `README.md` (Aset Tetap row, close control). Demo seed unchanged (see the dropped Spec item).
 
 ## Verification
 - T1: `prisma migrate diff` DB ↔ schema empty. Gate: lint ✓ typecheck ✓ `Test Files 66 passed (66) · Tests 503 passed (503)`. Worked example (Kelompok 1 saldo menurun, Rp 100 jt from Jul 2024): 25 / 37,5 / 18,75 / 9,375 / 9,375 jt, Σ = cost.- T2 gate: lint ✓ typecheck ✓ `Test Files 67 passed (67) · Tests 507 passed (507)`.
 - T3 gate: lint ✓ typecheck ✓ `Test Files 68 passed (68) · Tests 512 passed (512)`.
 - T4 gate: lint ✓ typecheck ✓ `Test Files 68 passed (68) · Tests 513 passed (513)`.
 - T5: `npx playwright test e2e/fixed-assets.spec.ts` → `1 passed` (journal on 1210 → Daftarkan, Kelompok 2 → July fiscal (1.000.000) → August installment posted → sold for 97 jt → derecognised, register = ledger, "Pelepasan aset: Mobil box (laba Rp 2.000.000)" on 7300). Screenshots at 1440 and 390 px checked by eye.
+- End of cycle: lint ✓ · typecheck ✓ · `Test Files 68 passed (68) · Tests 513 passed (513)` · `npm run build` ✓ · `verify:books` → `ALL PASS — 1357 pemeriksaan saldo cocok dengan ground truth.` (1333 → 1357: every client's chart now has 7300, checked at zero) · `npx playwright test` → `12 passed (40.1s)`.
 
 ## Ship Notes
+- **Migrations:** `20260928160000_fixed_assets` (FixedAsset, AssetTaxGroup, FiscalMethod, CHECKs) and `20260928161000_fixed_asset_accumulated_account` — both additive, no data change.
+- **COA:** 7300 *Laba/Rugi Pelepasan Aset Tetap* joins the template for new clients; existing clients get it on their first disposal (only if the code is free). No backfill.
+- **Env / dependency / AI:** none.
+- **Manual steps:** none.
+- **Follow-up:** make the demo's opening fixed assets coherent with its depreciation schedule so the demo can show a registered asset; intangible assets (1250) and the tax cycle (koreksi fiskal total → PPh badan, deferred tax) use this register next.
+- **Rollback:** revert the merge; the new table is unused by older code (drop it only if rolling back for good).
