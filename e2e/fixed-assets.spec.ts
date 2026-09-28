@@ -46,6 +46,8 @@ test("fixed assets: register a purchase, depreciate, dispose at a gain", async (
   await expect(register.getByRole("row", { name: /Mobil box/ })).toContainText("96.000.000");
   await expect(register.getByRole("row", { name: /Mobil box/ })).toContainText("(1.000.000)");
   await expect(page.getByTestId("next-step")).toContainText("cocok dengan buku besar");
+  // Booked figures drill to their ledger.
+  await expect(register.getByRole("link", { name: "Buku besar 1210 untuk Mobil box" }).first()).toHaveAttribute("href", /\/ledger\/1210\?entity=.*&period=2026-07/);
 
   // August: the first installment is due; post it from Jurnal Penyesuaian.
   await page.goto(`${base}/assets?period=2026-08`);

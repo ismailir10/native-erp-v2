@@ -105,3 +105,31 @@ describe("fixed-asset close control", () => {
     expect(c?.href).toBe(`/clients/${g.client.id}/assets?period=2026-08&entity=${g.pt.entity.id}`);
   });
 });
+
+describe("fixed-asset register guards", () => {
+  beforeEach(resetDb);
+
+  it("refuses an asset that would enter a locked month's register, on every path", async () => {
+    const g = await makeGroup();
+    const entry = await purchase(g, 48_000_000n);
+    await db.period.update({ where: { clientId_year_month: { clientId: g.client.id, year: 2026, month: 8 } }, data: { status: "LOCKED" } });
+    await expect(createAsset(db, { ...base(g), name: "Tanah", taxGroup: "TANAH", acquiredOn: "2026-08-02", cost: "1000" })).rejects.toThrow(/Agustus 2026 sudah dikunci/);
+    await expect(createAsset(db, { ...base(g), name: "Laptop", acquiredOn: "2026-08-10", cost: "48000000", sourceEntryId: entry.id })).rejects.toThrow(/Agustus 2026 sudah dikunci/);
+    expect(await db.fixedAsset.count()).toBe(0);
+    expect(await db.adjustmentSchedule.count()).toBe(0); // the schedule rolled back with it
+  });
+
+  it("counts opening accumulation only from the opening date and never starts depreciation before it or before acquisition", async () => {
+    const g = await makeGroup();
+    await expect(createAsset(db, { ...base(g), name: "Mobil", taxGroup: "KELOMPOK_2", acquiredOn: "2023-01-10", cost: "100000000", openingAccumulated: "40000000", usefulLifeMonths: 96, remainingMonths: 60 })).rejects.toThrow(/catat Saldo Awal/);
+    await postOpening(db, { clientId: g.client.id, entityId: g.pt.entity.id, date: dateOnly(2025, 12, 31), lines: [{ accountCode: "1210", debit: "100000000", credit: "0" }, { accountCode: "1219", debit: "0", credit: "40000000" }] });
+    const car = { ...base(g), name: "Mobil", taxGroup: "KELOMPOK_2" as const, acquiredOn: "2023-01-10", cost: "100000000", openingAccumulated: "40000000", usefulLifeMonths: 96, remainingMonths: 60 };
+    await expect(createAsset(db, { ...car, startYear: 2025, startMonth: 12 })).rejects.toThrow(/sesudah bulan Saldo Awal/);
+    const a = await createAsset(db, car);
+    expect(await db.adjustmentSchedule.findUniqueOrThrow({ where: { id: a.scheduleId! } })).toMatchObject({ startYear: 2026, startMonth: 1 });
+    // Before the books started there is no register (and no GL): nothing listed for November 2025.
+    expect(await assetRegister(db, g.client.id, 2025, 11)).toEqual([]);
+    expect((await assetRegister(db, g.client.id, 2025, 12))[0]).toMatchObject({ accumulated: 40_000_000n, bookValue: 60_000_000n });
+    await expect(createAsset(db, { ...base(g), name: "Printer", acquiredOn: "2026-03-10", cost: "4800000", startYear: 2026, startMonth: 2 })).rejects.toThrow(/sebelum bulan perolehan/);
+  });
+});

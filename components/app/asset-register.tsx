@@ -89,7 +89,9 @@ export function AssetRegister(props: {
     remainingMonths: "",
   });
   const fromCandidate = (c: AssetCandidateView): Form => ({ ...blank(c.entityId), mode: { kind: "candidate", c }, name: c.description.slice(0, 80), acquiredOn: c.dateIso, cost: formatMoney(BigInt(c.amount), c.currency, { bare: true }), assetAccountCode: c.accountCode, start: nextMonthOf(c.dateIso) });
-  const fromSchedule = (s: ScheduleLinkView): Form => ({ ...blank(s.entityId), mode: { kind: "schedule", s }, name: s.memo.replace(/^Penyusutan\s+/i, ""), cost: formatMoney(BigInt(s.amount), s.currency, { bare: true }), life: String(s.months), assetAccountCode: s.accountCode ?? code(props.accounts.asset, "1210"), start: s.start, acquiredOn: `${s.start}-01` });
+  // The acquisition date is the purchase entry's when the schedule stored it; otherwise the accountant types it (depreciation often
+  // starts the month after, so the schedule's start is no acquisition date).
+  const fromSchedule = (s: ScheduleLinkView): Form => ({ ...blank(s.entityId), mode: { kind: "schedule", s }, name: s.memo.replace(/^Penyusutan\s+/i, ""), cost: formatMoney(BigInt(s.amount), s.currency, { bare: true }), life: String(s.months), assetAccountCode: s.accountCode ?? code(props.accounts.asset, "1210"), start: s.start, acquiredOn: s.sourceDateIso ?? "" });
 
   const land = form?.taxGroup === "TANAH";
   const currency = props.entities.find((e) => e.id === form?.entityId)?.currency ?? "IDR";
@@ -197,6 +199,9 @@ export function AssetRegister(props: {
 
       {props.registers.map((reg) => {
         const cur = reg.entity.currency;
+        // Every booked figure drills to its ledger (the purchase and the depreciation entries); the fiscal figures are an estimate.
+        const drill = (code: string | null, node: React.ReactNode, label: string) =>
+          code ? <Link href={`/clients/${props.clientId}/ledger/${code}?entity=${reg.entity.id}&period=${props.periodKey}`} aria-label={label} className="underline-offset-2 hover:text-primary hover:underline">{node}</Link> : node;
         const fiscal = reg.totals.fiscalYtd !== null;
         return (
           <Card key={reg.entity.id} data-testid={`register-${reg.entity.shortName}`}>
@@ -236,10 +241,10 @@ export function AssetRegister(props: {
                           </Link>
                         )}
                       </TableCell>
-                      <TableCell className="hidden text-right md:table-cell"><Money value={BigInt(r.cost)} currency={cur} /></TableCell>
-                      <TableCell className="hidden text-right md:table-cell"><Money value={-BigInt(r.accumulated)} currency={cur} /></TableCell>
-                      <TableCell className="text-right"><Money value={BigInt(r.bookValue)} currency={cur} /></TableCell>
-                      <TableCell className="hidden text-right lg:table-cell"><Money value={BigInt(r.bookYtd)} currency={cur} /></TableCell>
+                      <TableCell className="hidden text-right md:table-cell">{drill(r.assetCode, <Money value={BigInt(r.cost)} currency={cur} />, `Buku besar ${r.assetCode} untuk ${r.name}`)}</TableCell>
+                      <TableCell className="hidden text-right md:table-cell">{drill(r.accumulatedCode, <Money value={-BigInt(r.accumulated)} currency={cur} />, `Buku besar ${r.accumulatedCode} untuk ${r.name}`)}</TableCell>
+                      <TableCell className="text-right">{drill(r.assetCode, <Money value={BigInt(r.bookValue)} currency={cur} />, `Buku besar ${r.assetCode} untuk ${r.name}`)}</TableCell>
+                      <TableCell className="hidden text-right lg:table-cell">{drill(r.accumulatedCode, <Money value={BigInt(r.bookYtd)} currency={cur} />, `Penyusutan ${r.name} di buku besar ${r.accumulatedCode}`)}</TableCell>
                       {fiscal && <TableCell className="hidden text-right lg:table-cell"><Money value={BigInt(r.fiscalYtd ?? "0")} currency={cur} /></TableCell>}
                       {fiscal && <TableCell className="hidden text-right lg:table-cell"><Money value={BigInt(r.difference ?? "0")} currency={cur} /></TableCell>}
                       <TableCell className="pr-6 text-right">
@@ -325,6 +330,7 @@ export function AssetRegister(props: {
               <Field>
                 <FieldLabel htmlFor="asset-date">Tanggal perolehan</FieldLabel>
                 <Input id="asset-date" type="date" value={form.acquiredOn} disabled={form.mode.kind === "candidate"} onChange={(e) => set({ acquiredOn: e.target.value, start: form.mode.kind === "schedule" ? form.start : nextMonthOf(e.target.value) })} />
+                {form.mode.kind === "schedule" && !form.mode.s.sourceDateIso && <FieldDescription>Jadwal ini tidak menyimpan pembeliannya: isi tanggal perolehan dari dokumennya.</FieldDescription>}
               </Field>
               <Field>
                 <FieldLabel htmlFor="asset-cost">Harga perolehan{currency === "IDR" ? "" : ` (${currency})`}</FieldLabel>
