@@ -149,7 +149,7 @@ export function SchedulePanel(props: { clientId: string; entities: { id: string;
             <div className="grid gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel>Jenis</FieldLabel>
-                <Select value={form.kind} onValueChange={(v) => { const k = KINDS.find((x) => x.kind === v)!; set({ kind: k.kind, debitCode: k.debit || form.debitCode, creditCode: k.credit, months: String(k.months), memo: form.memo.trim() && !KINDS.some((x) => x.memo === form.memo) ? form.memo : k.memo }); }}>
+                <Select value={form.kind} onValueChange={(v) => { const k = KINDS.find((x) => x.kind === v)!; set({ kind: k.kind, debitCode: k.debit || form.debitCode, creditCode: k.credit, months: String(k.months), memo: form.memo.trim() && !KINDS.some((x) => x.memo === form.memo) ? form.memo : k.memo, sourceEntryId: k.kind === form.kind ? form.sourceEntryId : null }); }}>
                   <SelectTrigger className="w-full" aria-label="Jenis"><SelectValue /></SelectTrigger>
                   <SelectContent>{KINDS.map((k) => <SelectItem key={k.kind} value={k.kind}>{k.label}</SelectItem>)}</SelectContent>
                 </Select>

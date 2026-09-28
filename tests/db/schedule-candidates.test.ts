@@ -83,8 +83,11 @@ describe("schedule candidates from the ledger", () => {
     await createSchedule(db, { clientId: c, entityId: pt, kind: "DEPRECIATION", memo: "Penyusutan mesin", debitCode: "6180", creditCode: "1219", amount: "48.000.000", months: 48, startYear: 2026, startMonth: 9, sourceEntryId: buy.id });
     await createSchedule(db, { clientId: c, entityId: pt, kind: "AMORTIZATION", memo: "Sewa", debitCode: "6120", creditCode: "1170", amount: "12.000.000", months: 12, startYear: 2026, startMonth: 9, sourceEntryId: mixed.id });
     expect(await pending()).toEqual(["DEPRECIATION:buy:30000000", "DEPRECIATION:mixed:20000000"]);
-    // A depreciation created with an edited amount (residual value) still counts: two schedules for two asset lines cover the entry.
-    await createSchedule(db, { clientId: c, entityId: pt, kind: "DEPRECIATION", memo: "Penyusutan mobil", debitCode: "6180", creditCode: "1219", amount: "25.000.000", months: 60, startYear: 2026, startMonth: 9, sourceEntryId: buy.id });
+    // A depreciation created with an edited amount (residual value) still counts when its memo carries the asset's code.
+    await createSchedule(db, { clientId: c, entityId: pt, kind: "DEPRECIATION", memo: "Penyusutan 1211 mobil", debitCode: "6180", creditCode: "1219", amount: "25.000.000", months: 60, startYear: 2026, startMonth: 9, sourceEntryId: buy.id });
+    expect(await pending()).toEqual(["DEPRECIATION:mixed:20000000"]);
+    // A prepayment candidate turned into a depreciation (its memo and amount name no asset line) hides no asset line.
+    await createSchedule(db, { clientId: c, entityId: pt, kind: "DEPRECIATION", memo: "Amortisasi Uang Muka & Biaya Dibayar di Muka 22 Agu 2026", debitCode: "6180", creditCode: "1219", amount: "12.000.000", months: 12, startYear: 2026, startMonth: 9, sourceEntryId: mixed.id });
     expect(await pending()).toEqual(["DEPRECIATION:mixed:20000000"]);
   });
 

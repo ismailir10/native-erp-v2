@@ -36,6 +36,11 @@ The review of the staging → main promotion (#37, head e41a53f) found two more 
 - [x] Review round 6 (#47): a candidate depreciation memo leads with the account code ("Penyusutan 1210 Aset Tetap 19 Agu 2026").
       The code survives the 80-character cut. Matching tries the code first, then the name (older memos), then the first line.
 
+- [x] Review round 7 (#47): a depreciation schedule hides only the asset line it identifies. The matcher tries the account code in
+      its memo, then the account name, then the exact amount. The "as many schedules as asset lines" shortcut is gone: with the code
+      in every candidate memo it is no longer needed, and a prepayment candidate turned into a depreciation no longer hides a real
+      asset. Changing the kind in the schedule dialog also drops the candidate's source entry.
+
 **Non-goals:** storing a schedule's source line (a schema change).
 **Assumptions:** with equal amounts *and* an edited memo, which of the twin suggestions stays is label-only: both would post the same
 6180/1219 amount. A stored source line would settle it but is a schema change, left out here. Separately, a depreciation schedule whose amount was edited and that isn't the last one for the entry may leave one extra
@@ -50,6 +55,7 @@ suggestion visible. That is harmless: it is only a suggestion.
 - [x] T6 Equal-amount asset lines matched by the schedule's memo — accept: new case fails on the previous matching
 - [x] T7 The memo carries the account code, matched first — accept: the truncated-name case fails on the previous commit
 - [x] T8 CI pins the Supabase CLI — accept: the setup step no longer resolves "latest" through the GitHub API
+- [x] T9 A schedule hides only the asset line it identifies — accept: the converted-prepayment case fails on the previous matcher
 
 ## Implementation
 - T1: `lib/adjust/candidates.ts` drops the entry-level filter and adds `covered(line, net)`, based on the entry's schedules.
@@ -86,6 +92,12 @@ suggestion visible. That is harmless: it is only a suggestion.
 - T8: CI on f641073 passed all 458 tests, then failed in `supabase/setup-cli` with "Failed to resolve latest Supabase CLI release:
   rate limit exceeded", before e2e ran. The job couldn't be re-run from here (403). `.github/workflows/ci.yml` now pins
   `version: 2.118.0`, the CLI the local e2e runs use, so setup downloads that release directly.
+- T9:
+  - `lib/adjust/candidates.ts` matches in this order: code, then name (with an equal amount first), then exact amount. A schedule
+    that identifies nothing hides nothing, so at worst a suggestion stays visible.
+  - `components/app/schedule-panel.tsx` clears `sourceEntryId` when the kind changes.
+  - Test: the edited-amount car schedule carries "1211". A prepayment turned into a depreciation (12 jt, prepaid memo) leaves the
+    20 jt rack proposed.
 
 ## Verification
 - T1: the new test fails on the old scan ("expected [] to deeply equal [ 'DEPRECIATION:buy:30000000', …"; the car and rack
@@ -138,6 +150,14 @@ suggestion visible. That is harmless: it is only a suggestion.
   - `npm run build` ✓.
   - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
   - `test:e2e` → 10 passed (52.6s).
+- T9: the new case fails on the previous matcher ("expected [] to deeply equal [ 'DEPRECIATION:mixed:20000000' ]": the count shortcut
+  hid the rack) and passes after.
+- T9 gates:
+  - Lint and typecheck clean.
+  - `npm test` → Test Files 61 passed (61), Tests 458 passed (458).
+  - `npm run build` ✓.
+  - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
+  - `test:e2e` → 10 passed (55.2s).
 
 ## Ship Notes
 No migration, no env change. Merges to staging, then rides the promotion PR #37.

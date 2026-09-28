@@ -70,24 +70,23 @@ export async function scheduleCandidates(db: Db, clientId: string, year: number,
       groups.set(k, g);
     }
     // A schedule made from an entry covers only the line it came from, so a compound entry's other lines stay proposed. Prepaid and
-    // deferred-revenue schedules name that account; a depreciation schedule doesn't (6180/1219), so it covers one asset line of its
-    // amount, or every asset line once the entry has as many depreciation schedules as asset lines (amounts edited on creation).
+    // deferred-revenue schedules name that account; a depreciation schedule doesn't (6180/1219), so its memo identifies the line.
     const from = await db.adjustmentSchedule.findMany({ where: { entityId: e.id, sourceEntryId: { in: [...new Set(lines.map((l) => l.entryId))] } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
     // Depreciation schedules are matched to asset lines one to one (a schedule covers one line, even when two lines share an amount).
     const coveredAssets = new Set<string>();
     for (const entryId of new Set(lines.map((l) => l.entryId))) {
       const assets = [...groups.entries()].filter(([, g]) => g.line.entryId === entryId && g.line.account.fsLine === "ASET_TETAP");
       const pool = from.filter((s) => s.sourceEntryId === entryId && s.kind === "DEPRECIATION");
-      if (pool.length >= assets.length) { for (const [k] of assets) coveredAssets.add(k); continue; }
-      // Each schedule takes one line of its amount. Among equal amounts, the line whose account code its memo carries (a schedule
-      // made from a candidate keeps "Penyusutan <code> <account> <date>", the code never cut off), then one whose name it carries,
-      // the longest first; otherwise the first line.
+      // A schedule hides only the asset line it identifies, never one it merely might be: first by the account code its memo carries
+      // (a schedule made from a candidate keeps "Penyusutan <code> <account> <date>", the code never cut off, whatever amount it was
+      // given), then by the account name (longest first), then by its exact amount. A schedule that identifies no line hides none,
+      // so at worst a suggestion stays visible.
       const words = (memo: string) => new Set(memo.toLowerCase().split(/\s+/));
       for (const s of pool) {
-        const open = assets.filter(([k, g]) => !coveredAssets.has(k) && g.net === s.amount);
+        const open = assets.filter(([k]) => !coveredAssets.has(k));
         const coded = open.filter(([, g]) => words(s.memo).has(g.line.account.code.toLowerCase()));
         const named = open.filter(([, g]) => s.memo.toLowerCase().includes(g.line.account.name.toLowerCase())).sort(([, x], [, y]) => y.line.account.name.length - x.line.account.name.length);
-        const hit = coded[0] ?? named[0] ?? open[0];
+        const hit = coded[0] ?? named.find(([, g]) => g.net === s.amount) ?? named[0] ?? open.find(([, g]) => g.net === s.amount);
         if (hit) coveredAssets.add(hit[0]);
       }
     }
