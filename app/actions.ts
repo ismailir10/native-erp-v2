@@ -12,6 +12,9 @@ import { postAdjustment } from "@/lib/ledger/adjustment";
 import { createSchedule, postAllDue, postInstallment, stopSchedule, type ScheduleInput } from "@/lib/adjust/schedules";
 import { createAsset, type AssetInput } from "@/lib/assets/register";
 import { disposeAsset, type DisposalInput } from "@/lib/assets/dispose";
+import { createInvoice, type InvoiceInput } from "@/lib/receivables/invoices";
+import { settleWithReclass, unsettle } from "@/lib/receivables/settle";
+import { candidateViews, type CandidateView } from "@/lib/receivables/view";
 import { ParseError, YearNeededError } from "@/lib/import/types";
 import { PdfPasswordError } from "@/lib/import/parsers/pdf";
 import { MoneyError } from "@/lib/money";
@@ -224,6 +227,51 @@ export async function disposeAssetAction(input: Omit<DisposalInput, "actorId">):
     const r = await disposeAsset(prisma, { ...input, clientId: client.id, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true, entryId: r.entryId };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Record a sales invoice or purchase bill (posts its journal unless it is a Saldo Awal item). */
+export async function createInvoiceAction(input: Omit<InvoiceInput, "actorId">): Promise<Result<{ invoiceId: string }>> {
+  try {
+    const client = await getClientForFirm(input.clientId);
+    const inv = await createInvoice(prisma, { ...input, clientId: client.id, actorId: (await getCurrentMember()).id });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, invoiceId: inv.id };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Bank lines that could settle an invoice (read-only). */
+export async function settleCandidatesAction(clientId: string, invoiceId: string): Promise<Result<{ candidates: CandidateView[] }>> {
+  try {
+    const client = await getClientForFirm(clientId);
+    return { ok: true, candidates: await candidateViews(prisma, client.id, invoiceId) };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Settle an invoice with a bank line; a line not on the invoice's account is classified to it first (reviewer's writer). */
+export async function settleAction(input: { clientId: string; invoiceId: string; bankTransactionId: string; amount?: string | null }): Promise<Result> {
+  try {
+    const client = await getClientForFirm(input.clientId);
+    await settleWithReclass(prisma, { ...input, clientId: client.id, actorId: (await getCurrentMember()).id });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function unsettleAction(clientId: string, settlementId: string): Promise<Result> {
+  try {
+    const client = await getClientForFirm(clientId);
+    await unsettle(prisma, { clientId: client.id, settlementId });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
   } catch (e) {
     return fail(e);
   }

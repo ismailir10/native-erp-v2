@@ -66,7 +66,7 @@ settlement by non-bank entries (netting), documents → invoice drafts (a later 
       from 1999 in one transaction, locked month, suggestions ranked by name). Depends T2.
 - [x] T4 Aging + control: `lib/receivables/aging.ts` (`openItems`, `aging`, `subledgerVsLedger`), `ar:`/`ap:` in `runControls` —
       accept: DB tests (buckets at a date, settlements after the date ignored, PASS/REVIEW with the unsettled count). Depends T3.
-- [ ] T5 UI: page, components, actions, sidebar — accept: e2e walk (sales invoice → bank receipt reviewed → cocokkan → aging and control;
+- [x] T5 UI: page, components, actions, sidebar — accept: e2e walk (sales invoice → bank receipt reviewed → cocokkan → aging and control;
       purchase invoice partly paid), screenshots at 1440 and 390 px. Depends T4.
 - [ ] T6 Rules + docs: `accounting-rules` 5c, README, ADR amendment — accept: end-of-cycle gates (build, `verify:books` ALL PASS, full e2e).
 
@@ -75,10 +75,12 @@ settlement by non-bank entries (netting), documents → invoice drafts (a later 
 - T1: `prisma/schema.prisma`, migration `20260929010000_receivables` (Contact, Invoice, InvoiceSettlement, `InvoiceDirection`, `EntryKind` + INVOICE, CHECKs), `components/app/ledger-table.tsx` (*Faktur* label), ADR 0004 amendment.- T2: `lib/receivables/invoices.ts` (`createInvoice`, `ppnFor`; contact upserted by normalised name; Saldo Awal items must be dated by the entity's opening entry), `tests/db/invoices.test.ts`.
 - T3: `lib/receivables/settle.ts` (`settle`, `settleWithReclass` via `reviewTransactionTx` in one transaction, `unsettle`, `settleCandidates` — named = every distinctive word of the contact (PT/CV dropped) or the invoice number; exact = unsettled amount equals the open amount), `tests/db/settlements.test.ts` (bank lines imported through the real pipeline).
 - T4: `lib/receivables/aging.ts` (`invoicesAt`, `agingByContact`, `bucketOf`, `subledgerVsLedger`), `lib/controls/index.ts` (`ar:`/`ap:` per entity with invoices of that direction), `tests/db/aging.test.ts`.
+- T5: `app/(app)/clients/[id]/receivables/page.tsx` (tab in the URL), `components/app/receivables.tsx` (aging per entity with the ledger row, unmatched bank lines, open and paid invoices with their settlements behind a visible chevron, invoice form with *Hitung 11%*, matching dialog with editable amounts), `lib/receivables/view.ts`, `app/actions.ts` (`createInvoiceAction`, `settleCandidatesAction`, `settleAction`, `unsettleAction`, tenant-checked), sidebar *Piutang & Utang*, `e2e/receivables.spec.ts`. Found on the 390 px screenshot: keeping only the *Belum jatuh tempo* bucket on phones showed "–" while the amount sat in a hidden bucket — phones now show party and total only.
 
 ## Verification
 - T1: `prisma migrate diff` DB ↔ schema empty. Gate: lint ✓ typecheck ✓ `Test Files 68 passed (68) · Tests 513 passed (513)`.- T2 gate: lint ✓ typecheck ✓ `Test Files 69 passed (69) · Tests 518 passed (518)`.
 - T3 gate: lint ✓ typecheck ✓ `Test Files 70 passed (70) · Tests 521 passed (521)`.
 - T4 gate: lint ✓ typecheck ✓ `Test Files 71 passed (71) · Tests 523 passed (523)`.
+- T5: `npx playwright test e2e/receivables.spec.ts` → `1 passed` (statement imported → INV-100 with PPN 1.100.000 → the receipt naming it suggested first, classified to 1130 and settled in one click → paid, piutang = ledger → SM-77 paid 10 jt of 22,2 jt → 12.200.000 in 1–30 hari = 2110). Screenshots at 1440 and 390 px checked by eye.
 
 ## Ship Notes
