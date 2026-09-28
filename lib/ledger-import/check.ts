@@ -46,6 +46,8 @@ export type PlanEntry = {
   imbalance: bigint;
   /** 7190 residue (debit-positive) so rounded lines + residue = rounded total. */
   rounding: bigint;
+  /** The residue includes rounding from converting foreign lines (the group balances in every source currency). */
+  fxRounding?: boolean;
 };
 
 export type Plan = { entries: PlanEntry[]; checks: Check[]; accounts: Map<string, { entityKey: string; code: string; name: string; previousNames: string[]; balance: bigint; currency: string | null }> };
@@ -160,9 +162,13 @@ export function planLedger(
     const cents: bigint[] = [];
     const lines: PlanLine[] = [];
     let convertedExact = true;
+    // Σ signed source amount per currency: all zero = the group balances as written, whatever conversion rounding does.
+    const bySourceCurrency = new Map<string, bigint>();
+    let converted = 0;
     for (const r of list) {
       const signedCents = r.debit - r.credit;
       const foreign = r.currency && r.currency !== info.currency ? r.currency : null;
+      bySourceCurrency.set(foreign ?? info.currency, (bySourceCurrency.get(foreign ?? info.currency) ?? 0n) + signedCents);
       if (foreign && opts.currencyMode === "CONVERT") {
         const rate = r.rate ?? opts.rateFor?.(foreign, info.currency, date) ?? null;
         if (!rate) {
@@ -176,6 +182,7 @@ export function planLedger(
         // Back to sen so the entry total and rounding residue are computed over every line alike.
         cents.push(signed * 10n ** BigInt(2 - exponentOf(info.currency)));
         lines.push({ ref: r.ref, code: r.code, name: r.name, amount: signed, fx: { currency: foreign, amount: fxMinor, rate }, memo: r.description || null });
+        converted++;
       } else {
         if (foreign) noRate.set(`${ek}|${foreign}`, [...(noRate.get(`${ek}|${foreign}`) ?? []), r]);
         cents.push(signedCents);
@@ -184,10 +191,15 @@ export function planLedger(
     }
     if (!convertedExact) continue;
     // Rounding (rule 6a): only lines not already converted to functional minor units.
-    const { rounded, rounding, total } = roundEntry(cents, info.currency);
+    const { rounded, rounding: lineRounding, total } = roundEntry(cents, info.currency);
     lines.forEach((l, i) => {
       if (!l.fx) l.amount = rounded[i];
     });
+    // Rule 6a for conversions: converting n foreign lines can leave at most n minor units; if the group balances in every
+    // source currency, that residue is rounding (7190), not a difference in the file. Anything larger stays a BLOCK.
+    const abs = total < 0n ? -total : total;
+    const fxRounding = converted > 0 && total !== 0n && abs <= BigInt(converted) && [...bySourceCurrency.values()].every((v) => v === 0n);
+    const rounding = fxRounding ? lineRounding - total : lineRounding;
     const refs = list.map((r) => r.ref);
     const entry: PlanEntry = {
       key,
@@ -196,8 +208,9 @@ export function planLedger(
       ref: rangeRef(refs),
       memo: `Impor ${list[0].voucher ? `bukti ${list[0].voucher}` : `buku besar ${formatDate(date)}`}`,
       lines,
-      imbalance: total,
+      imbalance: fxRounding ? 0n : total,
       rounding,
+      ...(fxRounding ? { fxRounding: true } : {}),
     };
     entries.push(entry);
 

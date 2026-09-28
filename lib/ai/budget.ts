@@ -64,7 +64,7 @@ export async function runBudgetedAi<T extends Usage>(db: Db, args: BudgetArgs & 
   try {
     result = await call();
   } catch (error) {
-    await settleAiBudget(db, reservation, { ...args, usage: error instanceof AiAnswerError ? error : undefined, ok: false, note: `AI gagal: ${error instanceof Error ? error.message.slice(0, 120) : "Permintaan gagal"}` });
+    await settleAiBudget(db, reservation, { ...args, usage: error instanceof AiAnswerError ? error : undefined, ok: false, note: `${args.note ? `${args.note} — ` : ""}AI gagal: ${error instanceof Error ? error.message.slice(0, 120) : "Permintaan gagal"}` });
     throw error;
   }
   await settleAiBudget(db, reservation, { ...args, usage: result, ok: true });

@@ -33,6 +33,11 @@ export type PostInput = {
   bankTransactionId?: string;
   ledgerImportId?: string;
   sourceRef?: string;
+  /** Installment of an adjustment schedule (accounting-rules 5a); both or neither. */
+  scheduleId?: string;
+  installment?: number;
+  /** Member doing the posting; null/undefined = system (seed, migration). Attribution only, never a rule. */
+  actorId?: string | null;
   lines: PostLine[];
 };
 
@@ -115,6 +120,9 @@ export async function postJournal(tx: Tx, input: PostInput) {
       bankTransactionId: input.bankTransactionId,
       ledgerImportId: input.ledgerImportId,
       sourceRef: input.sourceRef,
+      scheduleId: input.scheduleId,
+      installment: input.installment,
+      postedById: input.actorId ?? null,
       lines: {
         create: lines.map((l) => ({
           firmId: entity.firmId,

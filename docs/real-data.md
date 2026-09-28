@@ -5,7 +5,7 @@ file to a closed month.
 
 ## Rules
 1. There is **one workspace** ([ADR 0008](adrs/0008-one-workspace.md)). Real client work lives in production (https://native-erp-v2.vercel.app),
-   behind invitation-only login, on Neon branch `real-data` with `DEMO_MODE=false`. Staging is synthetic pre-production: never upload real files there.
+   behind invitation-only login, on Supabase project `native-erp-v2` with `DEMO_MODE=false`. Staging is synthetic pre-production: never upload real files there.
 2. Real data lives in exactly two places:
    - **Local**: Postgres on your machine. Files go in `data/private/` (gitignored).
    - **Production**: the workspace above. No demo firm and no reset. Never point `demo:reset` at its database.
@@ -70,13 +70,18 @@ Sumber pencatatan (multi-entity ledgers via *Sesuai kolom Entitas di file*, Nera
 same draft. Keep the folder small (one workbook) — see [evidence workspace](evidence-workspace.md).
 
 Currency: *Jumlah sudah dalam mata uang entitas* posts the amounts as written (default, faithful to the file).
-*Konversi dengan kurs* converts foreign lines with the rate in the file, else the **Kurs** page on that date.
+*Konversi dengan kurs* converts foreign lines with the rate in the file, else the **Kurs** page on that date. The same choice
+(**Baris valas**) appears in Dokumen for a confirmed ledger sheet with foreign rows; to switch after preparing, *Batalkan draf*
+and prepare again. A journal that balances in each of its source currencies posts its conversion rounding (≤ 1 minor unit per
+converted line) to 7190; any larger gap is a difference in the file and must be accepted into 1999 or fixed.
 
 ## 6. Kurs and Gabungan Grup in Rupiah
 Entities in another currency are translated for the Gabungan: assets & liabilities at the month's closing rate, income &
 expense at the year's average rate, equity at the historical rate; the difference is *Selisih penjabaran mata uang asing*.
 The **Kurs** page lists every rate that's still missing; a report without its rates says *belum dijabarkan* instead of
-showing a number. Rates are typed in (or taken from the imported file); Buku never fetches them.
+showing a number. Rates are typed in (or taken from the imported file); Buku never fetches them. A rate written in a file only
+fills a date the Kurs table doesn't have yet: it never replaces an existing rate (the table is shared by every client of the
+firm). When the file's rate differs, the draft lists it under *Perlu dicek* (`Kurs … di file berbeda dari tabel Kurs …`).
 Foreign balances (lines imported with a rate) are revalued at month end on **Tutup Buku → Catat revaluasi**.
 
 ## 7. Check a real file end to end (local only)
@@ -91,12 +96,12 @@ Imports the files in `data/private/` into a fresh client and compares Buku with 
 | Where | How to open | Database |
 |---|---|---|
 | Local | `npm run dev` with `.env` → `postgresql://buku:buku@localhost:5432/buku` and `DEMO_MODE=false` | local `buku` |
-| Production (real workspace) | https://native-erp-v2.vercel.app (invitation login) | Neon `real-data` |
-| Staging (synthetic pre-production) | Vercel → Deployments → branch `staging` (Vercel login + invitation login) | Neon `preview` |
+| Production (real workspace) | https://native-erp-v2.vercel.app (invitation login) | Supabase `native-erp-v2` |
+| Staging (synthetic pre-production) | Vercel → Deployments → branch `staging` (Vercel login + invitation login) | Supabase `native-erp-v2-staging` |
 
 New work merges into `staging` first. Promote tested staging through a separate PR to `main` using a merge commit; do not push production into staging after every feature. See [Branch workflow](../README.md#branch-workflow).
 
 The `native-erp-v2-git-real-data-…vercel.app` domain still points at git branch `staging`; it no longer holds client data. Google OAuth for Drive must list the production callback URL.
 
-Neon connection strings for every branch are in `.env.neon.local` (gitignored, not auto-loaded). Never point `.env`
-at Neon `production` or `real-data`, because `npm run demo:reset` truncates whatever `DATABASE_URL` points at.
+Never point `.env` at the production database, because `npm run demo:reset` truncates whatever `DATABASE_URL` points at;
+local `.env` uses the staging project's Auth keys only, never production's.

@@ -35,7 +35,7 @@ export function RevenueExpenseChart({ data, currency = "IDR" }: { data: Point[];
   const rp = (v: number) => formatMoneyCompact(BigInt(Math.round(v)), currency);
   const config = {
     revenue: { label: "Pendapatan", color: "var(--chart-1)" },
-    expense: { label: "Beban", color: "var(--chart-4)" },
+    expense: { label: "Beban", color: "var(--chart-2)" },
   } satisfies ChartConfig;
   return (
     <ChartContainer config={config} className="h-56 w-full">

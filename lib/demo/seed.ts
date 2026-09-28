@@ -4,6 +4,8 @@ import { importStatement } from "@/lib/import/pipeline";
 import { reviewTransaction } from "@/lib/review";
 import { postJournal } from "@/lib/ledger/post";
 import { CLOSE_SIGNOFFS, lockPeriod, runControls } from "@/lib/controls";
+import { createSchedule, postInstallment } from "@/lib/adjust/schedules";
+import { formatMoney } from "@/lib/money";
 import { DEMO_AI_MODEL, MockProvider } from "@/lib/ai/provider";
 import { dateOnly } from "@/lib/format";
 import { merchantKey } from "@/lib/import/normalize";
@@ -12,7 +14,8 @@ import { renderStatement } from "@/lib/demo/writers";
 import { aiTable, DEMO_MONTHS, scenarios, statementFiles, type ClientScenario, type Truth } from "@/lib/demo/scenario";
 
 export const OPENING_DATE = dateOnly(2026, 2, 28);
-export const DEPRECIATION = { clientKey: "grup-ayam", entity: 0, monthly: 9_500_000n };
+/** Grup Ayam's fixed assets depreciate through an adjustment schedule: Rp 9.500.000 a month over 120 months from March 2026. */
+export const DEPRECIATION = { clientKey: "grup-ayam", entity: 0, monthly: 9_500_000n, months: 120 };
 
 const lineKey = (accountNumber: string, date: Date, amount: bigint, description: string) =>
   `${accountNumber}|${date.toISOString().slice(0, 10)}|${amount}|${description}`;
@@ -39,6 +42,11 @@ export async function seedDemo(db: Db, opts: { log?: (s: string) => void; liveAi
     const { client, entities } = await db.$transaction((tx) => createClient(tx, firm.id, sc.spec));
     log(`• ${client.name}`);
     await postOpenings(db, sc, client.id, entities);
+    const first = DEMO_MONTHS[0];
+    const depreciation =
+      sc.key === DEPRECIATION.clientKey
+        ? await createSchedule(db, { clientId: client.id, entityId: entities[DEPRECIATION.entity].entity.id, kind: "DEPRECIATION", memo: "Penyusutan aset tetap (garis lurus)", debitCode: "6180", creditCode: "1219", amount: formatMoney(DEPRECIATION.monthly * BigInt(DEPRECIATION.months), "IDR", { bare: true }), months: DEPRECIATION.months, startYear: first.year, startMonth: first.month })
+        : null;
 
     const truth = new Map<string, Truth>();
     for (const l of sc.lines) {
@@ -77,7 +85,8 @@ export async function seedDemo(db: Db, opts: { log?: (s: string) => void; liveAi
         if (!tr) throw new Error(`Seed: tidak ada truth untuk ${key}`);
         await reviewTransaction(db, { bankTxId: t.id, accountCode: tr.accountCode, taxTag: tr.taxTag });
       }
-      if (sc.key === DEPRECIATION.clientKey && closed) await postDepreciation(db, client.id, entities[DEPRECIATION.entity].entity.id, year, month);
+      // Closed months: the accountant already clicked Catat on that month's installment.
+      if (depreciation && closed) await postInstallment(db, { clientId: client.id, scheduleId: depreciation.id, k: (year - first.year) * 12 + month - first.month + 1 });
       if (closed) {
         const period = await db.period.upsert({
           where: { clientId_year_month: { clientId: client.id, year, month } },
@@ -126,23 +135,6 @@ async function postOpenings(db: Db, sc: ClientScenario, clientId: string, entiti
     const lines = [...nets.entries()].filter(([, v]) => v !== 0n).map(([accountId, v]) => (v > 0n ? { accountId, debit: v } : { accountId, credit: -v }));
     await db.$transaction((tx) => postJournal(tx, { entityId: entities[i].entity.id, date: OPENING_DATE, kind: "OPENING", memo: "Saldo awal per 28 Februari 2026", lines }));
   }
-}
-
-async function postDepreciation(db: Db, clientId: string, entityId: string, year: number, month: number) {
-  const accounts = await db.account.findMany({ where: { clientId, code: { in: ["6180", "1219"] } } });
-  const id = (code: string) => accounts.find((a) => a.code === code)!.id;
-  await db.$transaction((tx) =>
-    postJournal(tx, {
-      entityId,
-      date: new Date(Date.UTC(year, month, 0)),
-      kind: "ADJUSTMENT",
-      memo: "Penyusutan aset tetap bulanan (garis lurus)",
-      lines: [
-        { accountId: id("6180"), debit: DEPRECIATION.monthly },
-        { accountId: id("1219"), credit: DEPRECIATION.monthly },
-      ],
-    }),
-  );
 }
 
 /** The held-back statement (for the live upload moment) as a file. */

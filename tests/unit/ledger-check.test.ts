@@ -83,6 +83,27 @@ describe("planLedger", () => {
     expect(noRate.find((m) => m.includes("USD"))).toMatch(/1 baris USD/);
   });
 
+  it("CONVERT mode: a group that balances in its source currency posts its conversion residue to 7190", () => {
+    // 10,01 + 10,01 = 20,02 USD at 1,3669 → S$13,68 + 13,68 vs 27,37: one minor unit left over by rounding.
+    const p = planLedger(
+      [row({ entity: "HOLDCO", code: "11000", debit: 1001n, currency: "USD", rate: "1.3669" }), row({ entity: "HOLDCO", code: "11001", debit: 1001n, currency: "USD", rate: "1.3669" }), row({ entity: "HOLDCO", code: "20000", credit: 2002n, currency: "USD", rate: "1.3669" })],
+      { entities: ENT, currencyMode: "CONVERT" },
+    );
+    expect(p.entries[0].lines.map((l) => l.amount)).toEqual([1368n, 1368n, -2737n]);
+    expect(p.entries[0]).toMatchObject({ imbalance: 0n, rounding: 1n, fxRounding: true });
+    expect(p.checks.filter((c) => c.severity === "BLOCK")).toEqual([]);
+  });
+
+  it("CONVERT mode: a group balanced only in raw numbers across currencies stays blocked", () => {
+    const p = planLedger(
+      [row({ entity: "HOLDCO", code: "10001", debit: 15_000_000n, currency: "USD", rate: "1.31" }), row({ entity: "HOLDCO", code: "20000", credit: 15_000_000n, currency: "SGD" })],
+      { entities: ENT, currencyMode: "CONVERT" },
+    );
+    expect(p.entries[0]).toMatchObject({ imbalance: 4_650_000n, rounding: 0n });
+    expect(p.entries[0].fxRounding).toBeUndefined();
+    expect(p.checks.find((c) => c.code === "UNBALANCED")?.message).toMatch(/selisih S\$ 46\.500,00/);
+  });
+
   it("CONVERT mode: converts with the row rate, else the rate table, else blocks", () => {
     const d = dateOnly(2023, 1, 3);
     const rows = [
@@ -110,7 +131,7 @@ describe("planLedger", () => {
 });
 
 describe("planNeraca", () => {
-  const nr = (code: string, amount: bigint, typeHint: NeracaRow["typeHint"]): NeracaRow => ({ ref: `N!${n++}`, row: n, code, name: code, amount, typeHint, coded: true, errors: [] });
+  const nr = (code: string, amount: bigint, typeHint: NeracaRow["typeHint"]): NeracaRow => ({ ref: `N!${n++}`, row: n, code, name: code, amount, typeHint, termHint: null, coded: true, errors: [] });
   it("builds one opening entry, checks file totals, rounds with 7190", () => {
     const p = planNeraca(
       [nr("1-1000", 100_060n, "ASET"), nr("2-2000", -40_000n, "LIABILITAS"), nr("3-3000", -60_060n, "EKUITAS")],

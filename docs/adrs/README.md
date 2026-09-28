@@ -12,3 +12,4 @@ One file per decision: context → decision → consequences. Supersede, don't e
 | [0006](0006-ledger-input-and-multicurrency.md) | Ledgers + Neraca as input, per-entity source accounts, functional currency per entity (updates 0002, 0004) |
 | [0007](0007-evidence-workspace.md) | Versioned evidence beside the ledger, read-only Drive, cited answers and shared AI budgets |
 | [0008](0008-one-workspace.md) | One workspace: production holds the real firm; staging is synthetic pre-production |
+| [0009](0009-ai-in-the-close.md) | AI in the close: deterministic sanity controls first; AI explains and proposes with citations, never posts |

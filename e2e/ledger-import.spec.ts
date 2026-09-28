@@ -4,7 +4,7 @@ import ExcelJS from "exceljs";
 /**
  * Ledger client, end to end (synthetic data): Tambah klien with an IDR company and an SGD holding (no bank accounts)
  * → upload a multi-entity, multi-currency ledger → checks → accept a source difference → map accounts (rules + one
- * new account) → post → Kurs → Gabungan in IDR with the translation line → Neraca Saldo in the entity's own accounts.
+ * new account) → post → Kurs → Gabungan in IDR with the translation line → Neraca Saldo and a ledger in the entity's own accounts.
  */
 async function ledgerXlsx(): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
@@ -27,7 +27,7 @@ async function ledgerXlsx(): Promise<Buffer> {
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
-test("ledger import: checks, mapping, post, Kurs, Gabungan in IDR, Akun sumber", async ({ page }) => {
+test("ledger import: checks, mapping, post, Kurs, Gabungan in IDR, client accounts", async ({ page }) => {
   await page.goto("/clients/new");
   await page.getByLabel("Nama klien").fill("Grup Uji Buku Besar");
   await page.getByLabel("Nama lengkap").click();
@@ -116,11 +116,23 @@ test("ledger import: checks, mapping, post, Kurs, Gabungan in IDR, Akun sumber",
   await page.getByRole("tab", { name: "Neraca" }).click();
   await expect(page.getByText("Seimbang").first()).toBeVisible();
 
-  await page.getByRole("link", { name: "Neraca Saldo" }).click();
-  await page.getByRole("tab", { name: "Akun sumber" }).click();
-  await expect(page.getByText("Pilih satu entitas")).toBeVisible();
-  await page.getByRole("combobox").first().click();
-  await page.getByRole("option", { name: "Dua Holdings Pte Ltd" }).click();
+  // Client COA first: one entity with its own accounts opens in those accounts, each with its own ledger.
+  // Clicks right after a navigation can land before hydration: retry each step until its effect shows.
+  await expect(async () => {
+    await page.getByRole("link", { name: "Neraca Saldo" }).click();
+    await expect(page).toHaveURL(/\/trial-balance/, { timeout: 2_000 });
+  }).toPass();
+  await expect(page.getByRole("tab", { name: "Akun klien" })).toHaveCount(0); // a group has no single client chart
+  const dua = page.getByRole("option", { name: "Dua Holdings Pte Ltd" });
+  await expect(async () => {
+    await page.getByRole("combobox").first().click();
+    await dua.click({ timeout: 2_000 });
+    await expect(page.getByRole("tab", { name: "Akun klien" })).toBeVisible({ timeout: 5_000 });
+  }).toPass();
   await expect(page.getByRole("cell", { name: "10001" })).toBeVisible();
   await expect(page.getByText("dalam SGD")).toBeVisible();
+  await page.getByTestId("tb-account-link").first().click();
+  await expect(page).toHaveURL(/\/ledger\/akun\//);
+  await expect(page.getByText(/akun klien ·/)).toBeVisible();
+  await expect(page.getByText("Saldo awal periode")).toBeVisible();
 });

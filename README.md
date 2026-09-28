@@ -29,9 +29,9 @@ Supported evidence formats include text PDFs, XLSX, CSV, Google Docs/Sheets, TXT
 
 ### Current experience and limits
 
-**Available in this implementation:** invitation-only login (email codes or temporary shared access code), dashboard-level Tanya Buku, shared client/company and period selectors, prioritized work, document evidence and company-context review, financial reports, and controlled month-end close. Staging and main use the same authenticated application screens with separate databases, users, secrets, and provider settings.
+**Available in this implementation:** invitation-only login with email + password (Supabase Auth; admin and akuntan roles), dashboard-level Tanya Buku, shared client/company and period selectors, prioritized work, document evidence and company-context review, financial reports, and controlled month-end close. Staging and main use the same authenticated application screens with separate databases, users, secrets, and provider settings.
 
-**Tanya Buku supports bounded read-only questions:** close readiness, posted profit/revenue, cash and account balances, document search, and company context. Its portfolio answers are calculated with deterministic tools; unsupported questions say so. Answers retain the scope and period at submission, with source links and session-only history. Document-specific AI tools remain available within their existing budget controls. Cross-client views compare companies in their own currencies; they do not consolidate them. Always-on agents and live bank feeds are not implemented.
+**Tanya Buku supports bounded read-only questions:** close readiness, posted profit/revenue, cash and account balances, document search, and company context. Its portfolio answers are calculated with deterministic tools; unsupported questions say so. Answers retain the scope and period at submission, with source links and session-only history. Document-specific AI tools remain available within their existing budget controls; an AI answer plan with harmless slips is normalised, one that names an entity outside the chosen scope is ignored with a note, and Pengaturan shows the 30-day plan-rejection rate. Cross-client views compare companies in their own currencies; they do not consolidate them. Always-on agents and live bank feeds are not implemented.
 
 Review the [standalone, clickable HTML prototype](docs/prototypes/buku-workspace.html) and its [review guide](docs/prototypes/README.md). Download the HTML and open it in a browser, or serve this repository locally. All prototype data, answers, sign-in, and accounting actions are simulated; no production changes or API calls occur.
 
@@ -41,31 +41,32 @@ Review the [standalone, clickable HTML prototype](docs/prototypes/buku-workspace
 | Area | |
 |---|---|
 | **Import** | PDF e-statements (text, password-protected, combined multi-account e.g. SMBC), KlikBCA CSV, Mandiri XLSX, BRI CSV, generic column detection · running-balance continuity check · dedupe on re-upload |
-| **Ledger / Neraca import** | GL or Neraca from Jurnal/Accurate/Excel (XLSX, CSV) · source checks with row refs (unbalanced groups, broken cells, reused codes, foreign lines without rate) · each entity keeps its own chart, mapped to Buku's by rules → AI (names only) → accountant · all-or-nothing posting · *Akun sumber* TB |
+| **Ledger / Neraca import** | GL or Neraca from Jurnal/Accurate/Excel (XLSX, CSV) · source checks with row refs (unbalanced groups, broken cells, reused codes, foreign lines without rate) · each entity keeps its own chart, mapped to Buku's by rules (type from the file's own numbering; a generic match proposes a new Buku account named after the client's) → AI (names only) → accountant · all-or-nothing posting · Neraca sub-headings (current / long-term) steer suggestions · an entity with its own chart opens Buku Besar and Neraca Saldo in *Akun klien*, each with its own ledger down to `sheet!row` |
 | **Multi-currency** | functional currency per entity · fx lines with rate · Kurs page (typed-in / from file, never fetched) · month-end revaluation on click · Gabungan translated to IDR (closing / average / historical, CTA line) |
 | **Onboarding** | Tambah klien (entities + bank accounts, template COA) · Saldo Awal per entity (plug to 3200) |
-| **Classify** | transfer matcher (own accounts → 1199, group entities → 1190) → rules → learned memory → LLM (cached, capped) → review |
+| **Classify** | transfer matcher (own accounts → 1199, group entities → 1190, within 2 business days) → rules → learned memory → financing text (loans, capital, own-account moves → balance sheet, no AI call) → LLM (cached, capped) → review |
 | **Ledger** | double entry, BigInt Rupiah, immutable entries, reclass-by-difference, period locks, PPN 11% split |
-| **Reports** | Neraca Saldo, Laba Rugi (month + YTD), Neraca (comparative), Kertas Kerja Gabungan with intercompany elimination, drill-down to source |
-| **Close** | Automatic controls per entity + group (TB, A=L+E, bank recon per account, continuity, clearing, suspense, intercompany), notes, sign-offs, lock |
+| **Jurnal Penyesuaian** | free-form adjusting entries · adjustment schedules (depreciation, amortisation, accruals reversed next month) whose monthly installment is proposed and posted on click · candidates from the ledger (fixed-asset purchases, prepayments, deferred revenue, recurring costs missing this month) |
+| **Reports** | Neraca Saldo with opening / movement / closing, Laba Rugi (month + YTD), Neraca (comparative, current / long-term liabilities, lines open into client accounts), Kertas Kerja Gabungan with intercompany elimination, drill-down to source |
+| **Close** | Automatic controls per entity + group (TB, A=L+E, bank recon per account, continuity, clearing, suspense, intercompany), sanity checks and ledger anomaly scans (flux vs the last 3 months, P&L against its nature, new or reactivated accounts, possible duplicates), scheduled installments still to post, AI explanation of all flagged controls or *Jelaskan* per control with a grounded draft correction (posted on click) or draft note, correction proposals for 1999 differences from ledger files, notes, sign-offs, lock |
 | **Document evidence** | Financial statements, company profiles, and supporting documents · versioned sources · reviewed company context · cited questions before posting · [support and limits](docs/evidence-workspace.md) |
 | **Demo** | 3 synthetic clients × 6 months seeded through the real pipeline; [5-minute investor script](docs/demo/investor-demo.md) |
 
 ## Quick start
 ```bash
-cp .env.example .env
+cp .env.example .env            # then paste the *staging* Supabase keys (Settings → API keys) and a DEMO_ADMIN_PASSWORD
 docker compose up -d            # Postgres 16 (or `brew install postgresql@16` + create role/db `buku`, and `buku_test` for tests)
 npm ci
 npx prisma migrate deploy
-npm run demo:reset              # seed "KJA Demo & Rekan" (≈5 s, no AI credit used)
-# Configure login settings described below, then provision the first invited user.
-npm run access -- list           # find the local firm ID
-npm run access -- invite --firm FIRM_ID --email accountant@example.com --name "Accountant"
-npm run dev                     # http://localhost:3000/login
+npm run demo:reset              # seed "KJA Demo & Rekan" + the demo admin (≈5 s, no AI credit used)
+npm run dev                     # http://localhost:3000/login → DEMO_ADMIN_EMAIL / DEMO_ADMIN_PASSWORD
 ```
-Before sign-in, set `BETTER_AUTH_URL` and a random `BETTER_AUTH_SECRET` of at least 32 characters. Choose `AUTH_MODE=email` with `RESEND_API_KEY` and a verified `AUTH_EMAIL_FROM`, or temporary `AUTH_MODE=shared-code` with a randomly generated 12-digit `AUTH_SHARED_CODE` stored only as a server secret. The invite command provisions access and sends no email. Shared-code mode requires an invited email plus the operator-provided code; it never sends mail. For an empty non-demo database, use `npm run access -- init --name "Your firm"` instead of seeding.
+Identity lives in Supabase Auth ([ADR 0010](docs/adrs/0010-supabase-platform.md)); local development uses the staging project's Auth with a local
+database, so nothing you do locally touches production users. To invite a real address instead of the demo admin:
+`npm run access -- list` (firm ID) then `npm run access -- invite --firm FIRM_ID --email you@example.com --name "Nama" --role ADMIN`.
+For an empty non-demo database, `npm run access -- init --name "Your firm"` creates the firm first.
 
-Claude Code sessions run `scripts/session-start.sh` automatically (Postgres, deps, migrate, seed).
+Agents with a session-start hook run `scripts/session-start.sh` automatically (Postgres, deps, migrate, seed); otherwise run it first.
 
 ## Commands
 | | |
@@ -81,73 +82,87 @@ Claude Code sessions run `scripts/session-start.sh` automatically (Postgres, dep
 
 ## Stack
 Next.js 16 (App Router, server actions) · TypeScript · Tailwind v4 · shadcn (base-nova) · Recharts · Prisma 7 + Postgres
-(Neon in production) · Vitest · Playwright. LLM via any OpenAI-compatible endpoint — OpenCode Zen by default.
+(Supabase Postgres in production) · Vitest · Playwright. LLM via any OpenAI-compatible endpoint — OpenCode Zen by default.
 
 ## Environment
 | Var | |
 |---|---|
-| `DATABASE_URL` | Postgres URL (Neon pooled URL in production) |
+| `DATABASE_URL` | Postgres URL. On Vercel the Supabase integration provides `POSTGRES_PRISMA_URL` (pooled, used at runtime) and `POSTGRES_URL_NON_POOLING` (migrations) |
 | `DEMO_MODE` | `true` enables synthetic demo fixtures; database reset remains an explicit operator command |
-| `BETTER_AUTH_URL` | Exact application origin for this environment; HTTPS outside localhost |
-| `BETTER_AUTH_SECRET` | Random secret, at least 32 characters; distinct per environment |
-| `AUTH_MODE` | `email` (default), or temporary `shared-code` for operator-distributed access |
-| `AUTH_SHARED_CODE` | Random 12-digit server-only secret, required in shared-code mode; never a source-code constant |
-| `RESEND_API_KEY` / `AUTH_EMAIL_FROM` | Email-code delivery key and verified sender; required only in email mode |
+| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | The environment's Supabase project (Auth). Integration names `NEXT_PUBLIC_SUPABASE_ANON_KEY` also work |
+| `SUPABASE_SECRET_KEY` | Server-only admin key (or `SUPABASE_SERVICE_ROLE_KEY`): invitations, revocation, demo admin, e2e |
+| `APP_URL` | Public origin for invite / reset links. Empty = request origin (pages) or the Supabase project's Site URL (CLI) |
+| `DEMO_ADMIN_EMAIL` / `DEMO_ADMIN_PASSWORD` | Demo admin created by the seed; refused unless `DEMO_MODE=true` |
+| `INITIAL_FIRM_NAME` / `INITIAL_ADMIN_EMAIL` / `INITIAL_ADMIN_NAME` | Build-time bootstrap of a real workspace: first firm + first admin invitation, once |
 | `EVIDENCE_ENABLED` | Same authenticated document workspace in both environments; `false` is an operational kill switch |
 | `AI_BASE_URL` | LLM gateway (default OpenCode Zen). Env-only on purpose, so a stored key can't be redirected |
 | `AI_API_KEY` / `AI_MODEL` | Fallback when nothing is saved in **Pengaturan**. Empty = rules + memory only (fully functional) |
-| `SETTINGS_SECRET` | ≥ 32 chars. Encrypts the AI key saved in Pengaturan. Changing it means re-saving the key |
-| `ADMIN_PASSCODE` | Additional operator passcode for credential changes in Pengaturan; a workspace session is also required |
+| `SETTINGS_SECRET` | ≥ 32 chars. Encrypts the AI key saved in Pengaturan and the Drive token. Changing it means re-saving / reconnecting |
 | `AI_MAX_CALLS_PER_IMPORT` / `AI_MONTHLY_TOKEN_BUDGET` | Credit guards (defaults 3 / 200 000) |
 
-## Deploy (Vercel + Neon)
-1. **Connect Neon to the Vercel project**: Vercel → project → *Storage* → *Connect Database* → Neon → the existing project
-   with the branch per environment from the table below. This injects `DATABASE_URL` (pooled) and `DATABASE_URL_UNPOOLED`.
-2. **Env vars** (Settings → Environment Variables): `DEMO_MODE` per the table below, `SETTINGS_SECRET`, `ADMIN_PASSCODE`, and optionally `AI_BASE_URL`.
-   Also configure the login URL, signing secret, and the variables for the chosen login mode and `EVIDENCE_ENABLED=true` in each environment. Provision at least one invited user for that environment before routing users to the new version. The AI key + model are set in **Pengaturan**.
-3. **Connect Git** (Settings → Git): `ismailir10/native-erp-v2`; production branch `main`.
-4. **Access**: application login is required on both staging and main. Production is the one real workspace ([ADR 0008](docs/adrs/0008-one-workspace.md)); staging keeps Vercel protection as an additional boundary and holds synthetic data only. Do not copy staging users or secrets into production.
-5. Put Functions in the same region as the Neon database (Settings → Functions) — every page runs many queries.
-   Neon `long-voice-58936160` is in `aws-ap-southeast-1`, so Functions run in `sin1`.
+## Deploy (Vercel + Supabase)
+Supabase organisation **Rightjet**, two projects in `ap-southeast-1`: `native-erp-v2` (production) and `native-erp-v2-staging`.
+1. **Connect Supabase to the Vercel project** (Vercel → Integrations → Supabase): production ↔ `native-erp-v2`, preview ↔
+   `native-erp-v2-staging`. The integration injects `POSTGRES_PRISMA_URL`, `POSTGRES_URL_NON_POOLING`, `NEXT_PUBLIC_SUPABASE_URL`,
+   `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` per environment — no database password is typed anywhere.
+2. **Env vars** (Settings → Environment Variables): `DEMO_MODE` per the table below, `SETTINGS_SECRET`, `EVIDENCE_ENABLED=true`, `APP_URL`,
+   and optionally `AI_BASE_URL`. Production: `INITIAL_FIRM_NAME` + `INITIAL_ADMIN_EMAIL` (the build invites that admin once).
+   Preview: `DEMO_ADMIN_EMAIL` + `DEMO_ADMIN_PASSWORD`. The AI key + model are set in **Pengaturan** by an admin.
+3. **Supabase Auth settings** (both projects, done in the dashboard): Site URL = the environment's origin, redirect allow-list
+   `<origin>/auth/callback` (staging also the `native-erp-v2-*-ismails-projects-…vercel.app` wildcard and `http://localhost:3000`),
+   *Allow new users to sign up* **off**, minimum password length 8, Data API **off** (Prisma owns `public`; nothing is exposed via PostgREST).
+   **Custom SMTP** (Authentication → Emails → SMTP) is required before invitations reach addresses outside the Supabase organisation;
+   the Bahasa templates to paste are in `supabase/templates/`.
+4. **Connect Git** (Settings → Git): `ismailir10/native-erp-v2`; production branch `main`.
+5. **Access**: application login is required on both staging and main. Production is the one real workspace ([ADR 0008](docs/adrs/0008-one-workspace.md)); staging keeps Vercel protection as an additional boundary and holds synthetic data only. Do not copy staging users or secrets into production.
+6. Functions run in `sin1` (Settings → Functions), the same region as the Supabase projects — every page runs many queries.
 
-| Vercel environment | Neon branch | `DEMO_MODE` | Who sees it |
+| Vercel environment | Supabase project | `DEMO_MODE` | Who sees it |
 |---|---|---|---|
-| Production (`main`) | `real-data` | `false` | Invited accountants. **The real workspace**, see [docs/real-data.md](docs/real-data.md) |
-| Preview, git branch `staging` | `preview` | `true` | Invited users + Vercel protection. Synthetic pre-production |
-| Preview (PR branches) | `preview` | `true` | Invited users + Vercel protection |
+| Production (`main`) | `native-erp-v2` | `false` | Invited accountants. **The real workspace**, see [docs/real-data.md](docs/real-data.md) |
+| Preview, git branch `staging` | `native-erp-v2-staging` | `true` | Invited users + Vercel protection. Synthetic pre-production |
+| Preview (PR branches) | `native-erp-v2-staging` | `true` | Invited users + Vercel protection |
 
-`vercel-build` (`scripts/vercel-build.sh`) then runs `prisma migrate deploy` on the unpooled URL, seeds the demo **only if the
-database is empty**, and builds. `npm run demo:reset` is destructive operator tooling: it removes all demo database data, including invitations and sessions; re-provision users afterward. The shared UI cannot trigger it. Neon Auth / Functions / buckets are not used.
+`vercel-build` (`scripts/vercel-build.sh`) then runs `prisma migrate deploy` on the non-pooling URL, seeds the demo **only if the
+database is empty**, runs the first-admin bootstrap, and builds. `npm run demo:reset` is destructive operator tooling: it removes all
+demo database data, including members; the demo admin is recreated by the seed. The shared UI cannot trigger it. Supabase Storage,
+Edge Functions, Realtime and Row Level Security are not used: the server is the boundary and Prisma connects as `postgres`.
 
 ### Invitation operations
 
 ```bash
-npm run access -- list
-npm run access -- invite --firm FIRM_ID --email accountant@example.com --name "Accountant"
+npm run access -- list                                                                        # firms and members with roles
+npm run access -- invite --firm FIRM_ID --email accountant@example.com --name "Accountant" [--role ADMIN|AKUNTAN] [--url https://origin]
 npm run access -- revoke --firm FIRM_ID --email accountant@example.com
 ```
 
-Run these only against the intended environment. Revocation invalidates sessions and unused codes. Re-invitation starts a fresh session lifecycle; existing accounts cannot be moved to another firm implicitly. Email codes expire after five minutes and are stored hashed. Both modes enforce persistent request limits, exact-origin checks, and live revocation. Shared workspace access has no application roles.
+Run these with `.env` pointing at the intended environment (its database URL, Supabase URL and secret key). `invite` creates the
+Supabase user and the firm member together and sends the invitation email; the link opens */atur-sandi* where the person sets a
+password and lands in the workspace. `revoke` disables the member (checked live on every request, so it takes effect at once) and bans
+the Supabase user; re-inviting lifts both and sends a fresh password link. An address cannot be moved to another firm implicitly.
+Roles: **ADMIN** may change the AI credentials and connect Google Drive; **AKUNTAN** does everything else. *Lupa kata sandi?* on the
+login page sends a reset link and never reveals whether the address is a member. *Keluar* ends the session on that device only.
 
-**Temporary shared-code mode:** the code acts as a shared password and does not verify ownership of an email inbox; the account is not marked email-verified. Only existing, enabled invitations can sign in. The code is never returned by an API or included in browser assets. Verification is limited per address across IPs/instances. Rotate `AUTH_SHARED_CODE` and redeploy to reject the old code immediately on new login attempts; existing sessions last up to seven days unless their users are revoked. Switch back to `AUTH_MODE=email` once email delivery is ready.
+Missing Supabase configuration keeps the workspace closed and shows a setup message instead of a server error.
 
-Missing login configuration keeps the workspace closed and shows a setup message instead of a server error.
-
-E2E uses a disposable localhost database, the real invitation/session flow in both login modes, and a captured test email transport. It never sends real messages or enables an authentication bypass. `.playwright/` contains ephemeral synthetic sessions and is ignored by Git.
+E2E creates its member through the Supabase admin API (CI: a local `supabase start` stack; a laptop: the staging project's Auth from
+`.env`) and logs in through the real form. It never sends mail or enables an authentication bypass. `.playwright/` holds the ephemeral
+session and credentials and is ignored by Git.
 
 ## Branch workflow
 
 Only `staging` and `main` are permanent branches. `staging` is the repository default and the base for new work.
-Create a temporary `codex/<task>` branch from current staging, open its PR against `staging`, and merge after CI passes.
+Create a temporary `task/<slug>` branch from current staging, open its PR against `staging`, and merge after CI passes.
 GitHub automatically deletes the merged task branch; remove its local copy after returning to staging.
 Promote tested staging to production with a separate `staging` → `main` PR using a **merge commit** to preserve ancestry.
 Both permanent branches are protected from deletion and force-push, and require the CI `check` result.
 
-Staging keeps the `native-erp-v2-git-real-data-…vercel.app` domain for saved links but now holds synthetic data only.
-Production uses the Neon branch named `real-data`; git branch names and database names are independent.
+Supabase mirrors git: project `native-erp-v2` (real workspace, git `main`) and project `native-erp-v2-staging` (synthetic demo,
+every preview). Nothing else. Staging keeps the `native-erp-v2-git-real-data-…vercel.app` domain for saved links; it serves the
+synthetic staging database.
 
 ## For contributors (humans and agents)
-Read [CLAUDE.md](CLAUDE.md) (= `AGENTS.md`): the spec → build → ship loop, gates, and which skill governs which folder.
+Read [AGENTS.md](AGENTS.md) (also reachable as `CLAUDE.md`): the spec → build → ship loop, gates, and which skill (`.agents/skills/`) governs which folder.
 Decisions live in [docs/adrs](docs/adrs/README.md). Demo data is synthetic — never commit real client statements.
 
 ## Document evidence workspace

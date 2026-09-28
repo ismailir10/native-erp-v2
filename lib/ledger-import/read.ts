@@ -226,9 +226,17 @@ export function readLedger(sheet: RawSheet, t: TableCandidate): LedgerRow[] {
 }
 
 const SECTION_ASSET = /^(assets?|aset|aktiva|harta)\b/i;
+/**
+ * Asset sub-headings that can open a Neraca on their own ("Current Assets" with no "Assets" row above): they are ASET too. Every one
+ * but "Current" is long-term, and TERM_NON_CURRENT matches the same words in singular and plural.
+ */
+const SECTION_ASSET_SUB = /^(current|fixed|other|non.?current|intangible|tangible)\s+(assets?)\b/i;
 const SECTION_LIAB = /^(liabilit|kewajiban|utang|hutang|current liabilit|long-term liabilit)/i;
 const SECTION_EQUITY = /^(equity|ekuitas|modal)\b/i;
 const SECTION_LIAB_EQUITY = /(liabilit.*(equity|ekuitas)|kewajiban.*(ekuitas|modal)|pasiva)/i;
+/** Sub-headings that say how long a balance runs (Jurnal: "Current Assets", "Fixed Assets", "Long-term Liability"). */
+const TERM_NON_CURRENT = /(long.?term|jangka panjang|non.?current|tidak lancar|(fixed|other|intangible|tangible)\s+assets?|aset tetap|aktiva tetap|tak berwujud|tidak berwujud|aset lain|depreciation|penyusutan|amorti)/i;
+const TERM_CURRENT = /(\bcurrent\b|\blancar\b|jangka pendek|short.?term)/i;
 
 export function readNeraca(sheet: RawSheet, t: TableCandidate): { date: Date | null; rows: NeracaRow[]; totals: NeracaTotal[] } {
   const c = t.columns;
@@ -240,6 +248,7 @@ export function readNeraca(sheet: RawSheet, t: TableCandidate): { date: Date | n
     }
   }
   let section: AccountType | null = null;
+  let term: NeracaRow["termHint"] = null;
   const rows: NeracaRow[] = [];
   const totals: NeracaTotal[] = [];
   for (let r = t.headerRow + 1; r < sheet.rows.length; r++) {
@@ -257,10 +266,14 @@ export function readNeraca(sheet: RawSheet, t: TableCandidate): { date: Date | n
     })();
 
     if (!hasCode && isBlank(amountCell) && (c.amount !== undefined || (isBlank(row[c.debit!]) && isBlank(row[c.credit!])))) {
-      // Section heading.
+      // Section heading. A new main section resets the term; a sub-heading ("Fixed Assets") sets it.
+      const before: AccountType | null = section;
+      const headingTerm = TERM_NON_CURRENT.test(label) ? "NON_CURRENT" : TERM_CURRENT.test(label) ? "CURRENT" : null;
       if (SECTION_LIAB_EQUITY.test(label) || SECTION_LIAB.test(label)) section = "LIABILITAS";
       else if (SECTION_EQUITY.test(label)) section = "EKUITAS";
-      else if (SECTION_ASSET.test(label)) section = "ASET";
+      else if (SECTION_ASSET.test(label) || SECTION_ASSET_SUB.test(label)) section = "ASET";
+      if (section !== before) term = headingTerm;
+      else if (headingTerm) term = headingTerm;
       continue;
     }
     if (/^(total|jumlah)\b/i.test(label) && !hasCode) {
@@ -284,6 +297,7 @@ export function readNeraca(sheet: RawSheet, t: TableCandidate): { date: Date | n
       name: hasCode ? nameCell || codeCell : label,
       amount: debitPositive,
       typeHint: guessEquity(label, typeHint),
+      termHint: guessEquity(label, typeHint) === "EKUITAS" ? null : term,
       coded: hasCode,
       errors,
     });

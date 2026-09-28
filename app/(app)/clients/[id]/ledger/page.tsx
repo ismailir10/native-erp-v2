@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { loadClientPage } from "@/lib/client-page";
+import { clientAccountsView, loadClientPage } from "@/lib/client-page";
+import { sourceTrialBalance } from "@/lib/reports/source";
+import { AccountViewTabs } from "@/components/app/account-view-tabs";
 import { type SearchParams, withParams } from "@/lib/scope";
 import { trialBalance } from "@/lib/reports/ledger";
 import { formatPeriod } from "@/lib/format";
@@ -21,14 +23,66 @@ const TYPES = [
 ] as const;
 
 export default async function LedgerIndex({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
-  const { client, period, scope, periodOptions, entityOptions, base, scopeLabel, currency, mixed } = await loadClientPage(params, searchParams);
+  const { client, period, scope, periodOptions, entityOptions, base, scopeLabel, currency, mixed, sp } = await loadClientPage(params, searchParams);
   const note = currencyNote(currency, mixed);
-  const header = <PageHeader title="Buku Besar" description={`${scopeLabel} · saldo per ${formatPeriod(period.year, period.month)}${note ? ` · ${note}` : ""}`} actions={<ScopeBar entities={entityOptions} periods={periodOptions} entity={scope.value} period={period.key} />} />;
+  const view = await clientAccountsView(scope, sp);
+  const q = { period: period.key, entity: scope.value };
+  const header = (
+    <>
+      <PageHeader title="Buku Besar" description={`${scopeLabel} · saldo per ${formatPeriod(period.year, period.month)}${note ? ` · ${note}` : ""}`} actions={<ScopeBar entities={entityOptions} periods={periodOptions} entity={scope.value} period={period.key} />} />
+      {view.available && <AccountViewTabs clientView={view.active} href={(v) => withParams(`${base}/ledger`, { ...q, view: v })} />}
+    </>
+  );
+  if (view.active) {
+    const src = await sourceTrialBalance(prisma, scope.value, period.end, period.start);
+    return (
+      <div className="space-y-6">
+        {header}
+        <NextStep>Akun seperti di file klien. Pilih akun untuk melihat mutasinya sampai baris sumbernya.</NextStep>
+        <div className="grid gap-4">
+          {TYPES.map(([t, label]) => {
+            const rows = src.filter((r) => r.type === t);
+            if (!rows.length) return null;
+            const sign = t === "ASET" || t === "BEBAN" ? 1n : -1n;
+            return (
+              <Card key={t}>
+                <CardHeader><CardTitle>{label}</CardTitle></CardHeader>
+                <CardContent className="px-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="pl-6">Akun klien</TableHead>
+                        <TableHead className="text-right">Baris bln ini</TableHead>
+                        <TableHead className="pr-6 text-right">Saldo</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {rows.map((r) => (
+                        <TableRow key={r.key}>
+                          <TableCell className="pl-6 whitespace-normal">
+                            <Link href={r.key === "prior" ? withParams(`${base}/reports`, { period: `${period.year - 1}-12`, entity: scope.value, tab: "pl" }) : r.sourceAccountId ? withParams(`${base}/ledger/akun/${r.sourceAccountId}`, q) : withParams(`${base}/ledger/${r.accountCode}`, q)} className="underline decoration-border underline-offset-4 hover:text-primary hover:decoration-primary" data-testid="client-account-link">
+                              {r.code && <span className="num text-muted-foreground">{r.code}</span>} {r.name}
+                            </Link>
+                            <div className="text-xs text-muted-foreground">{r.clientAccount ? `→ ${r.clientAccount.code} ${r.clientAccount.name}` : r.key === "prior" ? "dari pendapatan & beban tahun lalu · buka Laba Rugi" : "tanpa akun klien"}</div>
+                          </TableCell>
+                          <TableCell className="num text-right text-muted-foreground">{r.periodLines || "–"}</TableCell>
+                          <TableCell className="pr-6 text-right"><Money value={r.net * sign} currency={currency} /></TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
   const tb = await withFx(() => trialBalance(prisma, { clientId: client.id, entityIds: scope.entityIds }, period.end));
   if (tb instanceof FxMissingError) return <div className="space-y-6">{header}<FxMissing error={tb} base={base} /></div>;
   const counts = await prisma.journalLine.groupBy({ by: ["accountId"], where: { entityId: { in: scope.entityIds }, date: { gte: period.start, lte: period.end } }, _count: true });
   const countMap = new Map(counts.map((c) => [c.accountId, c._count]));
-  const q = { period: period.key, entity: scope.value };
   return (
     <div className="space-y-6">
       {header}

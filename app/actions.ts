@@ -2,13 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { getClientForFirm, getCurrentFirm } from "@/lib/tenant";
+import { getClientForFirm, getCurrentFirm, getCurrentMember } from "@/lib/tenant";
 import { importStatement, type ImportSummary } from "@/lib/import/pipeline";
 import { resolveProvider } from "@/lib/settings/ai";
 import { acceptSimilar, reviewTransaction } from "@/lib/review";
 import { CloseError, lockPeriod } from "@/lib/controls";
 import { LedgerError } from "@/lib/ledger/post";
 import { postAdjustment } from "@/lib/ledger/adjustment";
+import { createSchedule, postAllDue, postInstallment, stopSchedule, type ScheduleInput } from "@/lib/adjust/schedules";
 import { ParseError } from "@/lib/import/types";
 import { PdfPasswordError } from "@/lib/import/parsers/pdf";
 import { MoneyError } from "@/lib/money";
@@ -19,6 +20,12 @@ import { OpeningError, postOpening, type OpeningLineInput } from "@/lib/opening"
 import type { TaxTag } from "@/lib/generated/prisma/enums";
 import { RateError, upsertRate, validateRateInput } from "@/lib/fx/rates";
 import { postRevaluation, RevaluationError } from "@/lib/fx/revalue";
+import { reviewClose, type CloseReviewView } from "@/lib/controls/ai-review";
+import { explainControl, ExplainError, type ControlExplanation } from "@/lib/controls/explain";
+import { dismissProposal, postProposal } from "@/lib/adjust/proposals";
+import { postSuspenseCorrection, SUSPENSE_NOT_DISMISSABLE, SUSPENSE_PREFIX } from "@/lib/adjust/suspense";
+import { AiBudgetError } from "@/lib/ai/budget";
+import { AiAnswerError } from "@/lib/ai/provider";
 import { acceptCheck, LedgerImportError, postImport, stageImport } from "@/lib/ledger-import/post";
 import { acceptMappings, MappingError, suggestMappings } from "@/lib/ledger-import/mapping";
 import type { FsLine } from "@/lib/coa/template";
@@ -49,7 +56,7 @@ export async function importAction(formData: FormData): Promise<Result<{ summary
     if (!client.entities.some((e) => e.bankAccounts.some((b) => b.id === bankAccountId))) return { ok: false, error: "Pilih rekening bank dulu." };
     if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Pilih file rekening koran (PDF, CSV, atau XLSX)." };
     if (file.size > MAX_UPLOAD) return { ok: false, error: "File terlalu besar (maks. 5 MB)." };
-    const summary = await importStatement(prisma, { bankAccountId, fileName: file.name, data: Buffer.from(await file.arrayBuffer()), provider: await resolveProvider(prisma), password });
+    const summary = await importStatement(prisma, { bankAccountId, fileName: file.name, data: Buffer.from(await file.arrayBuffer()), provider: await resolveProvider(prisma), password, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${clientId}`, "layout");
     return { ok: true, summary };
   } catch (e) {
@@ -63,7 +70,7 @@ export async function importSampleAction(clientId: string, bankAccountId: string
     const client = await getClientForFirm(clientId);
     if (!client.entities.some((e) => e.bankAccounts.some((b) => b.id === bankAccountId))) return { ok: false, error: "Rekening tidak ditemukan." };
     const f = await liveUploadFile();
-    const summary = await importStatement(prisma, { bankAccountId, fileName: f.fileName, data: f.data, provider: await resolveProvider(prisma) });
+    const summary = await importStatement(prisma, { bankAccountId, fileName: f.fileName, data: f.data, provider: await resolveProvider(prisma), actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${clientId}`, "layout");
     return { ok: true, summary };
   } catch (e) {
@@ -80,7 +87,7 @@ async function assertTxInFirm(bankTxId: string) {
 export async function reviewAction(input: { bankTxId: string; accountCode: string; taxTag: TaxTag | null; createRule?: boolean }): Promise<Result> {
   try {
     const clientId = await assertTxInFirm(input.bankTxId);
-    await reviewTransaction(prisma, input);
+    await reviewTransaction(prisma, { ...input, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${clientId}`, "layout");
     return { ok: true };
   } catch (e) {
@@ -96,7 +103,7 @@ export async function acceptSimilarAction(bankTxId: string, scope: { entityIds: 
     if (!scope || !/^(19|20|21)\d{2}-(0[1-9]|1[0-2])$/.test(scope.period) || !scope.entityIds.length || scope.entityIds.some(id => !client.entities.some(e => e.id === id)) || !scope.entityIds.includes(source.entityId)) return { ok: false, error: "Cakupan review tidak valid. Muat ulang halaman." };
     const through = new Date(Date.UTC(Number(scope.period.slice(0, 4)), Number(scope.period.slice(5)), 0));
     if (source.date > through) return { ok: false, error: "Transaksi berada di luar periode review." };
-    const count = await acceptSimilar(prisma, bankTxId, { entityIds: scope.entityIds, through });
+    const count = await acceptSimilar(prisma, bankTxId, { entityIds: scope.entityIds, through }, (await getCurrentMember()).id);
     revalidatePath(`/clients/${clientId}`, "layout");
     return { ok: true, count };
   } catch (e) {
@@ -119,7 +126,8 @@ export async function ackControlAction(clientId: string, year: number, month: nu
   try {
     if (note.trim().length < 5) return { ok: false, error: "Tulis catatan singkat (min. 5 karakter)." };
     const period = await periodFor(clientId, year, month, { mustBeOpen: true });
-    await prisma.controlAck.upsert({ where: { periodId_controlKey: { periodId: period.id, controlKey } }, create: { periodId: period.id, controlKey, note }, update: { note } });
+    const ackedById = (await getCurrentMember()).id;
+    await prisma.controlAck.upsert({ where: { periodId_controlKey: { periodId: period.id, controlKey } }, create: { periodId: period.id, controlKey, note, ackedById }, update: { note, ackedById } });
     revalidatePath(`/clients/${clientId}`, "layout");
     return { ok: true };
   } catch (e) {
@@ -130,7 +138,8 @@ export async function ackControlAction(clientId: string, year: number, month: nu
 export async function signoffAction(clientId: string, year: number, month: number, key: string, done: boolean): Promise<Result> {
   try {
     const period = await periodFor(clientId, year, month, { mustBeOpen: true });
-    if (done) await prisma.closeSignoff.upsert({ where: { periodId_key: { periodId: period.id, key } }, create: { periodId: period.id, key }, update: {} });
+    const doneById = (await getCurrentMember()).id;
+    if (done) await prisma.closeSignoff.upsert({ where: { periodId_key: { periodId: period.id, key } }, create: { periodId: period.id, key, doneById }, update: { doneById, doneAt: new Date() } });
     else await prisma.closeSignoff.deleteMany({ where: { periodId: period.id, key } });
     revalidatePath(`/clients/${clientId}/close`);
     return { ok: true };
@@ -142,7 +151,7 @@ export async function signoffAction(clientId: string, year: number, month: numbe
 export async function lockAction(clientId: string, year: number, month: number): Promise<Result> {
   try {
     await getClientForFirm(clientId);
-    await lockPeriod(prisma, clientId, year, month, "Ditutup dari halaman Tutup Buku");
+    await lockPeriod(prisma, clientId, year, month, "Ditutup dari halaman Tutup Buku", (await getCurrentMember()).id);
     revalidatePath("/", "layout");
     return { ok: true };
   } catch (e) {
@@ -153,7 +162,7 @@ export async function lockAction(clientId: string, year: number, month: number):
 export async function unlockAction(clientId: string, year: number, month: number): Promise<Result> {
   try {
     const period = await periodFor(clientId, year, month);
-    await prisma.period.update({ where: { id: period.id }, data: { status: "OPEN", lockedAt: null } });
+    await prisma.period.update({ where: { id: period.id }, data: { status: "OPEN", lockedAt: null, lockedById: null } });
     revalidatePath("/", "layout");
     return { ok: true };
   } catch (e) {
@@ -170,9 +179,54 @@ export async function adjustmentAction(input: {
 }): Promise<Result<{ entryId: string }>> {
   try {
     const client = await getClientForFirm(input.clientId);
-    const entry = await postAdjustment(prisma, { clientId: client.id, entityId: input.entityId, date: new Date(`${input.date}T00:00:00Z`), memo: input.memo, lines: input.lines });
+    const entry = await postAdjustment(prisma, { clientId: client.id, entityId: input.entityId, date: new Date(`${input.date}T00:00:00Z`), memo: input.memo, lines: input.lines, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true, entryId: entry.id };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Adjustment schedules (accounting-rules 5a): create, post an installment or every due one, stop. */
+export async function createScheduleAction(input: Omit<ScheduleInput, "actorId">): Promise<Result<{ scheduleId: string }>> {
+  try {
+    const client = await getClientForFirm(input.clientId);
+    const s = await createSchedule(prisma, { ...input, clientId: client.id, actorId: (await getCurrentMember()).id });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, scheduleId: s.id };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function postInstallmentAction(clientId: string, scheduleId: string, k: number): Promise<Result> {
+  try {
+    const client = await getClientForFirm(clientId);
+    await postInstallment(prisma, { clientId: client.id, scheduleId, k, actorId: (await getCurrentMember()).id });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function postAllDueAction(clientId: string, year: number, month: number): Promise<Result<{ posted: number }>> {
+  try {
+    const client = await getClientForFirm(clientId);
+    const posted = await postAllDue(prisma, { clientId: client.id, year, month, actorId: (await getCurrentMember()).id });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, posted };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function stopScheduleAction(clientId: string, scheduleId: string): Promise<Result> {
+  try {
+    const client = await getClientForFirm(clientId);
+    await stopSchedule(prisma, { clientId: client.id, scheduleId });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
   } catch (e) {
     return fail(e);
   }
@@ -195,7 +249,7 @@ export async function openingAction(input: { clientId: string; entityId: string;
     const client = await getClientForFirm(input.clientId);
     const m = input.date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (!m) return { ok: false, error: "Isi tanggal saldo awal." };
-    await postOpening(prisma, { clientId: client.id, entityId: input.entityId, date: dateOnly(Number(m[1]), Number(m[2]), Number(m[3])), lines: input.lines });
+    await postOpening(prisma, { clientId: client.id, entityId: input.entityId, date: dateOnly(Number(m[1]), Number(m[2]), Number(m[3])), lines: input.lines, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
   } catch (e) {
@@ -239,7 +293,70 @@ export async function revaluationAction(clientId: string, entityId: string, year
   try {
     const client = await getClientForFirm(clientId);
     if (!client.entities.some((e) => e.id === entityId)) return { ok: false, error: "Entitas tidak ditemukan." };
-    await postRevaluation(prisma, client.id, entityId, year, month);
+    await postRevaluation(prisma, client.id, entityId, year, month, (await getCurrentMember()).id);
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** AI close review (ADR 0009): explains flagged controls and proposes actions. Never posts, acks or locks. */
+export async function closeReviewAction(clientId: string, year: number, month: number): Promise<Result<{ review: CloseReviewView }>> {
+  try {
+    const client = await getClientForFirm(clientId);
+    const provider = await resolveProvider(prisma);
+    if (!provider) return { ok: false, error: "AI belum diatur di Pengaturan. Kontrol tetap berjalan tanpa AI." };
+    return { ok: true, review: await reviewClose(prisma, client.firmId, client.id, year, month, provider) };
+  } catch (e) {
+    if (e instanceof AiBudgetError || e instanceof AiAnswerError) return { ok: false, error: e.message };
+    if (e instanceof Error && (e.name === "TimeoutError" || /^(AI \d|Model )/.test(e.message))) {
+      console.error(e);
+      return { ok: false, error: "AI tidak tersedia saat ini. Kontrol tetap berjalan; coba lagi nanti." };
+    }
+    return fail(e);
+  }
+}
+
+/** Close copilot (accounting-rules 20b): one flagged control explained; a draft journal is stored, never posted here. */
+export async function explainControlAction(clientId: string, year: number, month: number, controlKey: string): Promise<Result<{ explanation: ControlExplanation }>> {
+  try {
+    const client = await getClientForFirm(clientId);
+    await periodFor(client.id, year, month, { mustBeOpen: true });
+    const provider = await resolveProvider(prisma);
+    if (!provider) return { ok: false, error: "AI belum diatur di Pengaturan. Kontrol tetap berjalan tanpa AI." };
+    const explanation = await explainControl(prisma, client.firmId, client.id, year, month, controlKey, provider);
+    if (explanation.proposal) revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, explanation };
+  } catch (e) {
+    if (e instanceof AiBudgetError || e instanceof AiAnswerError || e instanceof ExplainError) return { ok: false, error: e.message };
+    if (e instanceof Error && (e.name === "TimeoutError" || /^(AI \d|Model )/.test(e.message))) {
+      console.error(e);
+      return { ok: false, error: "AI tidak tersedia saat ini. Kontrol tetap berjalan; coba lagi nanti." };
+    }
+    return fail(e);
+  }
+}
+
+export async function postProposalAction(clientId: string, proposalId: string, accounts: string[]): Promise<Result> {
+  try {
+    const client = await getClientForFirm(clientId);
+    const actorId = (await getCurrentMember()).id;
+    if (proposalId.startsWith(SUSPENSE_PREFIX)) await postSuspenseCorrection(prisma, { firmId: client.firmId, clientId: client.id, lineId: proposalId.slice(SUSPENSE_PREFIX.length), accounts, actorId });
+    else await postProposal(prisma, { clientId: client.id, proposalId, accounts, actorId });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function dismissProposalAction(clientId: string, proposalId: string): Promise<Result> {
+  try {
+    const client = await getClientForFirm(clientId);
+    const actorId = (await getCurrentMember()).id;
+    if (proposalId.startsWith(SUSPENSE_PREFIX)) return { ok: false, error: SUSPENSE_NOT_DISMISSABLE };
+    await dismissProposal(prisma, { clientId: client.id, proposalId, actorId });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
   } catch (e) {
@@ -270,10 +387,9 @@ export async function stageLedgerAction(
       entityId,
       date: m ? dateOnly(Number(m[1]), Number(m[2]), Number(m[3])) : undefined,
       currencyMode: formData.get("currencyMode") === "CONVERT" ? "CONVERT" : "FUNCTIONAL",
+      actorId: (await getCurrentMember()).id,
     });
     if (res.status === "CHOOSE_SHEET") return { ok: true, candidates: res.candidates.map((c) => ({ sheet: c.sheet, mode: c.mode, dataRows: c.dataRows })) };
-    // Rule-based suggestions right away (no AI, no credit); AI only when the accountant asks on the mapping step.
-    await suggestMappings(prisma, { firmId: client.firmId, clientId: client.id, provider: null, useAi: false });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true, importId: res.importId };
   } catch (e) {
@@ -316,6 +432,7 @@ export async function acceptMappingsAction(
       prisma,
       client.id,
       items.map((i) => ({ sourceAccountId: i.sourceAccountId, accountCode: i.accountCode, newAccount: i.newAccount ? { fsLine: i.newAccount.fsLine as FsLine, name: i.newAccount.name } : undefined, method: i.method as MapMethod })),
+      (await getCurrentMember()).id,
     );
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true, mapped: r.mapped };
@@ -327,7 +444,7 @@ export async function acceptMappingsAction(
 export async function postLedgerImportAction(clientId: string, importId: string): Promise<Result<{ entries: number }>> {
   try {
     const client = await getClientForFirm(clientId);
-    const r = await postImport(prisma, client.id, importId);
+    const r = await postImport(prisma, client.id, importId, (await getCurrentMember()).id);
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true, entries: r.entries };
   } catch (e) {
@@ -338,7 +455,12 @@ export async function postLedgerImportAction(clientId: string, importId: string)
 export async function discardLedgerDraftAction(clientId: string, importId: string): Promise<Result> {
   try {
     const client = await getClientForFirm(clientId);
-    const { count } = await prisma.ledgerImport.deleteMany({ where: { id: importId, clientId: client.id, status: "DRAFT" } });
+    const count = await prisma.$transaction(async (tx) => {
+      const { count } = await tx.ledgerImport.deleteMany({ where: { id: importId, clientId: client.id, status: "DRAFT" } });
+      // A draft prepared from Dokumen can be prepared again after discarding it.
+      if (count) await tx.evidenceSelection.updateMany({ where: { firmId: client.firmId, importId }, data: { importId: null } });
+      return count;
+    });
     if (!count) return { ok: false, error: "Draf tidak ditemukan atau sudah dicatat." };
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };

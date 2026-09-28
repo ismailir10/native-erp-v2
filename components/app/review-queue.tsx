@@ -115,7 +115,7 @@ export function ReviewQueue({ items, accounts, scope }: { items: ReviewItem[]; a
               key={i.id}
               onClick={() => setActive(idx)}
               data-testid="review-item"
-              className={cn("rounded-lg border bg-card p-4 shadow-xs transition-shadow", idx === active && "ring-2 ring-primary/40")}
+              className={cn("rounded-lg border bg-card p-4", idx === active && "ring-2 ring-primary/40")}
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">

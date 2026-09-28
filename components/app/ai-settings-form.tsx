@@ -30,7 +30,6 @@ export function AiSettingsForm({ status, canSave }: { status: Status; canSave: b
   const router = useRouter();
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState(status.model ?? "");
-  const [passcode, setPasscode] = useState("");
   const [models, setModels] = useState<string[] | null>(null);
   const [busy, setBusy] = useState<null | "save" | "list" | "clear">(null);
 
@@ -127,18 +126,13 @@ export function AiSettingsForm({ status, canSave }: { status: Status; canSave: b
               )}
             </FieldDescription>
           </Field>
-          <Field>
-            <FieldLabel htmlFor="ai-passcode">Kode admin</FieldLabel>
-            <Input id="ai-passcode" type="password" autoComplete="off" value={passcode} onChange={(e) => setPasscode(e.target.value)} disabled={!canSave} />
-            <FieldDescription>Kode admin dari pengelola aplikasi. Wajib untuk menyimpan atau menghapus kunci.</FieldDescription>
-          </Field>
         </div>
       </CardContent>
       <CardFooter className="flex flex-wrap gap-2 border-t pt-4">
         <Button
           disabled={disabled || !model.trim() || (!apiKey.trim() && !status.keyLast4)}
           onClick={() =>
-            run("save", () => saveAiSettingsAction({ passcode, apiKey, model }), () => {
+            run("save", () => saveAiSettingsAction({ apiKey, model }), () => {
               toast.success("Pengaturan AI tersimpan");
               setApiKey("");
               router.refresh();
@@ -153,7 +147,7 @@ export function AiSettingsForm({ status, canSave }: { status: Status; canSave: b
             className="ml-auto"
             disabled={disabled}
             onClick={() =>
-              run("clear", () => clearAiKeyAction({ passcode }), () => {
+              run("clear", () => clearAiKeyAction(), () => {
                 toast.success("Kunci dihapus");
                 router.refresh();
               })

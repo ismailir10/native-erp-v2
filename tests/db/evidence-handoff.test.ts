@@ -3,9 +3,13 @@ import { db, resetDb } from "../helpers";
 import { confirmSelection, prepareImport } from "@/lib/evidence/review";
 import { createIntake, hash, json } from "@/lib/evidence/store";
 import { extractEvidence } from "@/lib/evidence/extract";
+import { loadWorkspace } from "@/lib/evidence/workspace";
 import { importSourceAccounts, postImport } from "@/lib/ledger-import/post";
 import { acceptMappings, suggestMappings } from "@/lib/ledger-import/mapping";
 import { createClient, createFirm } from "@/lib/setup";
+import ExcelJS from "exceljs";
+import { upsertRate } from "@/lib/fx/rates";
+import { dateOnly } from "@/lib/format";
 import { GROUP_ENTITIES, groupWorkbook, POSTABLE } from "../evidence-workbook-fixture";
 
 beforeEach(resetDb);
@@ -102,5 +106,37 @@ describe("Drive evidence → ledger handoff for a group workbook", () => {
     expect(staged).toMatchObject({ kind: "LEDGER" });
     expect(await db.statementImport.count()).toBe(0);
     expect(await db.ledgerImport.count()).toBe(1);
+  });
+});
+
+describe("Drive handoff currency mode", () => {
+  it("records row currencies at extraction and stages a converted draft when asked", async () => {
+    const g = await setup([{ shortName: "HOLDCO", name: "Chickin Pte Ltd", currency: "SGD" }]);
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("10_HC_GL_MASTER");
+    [["Entity", "Entry Date", "Account Code", "Account Name", "Currency", "Debit", "Credit"],
+      ["HOLDCO", "2026-01-05", "10002", "Bank OCBC USD", "USD", 100, 0],
+      ["HOLDCO", "2026-01-05", "20000", "Long Term Loan Payable", "USD", 0, 100]].forEach((r) => ws.addRow(r));
+    const bytes = Buffer.from(await wb.xlsx.writeBuffer());
+    const { units } = await extractEvidence("hc.xlsx", bytes);
+    expect(units.find((u) => u.key === "10_HC_GL_MASTER")?.table?.currencies).toEqual(["USD"]);
+    const intake = await createIntake(db, g.firm.id, g.client.id);
+    const doc = await db.evidenceDocument.create({ data: { firmId: g.firm.id, intakeId: intake.id, sourceKey: "hc", name: "hc.xlsx", path: "hc.xlsx", mimeType: "", status: "READY" } });
+    const version = await db.evidenceVersion.create({ data: { firmId: g.firm.id, documentId: doc.id, hash: hash(bytes), data: new Uint8Array(bytes), name: doc.name, size: bytes.length, extracted: true, units: json(units) } });
+    await db.evidenceDocument.update({ where: { id: doc.id }, data: { currentVersionId: version.id } });
+    await upsertRate(db, g.firm.id, { currency: "USD", quote: "SGD", date: dateOnly(2026, 1, 1), kind: "SPOT", rate: "1.35" });
+    await confirmSelection(db, g.firm.id, intake.id, version.id, "10_HC_GL_MASTER", { role: "SOURCE", entityId: g.ids.HOLDCO, periodStart: "2026-01-01", periodEnd: "2026-01-31", currency: "SGD" });
+    // First as written, then discarded (the Dokumen link is left dangling) and prepared again with conversion.
+    const first = await prepareImport(db, g.firm.id, intake.id, version.id, "10_HC_GL_MASTER");
+    expect((await db.ledgerImport.findUniqueOrThrow({ where: { id: first.importId! } })).currencyMode).toBe("FUNCTIONAL");
+    await db.ledgerImport.delete({ where: { id: first.importId! } });
+    expect((await loadWorkspace(db, g.firm.id, intake.id)).selections.find((x) => x.unitKey === "10_HC_GL_MASTER")?.importId).toBeNull();
+    const { importId } = await prepareImport(db, g.firm.id, intake.id, version.id, "10_HC_GL_MASTER", undefined, undefined, "CONVERT");
+    expect(importId).not.toBe(first.importId);
+    const draft = await db.ledgerImport.findUniqueOrThrow({ where: { id: importId! }, include: { checks: true } });
+    expect(draft.currencyMode).toBe("CONVERT");
+    const lines = (draft.data as unknown as { entries: { lines: { amount: string; fx: { currency: string; rate: string } | null }[] }[] }).entries[0].lines;
+    expect(lines.map((l) => [l.amount, l.fx?.currency, l.fx?.rate])).toEqual([["13500", "USD", "1.35"], ["-13500", "USD", "1.35"]]);
+    expect(draft.checks.filter((c) => c.code === "FX_NO_RATE")).toEqual([]);
   });
 });

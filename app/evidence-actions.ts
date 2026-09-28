@@ -1,6 +1,6 @@
 "use server";
 import { prisma } from "@/lib/db";
-import { getCurrentFirm } from "@/lib/tenant";
+import { getCurrentFirm, getCurrentMember } from "@/lib/tenant";
 import { requireEvidenceEnabled } from "@/lib/evidence/config";
 import { appendUpload, beginUpload, createIntake, finishUpload, intakeForFirm, lockIntake } from "@/lib/evidence/store";
 import { attachDrive, includeDocument, processStep, rebuildConflicts } from "@/lib/evidence/jobs";
@@ -59,5 +59,5 @@ export async function createEvidenceClientAction(intakeId: string, input: NewCli
 export async function linkEvidenceClientAction(intakeId: string, clientId: string) { return result(async () => linkClient(prisma, await firm(), intakeId, clientId)); }
 export async function analyzeEvidenceAction(intakeId: string, versionId: string) { return result(async () => analyzeVersion(prisma, await firm(), intakeId, versionId, await provider())); }
 export async function askEvidenceAction(intakeId: string, question: string, entityId?: string, period?: string) { return result(async () => askEvidence(prisma, await firm(), intakeId, { question, entityId, period }, await provider())); }
-export async function prepareEvidenceImportAction(intakeId: string, versionId: string, unitKey: string, bankAccountId?: string, password?: string) { return result(async () => prepareImport(prisma, await firm(), intakeId, versionId, unitKey, bankAccountId, password)); }
-export async function postEvidenceBankAction(intakeId: string, versionId: string, unitKey: string, bankAccountId: string, password?: string) { return result(async () => postEvidenceBank(prisma, await firm(), intakeId, versionId, unitKey, bankAccountId, password)); }
+export async function prepareEvidenceImportAction(intakeId: string, versionId: string, unitKey: string, bankAccountId?: string, password?: string, currencyMode?: string) { return result(async () => prepareImport(prisma, await firm(), intakeId, versionId, unitKey, bankAccountId, password, currencyMode === "CONVERT" ? "CONVERT" : "FUNCTIONAL", (await getCurrentMember()).id)); }
+export async function postEvidenceBankAction(intakeId: string, versionId: string, unitKey: string, bankAccountId: string, password?: string) { return result(async () => postEvidenceBank(prisma, await firm(), intakeId, versionId, unitKey, bankAccountId, password, (await getCurrentMember()).id)); }

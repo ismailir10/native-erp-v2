@@ -5,12 +5,15 @@ import { postJournal, type PostLine } from "@/lib/ledger/post";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { formatDate } from "@/lib/format";
 import { loadRates, lookupRate, upsertFileRate } from "@/lib/fx/rates";
-import { formatRate, isCurrency, parseRate } from "@/lib/fx/currency";
+import { formatRate, formatRateId, isCurrency, parseRate } from "@/lib/fx/currency";
 import { ParseError } from "@/lib/import/types";
 import { detectTables, readSheets, readTable } from "@/lib/ledger-import/read";
 import { accountKey, planLedger, planNeraca, type Check, type CurrencyMode, type EntityInfo, type Plan, type PlanEntry } from "@/lib/ledger-import/check";
-import { inferType } from "@/lib/ledger-import/mapping";
-import type { TableCandidate } from "@/lib/ledger-import/types";
+import { inferType, learnScheme, suggestMappings } from "@/lib/ledger-import/mapping";
+import type { NeracaRow, TableCandidate } from "@/lib/ledger-import/types";
+
+/** Memo of the 1999 line an accepted unbalanced group posts (rule 15a); the 1999 correction proposals look for it. */
+export const SOURCE_DIFFERENCE_MEMO = "Selisih dari file sumber";
 
 /**
  * Ledger / Neraca import (accounting-rules §15a): stage (read → check → source accounts → DRAFT plan),
@@ -40,6 +43,8 @@ export type StageInput = {
   entityMap?: Record<string, string>;
   /** Files without an entity column (and every Neraca) go to this entity. */
   entityId?: string;
+  /** Member staging the file; null for system runs. */
+  actorId?: string | null;
   /** Neraca date when the file doesn't state one. */
   date?: Date;
   currencyMode?: CurrencyMode;
@@ -50,7 +55,8 @@ export type StageResult =
   | { status: "STAGED"; importId: string; mode: "LEDGER" | "NERACA"; checks: Check[]; entries: number; sourceAccounts: number; unmapped: number };
 
 type FileRate = { currency: string; quote: string; date: string; rate: string; ref: string };
-type SavedPlan = { rates?: FileRate[]; entries: (Omit<PlanEntry, "date" | "imbalance" | "rounding" | "lines"> & { date: string; imbalance: string; rounding: string; lines: (Omit<PlanEntry["lines"][number], "amount" | "fx"> & { amount: string; fx: { currency: string; amount: string; rate: string } | null })[] })[]; entities: Record<string, string> };
+/** `rates`: the one rate per pair and date written to Kurs; `stated`: every distinct rate the file states (reviewed on posting). */
+type SavedPlan = { rates?: FileRate[]; stated?: FileRate[]; entries: (Omit<PlanEntry, "date" | "imbalance" | "rounding" | "lines"> & { date: string; imbalance: string; rounding: string; lines: (Omit<PlanEntry["lines"][number], "amount" | "fx"> & { amount: string; fx: { currency: string; amount: string; rate: string } | null })[] })[]; entities: Record<string, string> };
 
 const toSaved = (entries: PlanEntry[], entities: Map<string, EntityInfo>): SavedPlan => ({
   entities: Object.fromEntries([...entities].map(([k, v]) => [k, v.entityId])),
@@ -128,6 +134,8 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
 
   // Rates written in the file (rate column or "Rate: 1.31" notes) are kept and saved to the Kurs table on post.
   const fileRates = new Map<string, FileRate>();
+  // Every distinct rate a row states, for the Kurs comparison; only one per date can be kept in the table.
+  const statedRates = new Map<string, FileRate>();
   if (read.mode === "LEDGER") {
     for (const r of read.rows) {
       const ei = entityInfos.get(r.entity ?? "");
@@ -135,16 +143,22 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
       try {
         const rate = formatRate(parseRate(r.rate));
         const date = r.date.toISOString().slice(0, 10);
-        fileRates.set(`${r.currency}|${ei.currency}|${date}`, { currency: r.currency, quote: ei.currency, date, rate, ref: r.ref });
+        const stated = { currency: r.currency, quote: ei.currency, date, rate, ref: r.ref };
+        fileRates.set(`${r.currency}|${ei.currency}|${date}`, stated);
+        if (!statedRates.has(`${r.currency}|${ei.currency}|${date}|${rate}`)) statedRates.set(`${r.currency}|${ei.currency}|${date}|${rate}`, stated);
       } catch {
         // an unreadable rate note is just not a rate
       }
     }
   }
+  plan.checks.push(...(await fileRateChecks(db, input.firmId, [...statedRates.values()], currencyMode, [...fileRates.values()])));
   // All-zero groups are reported in the checks ("… jurnal bernilai nol dilewati") but not staged, so the draft's
   // "Catat N jurnal" is the number that will post.
   const entries = plan.entries.filter(willPost);
   const neracaHints = read.mode === "NERACA" ? new Map(read.rows.map((r) => [r.code, r.typeHint])) : new Map();
+  // The file's own numbering (learned from its unambiguous names) beats weak name words like "bank" or "deposit".
+  const scheme = learnScheme([...plan.accounts.values()]);
+  const termHints = read.mode === "NERACA" ? new Map(read.rows.map((r) => [r.code, r.termHint])) : new Map<string, NeracaRow["termHint"]>();
   const imp = await db.$transaction(
     async (tx) => {
       // Source accounts: create new codes, keep the latest name, remember earlier names (rule 9a, assumption 4).
@@ -152,11 +166,21 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
         const ei = entityInfos.get(a.entityKey);
         if (!ei) continue;
         const found = existing.find((s) => s.entityId === ei.entityId && s.code === a.code);
-        const typeHint = neracaHints.get(a.code) ?? inferType(a.code, a.name);
+        const typeHint = neracaHints.get(a.code) ?? inferType(a.code, a.name, scheme);
         if (!found) {
-          await tx.sourceAccount.create({ data: { firmId: input.firmId, clientId: input.clientId, entityId: ei.entityId, code: a.code, name: a.name, previousNames: a.previousNames, typeHint } });
-        } else if (found.name !== a.name || a.previousNames.some((p) => !found.previousNames.includes(p))) {
-          await tx.sourceAccount.update({ where: { id: found.id }, data: { name: a.name, previousNames: [...new Set([...found.previousNames, ...a.previousNames])].filter((p) => p !== a.name) } });
+          await tx.sourceAccount.create({ data: { firmId: input.firmId, clientId: input.clientId, entityId: ei.entityId, code: a.code, name: a.name, previousNames: a.previousNames, typeHint, termHint: termHints.get(a.code) ?? null } });
+        } else {
+          const data: { name?: string; previousNames?: string[]; termHint?: NeracaRow["termHint"]; typeHint?: NeracaRow["typeHint"] } = {};
+          if (found.name !== a.name || a.previousNames.some((p) => !found.previousNames.includes(p))) {
+            data.name = a.name;
+            data.previousNames = [...new Set([...found.previousNames, ...a.previousNames])].filter((p) => p !== a.name);
+          }
+          // A Neraca states the account's term even when an earlier file created the code; it is only a mapping hint.
+          const term = termHints.get(a.code) ?? null;
+          if (term && term !== found.termHint) data.termHint = term;
+          // An unmapped code keeps the freshest type evidence (this file's scheme or section); accepted mappings are untouched.
+          if (!found.accountId && typeHint && typeHint !== found.typeHint) data.typeHint = typeHint;
+          if (Object.keys(data).length) await tx.sourceAccount.update({ where: { id: found.id }, data });
         }
       }
       return tx.ledgerImport.create({
@@ -168,6 +192,7 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
           evidenceUnitKey: input.evidenceUnitKey,
           fileHash,
           sheetName: table.sheet,
+          importedById: input.actorId ?? null,
           mode: read.mode,
           currencyMode,
           periodStart,
@@ -175,7 +200,7 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
           rowCount: read.rows.length,
           groupCount: entries.length,
           roundingTotal: entries.reduce((s, e) => s + (e.rounding < 0n ? -e.rounding : e.rounding), 0n),
-          data: { ...toSaved(entries, entityInfos), rates: [...fileRates.values()] } as unknown as Prisma.InputJsonValue,
+          data: { ...toSaved(entries, entityInfos), rates: [...fileRates.values()], stated: [...statedRates.values()] } as unknown as Prisma.InputJsonValue,
           checks: {
             create: plan.checks.map((c) => ({
               severity: c.severity,
@@ -195,6 +220,8 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
   const entityIds = [...entityInfos.values()].map((e) => e.entityId);
   const codes = [...plan.accounts.values()].map((a) => a.code);
   const unmapped = await db.sourceAccount.count({ where: { entityId: { in: entityIds }, code: { in: codes }, accountId: null } });
+  // Rule suggestions are free: every draft (manual upload or evidence handoff) opens with them. AI only on request.
+  await suggestMappings(db, { firmId: input.firmId, clientId: input.clientId, provider: null, useAi: false });
   return { status: "STAGED", importId: imp.id, mode: read.mode, checks: plan.checks, entries: entries.length, sourceAccounts: plan.accounts.size, unmapped };
 }
 
@@ -225,7 +252,7 @@ export async function importSourceAccounts(db: Db, importId: string) {
   return or.length ? db.sourceAccount.findMany({ where: { OR: or }, include: { account: true, entity: true }, orderBy: [{ entityId: "asc" }, { code: "asc" }] }) : [];
 }
 
-export async function postImport(db: Db, clientId: string, importId: string) {
+export async function postImport(db: Db, clientId: string, importId: string, actorId?: string | null) {
   const imp = await db.ledgerImport.findFirst({ where: { id: importId, clientId }, include: { checks: true } });
   if (!imp) throw new LedgerImportError("Impor tidak ditemukan");
   if (imp.status === "POSTED") throw new LedgerImportError("Impor ini sudah dicatat.");
@@ -243,6 +270,24 @@ export async function postImport(db: Db, clientId: string, importId: string) {
   const accounts = await db.account.findMany({ where: { clientId, code: { in: [ACCOUNT_CODES.ROUNDING, ACCOUNT_CODES.SUSPENSE] } } });
   const rounding = accounts.find((a) => a.code === ACCOUNT_CODES.ROUNDING)!;
   const suspense = accounts.find((a) => a.code === ACCOUNT_CODES.SUSPENSE)!;
+
+  // Rate differences are shown on the draft before anything posts (rule 6b). The Kurs table may have changed since staging (another
+  // import, the accountant): refresh the draft's reviews, and when one is new, stop so the accountant sees it before posting.
+  // A draft staged before `stated` was saved can't prove its reviews complete: it keeps them and only gains new ones.
+  const stated = saved.stated ?? saved.rates ?? [];
+  const ownRates = saved.rates ?? [];
+  const onDraft = imp.checks.filter((c) => c.code === "FX_FILE_RATE_DIFFERS").map((c) => c.message);
+  const expected = await fileRateChecks(db, imp.firmId, stated, imp.currencyMode, ownRates);
+  const fresh = expected.filter((c) => !onDraft.includes(c.message));
+  const stale = saved.stated ? onDraft.filter((m) => !expected.some((c) => c.message === m)) : [];
+  if (fresh.length || stale.length) {
+    await db.$transaction([
+      db.importCheck.deleteMany({ where: { ledgerImportId: imp.id, code: "FX_FILE_RATE_DIFFERS", message: { in: stale } } }),
+      db.importCheck.createMany({ data: fresh.map((c) => ({ ledgerImportId: imp.id, severity: c.severity, code: c.code, message: c.message, refs: c.refs })) }),
+    ]);
+    if (fresh.length) throw new LedgerImportError("Tabel Kurs berubah sejak draf dibuat: temuan kurs di draf sudah diperbarui. Periksa, lalu catat lagi.");
+  }
+  const reviewed = new Set([...onDraft.filter((m) => !stale.includes(m)), ...fresh.map((c) => c.message)]);
 
   return db.$transaction(
     async (tx) => {
@@ -266,9 +311,9 @@ export async function postImport(db: Db, clientId: string, importId: string) {
           });
         }
         const r = BigInt(e.rounding);
-        if (r !== 0n) lines.push({ accountId: rounding.id, debit: r > 0n ? r : 0n, credit: r < 0n ? -r : 0n, memo: "Selisih pembulatan sen ke Rupiah" });
+        if (r !== 0n) lines.push({ accountId: rounding.id, debit: r > 0n ? r : 0n, credit: r < 0n ? -r : 0n, memo: e.fxRounding ? "Selisih pembulatan konversi kurs" : "Selisih pembulatan sen" });
         const imbalance = BigInt(e.imbalance);
-        if (imbalance !== 0n) lines.push({ accountId: suspense.id, debit: imbalance < 0n ? -imbalance : 0n, credit: imbalance > 0n ? imbalance : 0n, memo: "Selisih dari file sumber" });
+        if (imbalance !== 0n) lines.push({ accountId: suspense.id, debit: imbalance < 0n ? -imbalance : 0n, credit: imbalance > 0n ? imbalance : 0n, memo: SOURCE_DIFFERENCE_MEMO });
         if (lines.length < 2) continue;
         await postJournal(tx, {
           entityId,
@@ -277,6 +322,7 @@ export async function postImport(db: Db, clientId: string, importId: string) {
           memo: `${e.memo} · ${imp.fileName}`.slice(0, 300),
           ledgerImportId: imp.id,
           sourceRef: e.ref,
+          actorId,
           lines,
         });
         posted++;
@@ -284,9 +330,52 @@ export async function postImport(db: Db, clientId: string, importId: string) {
       for (const r of saved.rates ?? []) {
         await upsertFileRate(tx, imp.firmId, { currency: r.currency, quote: r.quote, date: new Date(`${r.date}T00:00:00.000Z`), kind: "SPOT", rate: r.rate, note: `${imp.fileName} ${r.ref}` });
       }
-      await tx.ledgerImport.update({ where: { id: imp.id }, data: { status: "POSTED", postedAt: new Date(), groupCount: posted } });
+      // Same check on the Kurs rows that now stand: a rate another import wrote in the meantime rolls this post back (the next try
+      // shows it on the draft first).
+      const now = await fileRateChecks(tx as unknown as Db, imp.firmId, stated, imp.currencyMode, ownRates);
+      if (now.some((c) => !reviewed.has(c.message))) throw new LedgerImportError("Tabel Kurs berubah bersamaan; coba catat lagi.");
+      await tx.ledgerImport.update({ where: { id: imp.id }, data: { status: "POSTED", postedAt: new Date(), postedById: actorId ?? null, groupCount: posted } });
       return { entries: posted };
     },
     { timeout: 300_000, maxWait: 20_000 },
   );
+}
+
+/**
+ * File rates only fill empty Kurs dates (`upsertFileRate`). Where the Kurs table already holds a different rate for the same
+ * pair and date, say so: one REVIEW per pair, latest dates first.
+ */
+async function fileRateChecks(db: Db, firmId: string, rates: FileRate[], mode: CurrencyMode, own: FileRate[] = []): Promise<Check[]> {
+  if (!rates.length) return [];
+  const existing = await db.exchangeRate.findMany({ where: { firmId, kind: "SPOT", OR: rates.map((r) => ({ currency: r.currency, quote: r.quote, date: new Date(`${r.date}T00:00:00.000Z`) })) }, select: { currency: true, quote: true, date: true, rate: true } });
+  const kurs = new Map(existing.map((e) => [`${e.currency}|${e.quote}|${e.date.toISOString().slice(0, 10)}`, e.rate]));
+  // An empty date will hold the rate this import writes there (`own`): a second, different rate the file states for it differs too.
+  for (const r of own) if (!kurs.has(`${r.currency}|${r.quote}|${r.date}`)) kurs.set(`${r.currency}|${r.quote}|${r.date}`, r.rate);
+  const diffs: RateDiff[] = [];
+  for (const r of rates) {
+    const k = kurs.get(`${r.currency}|${r.quote}|${r.date}`);
+    if (k && formatRate(k) !== formatRate(r.rate)) diffs.push({ r, kurs: k });
+  }
+  return rateDiffChecks(diffs, mode);
+}
+
+type RateDiff = { r: FileRate; kurs: string };
+
+/** One REVIEW per currency pair whose file rates differ from the Kurs table, latest dates first. */
+function rateDiffChecks(diffs: RateDiff[], mode: CurrencyMode): Check[] {
+  const byPair = new Map<string, RateDiff[]>();
+  for (const d of diffs) byPair.set(`${d.r.currency}|${d.r.quote}`, [...(byPair.get(`${d.r.currency}|${d.r.quote}`) ?? []), d]);
+  return [...byPair.values()].map((list) => {
+    const sorted = list.sort((a, b) => b.r.date.localeCompare(a.r.date));
+    const { r } = sorted[0];
+    const sample = sorted.slice(0, 5).map((x) => `${formatDate(new Date(`${x.r.date}T00:00:00.000Z`))}: file ${formatRateId(x.r.rate)}, Kurs ${formatRateId(x.kurs)}`).join("; ");
+    const dates = new Set(sorted.map((x) => x.r.date)).size;
+    const more = sorted.length > 5 ? ` dan ${sorted.length - 5} lainnya` : "";
+    return {
+      severity: "REVIEW" as const,
+      code: "FX_FILE_RATE_DIFFERS",
+      message: `Kurs ${r.currency}→${r.quote} di file berbeda dari tabel Kurs pada ${dates} tanggal (${sample}${more}). ${mode === "CONVERT" ? "Baris dikonversi dengan kurs file; " : ""}tabel Kurs tidak diubah.`,
+      refs: sorted.slice(0, 20).map((x) => x.r.ref),
+    };
+  });
 }

@@ -4,7 +4,7 @@ import ExcelJS from "exceljs";
 import { createPrisma, type Db } from "@/lib/db";
 import { createClient, createFirm } from "@/lib/setup";
 import { acceptCheck, importSourceAccounts, postImport, stageImport } from "@/lib/ledger-import/post";
-import { acceptMappings, suggestMappings } from "@/lib/ledger-import/mapping";
+import { acceptMappings, inferType, learnScheme, newFsLineOf, normName, suggestMappings } from "@/lib/ledger-import/mapping";
 import { upsertRate } from "@/lib/fx/rates";
 import { balanceSheet, combinedWorksheet } from "@/lib/reports/ledger";
 import { FxMissingError } from "@/lib/reports/fx";
@@ -12,13 +12,14 @@ import { parseStatementSections } from "@/lib/import/parsers";
 import { checkContinuity } from "@/lib/import/normalize";
 import { formatMoney } from "@/lib/money";
 import { dateOnly } from "@/lib/format";
+import { anomalyControls } from "@/lib/controls/anomaly";
 
 /**
  * npm run verify:real -- chickin|goers|smbc|all [--into-app]
  *
  * LOCAL ONLY. Reads real client files from data/private/ (gitignored), imports them into a fresh client and compares
  * Buku with the files themselves. Writes a report to data/private/reports/. Never run in CI; never commit the output.
- * --into-app puts the client into the firm the app shows (for a demo on localhost or the real-data preview);
+ * --into-app puts the client into the firm the app shows (for a demo on localhost);
  * without it the client goes into a separate "Verifikasi data nyata" firm.
  *
  * Answer key: the Chickin workbook's TB/FS tabs hold formulas without saved values, so Buku is compared against an
@@ -42,6 +43,9 @@ async function firmFor(db: Db, intoApp: boolean) {
   return (await db.firm.findFirst({ where: { name: "Verifikasi data nyata" } })) ?? db.$transaction((tx) => createFirm(tx, "Verifikasi data nyata"));
 }
 
+/** Month key: the tie-out runs per client account per month (client COA first, cycle 2026-09-27). */
+const month = (d: Date) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+
 const stamp = () => new Date().toISOString().slice(0, 16).replace("T", " ");
 
 /** Default mapping for accounts no rule recognised (AI isn't used here: no credit spent on verification). */
@@ -59,18 +63,75 @@ async function runImport(db: Db, firmId: string, clientId: string, file: string,
   const src = await importSourceAccounts(db, st.importId);
   const todo = src.filter((s) => !s.accountId);
   const fallback = todo.filter((s) => !s.suggestedCode);
+  const created = todo.filter((s) => newFsLineOf(s.suggestedCode)).length;
   await acceptMappings(
     db,
     clientId,
     todo.map((s) => (s.suggestedCode ? { sourceAccountId: s.id, accountCode: s.suggestedCode, method: s.suggestedBy! } : { sourceAccountId: s.id, accountCode: FALLBACK[s.typeHint ?? ""] ?? "6190", method: "MANUAL" as const })),
   );
   const posted = await postImport(db, clientId, st.importId);
-  return { importId: st.importId, checks, posted: posted.entries, sources: src.length, byRules: sug.deterministic, fallback: fallback.map((s) => `${s.code} ${s.name}`) };
+  return { importId: st.importId, checks, posted: posted.entries, sources: src.length, byRules: sug.deterministic, created, fallback: fallback.map((s) => `${s.code} ${s.name}`) };
+}
+
+// ─── Mapping quality (cycle 2026-09-27-mapping-quality) ──────────────────────
+
+const CATCH_ALLS = new Set(["1140", "2120", "4110", "4910", "6190"]);
+const CATCH_ALL_NAME = /(lain ?lain|lainnya|\bother\b|others|misc|sundry|\bumum\b|general|serba ?serbi)/;
+/** A catch-all reached through a generic word only ("payable", "expense"); specific rules like "short term" or APIC are fine. */
+const GENERIC_REASON = /Kata kunci "(expense|beban|biaya|payable|utang|hutang|piutang|receivable|loan to|income|revenue|pendapatan)"/;
+/** Gain/loss and rounding accounts are the right target from either side of the books. */
+const EITHER_SIDE = new Set(["7190", "7200"]);
+
+/**
+ * How the client's chart landed: suggestion methods, catch-all suggestions whose name isn't itself a catch-all
+ * (target 0), accounts whose Buku type disagrees with the type inferred from the file's own scheme (target 0), new
+ * accounts proposed. Counts a failure for either target being missed.
+ */
+async function mappingQuality(db: Db, clientId: string, label: string) {
+  const src = await db.sourceAccount.findMany({ where: { clientId }, include: { account: true } });
+  const by: Record<string, number> = {};
+  for (const s of src) by[s.mappedBy ?? "-"] = (by[s.mappedBy ?? "-"] ?? 0) + 1;
+  const scheme = learnScheme(src);
+  const catchAll = src.filter((s) => s.account && CATCH_ALLS.has(s.account.code) && !CATCH_ALL_NAME.test(normName(s.name)) && s.mappedBy === "KEYWORD" && GENERIC_REASON.test(s.mapReason ?? ""));
+  const wrongSide = src.filter((s) => {
+    const t = inferType(s.code, s.name, scheme);
+    return s.account && t && s.account.type !== t && s.mappedBy !== "MANUAL" && !EITHER_SIDE.has(s.account.code);
+  });
+  const created = src.filter((s) => s.mappedBy === "NEW").length;
+  log(`\n## Kualitas pemetaan — ${label}`);
+  log(`- ${src.length} akun klien · ${Object.entries(by).map(([k, n]) => `${k} ${n}`).join(", ")} · ${created} akun Buku baru dibuat dari nama klien`);
+  log(`- ${catchAll.length === 0 ? "✓" : "✗"} saran ke akun penampung untuk nama yang bukan penampung: ${catchAll.length}${catchAll.length ? ` — ${catchAll.slice(0, 8).map((s) => `${s.code} ${s.name} → ${s.account!.code}`).join("; ")}` : ""}`);
+  log(`- ${wrongSide.length === 0 ? "✓" : "✗"} sisi akun berbeda dari tipe menurut skema kode file: ${wrongSide.length}${wrongSide.length ? ` — ${wrongSide.slice(0, 10).map((s) => `${s.code} ${s.name} → ${s.account!.code} ${s.account!.name}`).join("; ")}` : ""}`);
+  if (catchAll.length || wrongSide.length) failures++;
+}
+
+/** Ledger anomaly scans (rule 22b) over the last 12 months with lines per entity: how noisy are they on real books? Informational. */
+async function anomalyReport(db: Db, clientId: string, label: string) {
+  log(`\n## Anomali buku besar — ${label} (12 bulan terakhir per entitas)`);
+  for (const e of await db.entity.findMany({ where: { clientId }, orderBy: { shortName: "asc" } })) {
+    const last = await db.journalLine.findFirst({ where: { entityId: e.id, entry: { kind: { not: "OPENING" } } }, orderBy: { date: "desc" }, select: { date: true } });
+    if (!last) {
+      log(`- ${e.shortName}: hanya saldo awal, tidak ada mutasi untuk dipindai`);
+      continue;
+    }
+    const counts: Record<string, number> = { flux: 0, flip: 0, dormant: 0, dup: 0 };
+    let months = 0;
+    let latest: Awaited<ReturnType<typeof anomalyControls>> = [];
+    for (let i = 11; i >= 0; i--) {
+      const at = new Date(Date.UTC(last.date.getUTCFullYear(), last.date.getUTCMonth() - i, 1));
+      const flagged = await anomalyControls(db, { clientId, entity: e, year: at.getUTCFullYear(), month: at.getUTCMonth() + 1, base: "", acks: new Map() });
+      months++;
+      for (const c of flagged) counts[c.key.split(":")[0]]++;
+      if (i === 0) latest = flagged;
+    }
+    log(`- ${e.shortName}: ${months} bulan · bulan yang ditandai — flux ${counts.flux}, berlawanan arah ${counts.flip}, akun baru/bergerak lagi ${counts.dormant}, jurnal ganda ${counts.dup}`);
+    for (const c of latest) log(`  ${last.date.toISOString().slice(0, 7)} ${c.title}: ${c.detail.slice(0, 300)}`);
+  }
 }
 
 // ─── Independent recompute (not Buku's reader) ────────────────────────────────
 
-type Key = string; // entity|code|year
+type Key = string; // entity|code|yyyy-mm
 async function recomputeLedger(file: string, sheets: string[]) {
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.readFile(file);
@@ -90,7 +151,7 @@ async function recomputeLedger(file: string, sheets: string[]) {
       const date = v[head.date] instanceof Date ? (v[head.date] as Date) : null;
       if (!entity || !code || !date) return;
       const cents = (x: unknown) => (typeof x === "number" ? BigInt(Math.round(Number(x.toFixed(6)) * 100)) : x ? BigInt(Math.round(Number(String(x).replace(/,/g, "")) * 100)) : 0n);
-      const k = `${entity}|${code}|${date.getUTCFullYear()}`;
+      const k = `${entity}|${code}|${month(date)}`;
       const cur = sums.get(k) ?? { cents: 0n, rows: 0 };
       cur.cents += cents(v[head.debit]) - cents(v[head.credit]);
       cur.rows++;
@@ -109,7 +170,7 @@ async function bukuBySource(db: Db, clientId: string) {
   const sums = new Map<Key, bigint>();
   for (const l of lines) {
     const e = entities.find((x) => x.id === l.entityId)!;
-    const k = `${e.shortName}|${l.sourceAccount!.code}|${l.date.getUTCFullYear()}`;
+    const k = `${e.shortName}|${l.sourceAccount!.code}|${month(l.date)}`;
     sums.set(k, (sums.get(k) ?? 0n) + l.debit - l.credit);
   }
   return { sums, entities };
@@ -158,17 +219,20 @@ async function chickin(db: Db, intoApp: boolean) {
     const imp = imports[i];
     const by: Record<string, number> = {};
     for (const c of imp.checks) by[`${c.severity} ${c.code}`] = (by[`${c.severity} ${c.code}`] ?? 0) + 1;
-    log(`- ${name}: ${imp.posted} jurnal, ${imp.sources} akun sumber (${imp.byRules} dipetakan aturan, ${imp.fallback.length} fallback per jenis)`);
+    log(`- ${name}: ${imp.posted} jurnal, ${imp.sources} akun sumber (${imp.byRules} dipetakan aturan, ${imp.created} akun Buku baru, ${imp.fallback.length} fallback per jenis)`);
     log(`  temuan: ${Object.entries(by).map(([k, n]) => `${k} ×${n}`).join(", ")}`);
   }
 
+  await mappingQuality(db, client.id, "Chickin");
+  await anomalyReport(db, client.id, "Chickin");
+
   // Buku vs independent recompute, per entity × account × year.
-  log("\n## Buku vs rekalkulasi independen buku besar workbook (per entitas × akun sumber × tahun)");
+  log("\n## Buku vs rekalkulasi independen buku besar workbook (per entitas × akun klien × bulan)");
   const expected = await recomputeLedger(file, ["04_HC_2022_FOUNDATION", "20_OPCO_GL_MASTER", "10_HC_GL_MASTER"].slice(1));
   const found = await bukuBySource(db, client.id);
   const foundation = await db.journalLine.findMany({ where: { entityId: holdco.id, entry: { kind: "OPENING" } }, select: { debit: true, credit: true, sourceAccount: { select: { code: true } } } });
   for (const l of foundation) {
-    const k = `HOLDCO|${l.sourceAccount?.code}|2022`;
+    const k = `HOLDCO|${l.sourceAccount?.code}|2022-12`;
     found.sums.set(k, (found.sums.get(k) ?? 0n) - (l.debit - l.credit)); // foundation isn't in the GL sheets: leave it out of this comparison
     if (found.sums.get(k) === 0n) found.sums.delete(k);
   }
@@ -247,12 +311,19 @@ async function goers(db: Db, intoApp: boolean) {
   log(`\n# Goers — ${client.name}`);
   const imp = await runImport(db, firm.id, client.id, file, { entityId: entities[0].entity.id });
   log(`- Neraca 31 Mei 2026 → saldo awal: ${imp.sources} akun (${imp.byRules} dipetakan aturan, fallback: ${imp.fallback.join(", ") || "-"})`);
+  await mappingQuality(db, client.id, "Goers");
+  await anomalyReport(db, client.id, "Goers");
   const totals = imp.checks.filter((c) => c.code === "TOTAL_OK" || c.code === "TOTAL_MISMATCH");
   for (const t of totals) {
     if (t.code === "TOTAL_MISMATCH") failures++;
     log(`- ${t.code === "TOTAL_OK" ? "✓" : "✗"} ${t.message}`);
   }
   const bs = await balanceSheet(db, { clientId: client.id, entityIds: [entities[0].entity.id] }, dateOnly(2026, 5, 31));
+  // Accounts the file lists under "Long-term Liability" must be presented as long-term (Neraca term hint → mapping).
+  const longTerm = await db.sourceAccount.findMany({ where: { clientId: client.id, typeHint: "LIABILITAS", termHint: "NON_CURRENT" }, include: { account: true } });
+  const wrongSide = longTerm.filter((a) => a.account?.fsLine !== "UTANG_JANGKA_PANJANG");
+  if (wrongSide.length || longTerm.length === 0) failures++;
+  log(`- ${wrongSide.length || !longTerm.length ? "✗" : "✓"} ${longTerm.length} akun di bagian "Long-term Liability" file → Liabilitas jangka panjang Buku${wrongSide.length ? `; salah sisi: ${wrongSide.map((a) => `${a.code} ${a.name} → ${a.account?.code}`).join(", ")}` : ""} · total jangka panjang ${formatMoney(bs.nonCurrentLiabilities.reduce((t, i) => t + i.amount, 0n), "IDR")}`);
   log(`- Neraca Buku 31 Mei 2026: aset ${formatMoney(bs.totals.assets, "IDR")} · liabilitas + ekuitas ${formatMoney(bs.totals.liabilities + bs.totals.equity, "IDR")} · ${bs.totals.difference === 0n ? "seimbang ✓" : "✗"}`);
 }
 

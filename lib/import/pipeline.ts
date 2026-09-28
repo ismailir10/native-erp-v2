@@ -5,6 +5,7 @@ import { parseStatementSections } from "@/lib/import/parsers";
 import { checkContinuity, merchantKey, rowHash } from "@/lib/import/normalize";
 import { ParseError } from "@/lib/import/types";
 import { matchRule, sortRules } from "@/lib/classify/rules";
+import { financingSuggestion } from "@/lib/classify/financing";
 import { matchTransfers, type TransferCandidate } from "@/lib/classify/transfer";
 import { AUTO_POST_CONFIDENCE, type Classification } from "@/lib/classify/types";
 import { suggestWithAi } from "@/lib/ai/classify";
@@ -33,7 +34,7 @@ const HEURISTIC: Record<Direction, Classification> = {
 
 export async function importStatement(
   db: Db,
-  args: { evidenceVersionId?: string; evidenceUnitKey?: string; bankAccountId: string; fileName: string; data: Buffer; provider: AiProvider | null; password?: string },
+  args: { evidenceVersionId?: string; evidenceUnitKey?: string; bankAccountId: string; fileName: string; data: Buffer; provider: AiProvider | null; password?: string; actorId?: string | null },
 ): Promise<ImportSummary> {
   const bankAccount = await db.bankAccount.findUniqueOrThrow({
     where: { id: args.bankAccountId },
@@ -86,7 +87,7 @@ export async function importStatement(
 
   // ---- classification (reads only; AI runs outside the write transaction) ----
   const window = items.length
-    ? { gte: new Date(items[0].date.getTime() - 3 * 86_400_000), lte: new Date(items[items.length - 1].date.getTime() + 3 * 86_400_000) }
+    ? { gte: new Date(items[0].date.getTime() - 6 * 86_400_000), lte: new Date(items[items.length - 1].date.getTime() + 6 * 86_400_000) } // ≥ 2 business days across any weekend
     : undefined;
   const openCounterparts: TransferCandidate[] = window
     ? (
@@ -103,9 +104,13 @@ export async function importStatement(
   const memories = await db.memory.findMany({ where: { clientId: client.id } });
   const memoryMap = new Map(memories.map((m) => [`${m.merchantKey}|${m.direction}`, m]));
 
+  const accounts = await db.account.findMany({ where: { clientId: client.id }, orderBy: { code: "asc" } });
+  const codes = new Set(accounts.map((a) => a.code));
+
   const result = new Map<string, Classification>();
   const pendingAi: { key: string; direction: Direction; sample: string }[] = [];
   for (const it of items) {
+    const financing = financingSuggestion(it.description, it.direction);
     const c =
       transfers.get(it.id) ??
       matchRule(rules, it.description, it.direction) ??
@@ -114,12 +119,13 @@ export async function importStatement(
         return m
           ? ({ method: "MEMORY", accountCode: m.accountCode, taxTag: m.taxTag, confidence: 0.95, reason: `Pernah dikonfirmasi ${m.hits}× untuk "${m.merchantKey}"` } as Classification)
           : null;
-      })();
+      })() ??
+      // Loans, capital and own-money moves: a balance-sheet suggestion for review, no AI call (rules 13–14).
+      (financing && codes.has(financing.accountCode) ? financing : null);
     if (c) result.set(it.id, c);
     else pendingAi.push({ key: it.merchantKey, direction: it.direction, sample: it.description });
   }
 
-  const accounts = await db.account.findMany({ where: { clientId: client.id }, orderBy: { code: "asc" } });
   const postable = accounts.filter((a) => !a.isBank && !a.isSuspense && !a.isRetained).map((a) => ({ code: a.code, name: a.name }));
   const ai = await suggestWithAi(db, {
     firmId: client.firmId,
@@ -158,6 +164,7 @@ export async function importStatement(
           duplicateCount: st.rows.length - fresh.length,
           continuityOk: continuity.ok,
           continuityNote: continuity.note,
+          importedById: args.actorId ?? null,
         },
       });
       const idMap = new Map<string, string>();
@@ -191,7 +198,7 @@ export async function importStatement(
         idMap.set(it.id, created.id);
         byMethod[c.method]++;
         if (!auto) needsReview++;
-        await postBankTransaction(tx, created.id, auto ? { accountCode: c.accountCode, taxTag: c.taxTag } : { accountCode: ACCOUNT_CODES.SUSPENSE }, { codeToId });
+        await postBankTransaction(tx, created.id, auto ? { accountCode: c.accountCode, taxTag: c.taxTag } : { accountCode: ACCOUNT_CODES.SUSPENSE }, { codeToId, actorId: args.actorId });
       }
       // Link transfer pairs (both new, or new ↔ previously imported open half).
       for (const [id, c] of transfers) {
@@ -204,7 +211,7 @@ export async function importStatement(
           // Previously imported half: link and move it onto the transfer account if it was elsewhere.
           const prev = await tx.bankTransaction.update({ where: { id: selfId }, data: { matchedTxId: otherId } });
           if (prev.accountCode !== c.accountCode) {
-            await postBankTransaction(tx, prev.id, { accountCode: c.accountCode }, { codeToId });
+            await postBankTransaction(tx, prev.id, { accountCode: c.accountCode }, { codeToId, actorId: args.actorId });
             await tx.bankTransaction.update({
               where: { id: prev.id },
               data: { accountCode: c.accountCode, status: "POSTED", method: "TRANSFER", confidence: c.confidence, reason: c.reason, taxTag: null },

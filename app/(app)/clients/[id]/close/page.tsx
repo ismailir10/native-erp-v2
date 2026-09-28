@@ -2,17 +2,25 @@ import { prisma } from "@/lib/db";
 import { loadClientPage } from "@/lib/client-page";
 import type { SearchParams } from "@/lib/scope";
 import { CLOSE_SIGNOFFS, closeReadiness, runControls } from "@/lib/controls";
-import { formatDate, formatPeriod } from "@/lib/format";
+import { formatDateTime, formatPeriod } from "@/lib/format";
 import { NextStep, PageHeader } from "@/components/app/page-header";
 import { ScopeBar } from "@/components/app/scope-bar";
 import { ClosePanel } from "@/components/app/close-panel";
 import { RevaluationCard } from "@/components/app/revaluation-card";
+import { ScheduleProposals } from "@/components/app/schedule-proposals";
+import { proposalViews } from "@/lib/adjust/view";
+import { correctionViews as draftViews } from "@/lib/adjust/suspense";
+import { ProposalsCard } from "@/components/app/proposals-card";
 import { revaluationProposals } from "@/lib/fx/revalue";
+import { CloseReviewCard } from "@/components/app/close-review-card";
+import { cachedCloseReview } from "@/lib/controls/ai-review";
+import { resolveAiConfig } from "@/lib/settings/ai";
+import { createHash } from "node:crypto";
 
 export default async function ClosePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, period, periodOptions, base } = await loadClientPage(params, searchParams);
   const controls = await runControls(prisma, client.id, period.year, period.month);
-  const p = await prisma.period.findUnique({ where: { clientId_year_month: { clientId: client.id, year: period.year, month: period.month } }, include: { signoffs: true } });
+  const p = await prisma.period.findUnique({ where: { clientId_year_month: { clientId: client.id, year: period.year, month: period.month } }, include: { signoffs: { include: { doneBy: { select: { name: true } } } }, lockedBy: { select: { name: true } } } });
   const done = p?.signoffs.map((s) => s.key) ?? [];
   const r = closeReadiness(controls, done);
   // One line per kind of blocker, not one per control — the list on the left already has the detail.
@@ -26,6 +34,15 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
   const missing = controls.find((c) => c.key.startsWith("bank:") && c.detail.includes("belum diimpor"));
   const locked = p?.status === "LOCKED";
   const reval = await revaluationProposals(prisma, client.id, period.year, period.month);
+  const scheduled = locked ? [] : await proposalViews(prisma, client.id, period.year, period.month);
+  const drafts = locked ? [] : await draftViews(prisma, client.id, period.year, period.month);
+  const chart = drafts.length ? (await prisma.account.findMany({ where: { clientId: client.id, isBank: false }, select: { code: true, name: true }, orderBy: { code: "asc" } })) : [];
+  const flagged = controls.filter((c) => c.status !== "PASS").length;
+  const ai = await resolveAiConfig(prisma);
+  const aiModel = ai.apiKey && ai.model ? ai.model : null;
+  // Remount the review card whenever the flagged set changes, so a stale review never stays on screen.
+  const reviewKey = createHash("sha1").update(controls.filter((c) => c.status !== "PASS").map((c) => `${c.key}|${c.detail}`).join("\n")).digest("hex");
+  const review = !locked && flagged ? await cachedCloseReview(prisma, client.firmId, client.id, period.year, period.month, aiModel, controls) : null;
 
   return (
     <div className="space-y-6">
@@ -59,16 +76,20 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
           }))}
         />
       )}
+      {drafts.length > 0 && <ProposalsCard clientId={client.id} periodLabel={label} items={drafts} accounts={chart} locked={locked} />}
+      {scheduled.length > 0 && <ScheduleProposals clientId={client.id} year={period.year} month={period.month} periodLabel={label} items={scheduled} locked={locked} />}
+      {!locked && flagged > 0 && <CloseReviewCard key={`${period.key}:${reviewKey}`} clientId={client.id} year={period.year} month={period.month} flagged={flagged} aiReady={aiModel !== null} initial={review} />}
       <ClosePanel
         clientId={client.id}
         year={period.year}
         month={period.month}
         periodLabel={label}
         controls={controls}
-        signoffs={CLOSE_SIGNOFFS.map((s) => ({ key: s.key, label: s.label, done: done.includes(s.key) }))}
+        signoffs={CLOSE_SIGNOFFS.map((s) => { const row = p?.signoffs.find((x) => x.key === s.key); return { key: s.key, label: s.label, done: Boolean(row), by: row ? `${row.doneBy?.name ?? "Sistem"} · ${formatDateTime(row.doneAt)}` : null }; })}
         locked={locked}
-        lockedAt={p?.lockedAt ? formatDate(p.lockedAt) : null}
+        lockedAt={p?.lockedAt ? `${formatDateTime(p.lockedAt)} oleh ${p.lockedBy?.name ?? "Sistem"}` : null}
         blockers={blockers}
+        aiReady={aiModel !== null}
       />
     </div>
   );

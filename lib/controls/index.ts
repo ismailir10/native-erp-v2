@@ -1,10 +1,14 @@
 import type { Db } from "@/lib/db";
+import { sourceSuspenseNet } from "@/lib/controls/suspense-net";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { periodBounds } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
 import { FxMissingError } from "@/lib/reports/fx";
 import { revaluationProposals } from "@/lib/fx/revalue";
 import { balanceSheet, combinedWorksheet, trialBalance } from "@/lib/reports/ledger";
+import { sanityControls } from "@/lib/controls/sanity";
+import { anomalyControls } from "@/lib/controls/anomaly";
+import { closeLock, dueProposals, schedulesDueBy } from "@/lib/adjust/schedules";
 
 /**
  * Close controls (analog of belifi 16_CONTROLS). PASS / REVIEW / FAIL.
@@ -56,6 +60,7 @@ export async function runControls(db: Db, clientId: string, year: number, month:
       href: `${base}/reports?entity=${e.id}`,
     });
 
+    let statementMissing = false;
     for (const ba of e.bankAccounts) {
       const lastTx = await db.bankTransaction.findFirst({
         where: { bankAccountId: ba.id, date: { lte: end }, balance: { not: null } },
@@ -66,6 +71,7 @@ export async function runControls(db: Db, clientId: string, year: number, month:
       const gl = glRow?.net ?? 0n;
       const key = `bank:${ba.id}`;
       if (coverage.length === 0) {
+        statementMissing = true;
         controls.push({ key, title: `Rekonsiliasi ${ba.label}`, scope: e.shortName, status: "REVIEW", detail: "Mutasi bulan ini belum diimpor", href: `${base}/import`, ack: acks.get(key) });
         continue;
       }
@@ -102,6 +108,32 @@ export async function runControls(db: Db, clientId: string, year: number, month:
       href: `${base}/ledger/${ACCOUNT_CODES.CLEARING}?entity=${e.id}`,
       ack: acks.get(clKey),
     });
+
+    const sane = [
+      ...(await sanityControls(db, { clientId, entity: e, tb, start, end, base, acks, statementMissing })),
+      ...(await anomalyControls(db, { clientId, entity: e, year, month, base, acks })),
+    ];
+    controls.push(
+      ...(sane.length
+        ? sane
+        : [{ key: `sanity:${e.id}`, title: "Kewajaran pembukuan", scope: e.shortName, status: "PASS" as const, detail: "Tidak ada saldo janggal, pembiayaan di Laba Rugi, bulan kosong, tebakan yang diterima begitu saja, fluktuasi atau jurnal ganda" }]),
+    );
+
+    // Adjustment schedules (rule 5a): an installment of this month not yet posted needs the click or a note.
+    const due = await dueProposals(db, clientId, year, month, e.id);
+    if (due.length) {
+      const sKey = `sched:${e.id}`;
+      const list = due.slice(0, 3).map((p) => `${p.memo} ${fmt(p.installment.amount)}`);
+      controls.push({
+        key: sKey,
+        title: "Jurnal terjadwal belum dicatat",
+        scope: e.shortName,
+        status: "REVIEW",
+        detail: `${due.length} angsuran: ${list.join("; ")}${due.length > 3 ? `; +${due.length - 3} lainnya` : ""}`,
+        href: `${base}/journals/new?period=${year}-${String(month).padStart(2, "0")}`,
+        ack: acks.get(sKey),
+      });
+    }
   }
 
   // Ledger / Neraca imports (rule 15a): accepted source differences stay FAIL until 1999 is cleared; REVIEW checks need a note.
@@ -117,12 +149,13 @@ export async function runControls(db: Db, clientId: string, year: number, month:
     const reviews = checks.filter((c) => c.severity === "REVIEW");
     let open = 0;
     for (const c of accepted) {
-      const suspense = await db.journalLine.aggregate({ where: { entityId: c.entityId ?? undefined, account: { clientId, code: ACCOUNT_CODES.SUSPENSE }, date: { lte: end } }, _sum: { debit: true, credit: true } });
-      if ((suspense._sum.debit ?? 0n) !== (suspense._sum.credit ?? 0n)) open++;
+      // Bank lines waiting in Review also sit on 1999; they are the `suspense` control's, not this file's.
+      const entityIds = c.entityId ? [c.entityId] : (await db.entity.findMany({ where: { clientId }, select: { id: true } })).map((e) => e.id);
+      for (const id of entityIds) if ((await sourceSuspenseNet(db, id, end)) !== 0n) { open++; break; }
     }
     const key = `ledger:${imp.id}`;
     const parts = [
-      open ? `${open} selisih dari file sumber masih di 1999, koreksi dengan Jurnal Penyesuaian` : accepted.length ? `${accepted.length} selisih sumber sudah dikoreksi` : "",
+      open ? `${open} selisih dari file sumber masih di 1999, koreksi lewat Usulan jurnal koreksi di Tutup Buku` : accepted.length ? `${accepted.length} selisih sumber sudah dikoreksi` : "",
       reviews.length ? `${reviews.length} temuan perlu dicek` : "",
       imp.roundingTotal ? `pembulatan sen ke 7190 total ${formatMoney(imp.roundingTotal, "IDR")}` : "",
     ].filter(Boolean);
@@ -213,7 +246,9 @@ export function closeReadiness(controls: Control[], signoffs: string[]) {
   return { ready: fails.length === 0 && unacked.length === 0 && missing.length === 0, fails, unacked, missing };
 }
 
-export async function lockPeriod(db: Db, clientId: string, year: number, month: number, note: string) {
+export async function lockPeriod(db: Db, clientId: string, year: number, month: number, note: string, actorId?: string | null) {
+  // Schedules due by this month known before the controls run: one created meanwhile was never checked, so the lock refuses (rule 5a).
+  const known = new Set(await schedulesDueBy(db, clientId, year, month));
   const controls = await runControls(db, clientId, year, month);
   const period = await db.period.upsert({
     where: { clientId_year_month: { clientId, year, month } },
@@ -230,5 +265,11 @@ export async function lockPeriod(db: Db, clientId: string, year: number, month: 
     ].filter(Boolean);
     throw new CloseError(`Belum bisa tutup buku: ${why.join(", ")}.`);
   }
-  return db.period.update({ where: { id: period.id }, data: { status: "LOCKED", lockedAt: new Date(), lockNote: note } });
+  return db.$transaction(async (tx) => {
+    await closeLock(tx, clientId);
+    if ((await schedulesDueBy(tx, clientId, year, month)).some((id) => !known.has(id))) {
+      throw new CloseError("Jadwal penyesuaian baru yang jatuh tempo sampai bulan ini ditambahkan saat tutup buku berjalan. Muat ulang halaman, periksa kontrolnya, lalu tutup lagi.");
+    }
+    return tx.period.update({ where: { id: period.id }, data: { status: "LOCKED", lockedAt: new Date(), lockNote: note, lockedById: actorId ?? null } });
+  });
 }

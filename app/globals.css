@@ -6,14 +6,14 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Buku design tokens — Stripe-dashboard feel: light canvas, white cards,
- * hairline borders, navy text, one strong blue. Rules: .claude/skills/ui-rules/SKILL.md
+ * Buku design tokens — 9fin look on a light background: hairlines, sharp corners, mono micro-labels,
+ * navy ink and one strong blue. Rules: .agents/skills/ui-rules/SKILL.md
  */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
   --font-heading: var(--font-sans);
 
   --color-sidebar-ring: var(--sidebar-ring);
@@ -62,56 +62,73 @@
   --color-fail: var(--fail);
   --color-fail-subtle: var(--fail-subtle);
   --color-primary-subtle: var(--primary-subtle);
+  --color-primary-hover: var(--primary-hover);
+  /* Brand fill (primary button, logo, NextStep marker) */
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-brand-hover: var(--brand-hover);
 }
 
 :root {
-  --background: #F6F9FC;
-  --foreground: #0A2540;
+  /* 9fin-inspired: cool light canvas, navy ink, one strong blue */
+  --background: #F5F7FA;
+  --foreground: #0B1B32;
   --card: #FFFFFF;
-  --card-foreground: #0A2540;
+  --card-foreground: #0B1B32;
   --popover: #FFFFFF;
-  --popover-foreground: #0A2540;
+  --popover-foreground: #0B1B32;
 
-  /* Strong blue — 5.0:1 on white, usable for text and fills */
-  --primary: #0A5CFF;
+  /* Strong blue — 5.9:1 on white: text, links, rings, fills */
+  --primary: #1D5BD8;
   --primary-foreground: #FFFFFF;
-  --primary-subtle: #EAF1FF;
+  --primary-subtle: #EDF2FD;
+  /* Opaque hover step: white text keeps 7.4:1 (a translucent /80 fill drops to 4.0:1 on white) */
+  --primary-hover: #184DBE;
 
-  --secondary: #EEF3FB;
-  --secondary-foreground: #0A2540;
-  --muted: #F1F4F8;
-  --muted-foreground: #4B5B70;
-  --accent: #EEF3FB;
-  --accent-foreground: #0A2540;
-  --destructive: #C0123C;
+  /* Brand fill (primary button, logo, NextStep marker) — the same blue, white text on top */
+  --brand: #1D5BD8;
+  --brand-foreground: #FFFFFF;
+  --brand-hover: #184DBE;
 
-  --border: #E3E8EE;
-  --input: #D5DCE5;
-  --ring: #0A5CFF;
-  --radius: 0.5rem;
+  --secondary: #EEF2F7;
+  --secondary-foreground: #0B1B32;
+  --muted: #EFF2F6;
+  --muted-foreground: #4B5768;
+  --accent: #EEF2F7;
+  --accent-foreground: #0B1B32;
+  --destructive: #C4213A;
 
+  --border: #E3E7ED;
+  --input: #8792A2;
+  --ring: #1D5BD8;
+  --radius: 0.25rem;
+
+  /* Light app chrome: white sidebar, navy text, blue-tinted active item */
   --sidebar: #FFFFFF;
-  --sidebar-foreground: #3C4B61;
-  --sidebar-primary: #0A5CFF;
-  --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #EEF3FB;
-  --sidebar-accent-foreground: #0A2540;
-  --sidebar-border: #E3E8EE;
-  --sidebar-ring: #0A5CFF;
+  --sidebar-foreground: #2A3547;
+  --sidebar-primary: #EDF2FD;
+  --sidebar-primary-foreground: #1747B0;
+  --sidebar-accent: #F1F4F8;
+  --sidebar-accent-foreground: #0B1B32;
+  --sidebar-border: #E3E7ED;
+  --sidebar-ring: #1D5BD8;
 
-  /* Blue-led chart palette */
-  --chart-1: #0A5CFF;
-  --chart-2: #7FA7FF;
-  --chart-3: #0A2540;
-  --chart-4: #14B8A6;
-  --chart-5: #F59E0B;
+  /* Categorical chart order (blue, orange, green, violet), validated with the dataviz validator on white:
+     lightness band, chroma, adjacent CVD ΔE ≥ 8, contrast ≥ 3:1. Fixed order, never cycled.
+     chart-5 is the neutral "Lainnya" slot, not a fifth hue. */
+  --chart-1: #1D5BD8;
+  --chart-2: #E0592A;
+  --chart-3: #12876F;
+  --chart-4: #9B4DCA;
+  --chart-5: #6B7280;
 
-  --pass: #0E7C4A;
-  --pass-subtle: #E6F6EE;
-  --review: #9A5B00;
-  --review-subtle: #FFF4DB;
-  --fail: #C0123C;
-  --fail-subtle: #FDE8EC;
+  /* Status — reserved for control & state, never chart series */
+  --pass: #0E7A4D;
+  --pass-subtle: #E6F5EE;
+  --review: #8A5300;
+  --review-subtle: #FFF3D6;
+  --fail: #C4213A;
+  --fail-subtle: #FCEBEE;
 }
 
 @layer base {
@@ -124,5 +141,12 @@
   }
   .num {
     font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  /* 9fin micro-label: monospace, uppercase, tracked. Table headers, group labels, stat labels, eyebrows. */
+  .eyebrow {
+    @apply font-mono text-[11px] font-medium tracking-[0.08em] uppercase text-muted-foreground;
   }
 }

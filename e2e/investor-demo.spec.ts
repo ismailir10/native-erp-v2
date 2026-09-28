@@ -64,25 +64,43 @@ test("statement in → reviewed → traceable reports → combined → closed", 
   await page.getByRole("tab", { name: "Kertas Kerja Gabungan" }).click();
   await expect(page.getByText("Antar entitas cocok")).toBeVisible();
 
-  // 6. Accrual adjustment: August depreciation
+  // 6. Adjustments: the depreciation schedule proposes August's installment → Catat; the machine reviewed in step 3 is a
+  // fixed-asset candidate → a 48-month schedule from September
   const setup = page.getByRole("button", { name: "Impor & pengaturan klien" });
   if ((await setup.getAttribute("aria-expanded")) !== "true") await setup.click();
   await page.getByRole("link", { name: "Jurnal Penyesuaian" }).click();
   await expect(page.getByRole("heading", { name: "Jurnal Penyesuaian" })).toBeVisible();
-  await expect(page.getByRole("combobox").first()).toContainText("PT Ayam Nusantara Digital");
-  await page.getByRole("button", { name: "Penyusutan" }).click();
-  await page.getByLabel("Debit baris 1").fill("9.500.000");
-  await page.getByLabel("Kredit baris 2").fill("9.500.000");
-  await expect(page.getByText("Seimbang", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Simpan jurnal" }).click();
-  await expect(page.getByText("Jurnal penyesuaian tersimpan")).toBeVisible();
+  const due = page.getByTestId("schedule-proposals");
+  await expect(due).toContainText("Penyusutan aset tetap (garis lurus) (6/120)");
+  await expect(due).toContainText("9.500.000");
+  await due.getByRole("button", { name: "Catat", exact: true }).click();
+  await expect(page.getByText("Penyusutan aset tetap (garis lurus) (6/120) dicatat")).toBeVisible();
+  await expect(page.getByTestId("schedule-proposals")).toHaveCount(0);
+  const candidates = page.getByTestId("schedule-candidates");
+  await expect(candidates).toContainText("MESIN PAKAN OTOMATIS");
+  await expect(candidates).toContainText("166.666.667");
+  await candidates.getByRole("button", { name: "Buat jadwal" }).click();
+  await expect(page.getByLabel("Jumlah bulan")).toHaveValue("48");
+  await expect(page.getByLabel("Bulan mulai")).toHaveValue("2026-09");
+  await page.getByRole("button", { name: "Simpan jadwal" }).click();
+  await expect(page.getByText("Jadwal dibuat")).toBeVisible();
+  await expect(page.getByTestId("schedules")).toContainText("Penyusutan 1210 Aset Tetap 19 Agu 2026");
+  await expect(page.getByTestId("schedule-candidates")).toHaveCount(0);
 
-  // 7. Close: all controls pass → sign-offs → lock
+  // 7. Close: arithmetic passes; the ledger scan flags the machine bought in August (Aset Tetap moves for the first time
+  // since its opening balance) → the accountant notes why → sign-offs → lock
   await page.getByRole("link", { name: "Tutup Buku" }).click();
   await expect(page.getByRole("heading", { name: "Tutup Buku" })).toBeVisible();
   await expect(page.getByText("Lolos").first()).toBeVisible();
-  await expect(page.getByText("Perlu dicek")).toHaveCount(0);
   await expect(page.getByText("Gagal")).toHaveCount(0);
+  const flagged = page.locator('[data-testid^="control-"]').filter({ hasText: "Perlu dicek" });
+  await expect(flagged).toHaveCount(1);
+  const capex = page.getByTestId("control-dormant");
+  await expect(capex).toContainText("1210 Aset Tetap");
+  await capex.getByRole("button", { name: "Beri catatan" }).click();
+  await page.getByRole("dialog").getByRole("textbox").fill("Pembelian mesin pakan otomatis, faktur PT Agro Teknik Mandiri ada. Penyusutan mulai September.");
+  await page.getByRole("button", { name: "Simpan catatan" }).click();
+  await expect(capex).toContainText("Penyusutan mulai September");
   const boxes = page.getByRole("checkbox");
   for (let i = 0; i < (await boxes.count()); i++) {
     await expect(boxes.nth(i)).toBeEnabled();

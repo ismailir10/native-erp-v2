@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SessionStart hook (Claude Code) + manual bootstrap. Idempotent and quiet when already set up.
+# Session bootstrap for any agent or person (also wired as a session-start hook). Idempotent and quiet when already set up.
 # Gets a fresh cloud container (or laptop) to: Postgres up → deps → migrated → demo seeded.
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -33,4 +33,4 @@ DATABASE_URL=postgresql://buku:buku@localhost:5432/buku_test npx prisma migrate 
 count=$(npx tsx -e 'import "dotenv/config"; import { createPrisma } from "./lib/db"; const db = createPrisma(); db.firm.count().then((n) => { console.log(n); return db.$disconnect(); }).catch(() => console.log("x"));' 2>/dev/null | tail -1)
 if [ "$count" = "0" ]; then npm run -s demo:reset >/dev/null 2>&1 && echo "session-start: demo data seeded"; fi
 
-echo "session-start: ready — read CLAUDE.md, then the latest docs/cycles/*.md"
+echo "session-start: ready — read AGENTS.md, then the latest docs/cycles/*.md"
