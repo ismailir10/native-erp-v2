@@ -4,6 +4,7 @@ import { originOf, sourceFor as source } from "@/lib/adjust/form";
 const accounts = [
   { code: "1170", type: "ASET" as const, fsLine: "BIAYA_DIBAYAR_DIMUKA" },
   { code: "1210", type: "ASET" as const, fsLine: "ASET_TETAP" },
+  { code: "1211", type: "ASET" as const, fsLine: "ASET_TETAP" },
   { code: "1219", type: "ASET" as const, fsLine: "AKUM_PENYUSUTAN" },
   { code: "2110", type: "LIABILITAS" as const, fsLine: "UTANG_USAHA" },
   { code: "6120", type: "BEBAN" as const, fsLine: "BEBAN_UMUM_ADM" },
@@ -33,6 +34,7 @@ describe("schedule form source line", () => {
     const dep = { kind: "DEPRECIATION" as const, entityId: "pt", debitCode: "6180", creditCode: "1219" };
     expect(sourceFor(asset, dep)).toEqual(src("entry-2", "1210"));
     expect(sourceFor(asset, { ...dep, creditCode: "1210" })).toEqual(src("entry-2", "1210")); // written down directly
+    expect(sourceFor(asset, { ...dep, creditCode: "1211" })).toBeNull(); // another fixed asset written down: not this line
     expect(sourceFor(asset, { ...dep, debitCode: "6120", creditCode: "2110" })).toBeNull(); // rent to payables depreciates nothing
     expect(sourceFor(asset, { ...dep, debitCode: "1170" })).toBeNull(); // no expense on the debit side
     expect(sourceFor(null, dep)).toBeNull(); // a blank form never cites one

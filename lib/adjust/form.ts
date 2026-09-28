@@ -12,9 +12,12 @@ export function originOf(c: { kind: ScheduleKind; entityId: string; sourceEntryI
   return { kind: c.kind, entityId: c.entityId, sourceEntryId: c.sourceEntryId, code, side: c.debitCode === code ? "debit" : "credit" };
 }
 
-/** A depreciation writes an asset down: an expense on the debit side, accumulated depreciation (or the asset itself) on the credit side. */
-export const depreciates = (debit: { type: AccountType } | undefined, credit: { fsLine: string } | undefined) =>
-  debit?.type === "BEBAN" && (credit?.fsLine === "AKUM_PENYUSUTAN" || credit?.fsLine === "ASET_TETAP");
+/**
+ * A depreciation writes its asset down: an expense on the debit side; on the credit side accumulated depreciation, or that very
+ * asset (a direct write-down), never another fixed asset.
+ */
+export const depreciates = (debit: { type: AccountType } | undefined, credit: { code: string; fsLine: string } | undefined, assetCode: string) =>
+  debit?.type === "BEBAN" && (credit?.fsLine === "AKUM_PENYUSUTAN" || credit?.code === assetCode);
 
 /**
  * The source a schedule records when saved: the candidate's entry and line (its account), only while the schedule still releases
@@ -30,6 +33,6 @@ export function sourceFor(
 ): { sourceEntryId: string; sourceAccountCode: string } | null {
   if (!origin?.sourceEntryId || origin.kind !== form.kind || origin.entityId !== form.entityId) return null;
   const byCode = (code: string) => accounts.find((a) => a.code === code);
-  const releases = form.kind === "DEPRECIATION" ? depreciates(byCode(form.debitCode), byCode(form.creditCode)) : (origin.side === "credit" ? form.creditCode : form.debitCode) === origin.code;
+  const releases = form.kind === "DEPRECIATION" ? depreciates(byCode(form.debitCode), byCode(form.creditCode), origin.code) : (origin.side === "credit" ? form.creditCode : form.debitCode) === origin.code;
   return releases ? { sourceEntryId: origin.sourceEntryId, sourceAccountCode: origin.code } : null;
 }
