@@ -77,7 +77,7 @@ feeds the tax cycle); intangible assets (1250) — same mechanics later; leases 
       locked month, 7300 created once / picker when the code is taken; the schedule stops. Depends T2.
 - [x] T4 Close control `fa:` in `runControls` — accept: DB test PASS when equal, REVIEW with both figures when a typed journal moves 1210.
       Depends T2.
-- [ ] T5 UI: `app/(app)/clients/[id]/assets/page.tsx`, components, actions, sidebar — accept: e2e walk on a fresh client (Saldo Awal
+- [x] T5 UI: `app/(app)/clients/[id]/assets/page.tsx`, components, actions, sidebar — accept: e2e walk on a fresh client (Saldo Awal
       asset by hand → register → post depreciation → dispose with a gain → register and control), screenshot checked at 1440 and 390 px.
       Depends T2–T4.
 - [ ] T6 Demo + rules + docs: seed registers Grup Ayam's schedule as an asset; `accounting-rules` rule 5b; README — accept: end-of-cycle
@@ -88,10 +88,12 @@ feeds the tax cycle); intangible assets (1250) — same mechanics later; leases 
 - T1: `prisma/schema.prisma`, `prisma/migrations/20260928160000_fixed_assets` (FixedAsset, AssetTaxGroup, FiscalMethod; CHECKs cost > 0, 0 ≤ residual < cost, 0 ≤ opening accumulated ≤ cost − residual, life 1–600, disposal recorded whole), `lib/assets/fiscal.ts`, `lib/coa/template.ts` (7300 + `ACCOUNT_CODES.DISPOSAL_GAIN_LOSS`), `tests/unit/fiscal-depreciation.test.ts`.- T2: `lib/assets/register.ts` (`createAsset` three ways in, `assetRegister`, `registerVsLedger`, `assetCandidates`, `unregisteredSchedules`), `lib/adjust/schedules.ts` (`amountMinor`, `inTx` hook, `owed` exported), migration `20260928161000_fixed_asset_accumulated_account` (found while testing: a fully depreciated Saldo Awal asset has no schedule, so the asset keeps its accumulated-depreciation account; CHECK land ⇔ none), `tests/db/assets.test.ts`. Fiscal straight line changed to a yearly amount (rate × cost, pro rata, half-up; last year the rest), spread by month inside the year — a full year is exactly 12,5 % of cost, not twelve rounded months.
 - T3: `lib/assets/dispose.ts`, `tests/db/asset-disposal.test.ts` — the schedule row is locked while the posted total is read (serialised with an installment click); "posted after the disposal" compares months (installments are dated the month's last day); 7300 is used only when its name says *pelepasan aset*, created on the first disposal when the code is free, otherwise the accountant picks a P&L account.
 - T4: `lib/controls/index.ts` (`fa:<entity>` after the schedule control, only for entities with registered assets; the detail names each differing figure and its accounts), test in `tests/db/assets.test.ts`.
+- T5: `app/(app)/clients/[id]/assets/page.tsx`, `components/app/asset-register.tsx` (candidates, schedules without an asset, register per entity with totals and the ledger row, add-asset dialog in three modes, disposal dialog), `lib/assets/view.ts`, `app/actions.ts` (`createAssetAction`, `disposeAssetAction`, tenant-checked), sidebar *Aset Tetap* under Akuntansi, `e2e/fixed-assets.spec.ts`.
 
 ## Verification
 - T1: `prisma migrate diff` DB ↔ schema empty. Gate: lint ✓ typecheck ✓ `Test Files 66 passed (66) · Tests 503 passed (503)`. Worked example (Kelompok 1 saldo menurun, Rp 100 jt from Jul 2024): 25 / 37,5 / 18,75 / 9,375 / 9,375 jt, Σ = cost.- T2 gate: lint ✓ typecheck ✓ `Test Files 67 passed (67) · Tests 507 passed (507)`.
 - T3 gate: lint ✓ typecheck ✓ `Test Files 68 passed (68) · Tests 512 passed (512)`.
 - T4 gate: lint ✓ typecheck ✓ `Test Files 68 passed (68) · Tests 513 passed (513)`.
+- T5: `npx playwright test e2e/fixed-assets.spec.ts` → `1 passed` (journal on 1210 → Daftarkan, Kelompok 2 → July fiscal (1.000.000) → August installment posted → sold for 97 jt → derecognised, register = ledger, "Pelepasan aset: Mobil box (laba Rp 2.000.000)" on 7300). Screenshots at 1440 and 390 px checked by eye.
 
 ## Ship Notes
