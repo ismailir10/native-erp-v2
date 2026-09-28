@@ -101,6 +101,28 @@ describe("schedule candidates from the ledger", () => {
     expect((await scheduleCandidates(db, c, 2026, 8)).filter((x) => x.sourceEntryId === machine.id)).toEqual([]);
   });
 
+  it("a schedule covers one line: releasing a prepayment into deferred revenue leaves the deferred revenue proposed", async () => {
+    const { pt, c } = await books();
+    const acc = (code: string) => accountId(c, code);
+    const both = await db.$transaction(async (tx) => postJournal(tx, { entityId: pt, date: dateOnly(2026, 8, 22), kind: "ADJUSTMENT", memo: "Sewa dibayar dan jasa diterima di muka", lines: [{ accountId: await acc("1170"), debit: 12_000_000n }, { accountId: await acc("2160"), credit: 6_000_000n }, { accountId: await acc("2110"), credit: 6_000_000n }] }));
+    const mine = async () => (await scheduleCandidates(db, c, 2026, 8)).filter((x) => x.sourceEntryId === both.id);
+    const prepaid = (await mine()).find((x) => x.creditCode === "1170")!;
+    // The accountant picks 2160 as the account the prepayment is released into: the schedule credits 1170 and debits 2160.
+    await createSchedule(db, { clientId: c, entityId: pt, kind: "AMORTIZATION", memo: prepaid.memo, debitCode: "2160", creditCode: "1170", amount: "12.000.000", months: 12, startYear: 2026, startMonth: 9, sourceEntryId: both.id });
+    expect((await mine()).map((x) => [x.debitCode, x.creditCode, x.amount])).toEqual([["2160", "4110", 6_000_000n]]);
+  });
+
+  it("a depreciation whose amount points at the entry's prepayment hides no asset line of that amount", async () => {
+    const { pt, c } = await books();
+    const acc = (code: string) => accountId(c, code);
+    const even = await db.$transaction(async (tx) => postJournal(tx, { entityId: pt, date: dateOnly(2026, 8, 22), kind: "ADJUSTMENT", memo: "Sewa dan rak", lines: [{ accountId: await acc("1170"), debit: 20_000_000n }, { accountId: await acc("1210"), debit: 20_000_000n }, { accountId: await acc("2110"), credit: 40_000_000n }] }));
+    const mine = async () => (await scheduleCandidates(db, c, 2026, 8)).filter((x) => x.sourceEntryId === even.id).map((x) => `${x.kind}:${x.amount}`);
+    const prepaid = (await scheduleCandidates(db, c, 2026, 8)).find((x) => x.sourceEntryId === even.id && x.kind === "AMORTIZATION")!;
+    // An older schedule: the prepayment candidate turned into a depreciation, keeping its memo and amount.
+    await createSchedule(db, { clientId: c, entityId: pt, kind: "DEPRECIATION", memo: prepaid.memo, debitCode: "6180", creditCode: "1219", amount: "20.000.000", months: 12, startYear: 2026, startMonth: 9, sourceEntryId: even.id });
+    expect(await mine()).toEqual(["AMORTIZATION:20000000", "DEPRECIATION:20000000"]);
+  });
+
   it("drops an accrual candidate once that month's accrual is created", async () => {
     const { pt, c } = await books();
     await createSchedule(db, { clientId: c, entityId: pt, kind: "ACCRUAL", memo: "Akrual sewa Agustus", debitCode: "6120", creditCode: "2150", amount: "3.000.000", months: 1, startYear: 2026, startMonth: 8 });

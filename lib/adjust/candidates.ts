@@ -69,46 +69,51 @@ export async function scheduleCandidates(db: Db, clientId: string, year: number,
       g.net += l.debit - l.credit;
       groups.set(k, g);
     }
-    // A schedule made from an entry covers only the line it came from, so a compound entry's other lines stay proposed. Prepaid and
-    // deferred-revenue schedules name that account; a depreciation schedule doesn't (6180/1219), so its memo identifies the line.
+    // A schedule made from an entry covers only the line it came from, so a compound entry's other lines stay proposed. Schedules are
+    // matched to lines one to one, in creation order: a schedule covers at most one line, and a line is covered by one schedule.
     const from = await db.adjustmentSchedule.findMany({ where: { entityId: e.id, sourceEntryId: { in: [...new Set(lines.map((l) => l.entryId))] } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
-    // Depreciation schedules are matched to asset lines one to one (a schedule covers one line, even when two lines share an amount).
-    const coveredAssets = new Set<string>();
+    const coveredLines = new Set<string>();
+    const words = (memo: string) => new Set(memo.toLowerCase().split(/\s+/));
+    const mentions = (memo: string, g: { line: (typeof lines)[number] }) => words(memo).has(g.line.account.code.toLowerCase()) || memo.toLowerCase().includes(g.line.account.name.toLowerCase());
+    const size = (net: bigint) => (net < 0n ? -net : net);
     for (const entryId of new Set(lines.map((l) => l.entryId))) {
-      const assets = [...groups.entries()].filter(([, g]) => g.line.entryId === entryId && g.line.account.fsLine === "ASET_TETAP");
-      const pool = from.filter((s) => s.sourceEntryId === entryId && s.kind === "DEPRECIATION");
-      // A schedule hides only the asset line it identifies, never one it merely might be: first by the account code its memo carries
-      // (a schedule made from a candidate keeps "Penyusutan <code> <account> <date>", the code never cut off, whatever amount it was
-      // given), then by the account name (longest first), then by its exact amount. A schedule that identifies no line hides none,
-      // so at worst a suggestion stays visible. An entry with a single asset line needs no memo: a schedule citing it covers that
-      // line (older schedules carry custom memos and adjusted amounts), unless the schedule identifies another line of the entry
-      // (e.g. a prepayment candidate turned into a depreciation).
-      const words = (memo: string) => new Set(memo.toLowerCase().split(/\s+/));
-      const others = [...groups.values()].filter((g) => g.line.entryId === entryId && g.line.account.fsLine !== "ASET_TETAP");
-      for (const s of pool) {
-        const open = assets.filter(([k]) => !coveredAssets.has(k));
-        const coded = open.filter(([, g]) => words(s.memo).has(g.line.account.code.toLowerCase()));
-        const named = open.filter(([, g]) => s.memo.toLowerCase().includes(g.line.account.name.toLowerCase())).sort(([, x], [, y]) => y.line.account.name.length - x.line.account.name.length);
-        const elsewhere = others.some((g) => g.net === s.amount || -g.net === s.amount || words(s.memo).has(g.line.account.code.toLowerCase()) || s.memo.toLowerCase().includes(g.line.account.name.toLowerCase()));
-        const sole = assets.length === 1 && open.length === 1 && !elsewhere ? open[0] : undefined;
-        const hit = coded[0] ?? named.find(([, g]) => g.net === s.amount) ?? named[0] ?? open.find(([, g]) => g.net === s.amount) ?? sole;
-        if (hit) coveredAssets.add(hit[0]);
+      const inEntry = [...groups.entries()].filter(([, g]) => g.line.entryId === entryId);
+      const assets = inEntry.filter(([, g]) => g.line.account.fsLine === "ASET_TETAP");
+      const others = inEntry.filter(([, g]) => g.line.account.fsLine !== "ASET_TETAP");
+      for (const s of from.filter((x) => x.sourceEntryId === entryId)) {
+        // A prepayment is released by crediting its account, deferred revenue by debiting it: only a schedule with the account on
+        // that side can cover the line (one on the other side would grow the balance). When a schedule fits two such lines (it
+        // credits a prepayment and debits deferred revenue), its memo, then its amount, picks the one it came from.
+        const fits = others
+          .filter(([k]) => !coveredLines.has(k))
+          .filter(([, g]) => (g.line.account.fsLine === "BIAYA_DIBAYAR_DIMUKA" ? s.creditAccountId : s.debitAccountId) === g.line.accountId);
+        const released = fits.find(([, g]) => mentions(s.memo, g)) ?? fits.find(([, g]) => size(g.net) === s.amount) ?? fits[0];
+        let hit = released;
+        if (s.kind === "DEPRECIATION") {
+          // A depreciation hides only the asset line it identifies, never one it merely might be: first by the account code its memo
+          // carries (a schedule made from a candidate keeps "Penyusutan <code> <account> <date>", the code never cut off, whatever
+          // amount it was given), then by the account name (longest first). Its amount identifies an asset line only when it doesn't
+          // also point at another line of the entry (e.g. a prepayment candidate turned into a depreciation). An entry with a single
+          // asset line needs no memo: a schedule citing it covers that line (older schedules carry custom memos and adjusted
+          // amounts), on the same condition. A schedule that identifies no line hides none, so at worst a suggestion stays visible.
+          const open = assets.filter(([k]) => !coveredLines.has(k));
+          const coded = open.filter(([, g]) => words(s.memo).has(g.line.account.code.toLowerCase()));
+          const named = open.filter(([, g]) => s.memo.toLowerCase().includes(g.line.account.name.toLowerCase())).sort(([, x], [, y]) => y.line.account.name.length - x.line.account.name.length);
+          const elsewhere = others.some(([, g]) => size(g.net) === s.amount || mentions(s.memo, g));
+          const byAmount = elsewhere ? undefined : (open.find(([, g]) => g.net === s.amount) ?? (assets.length === 1 && open.length === 1 ? open[0] : undefined));
+          hit = coded[0] ?? named.find(([, g]) => g.net === s.amount) ?? named[0] ?? byAmount ?? released;
+        }
+        if (hit) coveredLines.add(hit[0]);
       }
     }
-    // A prepayment amortises by crediting its account, deferred revenue by debiting its account: only a schedule with the account
-    // on that side covers the line (one on the other side would grow the balance, not release it).
-    const covered = (k: string, l: (typeof lines)[number]) =>
-      l.account.fsLine === "ASET_TETAP"
-        ? coveredAssets.has(k)
-        : from.some((s) => s.sourceEntryId === l.entryId && (l.account.fsLine === "BIAYA_DIBAYAR_DIMUKA" ? s.creditAccountId === l.accountId : s.debitAccountId === l.accountId));
     for (const [k, { line: l, net }] of groups) {
-      if (covered(k, l)) continue;
+      if (coveredLines.has(k)) continue;
       const when = formatDate(l.entry.date);
       // What happened, in the source's words: the bank description for a reviewed bank line, else the journal memo.
       const what = (l.entry.bankTransaction?.description ?? l.memo ?? l.entry.memo).replace(/^Reklasifikasi:\s*/i, "").slice(0, 90);
       const label = `${l.account.name} ${when}`;
       const base = { entity: ent, sourceEntryId: l.entry.id, startYear: nm.year, startMonth: nm.month };
-      // The depreciation memo leads with the account code: it survives the 80-character cut and identifies the line (see covered).
+      // The depreciation memo leads with the account code: it survives the 80-character cut and identifies the line (see the matching above).
       if (l.account.fsLine === "ASET_TETAP" && net >= floor && codes.has(DEPRECIATION_EXPENSE) && codes.has(ACCUMULATED_DEPRECIATION)) {
         out.push({ ...base, key: `DEPRECIATION:${e.id}:${l.entry.id}:${l.account.code}`, kind: "DEPRECIATION", reason: `Pembelian ${l.account.code} ${l.account.name} ${when}: ${what}`, memo: `Penyusutan ${l.account.code} ${label}`.slice(0, 80), debitCode: DEPRECIATION_EXPENSE, creditCode: ACCUMULATED_DEPRECIATION, amount: net, months: DEFAULT_MONTHS.DEPRECIATION });
       } else if (l.account.fsLine === "BIAYA_DIBAYAR_DIMUKA" && net >= floor) {
