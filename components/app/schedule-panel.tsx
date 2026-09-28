@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Money } from "@/components/app/money";
-import { sourceForKind, type FormOrigin } from "@/lib/adjust/form";
+import { originOf, sourceFor, type FormOrigin } from "@/lib/adjust/form";
 import { createScheduleAction, stopScheduleAction } from "@/app/actions";
 import { formatMoney, parseMoney } from "@/lib/money";
 import type { CandidateView, ScheduleView } from "@/lib/adjust/view";
@@ -23,7 +23,7 @@ const KINDS: { kind: Kind; label: string; debit: string; credit: string; months:
   { kind: "AMORTIZATION", label: "Amortisasi", debit: "", credit: "1170", months: 12, memo: "Amortisasi " },
   { kind: "ACCRUAL", label: "Akrual", debit: "", credit: "2150", months: 1, memo: "Akrual " },
 ];
-type Form = { kind: Kind; entityId: string; memo: string; debitCode: string; creditCode: string; amount: string; months: string; start: string; sourceEntryId: string | null; origin: FormOrigin };
+type Form = { kind: Kind; entityId: string; memo: string; debitCode: string; creditCode: string; amount: string; months: string; start: string; origin: FormOrigin };
 
 const STATUS_LABEL = { BERJALAN: "Berjalan", SELESAI: "Selesai", DIHENTIKAN: "Dihentikan" } as const;
 
@@ -33,8 +33,8 @@ export function SchedulePanel(props: { clientId: string; entities: { id: string;
   const [form, setForm] = useState<Form | null>(null);
   const [busy, setBusy] = useState(false);
   const [stopping, setStopping] = useState<ScheduleView | null>(null);
-  const blank = (): Form => ({ kind: "DEPRECIATION", entityId: props.entities[0]?.id ?? "", memo: KINDS[0].memo, debitCode: KINDS[0].debit, creditCode: KINDS[0].credit, amount: "", months: String(KINDS[0].months), start: props.nextMonth, sourceEntryId: null, origin: null });
-  const fromCandidate = (c: CandidateView): Form => ({ kind: c.kind, entityId: c.entityId, memo: c.memo, debitCode: c.debitCode ?? "", creditCode: c.creditCode, amount: c.amount, months: String(c.months), start: c.start, sourceEntryId: c.sourceEntryId, origin: { kind: c.kind, sourceEntryId: c.sourceEntryId } });
+  const blank = (): Form => ({ kind: "DEPRECIATION", entityId: props.entities[0]?.id ?? "", memo: KINDS[0].memo, debitCode: KINDS[0].debit, creditCode: KINDS[0].credit, amount: "", months: String(KINDS[0].months), start: props.nextMonth, origin: null });
+  const fromCandidate = (c: CandidateView): Form => ({ kind: c.kind, entityId: c.entityId, memo: c.memo, debitCode: c.debitCode ?? "", creditCode: c.creditCode, amount: c.amount, months: String(c.months), start: c.start, origin: originOf(c) });
   const set = (patch: Partial<Form>) => setForm((f) => (f ? { ...f, ...patch } : f));
 
   const currency = props.entities.find((e) => e.id === form?.entityId)?.currency ?? "IDR";
@@ -52,7 +52,7 @@ export function SchedulePanel(props: { clientId: string; entities: { id: string;
     if (!form) return;
     const [y, m] = form.start.split("-").map(Number);
     setBusy(true);
-    const r = await createScheduleAction({ clientId: props.clientId, entityId: form.entityId, kind: form.kind, memo: form.memo, debitCode: form.debitCode, creditCode: form.creditCode, amount: form.amount, months, startYear: y, startMonth: m, sourceEntryId: form.sourceEntryId });
+    const r = await createScheduleAction({ clientId: props.clientId, entityId: form.entityId, kind: form.kind, memo: form.memo, debitCode: form.debitCode, creditCode: form.creditCode, amount: form.amount, months, startYear: y, startMonth: m, sourceEntryId: sourceFor(form.origin, form) });
     setBusy(false);
     if (!r.ok) return void toast.error(r.error);
     toast.success("Jadwal dibuat");
@@ -150,14 +150,14 @@ export function SchedulePanel(props: { clientId: string; entities: { id: string;
             <div className="grid gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel>Jenis</FieldLabel>
-                <Select value={form.kind} onValueChange={(v) => { const k = KINDS.find((x) => x.kind === v)!; set({ kind: k.kind, debitCode: k.debit || form.debitCode, creditCode: k.credit, months: String(k.months), memo: form.memo.trim() && !KINDS.some((x) => x.memo === form.memo) ? form.memo : k.memo, sourceEntryId: sourceForKind(form.origin, k.kind) }); }}>
+                <Select value={form.kind} onValueChange={(v) => { const k = KINDS.find((x) => x.kind === v)!; set({ kind: k.kind, debitCode: k.debit || form.debitCode, creditCode: k.credit, months: String(k.months), memo: form.memo.trim() && !KINDS.some((x) => x.memo === form.memo) ? form.memo : k.memo }); }}>
                   <SelectTrigger className="w-full" aria-label="Jenis"><SelectValue /></SelectTrigger>
                   <SelectContent>{KINDS.map((k) => <SelectItem key={k.kind} value={k.kind}>{k.label}</SelectItem>)}</SelectContent>
                 </Select>
               </Field>
               <Field>
                 <FieldLabel>Entitas</FieldLabel>
-                <Select value={form.entityId} onValueChange={(v) => set({ entityId: v as string, sourceEntryId: null })}>
+                <Select value={form.entityId} onValueChange={(v) => set({ entityId: v as string })}>
                   <SelectTrigger className="w-full" aria-label="Entitas"><SelectValue /></SelectTrigger>
                   <SelectContent>{props.entities.map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}</SelectContent>
                 </Select>

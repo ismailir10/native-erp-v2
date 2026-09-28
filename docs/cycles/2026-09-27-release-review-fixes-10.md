@@ -45,6 +45,11 @@ The review of the staging → main promotion (#37, head e41a53f) found two more 
       drops the source entry, and switching back restores it. A schedule identical to its candidate always cites the entry, so
       the candidate can't be offered twice.
 
+- [x] Review round 9 (#47): one rule decides at save time whether a schedule cites its candidate's entry. It does only while it
+      still identifies that line: same kind and entity, and either the amortised account (prepaid credit or deferred-revenue debit)
+      or, for a depreciation, the asset's code in the memo. Editing the entity, the account or the memo drops the citation, so the
+      candidate stays proposed rather than being cited by a schedule that doesn't cover it.
+
 **Non-goals:** storing a schedule's source line (a schema change).
 **Assumptions:** with equal amounts *and* an edited memo, which of the twin suggestions stays is label-only: both would post the same
 6180/1219 amount. A stored source line would settle it but is a schema change, left out here. Separately, a depreciation schedule whose amount was edited and that isn't the last one for the entry may leave one extra
@@ -61,6 +66,7 @@ suggestion visible. That is harmless: it is only a suggestion.
 - [x] T8 CI pins the Supabase CLI — accept: the setup step no longer resolves "latest" through the GitHub API
 - [x] T9 A schedule hides only the asset line it identifies — accept: the converted-prepayment case fails on the previous matcher
 - [x] T10 The form restores the candidate's source on returning to its kind — accept: unit test of `sourceForKind`
+- [x] T11 One save-time rule for citing a candidate's entry — accept: unit test covers kind, entity, account and memo edits
 
 ## Implementation
 - T1: `lib/adjust/candidates.ts` drops the entry-level filter and adds `covered(line, net)`, based on the entry's schedules.
@@ -107,6 +113,10 @@ suggestion visible. That is harmless: it is only a suggestion.
   and entry) and uses it on every kind change. Test: `tests/unit/schedule-form.test.ts`. The previous handler kept the source only
   when the kind was unchanged, so switching away and back lost it; the helper is new, so the test pins the new rule rather than
   failing on old code.
+- T11: `lib/adjust/form.ts` replaces `sourceForKind` with `originOf(candidate)` and `sourceFor(origin, form)`.
+  `components/app/schedule-panel.tsx` no longer tracks `sourceEntryId` per change; it computes it when saving. Test:
+  `tests/unit/schedule-form.test.ts`, covering another kind, another entity, the amortised account edited away and back, a
+  depreciation memo without the code, and a blank form.
 
 ## Verification
 - T1: the new test fails on the old scan ("expected [] to deeply equal [ 'DEPRECIATION:buy:30000000', …"; the car and rack
@@ -173,6 +183,12 @@ suggestion visible. That is harmless: it is only a suggestion.
   - `npm run build` ✓.
   - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
   - `test:e2e` → 10 passed (52.2s).
+- T11 gates:
+  - Lint and typecheck clean.
+  - `npm test` → Test Files 62 passed (62), Tests 459 passed (459).
+  - `npm run build` ✓.
+  - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
+  - `test:e2e` → 10 passed (51.8s).
 
 ## Ship Notes
 No migration, no env change. Merges to staging, then rides the promotion PR #37.
