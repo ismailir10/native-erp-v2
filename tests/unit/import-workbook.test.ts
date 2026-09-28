@@ -134,6 +134,36 @@ describe("statement workbooks", () => {
     ]);
   });
 
+  it("attaches sheets without an account number to the one account the others print", async () => {
+    const sheets = workingCopy();
+    sheets[0].rows = [["No. Rekening : 0123456789"], ...sheets[0].rows];
+    const sections = await parseStatementSections(FILE, workbook(sheets, "xlsx"), { year: 2026 });
+    expect(sections).toHaveLength(1);
+    expect(sections[0]).toMatchObject({ accountNumber: "0123456789", sheets: ["MAY", "JUN", "JUL"] });
+    expect(sections[0].section).toBeUndefined();
+  });
+
+  it("refuses unnumbered sheets beside several accounts", async () => {
+    const sheets = workingCopy();
+    sheets[0].rows = [["No. Rekening : 1111111111"], ...sheets[0].rows];
+    sheets[1].rows = [["No. Rekening : 2222222222"], ...sheets[1].rows];
+    await expect(parseStatement(FILE, workbook(sheets, "xlsx"), { year: 2026 })).rejects.toThrow(/JUL tidak mencantumkan nomor rekening/);
+  });
+
+  it("reads explicit zeroes on a SALDO AWAL row as no movement and skips dated rows that move nothing", async () => {
+    const rows: FixtureCell[][] = [
+      ["Tanggal", "Keterangan", "Debet", "Kredit", "Saldo"],
+      ["01/08/2026", "SALDO AWAL", "0,00", "0", "1.000.000,00"],
+      ["02/08/2026", "SETORAN", "0", "500.000,00", "1.500.000,00"],
+      ["03/08/2026", "INFO SALDO", "0,00", "0,00", "1.500.000,00"],
+      ["04/08/2026", "BIAYA ADM", "10.000,00", "0", "1.490.000,00"],
+    ];
+    const st = await parseStatement("x.xlsx", workbook([{ name: "S", rows }], "xlsx"));
+    expect(st.openingBalance).toBe(1_000_000n);
+    expect(st.rows.map((r) => [r.description, r.amount])).toEqual([["SETORAN", 500_000n], ["BIAYA ADM", -10_000n]]);
+    expect(checkContinuity(st).ok).toBe(true);
+  });
+
   it("keeps the bank's direction when the balance can't tell, and says nothing", async () => {
     const st = await parseStatement("x.xlsx", workbook([{ name: "S", rows: [["Tanggal", "Keterangan", "Debet", "Kredit", "Saldo"], ["01/08/2026", "A", 100, null, 900], ["02/08/2026", "B", null, 50, null]] }], "xlsx"));
     expect(st.rows.map((r) => r.amount)).toEqual([-100n, 50n]);

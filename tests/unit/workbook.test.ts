@@ -17,6 +17,8 @@ describe("spreadsheet sniffing", () => {
     expect(sniffFile(htmlXls([["Tanggal"]]))).toBe("MARKUP");
     expect(sniffFile(Buffer.from('﻿<?xml version="1.0"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"/>'))).toBe("MARKUP");
     expect(sniffFile(Buffer.from("Tanggal\tKeterangan\n"))).toBe("TEXT");
+    // "PK" alone is not a ZIP: a CSV can start with a column named PK.
+    expect(sniffFile(Buffer.from("PK,Tanggal,Keterangan\n"))).toBe("TEXT");
   });
 
   it("leaves PDF and text alone and passes .xlsx through", () => {

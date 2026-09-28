@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus } from "lucide-react";
+import { ChevronRight, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -89,7 +89,9 @@ export function AssetRegister(props: {
     remainingMonths: "",
   });
   const fromCandidate = (c: AssetCandidateView): Form => ({ ...blank(c.entityId), mode: { kind: "candidate", c }, name: c.description.slice(0, 80), acquiredOn: c.dateIso, cost: formatMoney(BigInt(c.amount), c.currency, { bare: true }), assetAccountCode: c.accountCode, start: nextMonthOf(c.dateIso) });
-  const fromSchedule = (s: ScheduleLinkView): Form => ({ ...blank(s.entityId), mode: { kind: "schedule", s }, name: s.memo.replace(/^Penyusutan\s+/i, ""), cost: formatMoney(BigInt(s.amount), s.currency, { bare: true }), life: String(s.months), assetAccountCode: s.accountCode ?? code(props.accounts.asset, "1210"), start: s.start, acquiredOn: `${s.start}-01` });
+  // The acquisition date is the purchase entry's when the schedule stored it; otherwise the accountant types it (depreciation often
+  // starts the month after, so the schedule's start is no acquisition date).
+  const fromSchedule = (s: ScheduleLinkView): Form => ({ ...blank(s.entityId), mode: { kind: "schedule", s }, name: s.memo.replace(/^Penyusutan\s+/i, ""), cost: formatMoney(BigInt(s.amount), s.currency, { bare: true }), life: String(s.months), assetAccountCode: s.accountCode ?? code(props.accounts.asset, "1210"), start: s.start, acquiredOn: s.sourceDateIso ?? "" });
 
   const land = form?.taxGroup === "TANAH";
   const currency = props.entities.find((e) => e.id === form?.entityId)?.currency ?? "IDR";
@@ -197,6 +199,10 @@ export function AssetRegister(props: {
 
       {props.registers.map((reg) => {
         const cur = reg.entity.currency;
+        // Every booked figure drills to the asset's page: the purchase or Saldo Awal, each posted installment and the disposal, each
+        // linked to its ledger month (a single account or month can't explain a book value or a year's depreciation). The fiscal
+        // figures are an estimate.
+        const drill = (id: string, node: React.ReactNode, label: string) => <Link href={`/clients/${props.clientId}/assets/${id}?period=${props.periodKey}&entity=${reg.entity.id}`} aria-label={label} className="underline-offset-2 hover:text-primary hover:underline">{node}</Link>;
         const fiscal = reg.totals.fiscalYtd !== null;
         return (
           <Card key={reg.entity.id} data-testid={`register-${reg.entity.shortName}`}>
@@ -225,7 +231,7 @@ export function AssetRegister(props: {
                   {reg.rows.map((r) => (
                     <TableRow key={r.id}>
                       <TableCell className="pl-6 whitespace-normal">
-                        <div className="font-medium">{r.name}</div>
+                        <Link href={`/clients/${props.clientId}/assets/${r.id}?period=${props.periodKey}&entity=${reg.entity.id}`} className="inline-flex items-center gap-1 font-medium hover:text-primary">{r.name} <ChevronRight className="size-3.5" aria-hidden /></Link>
                         <div className="text-xs text-muted-foreground">
                           {r.groupLabel}{r.methodLabel !== "–" ? ` · fiskal ${r.methodLabel.toLowerCase()}` : ""} · diperoleh {r.acquired}{r.lifeMonths ? ` · ${r.lifeMonths} bulan` : ""}
                         </div>
@@ -236,10 +242,10 @@ export function AssetRegister(props: {
                           </Link>
                         )}
                       </TableCell>
-                      <TableCell className="hidden text-right md:table-cell"><Money value={BigInt(r.cost)} currency={cur} /></TableCell>
-                      <TableCell className="hidden text-right md:table-cell"><Money value={-BigInt(r.accumulated)} currency={cur} /></TableCell>
-                      <TableCell className="text-right"><Money value={BigInt(r.bookValue)} currency={cur} /></TableCell>
-                      <TableCell className="hidden text-right lg:table-cell"><Money value={BigInt(r.bookYtd)} currency={cur} /></TableCell>
+                      <TableCell className="hidden text-right md:table-cell">{drill(r.id, <Money value={BigInt(r.cost)} currency={cur} />, `Harga perolehan ${r.name}`)}</TableCell>
+                      <TableCell className="hidden text-right md:table-cell">{drill(r.id, <Money value={-BigInt(r.accumulated)} currency={cur} />, `Akumulasi penyusutan ${r.name}`)}</TableCell>
+                      <TableCell className="text-right">{drill(r.id, <Money value={BigInt(r.bookValue)} currency={cur} />, `Nilai buku ${r.name}`)}</TableCell>
+                      <TableCell className="hidden text-right lg:table-cell">{drill(r.id, <Money value={BigInt(r.bookYtd)} currency={cur} />, `Penyusutan tahun ini ${r.name}`)}</TableCell>
                       {fiscal && <TableCell className="hidden text-right lg:table-cell"><Money value={BigInt(r.fiscalYtd ?? "0")} currency={cur} /></TableCell>}
                       {fiscal && <TableCell className="hidden text-right lg:table-cell"><Money value={BigInt(r.difference ?? "0")} currency={cur} /></TableCell>}
                       <TableCell className="pr-6 text-right">
@@ -325,6 +331,7 @@ export function AssetRegister(props: {
               <Field>
                 <FieldLabel htmlFor="asset-date">Tanggal perolehan</FieldLabel>
                 <Input id="asset-date" type="date" value={form.acquiredOn} disabled={form.mode.kind === "candidate"} onChange={(e) => set({ acquiredOn: e.target.value, start: form.mode.kind === "schedule" ? form.start : nextMonthOf(e.target.value) })} />
+                {form.mode.kind === "schedule" && !form.mode.s.sourceDateIso && <FieldDescription>Jadwal ini tidak menyimpan pembeliannya: isi tanggal perolehan dari dokumennya.</FieldDescription>}
               </Field>
               <Field>
                 <FieldLabel htmlFor="asset-cost">Harga perolehan{currency === "IDR" ? "" : ` (${currency})`}</FieldLabel>

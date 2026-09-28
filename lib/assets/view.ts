@@ -13,6 +13,9 @@ export type AssetRowView = {
   acquired: string;
   acquiredIso: string;
   account: string;
+  /** For the drill to the ledger: the asset account and the accumulated-depreciation account (null for land). */
+  assetCode: string;
+  accumulatedCode: string | null;
   lifeMonths: number | null;
   cost: string;
   accumulated: string;
@@ -33,7 +36,7 @@ export type EntityRegisterView = {
 };
 
 export type AssetCandidateView = { key: string; entryId: string; entityId: string; entity: string; currency: string; accountCode: string; account: string; date: string; dateIso: string; amount: string; description: string };
-export type ScheduleLinkView = { id: string; entityId: string; entity: string; currency: string; memo: string; amount: string; months: number; start: string; expense: string; accumulated: string; accountCode: string | null };
+export type ScheduleLinkView = { id: string; entityId: string; entity: string; currency: string; memo: string; amount: string; months: number; start: string; expense: string; accumulated: string; accountCode: string | null; /** The purchase entry's date, when the schedule stored it. */ sourceDateIso: string | null };
 
 const sum = (xs: bigint[]) => xs.reduce((t, x) => t + x, 0n);
 
@@ -57,6 +60,8 @@ export async function registerViews(db: Db, clientId: string, year: number, mont
           acquired: formatDate(r.acquiredOn),
           acquiredIso: toIsoDate(r.acquiredOn),
           account: `${r.assetAccount.code} ${r.assetAccount.name}`,
+          assetCode: r.assetAccount.code,
+          accumulatedCode: r.accumulatedAccount?.code ?? null,
           lifeMonths: r.usefulLifeMonths,
           cost: r.cost.toString(),
           accumulated: r.accumulated.toString(),
@@ -111,5 +116,6 @@ export async function scheduleLinkViews(db: Db, clientId: string, entityIds: str
     expense: `${s.debitAccount.code} ${s.debitAccount.name}`,
     accumulated: `${s.creditAccount.code} ${s.creditAccount.name}`,
     accountCode: s.sourceAccount?.code ?? null,
+    sourceDateIso: s.sourceEntry ? toIsoDate(s.sourceEntry.date) : null,
   }));
 }

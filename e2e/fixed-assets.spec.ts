@@ -54,6 +54,14 @@ test("fixed assets: register a purchase, depreciate, dispose at a gain", async (
   await page.getByRole("button", { name: "Catat", exact: true }).click();
   await expect(page.getByText("Penyusutan Mobil box (1/96) dicatat")).toBeVisible();
 
+  // The book value drills to the asset's entries: the purchase and the August installment, each on its ledger month.
+  await page.goto(`${base}/assets?period=2026-08`);
+  await register.getByRole("link", { name: "Nilai buku Mobil box" }).click();
+  await expect(page.getByRole("heading", { name: "Mobil box" })).toBeVisible();
+  await expect(page.getByTestId("movement-ACQUIRED")).toContainText("96.000.000");
+  await expect(page.getByTestId("movement-DEPRECIATION")).toContainText("95.000.000");
+  await expect(page.getByTestId("movement-DEPRECIATION").getByRole("link")).toHaveAttribute("href", /\/ledger\/1219\?entity=.*&period=2026-08/);
+
   // Sell it at the end of August for 97 jt: book value 95 jt → gain 2 jt.
   await page.goto(`${base}/assets?period=2026-08`);
   await expect(register.getByRole("row", { name: /Mobil box/ })).toContainText("95.000.000");
