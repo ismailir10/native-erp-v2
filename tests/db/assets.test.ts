@@ -5,6 +5,7 @@ import { postOpening } from "@/lib/opening";
 import { createSchedule, postInstallment } from "@/lib/adjust/schedules";
 import { assetCandidates, assetRegister, createAsset, registerVsLedger, unregisteredSchedules } from "@/lib/assets/register";
 import { dateOnly } from "@/lib/format";
+import { runControls } from "@/lib/controls";
 
 type G = Awaited<ReturnType<typeof makeGroup>>;
 const acc = async (g: G, code: string) => (await db.account.findFirstOrThrow({ where: { clientId: g.client.id, code } })).id;
@@ -84,5 +85,23 @@ describe("fixed-asset register", () => {
     await expect(createAsset(db, { ...base(g), name: "X", acquiredOn: "2026-02-01", cost: "1000", residual: "1000" })).rejects.toThrow(/Nilai sisa/);
     await expect(createAsset(db, { ...base(g), name: "X", acquiredOn: "2026-02-30", cost: "1000" })).rejects.toThrow(/Tanggal perolehan/);
     await expect(createAsset(db, { ...base(g), name: "X", acquiredOn: "2026-02-01", cost: "1000", assetAccountCode: "6180" })).rejects.toThrow(/akun aset tetap/);
+  });
+});
+
+describe("fixed-asset close control", () => {
+  beforeEach(resetDb);
+
+  it("passes when the register equals the ledger and asks for a note when a typed journal moves the asset account", async () => {
+    const g = await makeGroup();
+    const control = async (month: number) => (await runControls(db, g.client.id, 2026, month)).find((c) => c.key === `fa:${g.pt.entity.id}`);
+    expect(await control(8)).toBeUndefined(); // no register, no control
+    const entry = await purchase(g, 48_000_000n);
+    await createAsset(db, { ...base(g), name: "Laptop kantor", acquiredOn: "2026-08-10", cost: "48000000", sourceEntryId: entry.id });
+    expect(await control(8)).toMatchObject({ status: "PASS", detail: "Harga perolehan Rp 48.000.000, akumulasi penyusutan Rp 0" });
+    await purchase(g, 5_000_000n, dateOnly(2026, 8, 20), "Kursi, belum didaftarkan");
+    const c = await control(8);
+    expect(c?.status).toBe("REVIEW");
+    expect(c?.detail).toMatch(/^Harga perolehan: daftar Rp 48\.000\.000 vs buku besar Rp 53\.000\.000 \(1210\)/);
+    expect(c?.href).toBe(`/clients/${g.client.id}/assets?period=2026-08&entity=${g.pt.entity.id}`);
   });
 });
