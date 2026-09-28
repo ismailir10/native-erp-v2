@@ -87,9 +87,9 @@ export function LedgerImportForm({ clientId, entities }: { clientId: string; ent
           >
             <FileUp className="size-6 text-primary" aria-hidden />
             {file ? <span className="font-medium">{file.name}</span> : <span><span className="font-medium text-primary">Pilih file</span> atau tarik ke sini</span>}
-            <span className="text-xs text-muted-foreground">XLSX atau CSV · maks. 5 MB</span>
+            <span className="text-xs text-muted-foreground">XLSX, XLS, atau CSV · maks. 5 MB</span>
           </button>
-          <input ref={inputRef} type="file" accept=".xlsx,.csv" className="sr-only" data-testid="ledger-file-input" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv" className="sr-only" data-testid="ledger-file-input" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
         </Field>
 
         {candidates && (
