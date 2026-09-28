@@ -1,6 +1,7 @@
 import type { Db, Tx } from "@/lib/db";
 import type { TaxTag } from "@/lib/generated/prisma/enums";
 import { postBankTransaction } from "@/lib/ledger/bank";
+import { LedgerError } from "@/lib/ledger/post";
 
 type ReviewArgs = {
   bankTxId: string;
@@ -24,9 +25,15 @@ export async function reviewTransaction(db: Db, args: ReviewArgs) {
 export async function reviewTransactionTx(tx: Tx, args: ReviewArgs) {
   const t = await tx.bankTransaction.findUniqueOrThrow({
     where: { id: args.bankTxId },
-    include: { bankAccount: { include: { entity: true } } },
+    include: { bankAccount: { include: { entity: true } }, settlements: { select: { invoice: { select: { number: true, arApAccount: { select: { code: true } } } } } } },
   });
   const clientId = t.bankAccount.entity.clientId;
+  // A line that settles invoices stays on their receivable/payable account (rule 5c): moving it would leave them paid by money the
+  // ledger no longer shows there.
+  const away = t.settlements.filter((s) => s.invoice.arApAccount.code !== args.accountCode);
+  if (away.length) {
+    throw new LedgerError(`Mutasi ini melunasi ${away.map((s) => s.invoice.number).join(", ")} di akun ${away[0].invoice.arApAccount.code}. Hapus pencocokannya dulu di Piutang & Utang sebelum mengubah akunnya.`);
+  }
   await postBankTransaction(tx, t.id, { accountCode: args.accountCode, taxTag: args.taxTag }, { actorId: args.actorId });
   const changed = args.accountCode !== t.suggestedCode || args.taxTag !== t.taxTag;
   await tx.bankTransaction.update({

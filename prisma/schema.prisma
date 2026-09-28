@@ -79,6 +79,8 @@ enum EntryKind {
   RECLASS
   ADJUSTMENT
   IMPORTED
+  /// A sales invoice or purchase bill (accounting-rules 5c).
+  INVOICE
 }
 
 enum MapMethod {
@@ -153,6 +155,8 @@ model Client {
   schedules     AdjustmentSchedule[]
   proposals     ProposedEntry[]
   fixedAssets   FixedAsset[]
+  contacts      Contact[]
+  invoices      Invoice[]
   coaVersion    Int                  @default(1)
 
   @@index([firmId])
@@ -175,6 +179,7 @@ model Entity {
   schedules          AdjustmentSchedule[]
   proposals          ProposedEntry[]
   fixedAssets        FixedAsset[]
+  invoices           Invoice[]
 
   @@index([clientId])
 }
@@ -204,6 +209,8 @@ model Account {
   scheduleSources AdjustmentSchedule[] @relation("ScheduleSourceAccount")
   fixedAssets     FixedAsset[]         @relation("AssetAccount")
   fixedAssetsAcc  FixedAsset[]         @relation("AssetAccumulatedAccount")
+  invoiceCounter  Invoice[]            @relation("InvoiceCounter")
+  invoiceArAp     Invoice[]            @relation("InvoiceArAp")
 
   @@unique([clientId, code])
 }
@@ -274,14 +281,14 @@ model StatementImport {
 }
 
 model BankTransaction {
-  id            String          @id @default(cuid())
+  id            String              @id @default(cuid())
   firmId        String
   importId      String
-  import        StatementImport @relation(fields: [importId], references: [id])
+  import        StatementImport     @relation(fields: [importId], references: [id])
   bankAccountId String
-  bankAccount   BankAccount     @relation(fields: [bankAccountId], references: [id])
+  bankAccount   BankAccount         @relation(fields: [bankAccountId], references: [id])
   entityId      String
-  date          DateTime        @db.Date
+  date          DateTime            @db.Date
   description   String
   merchantKey   String
   direction     Direction
@@ -303,7 +310,9 @@ model BankTransaction {
   matchedTxId   String?
   entries       JournalEntry[]
   proposals     ProposedEntry[]
-  createdAt     DateTime        @default(now())
+  /// Invoices this bank line settles (a subledger link; the line itself already moved the GL).
+  settlements   InvoiceSettlement[]
+  createdAt     DateTime            @default(now())
 
   @@unique([bankAccountId, hash])
   @@index([entityId, date])
@@ -335,6 +344,8 @@ model JournalEntry {
   /// Fixed assets registered from this entry (its purchase line), and the asset this entry disposed of.
   assetsFrom        FixedAsset[]         @relation("AssetSource")
   assetDisposal     FixedAsset?          @relation("AssetDisposal")
+  /// The invoice this entry records (kind INVOICE).
+  invoice           Invoice?             @relation("InvoiceEntry")
   /// The proposal this entry was posted from (close copilot, 1999 correction).
   proposal          ProposedEntry?
   /// Member who posted it; null for seeds and system postings ("Sistem").
@@ -796,6 +807,8 @@ model FirmMember {
   mappings         SourceAccount[]      @relation("MappingAcceptedBy")
   schedules        AdjustmentSchedule[] @relation("ScheduleCreatedBy")
   fixedAssets      FixedAsset[]         @relation("AssetCreatedBy")
+  invoicesCreated  Invoice[]            @relation("InvoiceCreatedBy")
+  settlements      InvoiceSettlement[]  @relation("SettlementCreatedBy")
   proposalsDecided ProposedEntry[]      @relation("ProposalDecidedBy")
 
   @@index([firmId])
@@ -957,4 +970,79 @@ model FixedAsset {
   @@unique([sourceEntryId, assetAccountId])
   @@index([clientId])
   @@index([entityId])
+}
+
+enum InvoiceDirection {
+  /// Piutang: the entity invoiced a customer.
+  SALES
+  /// Utang: a supplier billed the entity.
+  PURCHASE
+}
+
+/// A customer or supplier of a client (accounting-rules 5c).
+model Contact {
+  id        String    @id @default(cuid())
+  firmId    String
+  clientId  String
+  client    Client    @relation(fields: [clientId], references: [id])
+  name      String
+  npwp      String?
+  createdAt DateTime  @default(now())
+  invoices  Invoice[]
+
+  @@unique([clientId, name])
+}
+
+/// Receivable/payable subledger item (accounting-rules 5c). Posted through postJournal (kind INVOICE, `entryId`) unless it is a Saldo
+/// Awal item (`opening`, already in the opening entry). Amounts in minor units of the entity's functional currency. CHECKs in the
+/// migration: dpp, ppn >= 0, total = dpp + ppn > 0, dueDate >= issueDate, opening <=> no entry.
+model Invoice {
+  id               String              @id @default(cuid())
+  firmId           String
+  clientId         String
+  client           Client              @relation(fields: [clientId], references: [id])
+  entityId         String
+  entity           Entity              @relation(fields: [entityId], references: [id])
+  contactId        String
+  contact          Contact             @relation(fields: [contactId], references: [id])
+  direction        InvoiceDirection
+  number           String
+  issueDate        DateTime            @db.Date
+  dueDate          DateTime            @db.Date
+  description      String
+  dpp              BigInt
+  ppn              BigInt              @default(0)
+  total            BigInt
+  counterAccountId String
+  counterAccount   Account             @relation("InvoiceCounter", fields: [counterAccountId], references: [id])
+  arApAccountId    String
+  arApAccount      Account             @relation("InvoiceArAp", fields: [arApAccountId], references: [id])
+  opening          Boolean             @default(false)
+  entryId          String?             @unique
+  entry            JournalEntry?       @relation("InvoiceEntry", fields: [entryId], references: [id], onDelete: Restrict)
+  createdById      String?
+  createdBy        FirmMember?         @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
+  createdAt        DateTime            @default(now())
+  settlements      InvoiceSettlement[]
+
+  @@unique([entityId, direction, number])
+  @@index([clientId])
+  @@index([contactId])
+}
+
+/// A bank line settling (part of) an invoice. Σ per invoice ≤ its total and Σ per bank line ≤ its amount, enforced under row locks.
+model InvoiceSettlement {
+  id                String          @id @default(cuid())
+  firmId            String
+  invoiceId         String
+  invoice           Invoice         @relation(fields: [invoiceId], references: [id])
+  bankTransactionId String
+  bankTransaction   BankTransaction @relation(fields: [bankTransactionId], references: [id])
+  amount            BigInt
+  createdById       String?
+  createdBy         FirmMember?     @relation("SettlementCreatedBy", fields: [createdById], references: [id])
+  createdAt         DateTime        @default(now())
+
+  @@unique([invoiceId, bankTransactionId])
+  @@index([bankTransactionId])
 }

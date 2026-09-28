@@ -5,3 +5,9 @@
 **Decision.** ICP = accounting/tax firms serving many SME clients. Core loop = import rekening koran → auto-code → review → traceable TB/FS incl. PT + owner combined → controlled close. Light tax (PPN/PPh tags + estimate card). UI Bahasa only.
 
 **Out of MVP:** auth/roles, PDF statement extraction (**next priority** — firms mostly receive PDFs), e-Faktur/Coretax, AR/AP invoicing, FX, bank API feeds, true SAK consolidation (parent–subsidiary), deploy.
+
+**Amendment (2026-09-29): receivables/payables subledger.** Pilot feedback ("ga ada modul AR dan AP") showed that a close without
+*who owes what* is incomplete for a firm: 1130/2110 must be made of invoices, a receipt must say which invoice it paid, and the
+aging is a standard month-end schedule. Buku now keeps a **subledger** — invoices recorded by the accountant (or from Saldo Awal),
+settled by bank lines, proven against the GL at close (accounting-rules 5c). Still out: an invoicing product (creating, sending,
+numbering, e-Faktur/Coretax), credit notes, reminders. Cycle: `docs/cycles/2026-09-29-receivables-payables.md`.
