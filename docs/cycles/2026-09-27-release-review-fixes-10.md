@@ -93,6 +93,7 @@ its side). A depreciation keeps its line whatever its memo.
 - [x] T14 One line per schedule for every kind; no amount match that points elsewhere — accept: both new cases fail on the previous matcher
 - [x] T15 Amount collisions only with open lines, whatever the creation order — accept: the new case fails on the previous matcher
 - [x] T16 Store the schedule's source line (schema) — accept: the equal-amount twin with an edited memo fails on the previous matcher
+- [x] T17 Older schedules: collisions only with candidate-direction lines — accept: the reclassed-prepayment case fails on the previous matcher
 
 ## Implementation
 - T1: `lib/adjust/candidates.ts` drops the entry-level filter and adds `covered(line, net)`, based on the entry's schedules.
@@ -182,6 +183,9 @@ its side). A depreciation keeps its line whatever its memo.
     - The writer refuses a line without its entry, an account the entry lacks, a prepayment on the debit side, and an asset under
       an amortisation. The CHECK refuses clearing the entry.
     - The unit test covers the new return shape.
+- T17: in `lib/adjust/candidates.ts`, the older-schedule matching weighs only lines that could be a candidate: a prepayment moving
+  on the debit side, deferred revenue on the credit side. Test: an entry debiting 1210 and crediting 1170 for 20 jt (a prepayment
+  reclassed into an asset), with an older depreciation "Susut rak gudang" of 20 jt. The entry gets no candidate.
 
 ## Verification
 - T1: the new test fails on the old scan ("expected [] to deeply equal [ 'DEPRECIATION:buy:30000000', …"; the car and rack
@@ -297,6 +301,14 @@ its side). A depreciation keeps its line whatever its memo.
   - `npm run build` ✓.
   - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
   - `test:e2e` → 10 passed (53.1s).
+
+- T17: the new case fails on the previous matcher (1 failed | 12 passed).
+- T17 gates:
+  - Lint and typecheck clean.
+  - `npm test` → Test Files 62 passed (62), Tests 466 passed (466).
+  - `npm run build` ✓.
+  - `demo:reset` + `verify:books` → ALL PASS — 1333 pemeriksaan saldo cocok dengan ground truth.
+  - `test:e2e` → 10 passed (52.5s).
 
 ## Ship Notes
 - **Migration:** `20260928010000_schedule_source_line` is additive: a nullable column, a foreign key and a CHECK that existing rows

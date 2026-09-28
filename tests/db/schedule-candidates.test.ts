@@ -137,6 +137,13 @@ describe("schedule candidates from the ledger", () => {
     expect((await scheduleCandidates(db, c, 2026, 8)).filter((x) => x.sourceEntryId === first.id || x.sourceEntryId === second.id)).toEqual([]);
   });
 
+  it("an older depreciation still covers the asset a prepayment was reclassed into", async () => {
+    const { pt, c } = await books();
+    const reclass = await post(pt, c, dateOnly(2026, 8, 22), "1210", "1170", 20_000_000n, "Uang muka rak jadi aset");
+    await createSchedule(db, { clientId: c, entityId: pt, kind: "DEPRECIATION", memo: "Susut rak gudang", debitCode: "6180", creditCode: "1219", amount: "20.000.000", months: 48, startYear: 2026, startMonth: 9, sourceEntryId: reclass.id });
+    expect((await scheduleCandidates(db, c, 2026, 8)).filter((x) => x.sourceEntryId === reclass.id)).toEqual([]);
+  });
+
   it("a schedule that stores its source line covers exactly that line, whatever its memo and amount", async () => {
     const { g, pt, c } = await books();
     const acc = (code: string) => accountId(c, code);

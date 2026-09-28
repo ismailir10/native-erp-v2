@@ -79,7 +79,9 @@ export async function scheduleCandidates(db: Db, clientId: string, year: number,
     for (const entryId of new Set(lines.map((l) => l.entryId))) {
       const inEntry = [...groups.entries()].filter(([, g]) => g.line.entryId === entryId);
       const assets = inEntry.filter(([, g]) => g.line.account.fsLine === "ASET_TETAP");
-      const others = inEntry.filter(([, g]) => g.line.account.fsLine !== "ASET_TETAP");
+      // Only movements that could be a candidate: a prepayment paid (debit), deferred revenue received (credit). A prepayment
+      // credited away (e.g. reclassed into a fixed asset) is no line a schedule was made from.
+      const others = inEntry.filter(([, g]) => g.line.account.fsLine !== "ASET_TETAP" && (g.line.account.fsLine === "BIAYA_DIBAYAR_DIMUKA" ? g.net > 0n : g.net < 0n));
       const cited = from.filter((x) => x.sourceEntryId === entryId);
       // A schedule that stores its source line covers exactly that line.
       for (const s of cited.filter((x) => x.sourceAccountId)) {
