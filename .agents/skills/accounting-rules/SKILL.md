@@ -40,6 +40,17 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     accountant picks). Refused while an installment through the disposal month is unposted; the schedule stops; the asset keeps
     `disposalEntryId`. The close control `fa:<entity>` compares the register's cost and accumulated depreciation with the GL accounts it
     uses: equal = PASS, else REVIEW (never FAIL: unregistered assets and typed journals explain a difference).
+5c. **Receivable/payable subledger** (`lib/receivables`, ADR 0004 amendment): an `Invoice` per entity (SALES = piutang, PURCHASE =
+    utang; contact, number unique per entity + direction, issue ≤ due date, DPP + PPN = total > 0, counter account, receivable/payable
+    account PIUTANG_USAHA / UTANG_USAHA). Saving posts it through `postJournal()` (kind **INVOICE**): sales Dr receivable / Cr revenue +
+    2130; purchases Dr expense or asset + 1150 / Cr payable; a **Saldo Awal** invoice posts nothing and is dated by the opening. PPN is
+    the tax invoice's amount (prefill = effective 11 %, rule 8). An `InvoiceSettlement` links a **bank line** to an invoice for an
+    amount — a subledger link only, never a journal: the line must be the entity's, in the invoice's direction, **posted to the invoice's
+    receivable/payable account**, in an open month; Σ per invoice ≤ total and Σ per line ≤ its amount under row locks. A line elsewhere
+    is first classified through the reviewer's writer (`reviewTransactionTx`, rule 3) in the same transaction. Suggestions (equal open
+    amount, contact name or number in the description) are never applied on their own. Open amount at a date = total − settlements by
+    bank lines dated by then; aging by days past due (0 / 1–30 / 31–60 / 61–90 / > 90). Close controls `ar:` / `ap:` compare Σ open
+    invoices with the GL balance of the accounts they use: equal = PASS, else REVIEW with the count of unmatched bank lines.
 6. `bigint` **minor units of the entity's functional currency** everywhere in the domain (ADR 0006). IDR has exponent 0,
    so for IDR entities that is whole Rupiah, as before. Parse with `parseRupiah()` / `parseMinor()` (handles `1.234.567,00`,
    `1,234,567.00`, `(2.500)`), format with `formatRupiah()` / `formatMoney(value, currency)`. Convert to `Number` only for chart

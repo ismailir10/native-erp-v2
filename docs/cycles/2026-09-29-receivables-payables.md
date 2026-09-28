@@ -12,30 +12,30 @@ and the subledger is proven against the GL at close. No sending invoices, no e-F
 
 ## Spec
 Records (`lib/receivables/`, new; models `Contact`, `Invoice`, `InvoiceSettlement`)
-- [ ] **Contact** per client (pelanggan / pemasok by use): name (unique per client), optional NPWP.
-- [ ] **Invoice** per entity: direction **SALES** (piutang) or **PURCHASE** (utang), contact, number (unique per entity + direction),
+- [x] **Contact** per client (pelanggan / pemasok by use): name (unique per client), optional NPWP.
+- [x] **Invoice** per entity: direction **SALES** (piutang) or **PURCHASE** (utang), contact, number (unique per entity + direction),
       issue date, due date (≥ issue date), description, DPP, PPN (optional; prefilled at the effective 11 %, editable), total = DPP + PPN,
       counter account (revenue for sales; expense or asset for purchases), receivable/payable account (default 1130 / 2110; must be
       PIUTANG_USAHA / UTANG_USAHA). Amounts in the entity's functional currency (minor units).
-- [ ] **Saving an invoice posts its journal** through `postJournal()` (new entry kind **INVOICE**, label *Faktur*): sales Dr 1130 total /
+- [x] **Saving an invoice posts its journal** through `postJournal()` (new entry kind **INVOICE**, label *Faktur*): sales Dr 1130 total /
       Cr revenue DPP / Cr 2130 PPN Keluaran; purchase Dr expense DPP / Dr 1150 PPN Masukan / Cr 2110 total. The invoice keeps its
       `entryId` (drill both ways). Locked periods refuse it. **Saldo Awal invoices** (open items at the opening date) post nothing — the
       opening entry already holds the balance.
-- [ ] **Settlement** links a bank line to an invoice for an amount (partial payments, one receipt for several invoices, several receipts
+- [x] **Settlement** links a bank line to an invoice for an amount (partial payments, one receipt for several invoices, several receipts
       for one invoice). Only bank lines of the same entity in the right direction (sales ← money in, purchase → money out) **posted to the
       invoice's receivable/payable account**; Σ settled ≤ invoice total and ≤ the bank line's amount, checked under row locks. A settlement
       is a subledger link only — the bank line already moved the GL (rule 3 unchanged). A line in review or on another account can be
       settled in one click that first **reclassifies it through the reviewer's writer** (`reviewTransactionTx`: RECLASS + Memory, same
       transaction). Removing a settlement is allowed while its month is open.
-- [ ] **Match suggestions** (deterministic, never applied on their own): for each open invoice, bank lines of the entity in the right
+- [x] **Match suggestions** (deterministic, never applied on their own): for each open invoice, bank lines of the entity in the right
       direction, not fully settled, dated from the issue date, whose unsettled amount equals the invoice's open amount; ranked first when
       the description contains the contact's name or the invoice number.
-- [ ] **Open amount and aging at a date** (period end): total − settlements dated by then, for invoices issued by then; aging by days past
+- [x] **Open amount and aging at a date** (period end): total − settlements dated by then, for invoices issued by then; aging by days past
       due: *Belum jatuh tempo*, 1–30, 31–60, 61–90, > 90; per contact and per invoice.
-- [ ] **Close controls** `ar:<entity>` / `ap:<entity>` (only when the entity has invoices of that direction): Σ open invoices vs the GL
+- [x] **Close controls** `ar:<entity>` / `ap:<entity>` (only when the entity has invoices of that direction): Σ open invoices vs the GL
       balance of the receivable/payable accounts they use, at the period end. Equal = PASS; different = **REVIEW** with both figures and the
       count of bank lines on those accounts not settled yet (the usual cause).
-- [ ] **UI:** *Piutang & Utang* page under Akuntansi (ScopeBar period + entity; tabs *Piutang* / *Utang*): NextStep, aging per contact with
+- [x] **UI:** *Piutang & Utang* page under Akuntansi (ScopeBar period + entity; tabs *Piutang* / *Utang*): NextStep, aging per contact with
       totals and the GL comparison, open and settled invoices, *Faktur baru* (contact typed or picked), *Faktur saldo awal*, per invoice
       *Cocokkan pembayaran* (suggestions first, any eligible line after), *Penerimaan / pembayaran belum dicocokkan*. Invoice journals show
       "Faktur <number>" in Buku Besar. Works at 390 px.
@@ -68,7 +68,7 @@ settlement by non-bank entries (netting), documents → invoice drafts (a later 
       accept: DB tests (buckets at a date, settlements after the date ignored, PASS/REVIEW with the unsettled count). Depends T3.
 - [x] T5 UI: page, components, actions, sidebar — accept: e2e walk (sales invoice → bank receipt reviewed → cocokkan → aging and control;
       purchase invoice partly paid), screenshots at 1440 and 390 px. Depends T4.
-- [ ] T6 Rules + docs: `accounting-rules` 5c, README, ADR amendment — accept: end-of-cycle gates (build, `verify:books` ALL PASS, full e2e).
+- [x] T6 Rules + docs: `accounting-rules` 5c, README, ADR amendment — accept: end-of-cycle gates (build, `verify:books` ALL PASS, full e2e).
 
 ## Implementation
 - Plan: T1–T6 sequential, inline (one driver keeps the invariants straight; each layer uses the previous).
@@ -76,11 +76,18 @@ settlement by non-bank entries (netting), documents → invoice drafts (a later 
 - T3: `lib/receivables/settle.ts` (`settle`, `settleWithReclass` via `reviewTransactionTx` in one transaction, `unsettle`, `settleCandidates` — named = every distinctive word of the contact (PT/CV dropped) or the invoice number; exact = unsettled amount equals the open amount), `tests/db/settlements.test.ts` (bank lines imported through the real pipeline).
 - T4: `lib/receivables/aging.ts` (`invoicesAt`, `agingByContact`, `bucketOf`, `subledgerVsLedger`), `lib/controls/index.ts` (`ar:`/`ap:` per entity with invoices of that direction), `tests/db/aging.test.ts`.
 - T5: `app/(app)/clients/[id]/receivables/page.tsx` (tab in the URL), `components/app/receivables.tsx` (aging per entity with the ledger row, unmatched bank lines, open and paid invoices with their settlements behind a visible chevron, invoice form with *Hitung 11%*, matching dialog with editable amounts), `lib/receivables/view.ts`, `app/actions.ts` (`createInvoiceAction`, `settleCandidatesAction`, `settleAction`, `unsettleAction`, tenant-checked), sidebar *Piutang & Utang*, `e2e/receivables.spec.ts`. Found on the 390 px screenshot: keeping only the *Belum jatuh tempo* bucket on phones showed "–" while the amount sat in a hidden bucket — phones now show party and total only.
+- T6: `.agents/skills/accounting-rules/SKILL.md` (rule 5c), `README.md` (Piutang & Utang row, close controls); ADR 0004 amendment in T1.
 
 ## Verification
 - T1: `prisma migrate diff` DB ↔ schema empty. Gate: lint ✓ typecheck ✓ `Test Files 68 passed (68) · Tests 513 passed (513)`.- T2 gate: lint ✓ typecheck ✓ `Test Files 69 passed (69) · Tests 518 passed (518)`.
 - T3 gate: lint ✓ typecheck ✓ `Test Files 70 passed (70) · Tests 521 passed (521)`.
 - T4 gate: lint ✓ typecheck ✓ `Test Files 71 passed (71) · Tests 523 passed (523)`.
 - T5: `npx playwright test e2e/receivables.spec.ts` → `1 passed` (statement imported → INV-100 with PPN 1.100.000 → the receipt naming it suggested first, classified to 1130 and settled in one click → paid, piutang = ledger → SM-77 paid 10 jt of 22,2 jt → 12.200.000 in 1–30 hari = 2110). Screenshots at 1440 and 390 px checked by eye.
+- End of cycle: lint ✓ · typecheck ✓ · `Test Files 71 passed (71) · Tests 523 passed (523)` · `npm run build` ✓ · `verify:books` → `ALL PASS — 1357 pemeriksaan saldo cocok dengan ground truth.` · `npx playwright test` → `13 passed (41.9s)`.
 
 ## Ship Notes
+- **Migration:** `20260929010000_receivables` — new tables Contact, Invoice, InvoiceSettlement, enum InvoiceDirection, `EntryKind` gains INVOICE (additive; `ALTER TYPE … ADD VALUE`).
+- **Env / dependency / AI:** none. **Demo:** unchanged (no invoices seeded; the demo's 1130/2110 openings have no detail, so a seeded subledger would show REVIEW).
+- **Manual steps:** none.
+- **Follow-up:** documents → invoice drafts from the evidence workspace (AI, reviewed); withholding (PPh 23) on settlement; credit notes.
+- **Rollback:** revert the merge; the enum value INVOICE stays in Postgres (harmless; unused by older code).
