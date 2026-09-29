@@ -12,6 +12,7 @@ import { closeLock, dueProposals, schedulesDueBy } from "@/lib/adjust/schedules"
 import { registerVsLedger } from "@/lib/assets/register";
 import { subledgerVsLedger } from "@/lib/receivables/aging";
 import { ckpn } from "@/lib/receivables/ckpn";
+import { leasesVsLedger } from "@/lib/leases/register";
 import { packApplies, taxPack } from "@/lib/tax/pack";
 
 /**
@@ -194,6 +195,29 @@ export async function runControls(db: Db, clientId: string, year: number, month:
             : `Matriks ${fmt(c.total!)} vs cadangan di buku besar ${fmt(c.balance)}: ${d! > 0n ? "tambah" : "pulihkan"} ${fmt(d! > 0n ? d! : -d!)}${c.later ? ` (sudah dijurnal per ${formatDate(c.later)})` : ""}`),
         href: `${base}/receivables?period=${year}-${String(month).padStart(2, "0")}&entity=${e.id}&tab=piutang`,
         ack: acks.get(cKey),
+      });
+    }
+
+    // Lease register (rule 5f): monthly journals posted, and 1230 / 1239 / 2170 + 2400 equal to the register.
+    const lease = await leasesVsLedger(db, clientId, e.id, year, month);
+    if (lease) {
+      const lKey = `lease:${e.id}`;
+      const r = lease.register;
+      const l = lease.ledger;
+      const diff = [
+        lease.due ? `${lease.due} jurnal bulanan sewa belum dicatat` : "",
+        r.rou !== l.rou ? `Aset hak guna: daftar ${fmt(r.rou)} vs buku besar ${fmt(l.rou)} (1230)` : "",
+        r.accumulated !== l.accumulated ? `Akumulasi: daftar ${fmt(r.accumulated)} vs buku besar ${fmt(l.accumulated)} (1239)` : "",
+        r.liability !== l.liability ? `Liabilitas sewa: daftar ${fmt(r.liability)} vs buku besar ${fmt(l.liability)} (2170 + 2400); pembayaran sewa di rekening koran diklasifikasikan ke 2170?` : "",
+      ].filter(Boolean);
+      controls.push({
+        key: lKey,
+        title: "Sewa (PSAK 116) = daftar sewa",
+        scope: e.shortName,
+        status: lease.equal ? "PASS" : "REVIEW",
+        detail: lease.equal ? `Aset hak guna ${fmt(r.rou - r.accumulated)} (neto), liabilitas sewa ${fmt(r.liability)}` : diff.join("; "),
+        href: `${base}/leases?period=${year}-${String(month).padStart(2, "0")}&entity=${e.id}`,
+        ack: acks.get(lKey),
       });
     }
 

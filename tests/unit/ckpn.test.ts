@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { agingAt, allowance, lossRates, manualRates, monthEnds, percentToBp, rollRates, DEFAULT_SETTING, type LedgerInvoice } from "@/lib/receivables/ckpn";
-import { dateOnly } from "@/lib/format";
+import { agingAt, allowance, lossRates, manualRates, monthEnds, rollRates, DEFAULT_SETTING, type LedgerInvoice } from "@/lib/receivables/ckpn";
+import { dateOnly, percentToBp } from "@/lib/format";
 
 const d = (m: number, day: number) => dateOnly(2026, m, day);
 const inv = (id: string, issue: Date, due: Date, total: bigint, settlements: [Date, bigint][] = []): LedgerInvoice => ({ id, issueDate: issue, dueDate: due, total, settlements: settlements.map(([date, amount]) => ({ date, amount })) });

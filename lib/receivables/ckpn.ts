@@ -4,7 +4,7 @@ import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { templateAccounts } from "@/lib/coa/ensure";
 import { closeLock } from "@/lib/adjust/schedules";
 import { LedgerError, postJournal } from "@/lib/ledger/post";
-import { formatDate, periodBounds } from "@/lib/format";
+import { formatDate, percentToBp, periodBounds } from "@/lib/format";
 import { BUCKETS, BUCKET_LABEL, bucketOf, type Bucket } from "@/lib/receivables/aging";
 
 /**
@@ -196,13 +196,6 @@ export async function ckpn(db: Db | Tx, clientId: string, entityId: string, year
     difference: total === null ? null : total - balance,
     later: await allowanceAfter(db, clientId, entityId, through),
   };
-}
-
-/** "2,5" / "2.5" / "100" (percent, up to two decimals) → basis points; null when not a percent. */
-export function percentToBp(text: string): number | null {
-  const m = text.trim().replace(/\s*%$/, "").match(/^(\d{1,3})(?:[.,](\d{1,2}))?$/);
-  if (!m) return null;
-  return Number(m[1]) * 100 + Number((m[2] ?? "").padEnd(2, "0"));
 }
 
 export type CkpnSettingInput = { clientId: string; entityId: string; method: CkpnMethod; historyMonths: number; forward: string; lastBucket: string; manual: [string, string, string, string] };
