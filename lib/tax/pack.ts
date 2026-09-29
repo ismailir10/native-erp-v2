@@ -83,7 +83,11 @@ export async function taxPack(db: Db, clientId: string, entityId: string, year: 
     corrections.push({ key: `auto:final:${a.code}`, label: `Penghasilan yang dikenai PPh final: ${a.name}`, direction: "NEGATIVE", kind: "PERMANENT", amount: a.amount, source: { type: "ACCOUNT", code: a.code, name: a.name } });
   }
   for (const c of taxYear?.corrections ?? []) {
-    corrections.push({ key: `manual:${c.id}`, label: c.description, direction: c.direction, kind: c.kind, amount: c.amount, source: { type: "MANUAL", id: c.id, code: c.account?.code ?? null } });
+    // An accepted suggestion follows its account's year-to-date expense; a typed correction keeps its amount.
+    const live = c.suggestion && c.account ? (expenses.find((x) => x.code === c.account!.code)?.amount ?? 0n) : null;
+    // Kept at zero when the account has no expense this year, so the accountant still sees (and can remove) it.
+    const amount = live !== null && live < 0n ? 0n : (live ?? c.amount);
+    corrections.push({ key: `manual:${c.id}`, label: c.description, direction: c.direction, kind: c.kind, amount, source: { type: "MANUAL", id: c.id, code: c.account?.code ?? null } });
   }
   const accepted = new Set((taxYear?.corrections ?? []).flatMap((c) => (c.suggestion ? [c.suggestion] : [])));
   const dismissed = new Set(taxYear?.dismissedSuggestions ?? []);
