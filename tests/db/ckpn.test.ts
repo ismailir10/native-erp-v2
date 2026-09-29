@@ -74,7 +74,7 @@ describe("CKPN piutang (PSAK 109)", () => {
 
     // The allowance is a deductible temporary difference: DTA 22 % of 8 050 000.
     const pack = await taxPack(db, g.client.id, g.pt.entity.id, 2026, 8);
-    expect(pack!.deferred).toEqual({ assets: 0n, allowance: 8_050_000n, leases: 0n, temporaryDifference: 8_050_000n, amount: 1_771_000n });
+    expect(pack!.deferred).toEqual({ assets: 0n, allowance: 8_050_000n, leases: 0n, employeeBenefits: 0n, temporaryDifference: 8_050_000n, amount: 1_771_000n, oci: 0n });
     expect(pack!.suggestions.find((s) => s.code === "6185")).toMatchObject({ category: "PROVISION", amount: 8_050_000n });
   });
 

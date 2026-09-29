@@ -13,6 +13,7 @@ import { registerVsLedger } from "@/lib/assets/register";
 import { subledgerVsLedger } from "@/lib/receivables/aging";
 import { ckpn } from "@/lib/receivables/ckpn";
 import { leasesVsLedger } from "@/lib/leases/register";
+import { valuation } from "@/lib/benefits/valuation";
 import { packApplies, taxPack } from "@/lib/tax/pack";
 
 /**
@@ -218,6 +219,21 @@ export async function runControls(db: Db, clientId: string, year: number, month:
         detail: lease.equal ? `Aset hak guna ${fmt(r.rou - r.accumulated)} (neto), liabilitas sewa ${fmt(r.liability)}` : diff.join("; "),
         href: `${base}/leases?period=${year}-${String(month).padStart(2, "0")}&entity=${e.id}`,
         ack: acks.get(lKey),
+      });
+    }
+
+    // Employee benefits (rule 5g): in December, once the entity has assumptions, 2310 should equal the PSAK 24 obligation.
+    if (month === 12 && (await db.benefitSetting.findUnique({ where: { entityId: e.id }, select: { id: true } }))) {
+      const v = await valuation(db, clientId, e.id, year, month);
+      const ebKey = `eb:${e.id}`;
+      controls.push({
+        key: ebKey,
+        title: "Imbalan kerja (PSAK 24) = valuasi",
+        scope: e.shortName,
+        status: !v.blocker && !v.lines.length ? "PASS" : "REVIEW",
+        detail: v.blocker ?? (v.lines.length ? `Liabilitas imbalan kerja ${fmt(v.dbo)} vs buku besar ${fmt(v.ledger.liability)} (2310); jurnal valuasi belum dicatat${v.later ? ` (sudah dijurnal per ${formatDate(v.later)})` : ""}` : `Liabilitas imbalan kerja ${fmt(v.dbo)} sesuai valuasi (${v.employees.length} karyawan)`),
+        href: `${base}/benefits?period=${year}-12&entity=${e.id}`,
+        ack: acks.get(ebKey),
       });
     }
 

@@ -47,6 +47,9 @@ export const ACCOUNT_CODES = {
   LEASE_NON_CURRENT: "2400",
   ROU_DEPRECIATION: "6181",
   LEASE_INTEREST: "7195",
+  BENEFIT_LIABILITY: "2310",
+  BENEFIT_EXPENSE: "6105",
+  BENEFIT_REMEASUREMENT: "3920",
 } as const;
 
 export const FS_LINES = {
@@ -69,6 +72,7 @@ export const FS_LINES = {
   SALDO_LABA: { label: "Saldo laba", section: "EKUITAS" },
   PRIVE: { label: "Prive / penarikan pemilik", section: "EKUITAS" },
   SELISIH_PENJABARAN: { label: "Selisih penjabaran mata uang asing", section: "EKUITAS" },
+  PKL_IMBALAN_KERJA: { label: "Pengukuran kembali imbalan kerja", section: "EKUITAS" },
   PENDAPATAN_USAHA: { label: "Pendapatan usaha", section: "LABA_RUGI" },
   HPP: { label: "Beban pokok pendapatan", section: "LABA_RUGI" },
   BEBAN_PENJUALAN: { label: "Beban penjualan", section: "LABA_RUGI" },
@@ -135,6 +139,7 @@ export const COA_TEMPLATE: AccountSeed[] = [
   a("3200", "Saldo Laba", "EKUITAS", "SALDO_LABA", { isRetained: true }),
   a("3300", "Prive / Penarikan Pemilik", "EKUITAS", "PRIVE", { normalBalance: "DEBIT" }),
   a("3900", "Selisih Penjabaran Mata Uang Asing", "EKUITAS", "SELISIH_PENJABARAN"),
+  a("3920", "Pengukuran Kembali Imbalan Kerja", "EKUITAS", "PKL_IMBALAN_KERJA"),
   a("4100", "Penjualan", "PENDAPATAN", "PENDAPATAN_USAHA"),
   a("4110", "Pendapatan Jasa", "PENDAPATAN", "PENDAPATAN_USAHA"),
   a("4900", "Pendapatan Bunga & Jasa Giro", "PENDAPATAN", "PENDAPATAN_LAIN"),
@@ -142,6 +147,7 @@ export const COA_TEMPLATE: AccountSeed[] = [
   a("5100", "Pembelian Bahan & Barang Dagang", "BEBAN", "HPP"),
   a("5110", "Biaya Kemitraan & Produksi", "BEBAN", "HPP"),
   a("6100", "Beban Gaji & Tunjangan", "BEBAN", "BEBAN_UMUM_ADM"),
+  a("6105", "Beban Imbalan Kerja", "BEBAN", "BEBAN_UMUM_ADM"),
   a("6110", "Beban BPJS", "BEBAN", "BEBAN_UMUM_ADM"),
   a("6120", "Beban Sewa", "BEBAN", "BEBAN_UMUM_ADM"),
   a("6130", "Beban Listrik, Air & Internet", "BEBAN", "BEBAN_UMUM_ADM"),

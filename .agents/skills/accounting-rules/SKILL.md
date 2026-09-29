@@ -87,6 +87,15 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     1239 / 2170 + 2400 differ from the register. Tax: correction (depreciation + interest − rent straight line over the term) and deferred
     tax on (payments − fiscal rent) − (ROU net − liability). Lease entries are never asset or schedule candidates. Template accounts added
     later are created on first use only when the code is free or holds the same side and name; imported new accounts never take a template code.
+5g. **Employee benefits — PSAK 24, PP 35/2021** (`lib/benefits`): the census (`Employee`), the firm's uploaded mortality table (qx × 10⁹;
+    **Buku ships no table it can't verify**) and the entity's assumptions are stored; the valuation is computed. PUC year by year to the
+    retirement age: death / disability (2 × pesangon + UPMK), retirement (1,75 × pesangon + UPMK), resignation nothing; attribution over the
+    last 24 years before payment or from hire (DSAK IAI 2022). Probabilities and rates are float; each obligation is wage × factor (10⁻⁹,
+    half up), bigint. Journal by click only (`ADJUSTMENT`, `BenefitPosting`): 2310 to the DBO; 6105 year to date = (service + interest cost
+    of the previous 31 December valuation) × months ÷ 12 + the obligation of employees hired since; in the entity's first Buku year the
+    opening obligation not in 2310 → 3200; the rest → 3920 (equity, OCI). All against GL balances, so paid benefits and re-posting are
+    respected. Control `eb:` in December. Tax: 2310 is a deductible temporary difference; the deferred tax on the remeasurement goes to 3920.
+    Everything is labelled an estimate, not a licensed actuary's report.
 6. `bigint` **minor units of the entity's functional currency** everywhere in the domain (ADR 0006). IDR has exponent 0,
    so for IDR entities that is whole Rupiah, as before. Parse with `parseRupiah()` / `parseMinor()` (handles `1.234.567,00`,
    `1,234,567.00`, `(2.500)`), format with `formatRupiah()` / `formatMoney(value, currency)`. Convert to `Number` only for chart

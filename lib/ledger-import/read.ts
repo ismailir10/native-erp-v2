@@ -104,7 +104,7 @@ function cellCents(c: RawCell | undefined): bigint | string {
   }
 }
 
-function cellDate(c: RawCell | undefined): Date | null {
+export function cellDate(c: RawCell | undefined): Date | null {
   if (c instanceof Date) return Number.isFinite(c.getTime()) ? dateOnly(c.getUTCFullYear(), c.getUTCMonth() + 1, c.getUTCDate()) : null;
   const t = cellText(c).replace(/^'/, "");
   let m = t.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);

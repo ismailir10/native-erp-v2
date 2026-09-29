@@ -59,8 +59,9 @@ export type TaxPack = {
   credits: Credit[];
   settlement: Settlement | null;
   /** Temporary differences: fixed assets (fiscal − book value), the receivable allowance (1135, deductible when written off) and leases
-   *  (prepaid − accrued fiscal rent, less ROU net of the liability). */
-  deferred: { assets: bigint; allowance: bigint; leases: bigint; temporaryDifference: bigint; amount: bigint } | null;
+   *  (prepaid − accrued fiscal rent, less ROU net of the liability) and the employee-benefit liability (2310, deductible when paid). `oci` is the
+   *  part of the deferred tax that belongs to the remeasurement in 3920 (booked there, not to 8110). */
+  deferred: { assets: bigint; allowance: bigint; leases: bigint; employeeBenefits: bigint; temporaryDifference: bigint; amount: bigint; oci: bigint } | null;
   /** Signed lines (debit +, credit −) still to post to reach the computed position, per kind; empty = nothing to post. */
   proposals: Record<TaxPostingKind, ProposalLine[]>;
   /** A posting of the kind dated after the chosen month: the position is booked there, so nothing is proposed here. */
@@ -155,19 +156,23 @@ export async function taxPack(db: Db, clientId: string, entityId: string, year: 
   const held = await allowanceBalance(db, clientId, entityId, through);
   const allowance = held > 0n ? held : 0n;
   const leaseTemporary = leases.reduce((t, p) => t + (p.paidToDate - p.fiscalToDate) - (p.rou - p.accumulated - p.liability), 0n);
+  const benefitHeld = -(await glBalance(db, clientId, entityId, ACCOUNT_CODES.BENEFIT_LIABILITY, through));
+  const employeeBenefits = benefitHeld > 0n ? benefitHeld : 0n;
   const fiscalValue = assets.reduce((t, r) => t + (r.fiscalBookValue ?? 0n), 0n);
   const bookValue = assets.reduce((t, r) => t + r.bookValue, 0n);
   // Only postings dated by the chosen month count; one dated later means the position is booked there.
   const postedCurrent = await postedLines(db, entityId, "CURRENT", year, false, through);
   const postedDeferred = await postedLines(db, entityId, "DEFERRED", year, true, through);
+  // The remeasurement in 3920 other than the tax postings' own lines (a loss is a debit).
+  const remeasurement = (await glBalance(db, clientId, entityId, ACCOUNT_CODES.BENEFIT_REMEASUREMENT, through)) - (postedDeferred.get(ACCOUNT_CODES.BENEFIT_REMEASUREMENT) ?? 0n);
   const laterPosting: Record<TaxPostingKind, Date | null> = { CURRENT: await postingAfter(db, entityId, "CURRENT", year, through), DEFERRED: await postingAfter(db, entityId, "DEFERRED", year, through) };
   // Under the final regime there is no fiscal profit, so no temporary difference; with no registered assets and no allowance there is none
   // either. Either way a deferred balance booked earlier is brought back to zero.
   const deferredBooked = [ACCOUNT_CODES.DEFERRED_TAX_ASSET, ACCOUNT_CODES.DEFERRED_TAX_LIABILITY].some((c) => (postedDeferred.get(c) ?? 0n) !== 0n);
   const deferred =
     entity.functionalCurrency !== "IDR" ? null
-    : (assets.length || allowance > 0n || leases.length) && !final ? { assets: fiscalValue - bookValue, allowance, leases: leaseTemporary, temporaryDifference: fiscalValue - bookValue + allowance + leaseTemporary, amount: deferredTax(fiscalValue - bookValue + allowance + leaseTemporary) }
-    : deferredBooked ? { assets: 0n, allowance: 0n, leases: 0n, temporaryDifference: 0n, amount: 0n }
+    : (assets.length || allowance > 0n || leases.length || employeeBenefits > 0n) && !final ? temporary(fiscalValue - bookValue, allowance, leaseTemporary, employeeBenefits, remeasurement)
+    : deferredBooked ? { assets: 0n, allowance: 0n, leases: 0n, employeeBenefits: 0n, temporaryDifference: 0n, amount: 0n, oci: 0n }
     : null;
 
   const applicable = packApplies(entity);
@@ -177,7 +182,7 @@ export async function taxPack(db: Db, clientId: string, entityId: string, year: 
     const target = settled ? currentTarget(tax.due, credits, settled.balance) : new Map<string, bigint>();
     proposals.CURRENT = diff(target, postedCurrent);
   }
-  if (applicable && deferred && !laterPosting.DEFERRED) proposals.DEFERRED = deferredDiff(deferred.amount, postedDeferred);
+  if (applicable && deferred && !laterPosting.DEFERRED) proposals.DEFERRED = deferredDiff(deferred.amount, postedDeferred, deferred.oci);
   return { entity, year, month, through, applicable, regime, taxYearId: taxYear?.id ?? null, profitBeforeTax, turnover, profitAndLoss, corrections, suggestions, positive, negative, fiscalProfit, losses: carried.rows, compensation: carried.used, lossSuggestion, tax, credits, settlement: settled, deferred, proposals, laterPosting };
 }
 
@@ -224,15 +229,18 @@ export function diff(target: Map<string, bigint>, posted: Map<string, bigint>): 
 }
 
 /** Deferred tax: move 1270 / 2320 to the computed balance; the change goes to 8110. */
-export function deferredDiff(amount: bigint, posted: Map<string, bigint>): ProposalLine[] {
+export function deferredDiff(amount: bigint, posted: Map<string, bigint>, oci = 0n): ProposalLine[] {
   const asset = posted.get(ACCOUNT_CODES.DEFERRED_TAX_ASSET) ?? 0n;
   const liability = posted.get(ACCOUNT_CODES.DEFERRED_TAX_LIABILITY) ?? 0n;
   const dAsset = (amount > 0n ? amount : 0n) - asset;
   const dLiability = (amount < 0n ? amount : 0n) - liability;
+  // The remeasurement's tax effect sits in 3920 (a DTA on a loss is credited there).
+  const dOci = -oci - (posted.get(ACCOUNT_CODES.BENEFIT_REMEASUREMENT) ?? 0n);
   const lines: ProposalLine[] = [
     { code: ACCOUNT_CODES.DEFERRED_TAX_ASSET, amount: dAsset },
     { code: ACCOUNT_CODES.DEFERRED_TAX_LIABILITY, amount: dLiability },
-    { code: ACCOUNT_CODES.DEFERRED_TAX, amount: -(dAsset + dLiability) },
+    { code: ACCOUNT_CODES.BENEFIT_REMEASUREMENT, amount: dOci },
+    { code: ACCOUNT_CODES.DEFERRED_TAX, amount: -(dAsset + dLiability + dOci) },
   ];
   return lines.filter((l) => l.amount !== 0n);
 }
@@ -245,4 +253,17 @@ export async function postingAfter(db: Reader, entityId: string, kind: TaxPostin
     orderBy: { entry: { date: "desc" } },
   });
   return later?.entry.date ?? null;
+}
+
+function temporary(assets: bigint, allowance: bigint, leases: bigint, employeeBenefits: bigint, remeasurement: bigint) {
+  const temporaryDifference = assets + allowance + leases + employeeBenefits;
+  return { assets, allowance, leases, employeeBenefits, temporaryDifference, amount: deferredTax(temporaryDifference), oci: deferredTax(remeasurement) };
+}
+
+/** Debit balance of an account of the entity at a date (0 when the client has no such account). */
+async function glBalance(db: Reader, clientId: string, entityId: string, code: string, asOf: Date) {
+  const acc = await db.account.findFirst({ where: { clientId, code }, select: { id: true } });
+  if (!acc) return 0n;
+  const s = await db.journalLine.aggregate({ where: { entityId, accountId: acc.id, date: { lte: asOf } }, _sum: { debit: true, credit: true } });
+  return (s._sum.debit ?? 0n) - (s._sum.credit ?? 0n);
 }
