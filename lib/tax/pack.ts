@@ -5,7 +5,7 @@ import { assetRegister } from "@/lib/assets/register";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { dateOnly, periodBounds } from "@/lib/format";
 import { corporateTax, deferredTax, roundDownThousands, settlement, type CorporateTax, type Settlement } from "@/lib/tax/compute";
-import { categoryByKey, categoryOf, compensate, share, type LossRow } from "@/lib/tax/categories";
+import { categoryOf, compensate, share, type LossRow } from "@/lib/tax/categories";
 
 /**
  * The tax pack of one entity and fiscal year, through a month (accounting-rules 5d): commercial profit → koreksi fiskal → PKP → PPh
@@ -40,6 +40,8 @@ export type TaxPack = {
   taxYearId: string | null;
   profitBeforeTax: bigint;
   turnover: bigint;
+  /** The Laba Rugi behind profit before tax, per account: income positive, expenses negative (the workpaper's first sheet). */
+  profitAndLoss: { code: string; name: string; section: string; amount: bigint }[];
   corrections: Correction[];
   suggestions: Suggestion[];
   positive: bigint;
@@ -87,6 +89,12 @@ export async function taxPack(db: Db, clientId: string, entityId: string, year: 
   // P&L accounts with their year-to-date amount as income (+) or expense (+): the statement negates other expenses (BEBAN_LAIN).
   const income = [...is.revenue, ...is.other.filter((i) => i.fsLine === "PENDAPATAN_LAIN")].flatMap((i) => i.accounts.map((a) => ({ ...a, fsLine: i.fsLine })));
   const expenses = [...is.cogs, ...is.opex, ...is.other.filter((i) => i.fsLine === "BEBAN_LAIN").map((i) => ({ ...i, accounts: i.accounts.map((a) => ({ ...a, amount: -a.amount })) }))].flatMap((i) => i.accounts);
+  const profitAndLoss = [
+    ...is.revenue.flatMap((i) => i.accounts.map((a) => ({ code: a.code, name: a.name, section: i.label, amount: a.amount }))),
+    ...is.cogs.flatMap((i) => i.accounts.map((a) => ({ code: a.code, name: a.name, section: i.label, amount: -a.amount }))),
+    ...is.opex.flatMap((i) => i.accounts.map((a) => ({ code: a.code, name: a.name, section: i.label, amount: -a.amount }))),
+    ...is.other.flatMap((i) => i.accounts.map((a) => ({ code: a.code, name: a.name, section: i.label, amount: a.amount }))),
+  ];
   for (const a of income.filter((x) => x.fsLine === "PENDAPATAN_LAIN" && FINAL_TAXED_INCOME.test(x.name) && x.amount > 0n)) {
     corrections.push({ key: `auto:final:${a.code}`, label: `Penghasilan yang dikenai PPh final: ${a.name}`, direction: "NEGATIVE", kind: "PERMANENT", amount: a.amount, source: { type: "ACCOUNT", code: a.code, name: a.name } });
   }
@@ -156,7 +164,7 @@ export async function taxPack(db: Db, clientId: string, entityId: string, year: 
     proposals.CURRENT = diff(target, postedCurrent);
   }
   if (applicable && deferred && !laterPosting.DEFERRED) proposals.DEFERRED = deferredDiff(deferred.amount, postedDeferred);
-  return { entity, year, month, through, applicable, regime, taxYearId: taxYear?.id ?? null, profitBeforeTax, turnover, corrections, suggestions, positive, negative, fiscalProfit, losses: carried.rows, compensation: carried.used, lossSuggestion, tax, credits, settlement: settled, deferred, proposals, laterPosting };
+  return { entity, year, month, through, applicable, regime, taxYearId: taxYear?.id ?? null, profitBeforeTax, turnover, profitAndLoss, corrections, suggestions, positive, negative, fiscalProfit, losses: carried.rows, compensation: carried.used, lossSuggestion, tax, credits, settlement: settled, deferred, proposals, laterPosting };
 }
 
 /**
