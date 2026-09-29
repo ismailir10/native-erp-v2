@@ -79,6 +79,12 @@ Who feels it: the accountant closing a real client's month, especially without A
       or taken from links); the client form and the Tanya Buku box keep text typed before hydration. An e2e types right after `goto` on
       /clients/new and Beranda and asserts the value stays.
 
+- **U6 as built (evidence changed the fix):** with the app's JavaScript delayed 1.5 s, text typed into the server HTML survives
+      hydration even without any change (React 19 keeps it) — the e2e stays as a guard. Production timing showed the real cause:
+      documents stream for 0,3–3,7 s (cold starts; the function already runs in sin1 next to Supabase), and until then the previous
+      page stays on screen, so input lands there. Fix: an `(app)/loading.tsx` skeleton shows at once on every in-app navigation, and
+      Beranda writes its canonical scope into the URL with `history.replaceState` instead of a second server render.
+
 **Non-goals:** per-entity close (Period is per client — schema/workflow change); importing a L/R as year-to-date journals; restricted-cash
 wording for customer funds; PRK opening input layout; AI key setup (user action in Pengaturan); fixing hydration time itself beyond U6.
 
@@ -102,7 +108,7 @@ new firm rules for existing firms. No new dependency, no AI credit, no invariant
 - [x] T7 Tanya Buku client-query intent + L/R upload message (R4, R5) — accept: unit/DB tests on intent and on a synthetic Jurnal.id L/R sheet.
 - [x] T8 Review & picker UX (U1–U4) — accept: e2e/unit where feasible; manual check in the browser.
 - [x] T9 Import polish (U5) — accept: unit test on the "impor juga" filter; client form check.
-- [ ] T10 Input before hydration (U6) — accept: e2e types immediately after navigation on /clients/new and Beranda; value persists.
+- [x] T10 Input before hydration (U6) — accept: e2e types immediately after navigation on /clients/new and Beranda; value persists.
 - [ ] T11 Docs + end-of-cycle gates — accept: lint, typecheck, tests, build, `verify:books` ALL PASS, full e2e; README/real-data notes.
 
 ## Implementation
@@ -116,6 +122,7 @@ new firm rules for existing firms. No new dependency, no AI credit, no invariant
 - T7: `lib/workspace/index.ts` (intent `unclear` before readiness/payee: NEEDS_REVIEW bank lines of the scope up to the month's end, oldest first, totals per currency, 30 rows with the current guess, citations to Review), `components/app/workspace-ask.tsx` (example *Apa yang perlu ditanyakan ke klien?*), `lib/ledger-import/read.ts` (`reportKind()`: title rows naming Laba Rugi / Profit & Loss / Arus Kas / Cash Flow → never a table candidate), `lib/ledger-import/post.ts` (the upload names the report instead of the generic message); `tests/db/workspace.test.ts` (+1), `tests/unit/ledger-read.test.ts` (+1). Real Goers files: L/R and arus kas → no candidate, neraca still NERACA.
 - T8: `app/actions.ts` (`reviewAction` returns `learned` = the key names a counterparty), `components/app/review-queue.tsx` (toast says "dipakai lagi" only when learned; active card tracked by id, moved to the next card on accept and to the next remaining one after *serupa*, scrolled into view; Enter on a focused button/checkbox/link does that control; banner without AI says so and links admins to Pengaturan), review page (`aiReady` from `resolveAiConfig`, `canSetUpAi` = ADMIN), `components/app/account-picker.tsx` (`autoHighlight`; controlled open + query; printable keys on the closed trigger open it with the key in the search), `e2e/review-safety.spec.ts` (correction typed on the closed picker + Enter).
 - T9: `lib/import/pipeline.ts` (`otherAccounts[].imported`: an account of the client already holds an import of that section's period), `components/app/import-form.tsx` (no *Impor juga ke* for those), `components/app/client-form.tsx` (*Tambah rekening* copies the previous row's bank); `tests/db/smbc-import.test.ts`.
+- T10: `app/(app)/loading.tsx` (skeleton with `role=status` on every in-app navigation), `components/app/workspace-scope.tsx` (canonical `scope`/`period` via `history.replaceState`, no `router.replace` → no second server render on Beranda), `e2e/early-input.spec.ts` (JS chunks delayed 1.5 s; typing into the server HTML on /clients/new and Beranda survives; Beranda URL names its scope). Tried and dropped: adopting pre-hydration DOM values in `Input`/textarea — the e2e passes without it (negative check), so it would be dead code.
 
 ## Verification
 - T1 gate: lint ✓ typecheck ✓ `Test Files 92 passed (92) · Tests 624 passed (624)`.
@@ -127,5 +134,6 @@ new firm rules for existing firms. No new dependency, no AI credit, no invariant
 - T7 gate: lint ✓ typecheck ✓ `Test Files 94 passed (94) · Tests 632 passed (632)`.
 - T8 gate: lint ✓ typecheck ✓ `Test Files 94 passed (94) · Tests 632 passed (632)`; browser check in the end-of-cycle e2e.
 - T9 gate: lint ✓ typecheck ✓ `Test Files 94 passed (94) · Tests 632 passed (632)`.
+- T10 gate: lint ✓ typecheck ✓ `Test Files 94 passed (94) · Tests 632 passed (632)`; `npx playwright test e2e/early-input.spec.ts e2e/workspace.spec.ts` → 4 passed. Production timing (Chrome, /clients/new): responseEnd 3.765 / 1.439 / 325 ms on three loads; `x-vercel-id: hnd1::sin1`.
 
 ## Ship Notes
