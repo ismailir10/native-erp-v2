@@ -199,6 +199,7 @@ export async function importStatement(
           continuityOk: continuity.ok,
           continuityNote: continuity.note,
           parseNotes: notes,
+          deposits: (st.deposits ?? []).map((d) => ({ ...d, idrBalance: d.idrBalance.toString() })),
           importedById: args.actorId ?? null,
         },
       });

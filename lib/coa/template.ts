@@ -50,6 +50,9 @@ export const ACCOUNT_CODES = {
   BENEFIT_LIABILITY: "2310",
   BENEFIT_EXPENSE: "6105",
   BENEFIT_REMEASUREMENT: "3920",
+  BANK_LOAN: "2210",
+  /** Where Saldo Awal proposes a time deposit listed on a statement (pledged / longer than 3 months: not cash). */
+  DEPOSIT: "1260",
 } as const;
 
 export const FS_LINES = {
