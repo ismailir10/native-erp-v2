@@ -212,17 +212,19 @@ export async function cashFlow(db: Db, scope: Scope, to: Date): Promise<CashFlow
     groups.set(key, g);
   };
 
-  // Non-cash transactions (no cash line) that cross sections — an asset bought on credit, a dividend declared, a first-year benefit
+  // Non-cash transactions (no cash line, not from a bank row) that cross sections — an asset bought on credit, a dividend declared, a first-year benefit
   // obligation to Saldo laba — must not show as investing or financing flows: their investing/financing part is moved into operating as
   // one "non-kas" line, where it offsets the other side (the payable, the obligation). Non-cash entries within one section stay as they are.
   const lines = await db.journalLine.findMany({
     where: { entityId: { in: scope.entityIds }, date: { gte: from, lte: to }, entry: { kind: { not: "OPENING" } } },
-    select: { entryId: true, debit: true, credit: true, account: { select: { code: true, type: true, fsLine: true, isIntercompany: true } } },
+    select: { entryId: true, debit: true, credit: true, entry: { select: { bankTransactionId: true } }, account: { select: { code: true, type: true, fsLine: true, isIntercompany: true } } },
   });
   const byEntry = new Map<string, typeof lines>();
   for (const l of lines) byEntry.set(l.entryId, [...(byEntry.get(l.entryId) ?? []), l]);
   const sectionOf = (a: (typeof lines)[number]["account"]) => (a.type === "PENDAPATAN" || a.type === "BEBAN" ? "OPERATING" : (cashLine(a)?.section ?? "CASH"));
   for (const entry of byEntry.values()) {
+    // A bank-derived entry is cash even without a cash line: a statement row is posted to 1999 first and moved by a RECLASS entry.
+    if (entry[0].entry.bankTransactionId) continue;
     const sections = new Set(entry.map((l) => sectionOf(l.account)));
     if (sections.has("CASH") || sections.size < 2) continue;
     for (const l of entry) {
