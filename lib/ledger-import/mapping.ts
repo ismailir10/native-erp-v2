@@ -116,7 +116,10 @@ const KEYWORDS: { re: RegExp; code: string; types?: AccountType[]; not?: RegExp;
   { re: /(bank charge|admin(istrasi)? bank|biaya bank|bank administration|bank admin|provisi|biaya transfer)/, code: "7100", types: ["BEBAN"] },
   { re: /(petty cash|kas kecil|cash in transit|\bkas\b|cash on hand)/, code: "1110", types: ["ASET"], not: /bank/ },
   { re: /\b(bank|giro|tabungan|deposito|time deposits?|call a ?c|ocbc|bca|bri|bni|mandiri|cimb|dbs|uob|citibank|permata|doku|flip|xendit|midtrans)\b/, code: "1120", types: ["ASET"], not: /(non ?bank|payable|utang|hutang|loan|pinjaman)/ },
-  { re: /(allowance|penyisihan|cadangan kerugian|\becl\b)/, code: "1130", types: ["ASET"] },
+  // The allowance goes to its contra account (1135) when the client has it, else nets into 1130.
+  { re: /(allowance|penyisihan|cadangan kerugian|\becl\b|ckpn)/, code: "1135", types: ["ASET"] },
+  { re: /(allowance|penyisihan|cadangan kerugian|\becl\b|ckpn)/, code: "1130", types: ["ASET"] },
+  { re: /(bad debts?|doubtful|piutang tak tertagih|ckpn|\becl\b|(penyisihan|cadangan|penurunan nilai|impairment).*(piutang|receivable))/, code: "6185", types: ["BEBAN"] },
   { re: /(ppn masukan|vat[- ]?in\b|input vat)/, code: "1150", types: ["ASET"] },
   { re: /(prepaid.*(tax|pajak|\bpph\b|article|pasal)|pajak dibayar di ?muka|uang muka pajak|pph .*dibayar di ?muka|tax receivable)/, code: "1180", types: ["ASET"] },
   // Loans to staff and related parties are other receivables, not trade (1140 below).

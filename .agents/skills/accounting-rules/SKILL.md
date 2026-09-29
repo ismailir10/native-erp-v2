@@ -62,11 +62,20 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     skipped; last year's December fiscal loss from the books is only suggested. The **Excel kertas kerja** is built from the same pack. Normal regime 22 %, Pasal 31E (turnover = usaha revenue ≤ Rp 50 M: PKP × 4,8 M ÷ turnover at
     11 %), each part rounded down; PP 55/2022 final 0,5 % of turnover when the accountant chooses it (no corrections, credits or journal).
     Credits = PPh 25 bank lines (tag PPH_25, wherever they sit) + bukti potong typed with the account they sit on → PPh 29 (2146) or 28A (1181);
-    next year's PPh 25 = (terutang − PPh 22/23/24) ÷ 12. Deferred tax = 22 % × (fiscal − book value of the register). **Journals by click only**
+    next year's PPh 25 = (terutang − PPh 22/23/24) ÷ 12. Deferred tax = 22 % × (fiscal − book value of the register + the CKPN allowance, 5e). **Journals by click only**
     (`ADJUSTMENT`, dated the period end): each books the **difference** from earlier postings of its kind (deferred balances across years) under a
     per entity-year lock; pack accounts (1181, 1270, 2146, 2320, 8110) are created on first use when free, a code used for something else is
     refused. December control `tax:` is REVIEW while the current-tax journal has a difference. The firm rule files "PPH 25" to 1180 (prepaid).
     Everything is labelled an estimate, never an SPT.
+5e. **CKPN piutang — PSAK 109 simplified approach** (`lib/receivables/ckpn.ts`): per entity with a saved `CkpnSetting`, computed at read
+    time from its **sales invoices and settlements** (no stored aging). Loss rates are **Roll rate** (invoice by invoice between consecutive
+    month-ends over the last N months: of what was open in a bucket and has aged beyond it by the next month-end, the share still open, capped
+    at 100 %, averaged over months with such an amount; loss rate = next bucket's loss rate × roll, the > 90 hari rate is set) or **Manual**
+    per bucket. Allowance per bucket = open × loss rate × forward-looking factor (0–300 %), half up. A bucket with an open amount and no rate
+    blocks the proposal (never guessed). Rates are integers (bp settings, ppm computed); amounts stay bigint. **Journal by click only**
+    (`ADJUSTMENT`, period end): 1135 (contra receivable, credit) to the allowance against 6185, the difference from 1135's GL balance, under
+    the close lock and a per-entity lock; refused when 1135 already moved after the period end. 1135 is never an invoice's receivable
+    account. Control `ckpn:` is REVIEW while there is a difference. Write-offs (hapus buku) are manual journals.
 6. `bigint` **minor units of the entity's functional currency** everywhere in the domain (ADR 0006). IDR has exponent 0,
    so for IDR entities that is whole Rupiah, as before. Parse with `parseRupiah()` / `parseMinor()` (handles `1.234.567,00`,
    `1,234,567.00`, `(2.500)`), format with `formatRupiah()` / `formatMoney(value, currency)`. Convert to `Number` only for chart

@@ -182,6 +182,7 @@ model Entity {
   fixedAssets        FixedAsset[]
   invoices           Invoice[]
   taxYears           TaxYear[]
+  ckpnSetting        CkpnSetting?
 
   @@index([clientId])
 }
@@ -1184,4 +1185,29 @@ model TaxLossCarryforward {
   createdAt   DateTime    @default(now())
 
   @@unique([taxYearId, originYear])
+}
+
+enum CkpnMethod {
+  /// Loss rates from roll rates of Buku's own month-end aging.
+  ROLL_RATE
+  /// Loss rates typed by the accountant.
+  MANUAL
+}
+
+/// CKPN piutang usaha (PSAK 109 simplified approach, accounting-rules 5e) of one entity. Rates are basis points (10000 = 100 %).
+model CkpnSetting {
+  id            String     @id @default(cuid())
+  firmId        String
+  entityId      String     @unique
+  entity        Entity     @relation(fields: [entityId], references: [id])
+  method        CkpnMethod @default(ROLL_RATE)
+  historyMonths Int        @default(12)
+  /// Manual loss rates per bucket: belum jatuh tempo, 1–30, 31–60, 61–90 (the last bucket is lastBucketBp).
+  currentBp     Int        @default(0)
+  d1to30Bp      Int        @default(0)
+  d31to60Bp     Int        @default(0)
+  d61to90Bp     Int        @default(0)
+  lastBucketBp  Int        @default(10000)
+  forwardBp     Int        @default(10000)
+  updatedAt     DateTime   @updatedAt
 }

@@ -7,6 +7,8 @@ import { ScopeBar } from "@/components/app/scope-bar";
 import { NextStep, PageHeader } from "@/components/app/page-header";
 import { Receivables } from "@/components/app/receivables";
 import { receivablesView } from "@/lib/receivables/view";
+import { ckpn, ckpnView } from "@/lib/receivables/ckpn";
+import { CkpnCard } from "@/components/app/ckpn-card";
 
 export default async function ReceivablesPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, period, scope, periodOptions, entityOptions, sp } = await loadClientPage(params, searchParams);
@@ -17,6 +19,16 @@ export default async function ReceivablesPage({ params, searchParams }: { params
     receivablesView(prisma, client.id, direction, period.end, entities),
     prisma.account.findMany({ where: { clientId: client.id }, orderBy: { code: "asc" } }),
   ]);
+  // CKPN (PSAK 109) for entities with sales invoices or a saved setting.
+  const withSettings = new Set((await prisma.ckpnSetting.findMany({ where: { entityId: { in: entities.map((e) => e.id) } }, select: { entityId: true } })).map((s) => s.entityId));
+  const ckpnViews = sales
+    ? await Promise.all(
+        entities
+          .filter((e) => withSettings.has(e.id) || view.invoices.some((i) => i.entityId === e.id))
+          .sort((a, b) => Number(a.kind === "PERORANGAN") - Number(b.kind === "PERORANGAN"))
+          .map(async (e) => ckpnView(await ckpn(prisma, client.id, e.id, period.year, period.month), e)),
+      )
+    : [];
   const label = formatPeriod(period.year, period.month);
   const word = sales ? "piutang" : "utang";
   const mismatch = view.comparison.filter((c) => !c.equal);
@@ -46,10 +58,13 @@ export default async function ReceivablesPage({ params, searchParams }: { params
         {...view}
         accounts={{
           counter: pick((a) => !a.isBank && !a.isSuspense && !a.isClearing && !a.isIntercompany && (sales ? a.type === "PENDAPATAN" : (a.type === "BEBAN" || a.type === "ASET") && a.fsLine !== "PIUTANG_USAHA" && a.taxTag === null)),
-          arAp: pick((a) => a.fsLine === (sales ? "PIUTANG_USAHA" : "UTANG_USAHA")),
+          arAp: pick((a) => a.fsLine === (sales ? "PIUTANG_USAHA" : "UTANG_USAHA") && a.normalBalance === (sales ? "DEBIT" : "CREDIT")),
         }}
         defaultDate={toIsoDate(period.end)}
       />
+      {ckpnViews.map((c) => (
+        <CkpnCard key={c.entityId} clientId={client.id} year={period.year} month={period.month} periodKey={period.key} periodLabel={label} view={c} />
+      ))}
     </div>
   );
 }

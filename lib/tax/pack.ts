@@ -4,6 +4,7 @@ import { incomeStatement } from "@/lib/reports/ledger";
 import { assetRegister } from "@/lib/assets/register";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { dateOnly, periodBounds } from "@/lib/format";
+import { allowanceBalance } from "@/lib/receivables/ckpn";
 import { corporateTax, deferredTax, roundDownThousands, settlement, type CorporateTax, type Settlement } from "@/lib/tax/compute";
 import { categoryOf, compensate, share, type LossRow } from "@/lib/tax/categories";
 
@@ -55,7 +56,8 @@ export type TaxPack = {
   tax: CorporateTax;
   credits: Credit[];
   settlement: Settlement | null;
-  deferred: { temporaryDifference: bigint; amount: bigint } | null;
+  /** Temporary differences: fixed assets (fiscal − book value) and the receivable allowance (1135, deductible when written off). */
+  deferred: { assets: bigint; allowance: bigint; temporaryDifference: bigint; amount: bigint } | null;
   /** Signed lines (debit +, credit −) still to post to reach the computed position, per kind; empty = nothing to post. */
   proposals: Record<TaxPostingKind, ProposalLine[]>;
   /** A posting of the kind dated after the chosen month: the position is booked there, so nothing is proposed here. */
@@ -140,20 +142,22 @@ export async function taxPack(db: Db, clientId: string, entityId: string, year: 
     ? null
     : settlement({ due: tax.due, instalments: sum(credits.filter((c) => c.type === "PPH_25")), withheld: sum(credits.filter((c) => c.type === "PPH_22" || c.type === "PPH_23" || c.type === "PPH_24")), other: sum(credits.filter((c) => c.type === "OTHER")) });
 
-  // ---- pajak tangguhan (fixed-asset register only) ----
+  // ---- pajak tangguhan (fixed-asset register and the receivable allowance) ----
+  const held = await allowanceBalance(db, clientId, entityId, through);
+  const allowance = held > 0n ? held : 0n;
   const fiscalValue = assets.reduce((t, r) => t + (r.fiscalBookValue ?? 0n), 0n);
   const bookValue = assets.reduce((t, r) => t + r.bookValue, 0n);
   // Only postings dated by the chosen month count; one dated later means the position is booked there.
   const postedCurrent = await postedLines(db, entityId, "CURRENT", year, false, through);
   const postedDeferred = await postedLines(db, entityId, "DEFERRED", year, true, through);
   const laterPosting: Record<TaxPostingKind, Date | null> = { CURRENT: await postingAfter(db, entityId, "CURRENT", year, through), DEFERRED: await postingAfter(db, entityId, "DEFERRED", year, through) };
-  // Under the final regime there is no fiscal profit, so no temporary difference; with no registered assets there is none either. Either
-  // way a deferred balance booked earlier is brought back to zero.
+  // Under the final regime there is no fiscal profit, so no temporary difference; with no registered assets and no allowance there is none
+  // either. Either way a deferred balance booked earlier is brought back to zero.
   const deferredBooked = [ACCOUNT_CODES.DEFERRED_TAX_ASSET, ACCOUNT_CODES.DEFERRED_TAX_LIABILITY].some((c) => (postedDeferred.get(c) ?? 0n) !== 0n);
   const deferred =
     entity.functionalCurrency !== "IDR" ? null
-    : assets.length && !final ? { temporaryDifference: fiscalValue - bookValue, amount: deferredTax(fiscalValue - bookValue) }
-    : deferredBooked ? { temporaryDifference: 0n, amount: 0n }
+    : (assets.length || allowance > 0n) && !final ? { assets: fiscalValue - bookValue, allowance, temporaryDifference: fiscalValue - bookValue + allowance, amount: deferredTax(fiscalValue - bookValue + allowance) }
+    : deferredBooked ? { assets: 0n, allowance: 0n, temporaryDifference: 0n, amount: 0n }
     : null;
 
   const applicable = packApplies(entity);

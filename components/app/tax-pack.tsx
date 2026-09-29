@@ -238,10 +238,12 @@ export function TaxPackPanel(props: { clientId: string; periodKey: string; perio
         <Card data-testid="tax-deferred">
           <CardHeader>
             <CardTitle>Pajak tangguhan (SAK EP)</CardTitle>
-            <CardDescription>Dari daftar aset tetap: nilai buku fiskal dikurangi nilai buku komersial, dikali 22%.</CardDescription>
+            <CardDescription>Beda temporer dari daftar aset tetap (nilai buku fiskal − nilai buku komersial) dan cadangan kerugian piutang (baru boleh dibebankan saat dihapusbukukan), dikali 22%.</CardDescription>
           </CardHeader>
           <CardContent className="text-sm">
-            {row("Beda temporer (nilai fiskal − nilai buku)", v.deferred.temporaryDifference)}
+            {BigInt(v.deferred.allowance) > 0n && row("Aset tetap (nilai fiskal − nilai buku)", v.deferred.assets)}
+            {BigInt(v.deferred.allowance) > 0n && row("Cadangan kerugian piutang (1135)", v.deferred.allowance)}
+            {row(BigInt(v.deferred.allowance) > 0n ? "Beda temporer" : "Beda temporer (nilai fiskal − nilai buku)", v.deferred.temporaryDifference)}
             {row(BigInt(v.deferred.amount) >= 0n ? "Aset pajak tangguhan" : "Liabilitas pajak tangguhan", BigInt(v.deferred.amount) < 0n ? (-BigInt(v.deferred.amount)).toString() : v.deferred.amount, { strong: true })}
           </CardContent>
         </Card>

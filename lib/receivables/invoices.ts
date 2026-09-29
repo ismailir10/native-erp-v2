@@ -71,7 +71,7 @@ export async function createInvoice(db: Db, input: InvoiceInput) {
   const accounts = await db.account.findMany({ where: { clientId: input.clientId } });
   const byCode = (code: string) => accounts.find((a) => a.code === code);
   const arAp = byCode(input.arApCode?.trim() || DEFAULT_AR_AP[input.direction]);
-  if (!arAp || arAp.fsLine !== AR_AP_LINE[input.direction]) throw new LedgerError(sales ? "Akun piutang harus akun Piutang Usaha." : "Akun utang harus akun Utang Usaha.");
+  if (!arAp || arAp.fsLine !== AR_AP_LINE[input.direction] || arAp.normalBalance !== (sales ? "DEBIT" : "CREDIT")) throw new LedgerError(sales ? "Akun piutang harus akun Piutang Usaha." : "Akun utang harus akun Utang Usaha.");
   const counter = byCode(input.counterCode);
   const counterOk = counter && !counter.isBank && !counter.isSuspense && !counter.isClearing && !counter.isIntercompany && counter.id !== arAp.id && (sales ? counter.type === "PENDAPATAN" : counter.type === "BEBAN" || counter.type === "ASET");
   if (!counterOk) throw new LedgerError(sales ? "Pilih akun pendapatan untuk faktur penjualan." : "Pilih akun beban atau aset untuk tagihan pembelian (bukan akun bank).");
