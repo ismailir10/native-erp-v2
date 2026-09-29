@@ -12,6 +12,7 @@ import { postAdjustment } from "@/lib/ledger/adjustment";
 import { createSchedule, postAllDue, postInstallment, stopSchedule, type ScheduleInput } from "@/lib/adjust/schedules";
 import { createAsset, type AssetInput } from "@/lib/assets/register";
 import { disposeAsset, type DisposalInput } from "@/lib/assets/dispose";
+import { cancelLease, createLease, postLeaseMonths, type LeaseInput } from "@/lib/leases/register";
 import { createInvoice, type InvoiceInput } from "@/lib/receivables/invoices";
 import { settleWithReclass, unsettle } from "@/lib/receivables/settle";
 import { candidateViews, type CandidateView } from "@/lib/receivables/view";
@@ -223,6 +224,17 @@ export async function createAssetAction(input: Omit<AssetInput, "actorId">): Pro
   } catch (e) {
     return fail(e);
   }
+}
+
+/** Lease register (rule 5f): registration posts the commencement entry; monthly journals and cancellation by click. */
+export async function createLeaseAction(input: Omit<LeaseInput, "actorId">) {
+  return taxWrite(input.clientId, (clientId, actorId) => createLease(prisma, { ...input, clientId, actorId }));
+}
+export async function postLeaseMonthsAction(input: { clientId: string; entityId: string; year: number; month: number }) {
+  return taxWrite(input.clientId, (clientId, actorId) => postLeaseMonths(prisma, { ...input, clientId, actorId }));
+}
+export async function cancelLeaseAction(clientId: string, leaseId: string) {
+  return taxWrite(clientId, (id, actorId) => cancelLease(prisma, { clientId: id, leaseId, actorId }));
 }
 
 /** The accountant's click: one disposal entry (rule 5b). */
