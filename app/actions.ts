@@ -17,7 +17,7 @@ import { settleWithReclass, unsettle } from "@/lib/receivables/settle";
 import { candidateViews, type CandidateView } from "@/lib/receivables/view";
 import { taxPack } from "@/lib/tax/pack";
 import { postTax } from "@/lib/tax/post";
-import { acceptSuggestion, addCorrection, addCredit, deleteCorrection, deleteCredit, dismissSuggestion, setRegime, type CorrectionInput, type CreditInput } from "@/lib/tax/records";
+import { acceptSuggestion, addCorrection, addCredit, deleteCorrection, deleteCredit, deleteLoss, dismissSuggestion, setCorrectionPercent, setLoss, setRegime, type CorrectionInput, type CreditInput } from "@/lib/tax/records";
 import type { TaxPostingKind, TaxRegime } from "@/lib/generated/prisma/enums";
 import { ParseError, YearNeededError } from "@/lib/import/types";
 import { PdfPasswordError } from "@/lib/import/parsers/pdf";
@@ -303,13 +303,22 @@ export async function deleteCorrectionAction(clientId: string, correctionId: str
   return taxWrite(clientId, (id) => deleteCorrection(prisma, { clientId: id, correctionId }));
 }
 /** The amount is read again from the ledger here, never taken from the page. */
-export async function acceptSuggestionAction(input: { clientId: string; entityId: string; year: number; month: number; accountCode: string }) {
+export async function acceptSuggestionAction(input: { clientId: string; entityId: string; year: number; month: number; accountCode: string; percent?: number }) {
   return taxWrite(input.clientId, async (clientId, actorId) => {
     const pack = await taxPack(prisma, clientId, input.entityId, input.year, input.month);
     const s = pack?.suggestions.find((x) => x.code === input.accountCode);
     if (!s) throw new LedgerError("Usulan ini sudah tidak berlaku. Muat ulang halaman.");
-    await acceptSuggestion(prisma, { clientId, entityId: input.entityId, year: input.year, accountCode: s.code, amount: s.amount, actorId });
+    await acceptSuggestion(prisma, { clientId, entityId: input.entityId, year: input.year, accountCode: s.code, amount: s.amount, percent: input.percent, actorId });
   });
+}
+export async function setCorrectionPercentAction(clientId: string, correctionId: string, percent: number) {
+  return taxWrite(clientId, (id) => setCorrectionPercent(prisma, { clientId: id, correctionId, percent }));
+}
+export async function setLossAction(input: { clientId: string; entityId: string; year: number; originYear: number; amount: string }) {
+  return taxWrite(input.clientId, (clientId, actorId) => setLoss(prisma, { ...input, clientId, actorId }));
+}
+export async function deleteLossAction(clientId: string, lossId: string) {
+  return taxWrite(clientId, (id) => deleteLoss(prisma, { clientId: id, lossId }));
 }
 export async function dismissSuggestionAction(input: { clientId: string; entityId: string; year: number; key: string }) {
   return taxWrite(input.clientId, (clientId) => dismissSuggestion(prisma, { ...input, clientId }));

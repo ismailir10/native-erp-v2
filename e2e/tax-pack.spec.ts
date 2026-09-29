@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import ExcelJS from "exceljs";
 
 /**
  * Tax pack, end to end (synthetic): a company's year to September — revenue from an invoice, salaries by journal — then a fiscal
@@ -61,9 +62,29 @@ test("tax pack: corrections, PPh badan with 31E, credits, current-tax journal", 
   await expect(page.getByTestId("tax-balance")).toContainText("47.100.000");
   await expect(page.getByTestId("tax-next")).toContainText("3.925.000");
 
+  // A 2025 loss of 50 jt from last year's SPT: PKP 560 jt → 61,6 jt; PPh 29 41,6 jt.
+  await page.getByRole("button", { name: "Rugi fiskal" }).click();
+  await page.getByLabel("Sisa rugi", { exact: true }).fill("50.000.000");
+  await page.getByRole("button", { name: "Simpan rugi" }).click();
+  await expect(page.getByText("Rugi fiskal dicatat")).toBeVisible();
+  await expect(page.getByTestId("loss-2025")).toContainText("(50.000.000)");
+  await expect(page.getByTestId("tax-pkp")).toContainText("560.000.000");
+  await expect(page.getByTestId("tax-due")).toContainText("61.600.000");
+  await expect(page.getByTestId("tax-balance")).toContainText("41.600.000");
+
+  // The kertas kerja carries the same figures.
+  const [download] = await Promise.all([page.waitForEvent("download"), page.getByTestId("tax-download").click()]);
+  expect(download.suggestedFilename()).toBe("kertas-kerja-pph-badan-PJK-2026-09.xlsx");
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load((await (await download.createReadStream()).toArray()).reduce((a, b) => Buffer.concat([a, b]), Buffer.alloc(0)) as unknown as ArrayBuffer);
+  const figures = new Map<string, unknown>();
+  wb.getWorksheet("Rekonsiliasi Fiskal")!.eachRow((r) => figures.set(String(r.getCell(1).value ?? "").trim(), r.getCell(2).value));
+  expect(figures.get("Kompensasi kerugian")).toBe(-50_000_000);
+  expect(figures.get("PPh badan terutang")).toBe(61_600_000);
+
   const current = page.getByTestId("proposal-CURRENT");
   await expect(current).toContainText("8100 Beban Pajak Penghasilan");
-  await expect(current).toContainText("Debit 67.100.000");
+  await expect(current).toContainText("Debit 61.600.000");
   await expect(current).toContainText("2146 Utang PPh Pasal 29");
   await current.getByRole("button", { name: "Catat jurnal per September 2026" }).click();
   await expect(page.getByText("Jurnal PPh badan dicatat")).toBeVisible();

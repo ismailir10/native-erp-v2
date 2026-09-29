@@ -42,7 +42,7 @@ DER / thin-cap limits; PPh 24 credit limit; PDF export.
 - [x] T2 Carry-forward + categories in the pack (`lib/tax/categories.ts`, `lib/tax/pack.ts`, `lib/tax/records.ts`) — accept: unit tests (oldest
       first, expiry, partial use, loss year) and DB tests (categories with %, live amount × %, last year's loss suggested).
 - [x] T3 Workpaper: `lib/tax/workpaper.ts` + route — accept: unit test reads the generated .xlsx back (sheet names, key figures equal the pack).
-- [ ] T4 UI: loss rows, category + % on corrections, *Unduh kertas kerja* — accept: e2e extends `e2e/tax-pack.spec.ts` (loss used, % changed,
+- [x] T4 UI: loss rows, category + % on corrections, *Unduh kertas kerja* — accept: e2e extends `e2e/tax-pack.spec.ts` (loss used, % changed,
       download parsed), screenshots 1440 / 390.
 - [ ] T5 Rules + docs — accept: end-of-cycle gates.
 
@@ -51,6 +51,7 @@ DER / thin-cap limits; PPh 24 credit limit; PDF export.
 - T1: `prisma/schema.prisma`, migration `20260929030000_tax_losses_categories` (TaxLossCarryforward, FiscalCorrection.category/percent, CHECKs).
 - T2: `lib/tax/categories.ts` (8 categories, `share`, `compensate`), `lib/tax/pack.ts` (category suggestions with default % and the corrected share; accepted ones follow account × %; compensation before PKP; last year's December fiscal loss suggested, the prior pack computed once without its own suggestion), `lib/tax/records.ts` (`acceptSuggestion` with %, `setCorrectionPercent`, `setLoss`/`deleteLoss`, `dismissSuggestion` also for `loss:YYYY`), tests `tests/unit/tax-categories.test.ts`, `tests/db/tax-records.test.ts`, `tests/db/tax-pack.test.ts`.
 - T3: `lib/tax/workpaper.ts` (7 sheets from the pack; the pack now exposes `profitAndLoss` so the Laba Rugi sheet reads the same statement), route `app/(app)/clients/[id]/tax/export/route.ts` (tenant-checked, `no-store`), `tests/db/tax-workpaper.test.ts` (generated file read back: sheet names, PBT, compensation, PKP, tax, PPh 29, the 50% correction, the posted journal lines).
+- T4: `components/app/tax-pack.tsx` (category, % and corrected share on suggestions; editable % on accepted ones; *Kompensasi kerugian* rows, the Buku loss suggestion with Catat/Abaikan, the loss dialog; *Unduh kertas kerja* for both regimes), `lib/tax/view.ts`, `lib/tax/pack.ts` (a correction's % and whether it follows its account), `app/actions.ts` (`setCorrectionPercentAction`, `setLossAction`, `deleteLossAction`, % on accept), `e2e/tax-pack.spec.ts` (loss → PKP 560 jt, 61,6 jt, PPh 29 41,6 jt; the download parsed: compensation −50 jt and the tax equal the page).
 
 ## Verification
 ## Ship Notes

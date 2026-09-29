@@ -23,7 +23,7 @@ export type Correction = {
   kind: CorrectionKind;
   amount: bigint;
   /** Where it comes from: the asset register, an account's ledger, or the accountant's own row. */
-  source: { type: "ASSETS" } | { type: "ACCOUNT"; code: string; name: string } | { type: "MANUAL"; id: string; code: string | null };
+  source: { type: "ASSETS" } | { type: "ACCOUNT"; code: string; name: string } | { type: "MANUAL"; id: string; code: string | null; percent: number | null };
 };
 /** A correction category matched by an expense account's name (lib/tax/categories.ts); `amount` is the account, `corrected` its share. */
 export type Suggestion = { key: string; code: string; name: string; amount: bigint; category: string; label: string; percent: number; direction: CorrectionDirection; kind: CorrectionKind; corrected: bigint };
@@ -103,7 +103,7 @@ export async function taxPack(db: Db, clientId: string, entityId: string, year: 
     const live = c.suggestion && c.account ? (expenses.find((x) => x.code === c.account!.code)?.amount ?? 0n) : null;
     // Kept at zero when the account has no expense this year, so the accountant still sees (and can remove) it.
     const amount = live === null ? c.amount : live > 0n ? share(live, c.percent) : 0n;
-    corrections.push({ key: `manual:${c.id}`, label: c.description, direction: c.direction, kind: c.kind, amount, source: { type: "MANUAL", id: c.id, code: c.account?.code ?? null } });
+    corrections.push({ key: `manual:${c.id}`, label: c.description, direction: c.direction, kind: c.kind, amount, source: { type: "MANUAL", id: c.id, code: c.account?.code ?? null, percent: c.suggestion ? c.percent : null } });
   }
   const accepted = new Set((taxYear?.corrections ?? []).flatMap((c) => (c.suggestion ? [c.suggestion] : [])));
   const dismissed = new Set(taxYear?.dismissedSuggestions ?? []);
