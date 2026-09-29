@@ -53,7 +53,8 @@ export function EmployeeBenefits(props: { clientId: string; year: number; month:
 
       {props.entities.map((ev) => {
         const cur = ev.entity.currency;
-        const f = forms[ev.entity.id];
+        // An entity the scope switched to after this component mounted starts from its saved setting.
+        const f = forms[ev.entity.id] ?? ev.setting;
         const set = (patch: Partial<typeof f>) => setForms({ ...forms, [ev.entity.id]: { ...f, ...patch } });
         const dirty = JSON.stringify(f) !== JSON.stringify(ev.setting) || !ev.setting.saved;
         const v = ev.valuation;

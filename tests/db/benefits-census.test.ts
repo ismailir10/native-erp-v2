@@ -32,6 +32,10 @@ describe("PSAK 24 inputs", () => {
     const bad = ["Nama;JK;Tanggal Lahir;Tanggal Masuk;Upah", "A;X;01/01/1990;01/01/2020;5000000", "B;L;01/01/2020;01/01/1990;5000000", "C;P;01/01/1990;01/01/2020;0", ""].join("\n");
     await expect(importCensus(db, { clientId: g.client.id, entityId: g.pt.entity.id, fileName: "s.csv", data: Buffer.from(bad) })).rejects.toThrow(/3 baris sensus.*Baris 2 \(A\): jenis kelamin.*Baris 3 \(B\): tanggal masuk sebelum.*Baris 4 \(C\): upah harus/);
     await expect(importCensus(db, { clientId: g.client.id, entityId: g.pt.entity.id, fileName: "s.csv", data: Buffer.from("Nama;Umur\nA;30\n") })).rejects.toThrow(/Kolom sensus tidak ditemukan/);
+    const twice = ["Nama;JK;Tanggal Lahir;Tanggal Masuk;Upah", "Ani;P;01/01/1990;01/01/2020;5000000", "Ani;P;01/01/1990;01/01/2020;5000000", ""].join("\n");
+    await expect(importCensus(db, { clientId: g.client.id, entityId: g.pt.entity.id, fileName: "s.csv", data: Buffer.from(twice) })).rejects.toThrow(/Ani \(lahir 1990-01-01\) muncul dua kali/);
+    const impossible = ["Nama;JK;Tanggal Lahir;Tanggal Masuk;Upah", "Budi;L;31/02/1990;01/01/2020;5000000", ""].join("\n");
+    await expect(importCensus(db, { clientId: g.client.id, entityId: g.pt.entity.id, fileName: "s.csv", data: Buffer.from(impossible) })).rejects.toThrow(/Baris 2 \(Budi\): tanggal lahir tidak dikenali/);
     expect(await db.employee.count()).toBe(0);
     await expect(saveEmployee(db, { clientId: g.client.id, entityId: g.pt.entity.id, name: "D", sex: "MALE", birthDate: "1990-02-30", hireDate: "2020-01-01", wage: "5.000.000" })).rejects.toThrow(/Tanggal lahir tidak valid/);
   });

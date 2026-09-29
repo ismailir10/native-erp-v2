@@ -87,8 +87,9 @@ export function CkpnCard(props: { clientId: string; year: number; month: number;
             ))}
           </div>
         )}
+        {v.effectiveFrom && <p className="text-xs text-muted-foreground">Pengaturan berlaku sejak {v.effectiveFrom}. Menyimpan perubahan di sini berlaku mulai {props.periodLabel}; bulan sebelumnya tetap memakai pengaturan lamanya.</p>}
         {dirty && (
-          <Button variant="outline" size="sm" disabled={busy} onClick={() => run(() => saveCkpnSettingAction({ clientId: props.clientId, entityId: v.entityId, ...form }), "Pengaturan CKPN disimpan")}>
+          <Button variant="outline" size="sm" disabled={busy} onClick={() => run(() => saveCkpnSettingAction({ clientId: props.clientId, entityId: v.entityId, year: props.year, month: props.month, ...form }), "Pengaturan CKPN disimpan")}>
             Simpan pengaturan
           </Button>
         )}

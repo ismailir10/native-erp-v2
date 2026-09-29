@@ -46,7 +46,7 @@ test("leases: register, commencement, monthly journals, payments, control", asyn
   await expect(reg.getByTestId("lease-Kantor Sudirman")).toContainText("212.433.873");
   await expect(reg.getByTestId("lease-Kantor Sudirman")).toContainText("3 jurnal bulanan belum dicatat");
   await reg.getByRole("button", { name: "Kantor Sudirman" }).click();
-  await expect(reg.getByTestId("lease-schedule-Kantor Sudirman")).toContainText("2.124.339");
+  await expect(reg.getByTestId("lease-schedule-Kantor Sudirman")).toContainText("2.124.338");
   await reg.getByRole("button", { name: "Catat 3 jurnal sewa s.d. Agustus 2026" }).click();
   await expect(page.getByText("Jurnal sewa dicatat")).toBeVisible();
   await expect(reg).toContainText("Semua jurnal bulanan sewa s.d. Agustus 2026 sudah dicatat");

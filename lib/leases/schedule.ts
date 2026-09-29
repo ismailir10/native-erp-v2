@@ -3,9 +3,9 @@ import { periodBounds } from "@/lib/format";
 
 /**
  * The lease schedule (PSAK 116, accounting-rules 5f), computed from the contract and never stored. Monthly rate = annual ÷ 12 as an exact
- * fraction (rateBp / 120 000); the initial liability is the exact present value of the payments rounded half up once, interest is rounded
- * half up per month and the residue goes to the month of the last payment so the liability ends at 0. The ROU asset (= initial liability)
- * is depreciated straight line. Amounts are bigint minor units of the entity's currency.
+ * fraction (rateBp / 120 000). The liability at every month-end is the exact present value of the payments still due, rounded half up
+ * once, and the month's interest is the difference (closing − opening + payment) — so rounding never compounds and the liability ends at
+ * exactly 0. The ROU asset (= initial liability) is depreciated straight line. Amounts are bigint minor units of the entity's currency.
  */
 
 export type LeaseTerms = { startYear: number; startMonth: number; months: number; payment: bigint; intervalMonths: number; timing: LeaseTiming; rateBp: number };
@@ -42,46 +42,47 @@ export function paymentTimes(t: Pick<LeaseTerms, "months" | "intervalMonths" | "
   return Array.from({ length: paymentsCount(t) }, (_, j) => (t.timing === "ADVANCE" ? j * t.intervalMonths : (j + 1) * t.intervalMonths));
 }
 
-/** Σ P ÷ (1 + r)^t exactly, rounded half up once. */
-export function presentValue(t: Pick<LeaseTerms, "months" | "intervalMonths" | "timing" | "payment" | "rateBp">): bigint {
+/** Σ P ÷ (1 + r)^t as an exact fraction numerator / denominator. */
+function exactValue(t: Pick<LeaseTerms, "months" | "intervalMonths" | "timing" | "payment" | "rateBp">) {
   const num = RATE_DEN + BigInt(t.rateBp);
   const times = paymentTimes(t);
   const T = Math.max(...times);
-  const numerator = times.reduce((s, x) => s + RATE_DEN ** BigInt(x) * num ** BigInt(T - x), 0n) * t.payment;
-  return halfUp(numerator, num ** BigInt(T));
+  return { numerator: times.reduce((s, x) => s + RATE_DEN ** BigInt(x) * num ** BigInt(T - x), 0n) * t.payment, denominator: num ** BigInt(T) };
 }
 
-function roll(t: LeaseTerms, liability: bigint, plugMonth: number, plug: bigint) {
-  let L = liability;
+/** Σ P ÷ (1 + r)^t exactly, rounded half up once. */
+export function presentValue(t: Pick<LeaseTerms, "months" | "intervalMonths" | "timing" | "payment" | "rateBp">): bigint {
+  const v = exactValue(t);
+  return halfUp(v.numerator, v.denominator);
+}
+
+/**
+ * Monthly roll on the exact liability N / D (advance payment at the start of the month, growth at the monthly rate, arrears payment at the
+ * end); each month-end is that exact value rounded once, and interest is derived from the rounded balances.
+ */
+function roll(t: LeaseTerms, liability: bigint) {
+  const num = RATE_DEN + BigInt(t.rateBp);
+  let { numerator: N, denominator: D } = exactValue(t);
+  let previous = liability;
   const rows: { opening: bigint; payment: bigint; interest: bigint; closing: bigint }[] = [];
   for (let k = 1; k <= t.months; k++) {
-    const opening = L;
-    let payment = 0n;
-    if (t.timing === "ADVANCE" && (k - 1) % t.intervalMonths === 0) payment = t.payment;
-    L -= payment;
-    const interest = halfUp(L * BigInt(t.rateBp), RATE_DEN) + (k === plugMonth ? plug : 0n);
-    L += interest;
-    if (t.timing === "ARREARS" && k % t.intervalMonths === 0) {
-      payment = t.payment;
-      L -= payment;
-    }
-    rows.push({ opening, payment, interest, closing: L });
+    const advance = t.timing === "ADVANCE" && (k - 1) % t.intervalMonths === 0;
+    const arrears = t.timing === "ARREARS" && k % t.intervalMonths === 0;
+    if (advance) N -= t.payment * D;
+    N *= num;
+    D *= RATE_DEN;
+    if (arrears) N -= t.payment * D;
+    const payment = advance || arrears ? t.payment : 0n;
+    const closing = halfUp(N, D);
+    rows.push({ opening: previous, payment, interest: closing - previous + payment, closing });
+    previous = closing;
   }
   return rows;
 }
 
 export function leaseSchedule(t: LeaseTerms): LeaseSchedule {
   const liability = presentValue(t);
-  const times = paymentTimes(t);
-  // The month in which the last payment falls: advance pays at the start of month x + 1, arrears at the end of month x.
-  const last = times[times.length - 1];
-  const plugMonth = t.timing === "ADVANCE" ? last + 1 : last;
-  let plug = 0n;
-  let rows = roll(t, liability, plugMonth, plug);
-  for (let i = 0; i < 5 && rows[rows.length - 1].closing !== 0n; i++) {
-    plug -= rows[rows.length - 1].closing;
-    rows = roll(t, liability, plugMonth, plug);
-  }
+  const rows = roll(t, liability);
   const rou = liability;
   const n = BigInt(t.months);
   const dep = rou / n;

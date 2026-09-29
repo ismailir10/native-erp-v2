@@ -183,7 +183,7 @@ model Entity {
   fixedAssets        FixedAsset[]
   invoices           Invoice[]
   taxYears           TaxYear[]
-  ckpnSetting        CkpnSetting?
+  ckpnSettings       CkpnSetting[]
   leases             Lease[]
   employees          Employee[]
   benefitSetting     BenefitSetting?
@@ -1208,20 +1208,25 @@ enum CkpnMethod {
 
 /// CKPN piutang usaha (PSAK 109 simplified approach, accounting-rules 5e) of one entity. Rates are basis points (10000 = 100 %).
 model CkpnSetting {
-  id            String     @id @default(cuid())
-  firmId        String
-  entityId      String     @unique
-  entity        Entity     @relation(fields: [entityId], references: [id])
-  method        CkpnMethod @default(ROLL_RATE)
-  historyMonths Int        @default(12)
+  id             String     @id @default(cuid())
+  firmId         String
+  entityId       String
+  entity         Entity     @relation(fields: [entityId], references: [id])
+  method         CkpnMethod @default(ROLL_RATE)
+  historyMonths  Int        @default(12)
   /// Manual loss rates per bucket: belum jatuh tempo, 1–30, 31–60, 61–90 (the last bucket is lastBucketBp).
-  currentBp     Int        @default(0)
-  d1to30Bp      Int        @default(0)
-  d31to60Bp     Int        @default(0)
-  d61to90Bp     Int        @default(0)
-  lastBucketBp  Int        @default(10000)
-  forwardBp     Int        @default(10000)
-  updatedAt     DateTime   @updatedAt
+  currentBp      Int        @default(0)
+  d1to30Bp       Int        @default(0)
+  d31to60Bp      Int        @default(0)
+  d61to90Bp      Int        @default(0)
+  lastBucketBp   Int        @default(10000)
+  forwardBp      Int        @default(10000)
+  /// The first month the setting applies to; a later version takes over from its own month, so closed months keep theirs.
+  effectiveYear  Int        @default(2000)
+  effectiveMonth Int        @default(1)
+  updatedAt      DateTime   @updatedAt
+
+  @@unique([entityId, effectiveYear, effectiveMonth])
 }
 
 enum LeaseTiming {

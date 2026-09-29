@@ -100,6 +100,10 @@ export async function importCensus(db: Db, input: { clientId: string; entityId: 
   const numbers = rows.flatMap((r) => (r.employeeNo ? [r.employeeNo] : []));
   const twice = numbers.find((n, i) => numbers.indexOf(n) !== i);
   if (twice) throw new ParseError(`Nomor karyawan ${twice} muncul dua kali di file.`);
+  // Without a number an employee is known by name + birth date: the same pair twice would count one person twice.
+  const keys = rows.filter((r) => !r.employeeNo).map((r) => `${norm(r.name)}|${+r.birthDate}`);
+  const same = rows.filter((r) => !r.employeeNo).find((_, i) => keys.indexOf(keys[i]) !== i);
+  if (same) throw new ParseError(`${same.name} (lahir ${same.birthDate.toISOString().slice(0, 10)}) muncul dua kali di file tanpa nomor karyawan. Beri nomor karyawan atau hapus baris gandanya.`);
   return db.$transaction(async (tx) => {
     const existing = await tx.employee.findMany({ where: { entityId: entity.id } });
     let added = 0;
@@ -111,7 +115,7 @@ export async function importCensus(db: Db, input: { clientId: string; entityId: 
         await tx.employee.update({ where: { id: match.id }, data });
         updated++;
       } else {
-        await tx.employee.create({ data: { ...data, firmId: entity.firmId, clientId: input.clientId, entityId: entity.id } });
+        existing.push(await tx.employee.create({ data: { ...data, firmId: entity.firmId, clientId: input.clientId, entityId: entity.id } }));
         added++;
       }
     }
