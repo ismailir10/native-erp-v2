@@ -46,7 +46,7 @@ export default async function ReceivablesPage({ params, searchParams }: { params
         {...view}
         accounts={{
           counter: pick((a) => !a.isBank && !a.isSuspense && !a.isClearing && !a.isIntercompany && (sales ? a.type === "PENDAPATAN" : (a.type === "BEBAN" || a.type === "ASET") && a.fsLine !== "PIUTANG_USAHA" && a.taxTag === null)),
-          arAp: pick((a) => a.fsLine === (sales ? "PIUTANG_USAHA" : "UTANG_USAHA")),
+          arAp: pick((a) => a.fsLine === (sales ? "PIUTANG_USAHA" : "UTANG_USAHA") && a.normalBalance === (sales ? "DEBIT" : "CREDIT")),
         }}
         defaultDate={toIsoDate(period.end)}
       />

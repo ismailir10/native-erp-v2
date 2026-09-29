@@ -39,6 +39,8 @@ export const ACCOUNT_CODES = {
   DEFERRED_TAX_LIABILITY: "2320",
   CURRENT_TAX: "8100",
   DEFERRED_TAX: "8110",
+  ALLOWANCE: "1135",
+  IMPAIRMENT_EXPENSE: "6185",
 } as const;
 
 export const FS_LINES = {
@@ -90,6 +92,7 @@ export const COA_TEMPLATE: AccountSeed[] = [
   a("1110", "Kas Kecil", "ASET", "KAS_SETARA_KAS"),
   a("1120", "Kas di Bank (Buku Besar)", "ASET", "KAS_SETARA_KAS"),
   a("1130", "Piutang Usaha", "ASET", "PIUTANG_USAHA"),
+  a("1135", "Cadangan Kerugian Penurunan Nilai Piutang", "ASET", "PIUTANG_USAHA", { normalBalance: "CREDIT" }),
   a("1140", "Piutang Lain-lain", "ASET", "PIUTANG_LAIN"),
   a("1150", "PPN Masukan", "ASET", "PAJAK_DIBAYAR_DIMUKA", { taxTag: "PPN_MASUKAN" }),
   a("1160", "Persediaan", "ASET", "PERSEDIAAN"),
@@ -137,6 +140,7 @@ export const COA_TEMPLATE: AccountSeed[] = [
   a("6160", "Beban Perlengkapan Kantor", "BEBAN", "BEBAN_UMUM_ADM"),
   a("6170", "Beban Jasa Profesional", "BEBAN", "BEBAN_UMUM_ADM"),
   a("6180", "Beban Penyusutan", "BEBAN", "BEBAN_UMUM_ADM"),
+  a("6185", "Beban Kerugian Penurunan Nilai Piutang", "BEBAN", "BEBAN_UMUM_ADM"),
   a("6190", "Beban Umum Lain-lain", "BEBAN", "BEBAN_UMUM_ADM"),
   a("7100", "Beban Administrasi Bank", "BEBAN", "BEBAN_LAIN"),
   a("7110", "Beban Bunga Pinjaman", "BEBAN", "BEBAN_LAIN"),

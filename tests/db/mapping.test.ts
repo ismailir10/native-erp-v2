@@ -80,7 +80,7 @@ describe("deterministic mapping", () => {
 
   it("proposes a new account for generic matches, keeps catch-alls for catch-all names and specific rules as they are", () => {
     expect(sug("Platform Subscription Expense")).toBe("new:BEBAN_UMUM_ADM");
-    expect(sug("Beban Penyisihan Piutang CKP")).toBe("new:BEBAN_UMUM_ADM");
+    expect(sug("Beban Penyisihan Piutang CKP")).toBe("6185"); // the impairment expense has its own account
     expect(sug("Payable to Event")).toBe("new:UTANG_LAIN");
     expect(sug("Event Revenue")).toBe("new:PENDAPATAN_USAHA");
     expect(sug("Beban Umum Lain-lain")).toBe("6190"); // the name is the catch-all
