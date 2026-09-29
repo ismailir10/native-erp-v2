@@ -37,7 +37,8 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
   const [drag, setDrag] = useState(false);
   const [result, setResult] = useState<ImportSummary | null>(null);
   // The file of the last successful import: "Impor juga ke …" reuses it for another account in the same PDF.
-  const [lastFile, setLastFile] = useState<File | null>(null);
+  // With its PDF password (kept in this page only, never sent anywhere else or stored) so another account in it needs no re-typing.
+  const [lastFile, setLastFile] = useState<{ file: File; password: string } | null>(null);
   // The file's number belongs to another account of this client: offered inline, one click re-runs with it.
   const [mismatch, setMismatch] = useState<{ error: string; bankId: string } | null>(null);
   const digits = (s: string) => s.replace(/\D/g, "");
@@ -49,7 +50,7 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
   const inputRef = useRef<HTMLInputElement>(null);
   const entities = [...new Set(banks.map((b) => b.entity))];
 
-  const done = (r: Awaited<ReturnType<typeof importAction>>, sent: File | null = null) => {
+  const done = (r: Awaited<ReturnType<typeof importAction>>, sent: { file: File; password: string } | null = null) => {
     setMismatch(null);
     if (!r.ok) {
       if (r.suggestBankAccountId) {
@@ -76,21 +77,26 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
     router.refresh();
   };
 
-  const submit = (override?: { bankId: string; file: File }) =>
+  const submit = (override?: { bankId: string; file: File; password?: string }) =>
     start(async () => {
       const f = override?.file ?? file;
       if (!f) return;
+      const pw = override?.password ?? password;
       const fd = new FormData();
       fd.set("clientId", clientId);
       fd.set("bankAccountId", override?.bankId ?? bankId);
       fd.set("file", f);
-      if (password) fd.set("password", password);
+      if (pw) fd.set("password", pw);
       if (yearHint && year) fd.set("year", year);
-      done(await importAction(fd), f);
+      done(await importAction(fd), { file: f, password: pw });
     });
-  const switchAccount = (id: string, f: File) => {
+  // Re-run the same file for another account. The file (and its password) go back into the form first, so a password or year
+  // prompt for that account can be answered with the normal *Proses mutasi*.
+  const switchAccount = (id: string, f: File, pw = password) => {
     setBankId(id);
-    submit({ bankId: id, file: f });
+    setFileState(f);
+    if (pw) setPassword(pw);
+    submit({ bankId: id, file: f, password: pw });
   };
   const alsoImport = result && lastFile
     ? result.otherAccounts.flatMap((o) => banks.filter((b) => b.id !== bankId && digits(b.number) === digits(o.number)).map((b) => ({ id: b.id, label: `${b.label} · ${b.number}` })))
@@ -239,7 +245,7 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
                   {alsoImport.length > 0 && lastFile && (
                     <div className="flex flex-wrap gap-2">
                       {alsoImport.map((b) => (
-                        <Button key={b.id} size="sm" variant="outline" disabled={pending} onClick={() => switchAccount(b.id, lastFile)}>
+                        <Button key={b.id} size="sm" variant="outline" disabled={pending} onClick={() => switchAccount(b.id, lastFile.file, lastFile.password)}>
                           Impor juga ke {b.label}
                         </Button>
                       ))}

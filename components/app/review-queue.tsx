@@ -94,6 +94,8 @@ export function ReviewQueue({
   // Only the bulk "serupa" action blocks the queue; single accepts are optimistic (the card leaves at once, saves run in order).
   const [busy, setBusy] = useState<string | null>(null);
   const inFlight = useRef(0);
+  // Saves run one after another in acceptance order: the last decision on a merchant key is the one Memory keeps.
+  const queue = useRef<Promise<void>>(Promise.resolve());
   const [saving, setSaving] = useState(0);
   const visible = useMemo(() => items.filter((i) => !done.has(i.id)), [items, done]);
   const nameOf = (code: string | null) => accounts.find((a) => a.code === code)?.name ?? "—";
@@ -136,7 +138,7 @@ export function ReviewQueue({
     setActive((a) => Math.max(0, Math.min(a, visible.length - 2)));
     inFlight.current += 1;
     setSaving(inFlight.current);
-    void reviewAction({ bankTxId: i.id, accountCode: c.code, taxTag: c.tax === "none" ? null : (c.tax as never), createRule: c.rule }).then((r) => {
+    const save = () => reviewAction({ bankTxId: i.id, accountCode: c.code, taxTag: c.tax === "none" ? null : (c.tax as never), createRule: c.rule }).then((r) => {
       if (!r.ok) {
         setDone((d) => {
           const n = new Set(d);
@@ -150,6 +152,7 @@ export function ReviewQueue({
       }
       settle();
     });
+    queue.current = queue.current.then(save, save);
   };
 
   const acceptSimilar = async (i: ReviewItem) => {
