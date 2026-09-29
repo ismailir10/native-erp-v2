@@ -40,6 +40,8 @@ import { suggestAgainWithAi } from "@/lib/ai/retry";
 import { acceptCheck, LedgerImportError, postImport, stageImport } from "@/lib/ledger-import/post";
 import { acceptMappings, MappingError, suggestMappings } from "@/lib/ledger-import/mapping";
 import { infraErrorMessage } from "@/lib/db-errors";
+import { deleteClient, DeleteClientError } from "@/lib/clients/delete";
+import { requireMember } from "@/lib/auth/session";
 import type { FsLine } from "@/lib/coa/template";
 import type { MapMethod } from "@/lib/generated/prisma/enums";
 
@@ -52,6 +54,7 @@ type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string; needs
 function fail(e: unknown): { ok: false; error: string; needsPassword?: boolean; needsYear?: boolean; yearGuess?: number | null } {
   if (e instanceof PdfPasswordError) return { ok: false, error: e.message, needsPassword: true };
   if (e instanceof YearNeededError) return { ok: false, error: e.message, needsYear: true, yearGuess: e.guess };
+  if (e instanceof DeleteClientError) return { ok: false, error: e.message };
   if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError || e instanceof MoneyError || e instanceof RateError || e instanceof RevaluationError || e instanceof LedgerImportError || e instanceof MappingError) return { ok: false, error: e.message };
   const infra = infraErrorMessage(e);
   console.error(e);
@@ -677,3 +680,22 @@ export async function prepareEvidenceImportAction(...args: Parameters<typeof evi
 export async function postEvidenceBankAction(...args: Parameters<typeof evidenceActions.postEvidenceBankAction>) { return evidenceActions.postEvidenceBankAction(...args); }
 export async function startGoogleAction(...args: Parameters<typeof googleActions.startGoogleAction>) { return googleActions.startGoogleAction(...args); }
 export async function disconnectGoogleAction(...args: Parameters<typeof googleActions.disconnectGoogleAction>) { return googleActions.disconnectGoogleAction(...args); }
+
+/** Admin only: removes a client and all its books after the typed-name confirmation (lib/clients/delete.ts). */
+export async function deleteClientAction(clientId: string, confirmName: string): Promise<Result> {
+  let member;
+  try {
+    member = await requireMember("ADMIN");
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Hanya admin kantor yang dapat menghapus klien." };
+  }
+  try {
+    const client = await getClientForFirm(clientId);
+    const r = await deleteClient(prisma, { firmId: client.firmId, clientId: client.id, confirmName });
+    console.info(`client deleted: firm=${client.firmId} client=${client.id} name="${r.name}" by member=${member.id} at ${new Date().toISOString()}`);
+    revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}

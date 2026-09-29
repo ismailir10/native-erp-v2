@@ -1,0 +1,47 @@
+import { beforeEach, expect, it } from "vitest";
+import { db, makeGroup, resetDb } from "../helpers";
+import { makePdf, table } from "../pdf-fixture";
+import { importStatement } from "@/lib/import/pipeline";
+import { reviewTransaction } from "@/lib/review";
+import { postAdjustment } from "@/lib/ledger/adjustment";
+import { createClient } from "@/lib/setup";
+import { deleteClient, DeleteClientError } from "@/lib/clients/delete";
+import { dateOnly } from "@/lib/format";
+
+beforeEach(resetDb);
+
+const statement = makePdf([
+  [
+    ...table(800, [[[40, "PT Bank Mandiri (Persero) Tbk"]], [[40, "Nomor Rekening : 2222222222"]], [[40, "Periode : 01/08/2026 - 31/08/2026"]]]),
+    ...table(740, [
+      [[40, "Tanggal"], [130, "Keterangan"], [360, "Debit"], [440, "Kredit"], [520, "Saldo"]],
+      [[40, "01/08/2026"], [130, "SALDO AWAL"], [500, "0,00"]],
+      [[40, "04/08/2026"], [130, "TRSF KE TOKO ABC"], [360, "1.000.000,00"], [510, "-1.000.000,00"]],
+    ]),
+  ],
+]);
+
+it("deletes one client's books completely and nothing of another client", async () => {
+  const g = await makeGroup();
+  const other = await db.$transaction((tx) => createClient(tx, g.firm.id, { name: "Klien Lain", industry: "", entities: [{ name: "PT Lain", shortName: "Lain", kind: "PT", banks: [{ bank: "BCA", number: "9999999999", label: "BCA" }] }] }));
+  await importStatement(db, { bankAccountId: g.pt.banks[1].id, fileName: "mandiri.pdf", data: statement, provider: null });
+  const tx = await db.bankTransaction.findFirstOrThrow({ where: { entityId: g.pt.entity.id } });
+  await reviewTransaction(db, { bankTxId: tx.id, accountCode: "6190", taxTag: null });
+  await postAdjustment(db, { clientId: g.client.id, entityId: g.pt.entity.id, date: dateOnly(2026, 8, 31), memo: "Akrual", lines: [{ accountCode: "6190", debit: "500", credit: "" }, { accountCode: "2150", debit: "", credit: "500" }] });
+  const otherAccounts = await db.account.count({ where: { clientId: other.client.id } });
+
+  await expect(deleteClient(db, { firmId: g.firm.id, clientId: g.client.id, confirmName: "grup uji" })).rejects.toBeInstanceOf(DeleteClientError);
+  await expect(deleteClient(db, { firmId: "another-firm", clientId: g.client.id, confirmName: "Grup Uji" })).rejects.toThrow("Klien tidak ditemukan.");
+  expect(await db.journalEntry.count({ where: { entity: { clientId: g.client.id } } })).toBeGreaterThan(0);
+
+  expect(await deleteClient(db, { firmId: g.firm.id, clientId: g.client.id, confirmName: " Grup Uji " })).toEqual({ name: "Grup Uji", entities: 2 });
+  expect(await db.client.count({ where: { id: g.client.id } })).toBe(0);
+  expect(await db.entity.count()).toBe(1); // the other client's
+  expect(await db.bankAccount.count()).toBe(1);
+  for (const n of [ db.journalEntry.count(), db.journalLine.count(), db.bankTransaction.count(), db.statementImport.count(), db.memory.count(), db.period.count()]) {
+    expect(await n).toBe(0); // the other client has no books yet
+  }
+  expect(await db.account.count({ where: { clientId: g.client.id } })).toBe(0);
+  expect(await db.account.count({ where: { clientId: other.client.id } })).toBe(otherAccounts);
+  expect(await db.client.count({ where: { id: other.client.id } })).toBe(1);
+});
