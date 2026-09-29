@@ -65,8 +65,17 @@ export async function reviewTransactionTx(tx: Tx, args: ReviewArgs) {
   return t.id;
 }
 
-/** Accept every open line with the same merchant key + direction using its suggestion. A generic key groups nothing. */
-export async function acceptSimilar(db: Db, bankTxId: string, scope?: { entityIds: string[]; through: Date }, actorId?: string | null) {
+/**
+ * Accept every open line with the same merchant key + direction: with the source line's suggestion, or with the account/tax
+ * the reviewer chose on it (`choice`). A generic key groups nothing. Returns the ids decided.
+ */
+export async function acceptSimilar(
+  db: Db,
+  bankTxId: string,
+  scope?: { entityIds: string[]; through: Date },
+  actorId?: string | null,
+  choice?: { accountCode: string; taxTag: TaxTag | null },
+): Promise<string[]> {
   const t = await db.bankTransaction.findUniqueOrThrow({ where: { id: bankTxId } });
   const peers = await db.bankTransaction.findMany({
     where: {
@@ -76,8 +85,10 @@ export async function acceptSimilar(db: Db, bankTxId: string, scope?: { entityId
       status: "NEEDS_REVIEW",
     },
   });
+  const accountCode = choice?.accountCode ?? t.suggestedCode ?? "6190";
+  const taxTag = choice ? choice.taxTag : t.taxTag;
   for (const p of peers) {
-    await reviewTransaction(db, { bankTxId: p.id, accountCode: t.suggestedCode ?? "6190", taxTag: t.taxTag, actorId });
+    await reviewTransaction(db, { bankTxId: p.id, accountCode, taxTag, actorId });
   }
-  return peers.length;
+  return peers.map((p) => p.id);
 }

@@ -111,7 +111,11 @@ export async function reviewAction(input: { bankTxId: string; accountCode: strin
   }
 }
 
-export async function acceptSimilarAction(bankTxId: string, scope: { entityIds: string[]; period: string }): Promise<Result<{ count: number }>> {
+export async function acceptSimilarAction(
+  bankTxId: string,
+  scope: { entityIds: string[]; period: string },
+  choice?: { accountCode: string; taxTag: TaxTag | null },
+): Promise<Result<{ ids: string[] }>> {
   try {
     const clientId = await assertTxInFirm(bankTxId);
     const client = await getClientForFirm(clientId);
@@ -119,9 +123,10 @@ export async function acceptSimilarAction(bankTxId: string, scope: { entityIds: 
     if (!scope || !/^(19|20|21)\d{2}-(0[1-9]|1[0-2])$/.test(scope.period) || !scope.entityIds.length || scope.entityIds.some(id => !client.entities.some(e => e.id === id)) || !scope.entityIds.includes(source.entityId)) return { ok: false, error: "Cakupan review tidak valid. Muat ulang halaman." };
     const through = new Date(Date.UTC(Number(scope.period.slice(0, 4)), Number(scope.period.slice(5)), 0));
     if (source.date > through) return { ok: false, error: "Transaksi berada di luar periode review." };
-    const count = await acceptSimilar(prisma, bankTxId, { entityIds: scope.entityIds, through }, (await getCurrentMember()).id);
+    if (choice && !(await prisma.account.findFirst({ where: { clientId, code: choice.accountCode, isBank: false, isSuspense: false } }))) return { ok: false, error: `Akun ${choice.accountCode} tidak ada di bagan akun klien ini.` };
+    const ids = await acceptSimilar(prisma, bankTxId, { entityIds: scope.entityIds, through }, (await getCurrentMember()).id, choice);
     revalidatePath(`/clients/${clientId}`, "layout");
-    return { ok: true, count };
+    return { ok: true, ids };
   } catch (e) {
     return fail(e);
   }

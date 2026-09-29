@@ -100,7 +100,7 @@ capability** — L11 deletes a client's posted entries (admin-only, typed confir
       entity's bank; own bank still posts; control REVIEW on legacy line); existing suites green.
 - [x] T3 M7 generic merchant keys (no memory write/read, no serupa) + BI FAST normalisation — accept: unit tests on keys; DB test memory not
       written for a generic key; `verify:books` ALL PASS.
-- [ ] T4 H3 + M1 + M3 + L12 review queue (drafts in session storage, *Belum disimpan*, beforeunload, non-modal searchable picker,
+- [x] T4 H3 + M1 + M3 + L12 review queue (drafts in session storage, *Belum disimpan*, beforeunload, non-modal searchable picker,
       optimistic accept, *Simpan untuk N serupa*) — accept: e2e: change account, accept 3 others, reload → draft kept; one click *Simpan*
       saves; serupa with chosen account; Enter ×3 fast accepts 3.
 - [ ] T5 M2 drawer *Ubah akun* — accept: e2e reclass from the drawer moves the ledger; locked month shows the lock error.
@@ -119,8 +119,10 @@ capability** — L11 deletes a client's posted entries (admin-only, typed confir
 - T1: lib/ledger-import/mapping.ts, lib/db-errors.ts, app/actions.ts, app/settings-actions.ts — acceptMappings reads the chart once, allocates new codes in memory (allocateAccountCode), createMany + updateMany per target account, coaVersion +1 per call, 60 s timeout; Prisma P2028/P2024 → Bahasa message instead of 'kesalahan tak terduga'.
 - T2: lib/ledger/post.ts, lib/controls/index.ts, journals/new page + components/app/journal-form.tsx — postJournal refuses a bank GL account of another entity unless the line moves that entity's leftover balance toward zero; REVIEW control bank-entity:<entity> for non-zero leftovers; the form lists only the selected entity's banks and clears other-entity picks on entity change.
 - T3: lib/import/normalize.ts (isGenericKey, BI FAST with a space), lib/review.ts, lib/import/pipeline.ts, review + client settings pages — keys naming no counterparty are never learned, never matched from older memories, never a rule (Bahasa error) and never grouped as serupa.
+- T4: components/app/review-queue.tsx, lib/review.ts, app/actions.ts, review page, e2e/review-safety.spec.ts — drafts in sessionStorage (useSyncExternalStore) survive reload/remount, *Belum disimpan* + beforeunload (also while saves run), searchable non-modal AccountPicker, optimistic Terima/Enter with a *Menyimpan N…* indicator and rollback on error, *Simpan untuk N serupa* applies the chosen account (acceptSimilar choice → ids), count shown from the cards.
 ## Verification
 - T1 gate: lint ✓ · typecheck ✓ · Test Files 80 passed (80) · Tests 578 passed (578) (new: 700 mappings incl. 120 new accounts in one call; infraErrorMessage).
 - T2 gate: lint ✓ · typecheck ✓ · Test Files 80 passed (80) · Tests 579 passed (579) (new: refuse other entity's bank, own bank posts, legacy leftover flagged, over-clear refused, exact clear accepted, control gone).
 - T3 gate: lint ✓ · typecheck ✓ · Test Files 80 passed (80) · Tests 581 passed (581) · demo:reset + verify:books → ALL PASS — 1525 pemeriksaan saldo cocok dengan ground truth.
+- T4 gate: lint ✓ · typecheck ✓ · Test Files 80 passed (80) · Tests 582 passed (582); e2e review-safety 1 passed, investor-demo 2 passed; screenshot checked.
 ## Ship Notes
