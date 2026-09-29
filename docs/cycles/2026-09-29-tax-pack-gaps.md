@@ -38,7 +38,7 @@ DER / thin-cap limits; PPh 24 credit limit; PDF export.
 3. The workpaper reflects the page's selected month (year to date), like the page.
 
 ## Tasks
-- [ ] T1 Schema: migration `tax_losses_categories` — accept: `migrate diff` empty; gate green.
+- [x] T1 Schema: migration `tax_losses_categories` — accept: `migrate diff` empty; gate green.
 - [ ] T2 Carry-forward + categories in the pack (`lib/tax/categories.ts`, `lib/tax/pack.ts`, `lib/tax/records.ts`) — accept: unit tests (oldest
       first, expiry, partial use, loss year) and DB tests (categories with %, live amount × %, last year's loss suggested).
 - [ ] T3 Workpaper: `lib/tax/workpaper.ts` + route — accept: unit test reads the generated .xlsx back (sheet names, key figures equal the pack).
@@ -47,5 +47,7 @@ DER / thin-cap limits; PPh 24 credit limit; PDF export.
 - [ ] T5 Rules + docs — accept: end-of-cycle gates.
 
 ## Implementation
+- Plan: T1–T5 sequential, inline. Scope approved with the five-cycle plan ("all in that order").
+- T1: `prisma/schema.prisma`, migration `20260929030000_tax_losses_categories` (TaxLossCarryforward, FiscalCorrection.category/percent, CHECKs).
 ## Verification
 ## Ship Notes

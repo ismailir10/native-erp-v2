@@ -803,22 +803,23 @@ model FirmMember {
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 
-  postedEntries    JournalEntry[]       @relation("EntryPostedBy")
-  signoffs         CloseSignoff[]       @relation("SignoffDoneBy")
-  lockedPeriods    Period[]             @relation("PeriodLockedBy")
-  acks             ControlAck[]         @relation("AckDoneBy")
-  statementImports StatementImport[]    @relation("StatementImportedBy")
-  ledgerImports    LedgerImport[]       @relation("LedgerImportedBy")
-  ledgerPostings   LedgerImport[]       @relation("LedgerPostedBy")
-  mappings         SourceAccount[]      @relation("MappingAcceptedBy")
-  schedules        AdjustmentSchedule[] @relation("ScheduleCreatedBy")
-  fixedAssets      FixedAsset[]         @relation("AssetCreatedBy")
-  invoicesCreated  Invoice[]            @relation("InvoiceCreatedBy")
-  settlements      InvoiceSettlement[]  @relation("SettlementCreatedBy")
+  postedEntries    JournalEntry[]        @relation("EntryPostedBy")
+  signoffs         CloseSignoff[]        @relation("SignoffDoneBy")
+  lockedPeriods    Period[]              @relation("PeriodLockedBy")
+  acks             ControlAck[]          @relation("AckDoneBy")
+  statementImports StatementImport[]     @relation("StatementImportedBy")
+  ledgerImports    LedgerImport[]        @relation("LedgerImportedBy")
+  ledgerPostings   LedgerImport[]        @relation("LedgerPostedBy")
+  mappings         SourceAccount[]       @relation("MappingAcceptedBy")
+  schedules        AdjustmentSchedule[]  @relation("ScheduleCreatedBy")
+  fixedAssets      FixedAsset[]          @relation("AssetCreatedBy")
+  invoicesCreated  Invoice[]             @relation("InvoiceCreatedBy")
+  settlements      InvoiceSettlement[]   @relation("SettlementCreatedBy")
   taxCorrections   FiscalCorrection[]
   taxCredits       TaxCredit[]
   taxPostings      TaxPosting[]
-  proposalsDecided ProposedEntry[]      @relation("ProposalDecidedBy")
+  taxLosses        TaxLossCarryforward[]
+  proposalsDecided ProposedEntry[]       @relation("ProposalDecidedBy")
 
   @@index([firmId])
 }
@@ -1090,20 +1091,21 @@ enum TaxPostingKind {
 /// An entity's fiscal year in the tax pack (accounting-rules 5d): the regime and what the accountant recorded for it. Every tax figure is
 /// computed at read time from the GL and these rows; nothing computed is stored.
 model TaxYear {
-  id                   String             @id @default(cuid())
+  id                   String                @id @default(cuid())
   firmId               String
   clientId             String
-  client               Client             @relation(fields: [clientId], references: [id])
+  client               Client                @relation(fields: [clientId], references: [id])
   entityId             String
-  entity               Entity             @relation(fields: [entityId], references: [id])
+  entity               Entity                @relation(fields: [entityId], references: [id])
   year                 Int
-  regime               TaxRegime          @default(NORMAL)
+  regime               TaxRegime             @default(NORMAL)
   /// Keys of non-deductible-expense suggestions the accountant dismissed.
-  dismissedSuggestions String[]           @default([])
-  createdAt            DateTime           @default(now())
+  dismissedSuggestions String[]              @default([])
+  createdAt            DateTime              @default(now())
   corrections          FiscalCorrection[]
   credits              TaxCredit[]
   postings             TaxPosting[]
+  losses               TaxLossCarryforward[]
 
   @@unique([entityId, year])
   @@index([clientId])
@@ -1124,6 +1126,9 @@ model FiscalCorrection {
   account     Account?            @relation(fields: [accountId], references: [id])
   /// The suggestion key it was accepted from, so the suggestion isn't offered twice.
   suggestion  String?
+  /// The correction category it was accepted as (lib/tax/categories.ts), and the share of the account taken (1–100).
+  category    String?
+  percent     Int                 @default(100)
   createdById String?
   createdBy   FirmMember?         @relation(fields: [createdById], references: [id])
   createdAt   DateTime            @default(now())
@@ -1164,4 +1169,19 @@ model TaxPosting {
   createdAt   DateTime       @default(now())
 
   @@index([taxYearId])
+}
+
+/// Kompensasi kerugian (UU PPh Pasal 6 ayat 2): a fiscal loss of an origin year still unused at 1 January of the tax year, as on the prior SPT.
+model TaxLossCarryforward {
+  id          String      @id @default(cuid())
+  firmId      String
+  taxYearId   String
+  taxYear     TaxYear     @relation(fields: [taxYearId], references: [id])
+  originYear  Int
+  amount      BigInt
+  createdById String?
+  createdBy   FirmMember? @relation(fields: [createdById], references: [id])
+  createdAt   DateTime    @default(now())
+
+  @@unique([taxYearId, originYear])
 }
