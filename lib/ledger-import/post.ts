@@ -7,7 +7,7 @@ import { formatDate } from "@/lib/format";
 import { loadRates, lookupRate, upsertFileRate } from "@/lib/fx/rates";
 import { formatRate, formatRateId, isCurrency, parseRate } from "@/lib/fx/currency";
 import { ParseError } from "@/lib/import/types";
-import { detectTables, readSheets, readTable } from "@/lib/ledger-import/read";
+import { detectTables, readSheets, readTable, reportKind } from "@/lib/ledger-import/read";
 import { accountKey, planLedger, planNeraca, type Check, type CurrencyMode, type EntityInfo, type Plan, type PlanEntry } from "@/lib/ledger-import/check";
 import { inferType, learnScheme, suggestMappings } from "@/lib/ledger-import/mapping";
 import type { NeracaRow, TableCandidate } from "@/lib/ledger-import/types";
@@ -77,7 +77,12 @@ function willPost(e: PlanEntry) {
 export async function stageImport(db: Db, input: StageInput): Promise<StageResult> {
   const sheets = await readSheets(input.fileName, input.data);
   const candidates = detectTables(sheets);
-  if (!candidates.length) throw new ParseError("Tabel buku besar atau neraca tidak ditemukan. Pastikan ada baris judul kolom (tanggal, kode akun, debit, kredit — atau kode akun dan saldo).");
+  if (!candidates.length) {
+    const report = sheets.map(reportKind).find(Boolean);
+    if (report === "LABA_RUGI") throw new ParseError("File ini laporan laba rugi, bukan buku besar atau neraca. Impor neraca atau buku besarnya; laba tahun berjalan sudah ada di saldo laba neraca.");
+    if (report === "ARUS_KAS") throw new ParseError("File ini laporan arus kas, bukan buku besar atau neraca. Impor neraca atau buku besarnya; Buku menyusun arus kas dari buku besar.");
+    throw new ParseError("Tabel buku besar atau neraca tidak ditemukan. Pastikan ada baris judul kolom (tanggal, kode akun, debit, kredit — atau kode akun dan saldo).");
+  }
   const table = input.sheet ? candidates.find((c) => c.sheet === input.sheet) : candidates.length === 1 ? candidates[0] : null;
   if (!table) return { status: "CHOOSE_SHEET", candidates };
 

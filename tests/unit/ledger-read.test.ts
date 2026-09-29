@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import ExcelJS from "exceljs";
-import { detectTables, readSheets, readTable } from "@/lib/ledger-import/read";
+import { detectTables, readSheets, readTable, reportKind } from "@/lib/ledger-import/read";
 import { htmlXls, workbook as legacyWorkbook } from "@/tests/xls-fixture";
 
 async function workbook(sheets: Record<string, unknown[][]>): Promise<Buffer> {
@@ -184,5 +184,26 @@ describe("Neraca reader (Jurnal-style export)", () => {
       ["1-1810", "ASET", "NON_CURRENT"], // singular "Other Asset" after a current heading
       ["2-2000", "LIABILITAS", null],
     ]);
+  });
+});
+
+describe("report exports that aren't a ledger or a Neraca", () => {
+  it("never reads a Jurnal-style Profit & Loss or cash flow as a Neraca, and names what it is", async () => {
+    const buf = await workbook({
+      "01-05-2026_31-05-2026": [
+        ["PT CONTOH"],
+        ["Profit & Loss"],
+        ["01/05/2026 - 31/05/2026"],
+        ["(in IDR)"],
+        ["Date", "", "31/05/2026", ""],
+        ["4-4000", "Revenue", 1000, ""],
+        ["5-5000", "Cost of Revenue", 400, ""],
+        ["6-6000", "Salaries", 300, ""],
+      ],
+      Kas: [["PT CONTOH"], ["Arus Kas"], ["01/01/2026 - 31/05/2026"], ["Account & Categories", null, "01/01/2026 - 31/05/2026"], ["1-1000", "Bank", 5, ""], ["1-1001", "Kas", 5, ""], ["1-1002", "Giro", 5, ""]],
+    });
+    const sheets = await readSheets("profit_loss.xlsx", buf);
+    expect(sheets.map(reportKind)).toEqual(["LABA_RUGI", "ARUS_KAS"]);
+    expect(detectTables(sheets)).toEqual([]);
   });
 });

@@ -138,10 +138,26 @@ function headerColumns(row: RawCell[]): Columns {
   return cols;
 }
 
+const REPORT_TITLES: [RegExp, "LABA_RUGI" | "ARUS_KAS"][] = [
+  [/^(laporan )?(laba rugi|laba\/rugi|profit (&|and) loss|profit and loss statement|income statement|statement of profit or loss)$/i, "LABA_RUGI"],
+  [/^(laporan )?(arus kas|cash ?flows?|statement of cash flows?)$/i, "ARUS_KAS"],
+];
+
+/** A sheet whose title rows (the first 8, as accounting systems print them) name a Laba Rugi or Arus Kas report — never a Neraca to post. */
+export function reportKind(sheet: RawSheet): "LABA_RUGI" | "ARUS_KAS" | null {
+  for (const row of sheet.rows.slice(0, 8)) {
+    const text = cellText((row ?? []).find((c) => !isBlank(c)) ?? null);
+    const hit = REPORT_TITLES.find(([re]) => re.test(text));
+    if (hit) return hit[1];
+  }
+  return null;
+}
+
 /** Every sheet region that looks like a ledger (date + account + debit/credit) or a Neraca (account + amount). */
 export function detectTables(sheets: RawSheet[]): TableCandidate[] {
   const out: TableCandidate[] = [];
   for (const sheet of sheets) {
+    if (reportKind(sheet)) continue;
     const limit = Math.min(sheet.rows.length, 30);
     let found = false;
     for (let r = 0; r < limit && !found; r++) {

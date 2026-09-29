@@ -99,7 +99,7 @@ new firm rules for existing firms. No new dependency, no AI credit, no invariant
 - [x] T4 Deposits on the import + Saldo Awal suggestion + loan hint (O1, O2) — accept: DB test (import stores deposits; opening context offers them once; posted opening hides them); page shows both. Depends T1.
 - [x] T5 Controls: going concern + trading without HPP (R1 control, R2) — accept: DB tests for both (PASS/REVIEW cases).
 - [x] T6 CALK: going-concern paragraph + deferred tax = posted (R1 note, R3) — accept: DB test on notes.
-- [ ] T7 Tanya Buku client-query intent + L/R upload message (R4, R5) — accept: unit/DB tests on intent and on a synthetic Jurnal.id L/R sheet.
+- [x] T7 Tanya Buku client-query intent + L/R upload message (R4, R5) — accept: unit/DB tests on intent and on a synthetic Jurnal.id L/R sheet.
 - [ ] T8 Review & picker UX (U1–U4) — accept: e2e/unit where feasible; manual check in the browser.
 - [ ] T9 Import polish (U5) — accept: unit test on the "impor juga" filter; client form check.
 - [ ] T10 Input before hydration (U6) — accept: e2e types immediately after navigation on /clients/new and Beranda; value persists.
@@ -113,6 +113,7 @@ new firm rules for existing firms. No new dependency, no AI credit, no invariant
 - T4: `prisma/schema.prisma` + migration `20260930020000_statement_deposits` (`StatementImport.deposits` JSONB, default []), `lib/import/pipeline.ts` (stores the parsed deposits, idrBalance as a string), `lib/opening.ts` (`deposits` per entity — once per number, IDR only, with file, maturity and rate — and `loanRows` = rows suggested/posted to 2210), `lib/coa/template.ts` (`BANK_LOAN` 2210, `DEPOSIT` 1260), `components/app/opening-form.tsx` (deposit lines prefilled on 1260, removable; a note for each and for loan rows), opening page; `tests/db/opening-deposits.test.ts`.
 - T5: `lib/controls/sanity.ts` (#6 `going-concern:` REVIEW for a non-PERORANGAN entity whose ASET + LIABILITAS nets are < 0 while assets ≥ 0; #7 `no-cogs:` REVIEW when the client's *Bidang usaha* matches `TRADING` and the month (OPENING excluded) has PENDAPATAN_USAHA > 0 with HPP net 0), `lib/controls/index.ts` (passes `industry`); `tests/db/sanity-controls.test.ts` (+2).
 - T6: `lib/reports/notes.ts` (note *Kelangsungan usaha* after *Umum* when the Neraca's equity < 0: liabilities, assets, equity, accumulated loss = SALDO_LABA + LABA_BERJALAN, a placeholder for management's plans; the tax note's deferred line = posted 1270 + 2320 through the period end, and a differing pack figure as *Estimasi pajak tangguhan belum dicatat (catat di Pajak Badan)* = computed − posted), `lib/tax/pack.ts` (`glBalance` exported); `tests/db/statements.test.ts` (+1, and posted vs estimate).
+- T7: `lib/workspace/index.ts` (intent `unclear` before readiness/payee: NEEDS_REVIEW bank lines of the scope up to the month's end, oldest first, totals per currency, 30 rows with the current guess, citations to Review), `components/app/workspace-ask.tsx` (example *Apa yang perlu ditanyakan ke klien?*), `lib/ledger-import/read.ts` (`reportKind()`: title rows naming Laba Rugi / Profit & Loss / Arus Kas / Cash Flow → never a table candidate), `lib/ledger-import/post.ts` (the upload names the report instead of the generic message); `tests/db/workspace.test.ts` (+1), `tests/unit/ledger-read.test.ts` (+1). Real Goers files: L/R and arus kas → no candidate, neraca still NERACA.
 
 ## Verification
 - T1 gate: lint ✓ typecheck ✓ `Test Files 92 passed (92) · Tests 624 passed (624)`.
@@ -121,5 +122,6 @@ new firm rules for existing firms. No new dependency, no AI credit, no invariant
 - T4 gate: lint ✓ typecheck ✓ `Test Files 94 passed (94) · Tests 627 passed (627)`; `prisma migrate diff` → No difference detected.
 - T5 gate: lint ✓ typecheck ✓ `Test Files 94 passed (94) · Tests 629 passed (629)`.
 - T6 gate: lint ✓ typecheck ✓ `Test Files 94 passed (94) · Tests 630 passed (630)`.
+- T7 gate: lint ✓ typecheck ✓ `Test Files 94 passed (94) · Tests 632 passed (632)`.
 
 ## Ship Notes

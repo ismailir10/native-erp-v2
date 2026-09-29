@@ -1,6 +1,6 @@
 import { beforeEach, expect, it } from "vitest";
 import { db, makeGroup, resetDb } from "../helpers";
-import { askWorkspace, getWorkspaceOverview, resolveWorkspaceScope } from "@/lib/workspace";
+import { askWorkspace, getWorkspaceOverview, resolveWorkspaceScope, workspaceQuestionIntent } from "@/lib/workspace";
 import { postJournal } from "@/lib/ledger/post";
 import { dateOnly } from "@/lib/format";
 import { createIntake } from "@/lib/evidence/store";
@@ -125,4 +125,23 @@ it("answers who was paid: bank lines by counterparty in the month, totals, accou
   expect(a.citations.map((c) => c.href.split("?")[0])).toEqual([`/clients/${g.client.id}/ledger/1190`, `/clients/${g.client.id}/ledger/1999`]);
   const none = await askWorkspace(db, g.firm.id, { scope: `client:${g.client.id}`, period: "2026-07", question: "transfer ke ALFI YANDRA" });
   expect(none.text).toBe('Tidak ada mutasi bank dengan "ALFI YANDRA" pada Juli 2026 di cakupan ini.');
+});
+
+it("lists what to ask the client: bank lines still in Review up to the month, with their current guess", async () => {
+  const g = await makeGroup();
+  const bank = g.owner.banks[0];
+  const imp = await db.statementImport.create({ data: { firmId: g.firm.id, bankAccountId: bank.id, fileName: "jenius.pdf", format: "SMBC", periodStart: dateOnly(2026, 5, 1), periodEnd: dateOnly(2026, 5, 31), openingBalance: 0n, closingBalance: 0n, rowCount: 3, continuityOk: true } });
+  const line = (hash: string, day: number, description: string, amount: bigint, status: "REVIEWED" | "NEEDS_REVIEW", suggestedCode: string) =>
+    db.bankTransaction.create({ data: { firmId: g.firm.id, entityId: g.owner.entity.id, bankAccountId: bank.id, importId: imp.id, date: dateOnly(2026, 5, day), description, merchantKey: "X", direction: amount < 0n ? "OUT" : "IN", amount, rowNumber: day, rawRow: "synthetic", hash, status, method: "HEURISTIC", confidence: 0.3, reason: "uji", accountCode: status === "REVIEWED" ? suggestedCode : null, suggestedCode } });
+  await line("a", 18, "Cr BI fast Incoming - BI Fast Incoming", 250_000_000n, "NEEDS_REVIEW", "4910");
+  await line("b", 19, "Db BI Fast Outgoing - BI Fast Outgoing", -105_000_000n, "NEEDS_REVIEW", "3300");
+  await line("c", 20, "Bea Materai - Stamp Duty", -10_000n, "REVIEWED", "7100");
+  const question = "Transaksi apa saja yang belum jelas dan perlu ditanyakan ke klien?";
+  expect(workspaceQuestionIntent(question)).toBe("unclear");
+  const a = await askWorkspace(db, g.firm.id, { scope: `client:${g.client.id}`, period: "2026-06", question });
+  expect(a.text).toBe("2 transaksi belum jelas sampai Juni 2026 (masuk Rp 250.000.000, keluar Rp 105.000.000). Tanyakan ke klien dari siapa uang masuk dan untuk apa uang keluar, lalu pilih akunnya di Review.");
+  expect(a.rows.map((r) => r.value)).toEqual(["Masuk Rp 250.000.000 · usulan 4910 Pendapatan Lain-lain", "Keluar Rp 105.000.000 · usulan 3300 Prive / Penarikan Pemilik"]);
+  expect(a.citations.map((c) => c.href.split("?")[0])).toEqual([`/clients/${g.client.id}/review`]);
+  const before = await askWorkspace(db, g.firm.id, { scope: `client:${g.client.id}`, period: "2026-04", question });
+  expect(before.text).toBe("Tidak ada transaksi yang menunggu review sampai April 2026 di cakupan ini.");
 });
