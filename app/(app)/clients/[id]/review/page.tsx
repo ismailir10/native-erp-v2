@@ -2,13 +2,11 @@ import { prisma } from "@/lib/db";
 import { loadClientPage } from "@/lib/client-page";
 import type { SearchParams } from "@/lib/scope";
 import { formatDate } from "@/lib/format";
-import { FS_LINES } from "@/lib/coa/template";
+import { classifiableOptions } from "@/lib/coa/options";
 import { NextStep, PageHeader } from "@/components/app/page-header";
 import { ScopeBar } from "@/components/app/scope-bar";
 import { ReviewQueue } from "@/components/app/review-queue";
 import { isGenericKey } from "@/lib/import/normalize";
-
-const TYPE_LABEL: Record<string, string> = { ASET: "Aset", LIABILITAS: "Liabilitas", EKUITAS: "Ekuitas", PENDAPATAN: "Pendapatan", BEBAN: "Beban" };
 
 export default async function ReviewPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, base, scope, period, scopeLabel, entityOptions, periodOptions } = await loadClientPage(params, searchParams);
@@ -37,7 +35,7 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
     // A key with no counterparty ("BI FAST OUTGOING") groups unrelated payments: never offered as *serupa*.
     similar: isGenericKey(t.merchantKey) ? 1 : (similarCount.get(`${t.merchantKey}|${t.direction}`) ?? 1),
   }));
-  const options = accounts.map((a) => ({ code: a.code, name: a.name, group: `${TYPE_LABEL[a.type]} · ${FS_LINES[a.fsLine as keyof typeof FS_LINES]?.label ?? ""}`.replace(/ · $/, "") }));
+  const options = classifiableOptions(accounts);
 
   return (
     <div className="space-y-6">
