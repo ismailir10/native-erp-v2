@@ -51,6 +51,19 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     amount, contact name or number in the description) are never applied on their own. Open amount at a date = total − settlements by
     bank lines dated by then; aging by days past due (0 / 1–30 / 31–60 / 61–90 / > 90). Close controls `ar:` / `ap:` compare Σ open
     invoices with the GL balance of the accounts they use: equal = PASS, else REVIEW with the count of unmatched bank lines.
+5d. **Tax pack — PPh badan** (`lib/tax`): per company (not PERORANGAN) with IDR books and calendar fiscal year, **computed at read time**
+    through the chosen month; only the accountant's records are stored (`TaxYear` regime, `FiscalCorrection`, `TaxCredit`, dismissed
+    suggestions, `TaxPosting`). Laba sebelum pajak (BEBAN_PAJAK excluded) + koreksi fiskal → PKP rounded down to thousands (a loss = 0; no
+    carry-forward). Automatic corrections: book − fiscal depreciation of the asset register (beda waktu); *pendapatan lain* named bunga / jasa
+    giro / deposito out as final-taxed income (beda tetap). Non-deductible expenses by account-name words are **suggestions only**; an accepted
+    one follows its account's year-to-date expense. Normal regime 22 %, Pasal 31E (turnover = usaha revenue ≤ Rp 50 M: PKP × 4,8 M ÷ turnover at
+    11 %), each part rounded down; PP 55/2022 final 0,5 % of turnover when the accountant chooses it (no corrections, credits or journal).
+    Credits = PPh 25 bank lines (tag PPH_25, wherever they sit) + bukti potong typed with the account they sit on → PPh 29 (2146) or 28A (1181);
+    next year's PPh 25 = (terutang − PPh 22/23/24) ÷ 12. Deferred tax = 22 % × (fiscal − book value of the register). **Journals by click only**
+    (`ADJUSTMENT`, dated the period end): each books the **difference** from earlier postings of its kind (deferred balances across years) under a
+    per entity-year lock; pack accounts (1181, 1270, 2146, 2320, 8110) are created on first use when free, a code used for something else is
+    refused. December control `tax:` is REVIEW while the current-tax journal has a difference. The firm rule files "PPH 25" to 1180 (prepaid).
+    Everything is labelled an estimate, never an SPT.
 6. `bigint` **minor units of the entity's functional currency** everywhere in the domain (ADR 0006). IDR has exponent 0,
    so for IDR entities that is whole Rupiah, as before. Parse with `parseRupiah()` / `parseMinor()` (handles `1.234.567,00`,
    `1,234,567.00`, `(2.500)`), format with `formatRupiah()` / `formatMoney(value, currency)`. Convert to `Number` only for chart

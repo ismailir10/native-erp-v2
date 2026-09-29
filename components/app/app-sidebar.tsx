@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { BookOpen, Building2, ChartColumn, HandCoins, Warehouse, ChevronDown, ClipboardCheck, Coins, FileSpreadsheet, FolderOpen, Home, Inbox, Landmark, ListChecks, ListFilter, LogOut, NotebookPen, Plus, Scale, Settings2, SlidersHorizontal, Upload } from "lucide-react";
+import { BookOpen, Building2, ChartColumn, HandCoins, ReceiptText, Warehouse, ChevronDown, ClipboardCheck, Coins, FileSpreadsheet, FolderOpen, Home, Inbox, Landmark, ListChecks, ListFilter, LogOut, NotebookPen, Plus, Scale, Settings2, SlidersHorizontal, Upload } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { BrandMark } from "@/components/app/brand-mark";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
@@ -23,6 +23,7 @@ const ACCOUNTING = [
   { href: "/reports", label: "Laporan Keuangan", icon: FileSpreadsheet },
   { href: "/receivables", label: "Piutang & Utang", icon: HandCoins },
   { href: "/assets", label: "Aset Tetap", icon: Warehouse },
+  { href: "/tax", label: "Pajak Badan", icon: ReceiptText },
   { href: "/close", label: "Tutup Buku", icon: ClipboardCheck },
 ];
 const SETUP = [
