@@ -75,7 +75,7 @@ describe("tax pack", () => {
     // Book: September only (1 jt); fiscal: August and September (2 jt) → −1 jt, a timing difference.
     expect(p.corrections.map((c) => [c.key, c.direction, c.kind, c.amount])).toEqual([["auto:depreciation", "NEGATIVE", "TEMPORARY", 1_000_000n]]);
     // Fiscal value 46 jt < book value 47 jt: a deferred tax liability of 22 % × 1 jt.
-    expect(p.deferred).toEqual({ assets: -1_000_000n, allowance: 0n, temporaryDifference: -1_000_000n, amount: -220_000n });
+    expect(p.deferred).toEqual({ assets: -1_000_000n, allowance: 0n, leases: 0n, temporaryDifference: -1_000_000n, amount: -220_000n });
     expect(lines(p.proposals.DEFERRED)).toEqual([["2320", -220_000n], ["8110", 220_000n]]);
   });
 

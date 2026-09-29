@@ -4,6 +4,7 @@ import { cancelLease, createLease, leaseMonthsDue, leasesVsLedger, postLeaseMont
 import { importStatement } from "@/lib/import/pipeline";
 import { reviewTransaction } from "@/lib/review";
 import { runControls } from "@/lib/controls";
+import { taxPack } from "@/lib/tax/pack";
 
 type G = Awaited<ReturnType<typeof makeGroup>>;
 const lines = async (entryId: string) => (await db.journalLine.findMany({ where: { entryId }, include: { account: true }, orderBy: { id: "asc" } })).map((l) => [l.account.code, l.debit, l.credit]);
@@ -49,6 +50,11 @@ describe("lease register (PSAK 116)", () => {
     expect(after).toMatchObject({ equal: true, due: 0 });
     expect(after!.register).toMatchObject({ rou: 212_433_873n, accumulated: 8_851_411n * 3n });
     expect(await control()).toMatchObject({ status: "PASS" });
+
+    // Tax: depreciation 3 × 8 851 411 + interest 2 124 339 + 2 045 582 + 1 966 038 − rent 3 × 10 jt = 2 690 192, a timing difference.
+    const pack = (await taxPack(db, g.client.id, g.pt.entity.id, 2026, 8))!;
+    expect(pack.corrections.find((c) => c.key === "auto:leases")).toMatchObject({ direction: "POSITIVE", kind: "TEMPORARY", amount: 2_690_192n, source: { type: "LEASES" } });
+    expect(pack.deferred).toEqual({ assets: 0n, allowance: 0n, leases: 2_690_192n, temporaryDifference: 2_690_192n, amount: 591_842n });
     // September is due next; July's control is unaffected by it.
     expect((await runControls(db, g.client.id, 2026, 9)).find((c) => c.key === `lease:${g.pt.entity.id}`)).toMatchObject({ status: "REVIEW", detail: expect.stringContaining("1 jurnal bulanan sewa belum dicatat") });
   });
