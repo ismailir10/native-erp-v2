@@ -37,6 +37,16 @@ per-entity unique becomes per entity-month; existing rows apply from January 200
 - Lease figures changed by at most Rp 1 per line (e.g. June interest 2 124 338, was 2 124 339); tests updated from an independent exact
   Fraction computation.
 
+## Verification in Chrome (local, synthetic data)
+- CKPN: August matrix 13 jt = 1135; a September version (110 %) saved from the page, August kept 100 % / 13 jt; `ckpn:` control PASS.
+- Sewa: second lease (quarterly in advance, 10 %) registered → ROU 315.091.850 (= the unit-test PV), cancelled → reversal in 1230, register = ledger.
+- Imbalan Kerja: a new hire typed in → 1.882.936 proposed to 6105 / 2310 (= the DBO increase), posted → sesuai buku besar; OCI 57.937.849,
+  equity, cash flow and CALK note consistent.
+- Pajak Badan: June after a September posting says the journal is booked on 30 Sep; working paper and statements downloads 200.
+- **Found and fixed:** the cash flow put rent paid from the statement in operating (financing 0). A statement row is posted to 1999 and
+  moved by a RECLASS entry without a cash line, which the non-cash rule took for a non-cash transfer. Bank-derived entries are now cash
+  (test `classifies a statement row moved out of 1999 …` fails without the fix). After: operating 0, financing −30 jt rent.
+
 ## Ship Notes
 - **Migration:** `20260929070000_ckpn_setting_versions` (additive columns, index swap). **Env / dependency / AI:** none.
 - **Rollback:** revert the merge.

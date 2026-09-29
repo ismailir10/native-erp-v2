@@ -8,6 +8,8 @@ import { financialStatementsWorkbook } from "@/lib/reports/workbook";
 import ExcelJS from "exceljs";
 import { postOpening } from "@/lib/opening";
 import { createLease, postLeaseMonths } from "@/lib/leases/register";
+import { importStatement } from "@/lib/import/pipeline";
+import { reviewTransaction } from "@/lib/review";
 import { dateOnly } from "@/lib/format";
 
 type G = Awaited<ReturnType<typeof makeGroup>>;
@@ -163,5 +165,21 @@ describe("equity changes, cash flow, other comprehensive income", () => {
     n = await note();
     expect(n.tables[0].rows[0][2]).toBe(3n * 8_851_411n);
     expect(n.paragraphs.join(" ")).toMatch(/berbeda dengan buku besar/);
+  });
+
+  it("classifies a statement row moved out of 1999 in Review by where it went (a loan in financing, rent in financing)", async () => {
+    const g = await makeGroup();
+    const csv = ["Tanggal;Keterangan;Debet;Kredit;Saldo", "05/06/2026;PENCAIRAN KREDIT BANK;0;200000000;300000000", "30/06/2026;TRSF DB PT GRAHA SEWA JUN;10000000;0;290000000", ""].join("\n");
+    await createLease(db, { clientId: g.client.id, entityId: g.pt.entity.id, name: "Kantor", lessor: "PT Graha", start: "2026-06", months: 24, payment: "10.000.000", intervalMonths: 1, timing: "ARREARS", rate: "12" });
+    await postLeaseMonths(db, { clientId: g.client.id, entityId: g.pt.entity.id, year: 2026, month: 6 });
+    await importStatement(db, { bankAccountId: g.pt.banks[0].id, fileName: "bca.csv", data: Buffer.from(csv), provider: null });
+    for (const [text, code] of [["KREDIT BANK", "2210"], ["GRAHA", "2170"]] as const) {
+      const t = await db.bankTransaction.findFirstOrThrow({ where: { description: { contains: text } } });
+      await reviewTransaction(db, { bankTxId: t.id, accountCode: code, taxTag: null });
+    }
+    const cf = await cashFlow(db, { clientId: g.client.id, entityIds: [g.pt.entity.id] }, dateOnly(2026, 6, 30));
+    expect(cf.financing.map((i) => [i.key, i.amount])).toEqual([["LEASES", -10n * J], ["UTANG_BANK", 200n * J]]);
+    expect(cf.operating.find((i) => i.key === "LEASE_INTEREST")!.amount).toBe(2_124_338n);
+    expect(cf.net).toBe(cf.closingCash - cf.openingCash);
   });
 });
