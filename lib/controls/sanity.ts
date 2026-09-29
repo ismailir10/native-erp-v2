@@ -1,4 +1,5 @@
 import type { Db } from "@/lib/db";
+import type { EntityKind } from "@/lib/generated/prisma/enums";
 import { formatMoney } from "@/lib/money";
 import type { TbRow } from "@/lib/reports/ledger";
 import type { Control } from "@/lib/controls";
@@ -16,7 +17,9 @@ export const GUESS_CONFIDENCE = 0.6;
 
 type Args = {
   clientId: string;
-  entity: { id: string; shortName: string; functionalCurrency: string };
+  entity: { id: string; shortName: string; functionalCurrency: string; kind: EntityKind };
+  /** The client's *Bidang usaha* as typed (free text). */
+  industry: string | null;
   tb: TbRow[];
   start: Date;
   end: Date;
@@ -78,8 +81,48 @@ export async function sanityControls(db: Db, a: Args): Promise<Control[]> {
     control("guess", "Tebakan diterima tanpa diubah", "REVIEW", `${guesses.length} transaksi (${fmt(total)}) disetujui persis seperti tebakan dengan keyakinan rendah`, `${a.base}/ledger?entity=${e.id}`);
   }
 
+  // 6. Capital deficiency: a company whose liabilities exceed its assets (going concern, SAK EP / PSAK 1).
+  if (e.kind !== "PERORANGAN" && assets >= 0n) {
+    const liabilities = -a.tb.filter((r) => r.account.type === "LIABILITAS").reduce((s, r) => s + r.net, 0n);
+    const equity = assets - liabilities;
+    if (equity < 0n) {
+      control(
+        "going-concern",
+        "Defisiensi modal",
+        "REVIEW",
+        `Ekuitas ${fmt(equity)}: liabilitas ${fmt(liabilities)} melebihi aset ${fmt(assets)}. Nilai kelangsungan usaha dan ungkapkan rencana manajemen di CALK`,
+        `${a.base}/reports?entity=${e.id}&tab=bs`,
+      );
+    }
+  }
+
+  // 7. A trading business with sales this month and no cost of sales: purchases may sit elsewhere (paid by the owner, another account).
+  if (a.industry && TRADING.test(a.industry)) {
+    const moved = await db.journalLine.groupBy({
+      by: ["accountId"],
+      where: { entityId: e.id, date: { gte: a.start, lte: a.end }, entry: { kind: { not: "OPENING" } }, account: { fsLine: { in: ["PENDAPATAN_USAHA", "HPP"] } } },
+      _sum: { debit: true, credit: true },
+    });
+    const lines = await db.account.findMany({ where: { id: { in: moved.map((m) => m.accountId) } }, select: { id: true, fsLine: true } });
+    const net = (fsLine: string) =>
+      moved.filter((m) => lines.find((l) => l.id === m.accountId)?.fsLine === fsLine).reduce((s, m) => s + (m._sum.credit ?? 0n) - (m._sum.debit ?? 0n), 0n);
+    const revenue = net("PENDAPATAN_USAHA");
+    if (revenue > 0n && net("HPP") === 0n) {
+      control(
+        "no-cogs",
+        "Penjualan tanpa harga pokok",
+        "REVIEW",
+        `Penjualan ${fmt(revenue)} bulan ini tanpa pembelian atau HPP, padahal bidang usaha perdagangan. Cek apakah barang dibeli lewat rekening lain atau dibayar pemilik (1190), dan catat HPP/persediaannya`,
+        `${a.base}/reports?entity=${e.id}`,
+      );
+    }
+  }
+
   return out;
 }
+
+/** Words in the client's *Bidang usaha* that mean it resells goods (so revenue without cost of sales is odd). */
+export const TRADING = /dagang|perdagangan|toko|retail|ritel|distribut|grosir|jual[ -]?beli|trading|reseller/i;
 
 /** Bank rows behind the financing and guess checks; shared with the AI close review so both see the same rows. */
 export async function flaggedBankRows(db: Db, clientId: string, entityId: string, start: Date, end: Date) {

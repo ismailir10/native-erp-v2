@@ -41,6 +41,7 @@ export async function runControls(db: Db, clientId: string, year: number, month:
   const controls: Control[] = [];
   const base = `/clients/${clientId}`;
   const clientScope = entities.length > 1 ? "Grup" : (entities[0]?.shortName ?? "Klien");
+  const { industry } = await db.client.findUniqueOrThrow({ where: { id: clientId }, select: { industry: true } });
 
   for (const e of entities) {
     const scope = { clientId, entityIds: [e.id] };
@@ -148,7 +149,7 @@ export async function runControls(db: Db, clientId: string, year: number, month:
     });
 
     const sane = [
-      ...(await sanityControls(db, { clientId, entity: e, tb, start, end, base, acks, statementMissing })),
+      ...(await sanityControls(db, { clientId, entity: e, industry, tb, start, end, base, acks, statementMissing })),
       ...(await anomalyControls(db, { clientId, entity: e, year, month, base, acks })),
     ];
     controls.push(

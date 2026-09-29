@@ -115,4 +115,34 @@ describe("sanity controls", () => {
     expect(await activity(2)).toBe(false); // inside the file's Jan–Mar range, no rows: nothing happened
     expect(await activity(4)).toBe(true); // after the file ends: data missing
   });
+
+  it("flags a company whose liabilities exceed its assets, never a person", async () => {
+    const g = await makeGroup();
+    const pt = g.pt.entity.id;
+    await post(pt, g.client.id, dateOnly(2026, 8, 1), "1120", "2210", 10_000_000n);
+    await post(pt, g.client.id, dateOnly(2026, 8, 20), "6190", "1120", 4_000_000n);
+    await post(pt, g.client.id, dateOnly(2026, 8, 21), "6190", "2120", 8_000_000n);
+    await post(g.owner.entity.id, g.client.id, dateOnly(2026, 8, 21), "3300", "2120", 1_000_000n);
+    const controls = await runControls(db, g.client.id, 2026, 8);
+    const gc = controls.find((c) => c.key === `going-concern:${pt}`)!;
+    expect(gc.status).toBe("REVIEW");
+    expect(gc.detail).toBe("Ekuitas -Rp 12.000.000: liabilitas Rp 18.000.000 melebihi aset Rp 6.000.000. Nilai kelangsungan usaha dan ungkapkan rencana manajemen di CALK");
+    expect(controls.find((c) => c.key === `going-concern:${g.owner.entity.id}`)).toBeUndefined();
+  });
+
+  it("flags sales without cost of sales for a trading business only", async () => {
+    const g = await makeGroup();
+    const pt = g.pt.entity.id;
+    await post(pt, g.client.id, dateOnly(2026, 8, 5), "1120", "4100", 50_000_000n);
+    const key = `no-cogs:${pt}`;
+    expect((await runControls(db, g.client.id, 2026, 8)).find((c) => c.key === key)).toBeUndefined(); // agritech: not trading
+
+    await db.client.update({ where: { id: g.client.id }, data: { industry: "perdagangan pakaian (gamis)" } });
+    const flag = (await runControls(db, g.client.id, 2026, 8)).find((c) => c.key === key)!;
+    expect(flag.status).toBe("REVIEW");
+    expect(flag.detail).toMatch(/^Penjualan Rp 50\.000\.000 bulan ini tanpa pembelian atau HPP/);
+
+    await post(pt, g.client.id, dateOnly(2026, 8, 6), "5100", "1120", 30_000_000n);
+    expect((await runControls(db, g.client.id, 2026, 8)).find((c) => c.key === key)).toBeUndefined();
+  });
 });
