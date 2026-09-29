@@ -15,6 +15,10 @@ import { disposeAsset, type DisposalInput } from "@/lib/assets/dispose";
 import { createInvoice, type InvoiceInput } from "@/lib/receivables/invoices";
 import { settleWithReclass, unsettle } from "@/lib/receivables/settle";
 import { candidateViews, type CandidateView } from "@/lib/receivables/view";
+import { taxPack } from "@/lib/tax/pack";
+import { postTax } from "@/lib/tax/post";
+import { acceptSuggestion, addCorrection, addCredit, deleteCorrection, deleteCredit, dismissSuggestion, setRegime, type CorrectionInput, type CreditInput } from "@/lib/tax/records";
+import type { TaxPostingKind, TaxRegime } from "@/lib/generated/prisma/enums";
 import { ParseError, YearNeededError } from "@/lib/import/types";
 import { PdfPasswordError } from "@/lib/import/parsers/pdf";
 import { MoneyError } from "@/lib/money";
@@ -275,6 +279,50 @@ export async function unsettleAction(clientId: string, settlementId: string): Pr
   } catch (e) {
     return fail(e);
   }
+}
+
+/** Tax pack (accounting-rules 5d): every write is tenant-checked and returns the verbatim Bahasa error. */
+async function taxWrite(clientId: string, write: (clientId: string, actorId: string) => Promise<unknown>): Promise<Result> {
+  try {
+    const client = await getClientForFirm(clientId);
+    await write(client.id, (await getCurrentMember()).id);
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function setRegimeAction(input: { clientId: string; entityId: string; year: number; regime: TaxRegime }) {
+  return taxWrite(input.clientId, (clientId) => setRegime(prisma, { ...input, clientId }));
+}
+export async function addCorrectionAction(input: Omit<CorrectionInput, "actorId">) {
+  return taxWrite(input.clientId, (clientId, actorId) => addCorrection(prisma, { ...input, clientId, actorId }));
+}
+export async function deleteCorrectionAction(clientId: string, correctionId: string) {
+  return taxWrite(clientId, (id) => deleteCorrection(prisma, { clientId: id, correctionId }));
+}
+/** The amount is read again from the ledger here, never taken from the page. */
+export async function acceptSuggestionAction(input: { clientId: string; entityId: string; year: number; month: number; accountCode: string }) {
+  return taxWrite(input.clientId, async (clientId, actorId) => {
+    const pack = await taxPack(prisma, clientId, input.entityId, input.year, input.month);
+    const s = pack?.suggestions.find((x) => x.code === input.accountCode);
+    if (!s) throw new LedgerError("Usulan ini sudah tidak berlaku. Muat ulang halaman.");
+    await acceptSuggestion(prisma, { clientId, entityId: input.entityId, year: input.year, accountCode: s.code, amount: s.amount, actorId });
+  });
+}
+export async function dismissSuggestionAction(input: { clientId: string; entityId: string; year: number; key: string }) {
+  return taxWrite(input.clientId, (clientId) => dismissSuggestion(prisma, { ...input, clientId }));
+}
+export async function addCreditAction(input: Omit<CreditInput, "actorId">) {
+  return taxWrite(input.clientId, (clientId, actorId) => addCredit(prisma, { ...input, clientId, actorId }));
+}
+export async function deleteCreditAction(clientId: string, creditId: string) {
+  return taxWrite(clientId, (id) => deleteCredit(prisma, { clientId: id, creditId }));
+}
+/** The accountant's click: the tax journal of a kind, as the difference from what is already booked. */
+export async function postTaxAction(input: { clientId: string; entityId: string; year: number; month: number; kind: TaxPostingKind }) {
+  return taxWrite(input.clientId, (clientId, actorId) => postTax(prisma, { ...input, clientId, actorId }));
 }
 
 export async function postInstallmentAction(clientId: string, scheduleId: string, k: number): Promise<Result> {
