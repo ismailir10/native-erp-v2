@@ -59,7 +59,7 @@ describe("lease register (PSAK 116)", () => {
     // Tax: depreciation 3 × 8 851 411 + interest 2 124 339 + 2 045 582 + 1 966 038 − rent 3 × 10 jt = 2 690 192, a timing difference.
     const pack = (await taxPack(db, g.client.id, g.pt.entity.id, 2026, 8))!;
     expect(pack.corrections.find((c) => c.key === "auto:leases")).toMatchObject({ direction: "POSITIVE", kind: "TEMPORARY", amount: 2_690_192n, source: { type: "LEASES" } });
-    expect(pack.deferred).toEqual({ assets: 0n, allowance: 0n, leases: 2_690_192n, temporaryDifference: 2_690_192n, amount: 591_842n });
+    expect(pack.deferred).toEqual({ assets: 0n, allowance: 0n, leases: 2_690_192n, employeeBenefits: 0n, temporaryDifference: 2_690_192n, amount: 591_842n, oci: 0n });
     // September is due next; July's control is unaffected by it.
     expect((await runControls(db, g.client.id, 2026, 9)).find((c) => c.key === `lease:${g.pt.entity.id}`)).toMatchObject({ status: "REVIEW", detail: expect.stringContaining("1 jurnal bulanan sewa belum dicatat") });
   });

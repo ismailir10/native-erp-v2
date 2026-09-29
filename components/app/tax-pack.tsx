@@ -239,18 +239,23 @@ export function TaxPackPanel(props: { clientId: string; periodKey: string; perio
         <Card data-testid="tax-deferred">
           <CardHeader>
             <CardTitle>Pajak tangguhan (SAK EP)</CardTitle>
-            <CardDescription>Beda temporer dari daftar aset tetap (nilai buku fiskal − nilai buku komersial), cadangan kerugian piutang (baru boleh dibebankan saat dihapusbukukan) dan sewa PSAK 116, dikali 22%.</CardDescription>
+            <CardDescription>Beda temporer dari daftar aset tetap (nilai buku fiskal − nilai buku komersial), cadangan kerugian piutang (baru boleh dibebankan saat dihapusbukukan), sewa PSAK 116 dan liabilitas imbalan kerja (dibebankan saat dibayar), dikali 22%.</CardDescription>
           </CardHeader>
           <CardContent className="text-sm">
-            {(BigInt(v.deferred.allowance) !== 0n || BigInt(v.deferred.leases) !== 0n) && (
-              <>
-                {row("Aset tetap (nilai fiskal − nilai buku)", v.deferred.assets)}
-                {BigInt(v.deferred.allowance) !== 0n && row("Cadangan kerugian piutang (1135)", v.deferred.allowance)}
-                {BigInt(v.deferred.leases) !== 0n && row("Sewa (PSAK 116)", v.deferred.leases)}
-              </>
-            )}
-            {row(BigInt(v.deferred.allowance) !== 0n || BigInt(v.deferred.leases) !== 0n ? "Beda temporer" : "Beda temporer (nilai fiskal − nilai buku)", v.deferred.temporaryDifference)}
+            {(() => {
+              const others = BigInt(v.deferred.allowance) !== 0n || BigInt(v.deferred.leases) !== 0n || BigInt(v.deferred.employeeBenefits) !== 0n;
+              return (
+                <>
+                  {others && row("Aset tetap (nilai fiskal − nilai buku)", v.deferred.assets)}
+                  {BigInt(v.deferred.allowance) !== 0n && row("Cadangan kerugian piutang (1135)", v.deferred.allowance)}
+                  {BigInt(v.deferred.leases) !== 0n && row("Sewa (PSAK 116)", v.deferred.leases)}
+                  {BigInt(v.deferred.employeeBenefits) !== 0n && row("Liabilitas imbalan kerja (2310)", v.deferred.employeeBenefits)}
+                  {row(others ? "Beda temporer" : "Beda temporer (nilai fiskal − nilai buku)", v.deferred.temporaryDifference)}
+                </>
+              );
+            })()}
             {row(BigInt(v.deferred.amount) >= 0n ? "Aset pajak tangguhan" : "Liabilitas pajak tangguhan", BigInt(v.deferred.amount) < 0n ? (-BigInt(v.deferred.amount)).toString() : v.deferred.amount, { strong: true })}
+            {BigInt(v.deferred.oci) !== 0n && row("  bagian atas pengukuran kembali imbalan kerja (ke 3920)", v.deferred.oci, { muted: true })}
           </CardContent>
         </Card>
       )}
