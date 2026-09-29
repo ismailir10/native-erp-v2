@@ -76,4 +76,4 @@ Automated end to end by `e2e/investor-demo.spec.ts` — if you change this scrip
 - Live AI instead of cache: set `AI_API_KEY`/`AI_MODEL`, run `DEMO_LIVE_AI=1 npm run demo:reset`; step 2 then makes exactly one real call.
 # Public document evidence demo
 
-Open **Dokumen**, add a synthetic report, and ask a question about it: the answer cites the exact source line. Uploaded figures stay evidence; they never become journals on their own. Run this walk locally or on staging (synthetic); production holds real client work.
+Open **Dokumen**, add a synthetic report, and ask a question about it: the answer cites the exact source line. Uploaded figures stay evidence; they never become journals on their own. Run this walk locally (or on an on-demand synthetic preview); production holds real client work.

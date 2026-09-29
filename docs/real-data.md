@@ -108,11 +108,11 @@ Imports the files in `data/private/` into a fresh client and compares Buku with 
 |---|---|---|
 | Local | `npm run dev` with `.env` → `postgresql://buku:buku@localhost:5432/buku` and `DEMO_MODE=false` | local `buku` |
 | Production (real workspace) | https://native-erp-v2.vercel.app (invitation login) | Supabase `native-erp-v2` |
-| Staging (synthetic pre-production) | Vercel → Deployments → branch `staging` (Vercel login + invitation login) | Supabase `native-erp-v2-staging` |
+| Staging (synthetic, frozen) | No deployments; local-dev Auth, e2e from a laptop, on-demand `vercel deploy` previews | Supabase `native-erp-v2-staging` |
 
-New work merges into `staging` first. Promote tested staging through a separate PR to `main` using a merge commit; do not push production into staging after every feature. See [Branch workflow](../README.md#branch-workflow).
+New work merges into `main` after CI passes, and each merge deploys production. Git branch `staging` is frozen. See [Branch workflow](../README.md#branch-workflow).
 
-The `native-erp-v2-git-real-data-…vercel.app` domain still points at git branch `staging`; it no longer holds client data. Google OAuth for Drive must list the production callback URL.
+Google OAuth for Drive must list the production callback URL.
 
 Never point `.env` at the production database, because `npm run demo:reset` truncates whatever `DATABASE_URL` points at;
 local `.env` uses the staging project's Auth keys only, never production's.
