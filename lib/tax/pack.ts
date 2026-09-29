@@ -5,6 +5,8 @@ import { assetRegister } from "@/lib/assets/register";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { dateOnly, periodBounds } from "@/lib/format";
 import { allowanceBalance } from "@/lib/receivables/ckpn";
+import { terms as leaseTerms } from "@/lib/leases/register";
+import { leaseSchedule, positionAt } from "@/lib/leases/schedule";
 import { corporateTax, deferredTax, roundDownThousands, settlement, type CorporateTax, type Settlement } from "@/lib/tax/compute";
 import { categoryOf, compensate, share, type LossRow } from "@/lib/tax/categories";
 
@@ -23,8 +25,8 @@ export type Correction = {
   direction: CorrectionDirection;
   kind: CorrectionKind;
   amount: bigint;
-  /** Where it comes from: the asset register, an account's ledger, or the accountant's own row. */
-  source: { type: "ASSETS" } | { type: "ACCOUNT"; code: string; name: string } | { type: "MANUAL"; id: string; code: string | null; percent: number | null };
+  /** Where it comes from: the asset register, the lease register, an account's ledger, or the accountant's own row. */
+  source: { type: "ASSETS" } | { type: "LEASES" } | { type: "ACCOUNT"; code: string; name: string } | { type: "MANUAL"; id: string; code: string | null; percent: number | null };
 };
 /** A correction category matched by an expense account's name (lib/tax/categories.ts); `amount` is the account, `corrected` its share. */
 export type Suggestion = { key: string; code: string; name: string; amount: bigint; category: string; label: string; percent: number; direction: CorrectionDirection; kind: CorrectionKind; corrected: bigint };
@@ -56,8 +58,9 @@ export type TaxPack = {
   tax: CorporateTax;
   credits: Credit[];
   settlement: Settlement | null;
-  /** Temporary differences: fixed assets (fiscal − book value) and the receivable allowance (1135, deductible when written off). */
-  deferred: { assets: bigint; allowance: bigint; temporaryDifference: bigint; amount: bigint } | null;
+  /** Temporary differences: fixed assets (fiscal − book value), the receivable allowance (1135, deductible when written off) and leases
+   *  (prepaid − accrued fiscal rent, less ROU net of the liability). */
+  deferred: { assets: bigint; allowance: bigint; leases: bigint; temporaryDifference: bigint; amount: bigint } | null;
   /** Signed lines (debit +, credit −) still to post to reach the computed position, per kind; empty = nothing to post. */
   proposals: Record<TaxPostingKind, ProposalLine[]>;
   /** A posting of the kind dated after the chosen month: the position is booked there, so nothing is proposed here. */
@@ -87,6 +90,12 @@ export async function taxPack(db: Db, clientId: string, entityId: string, year: 
   const depreciationDiff = assets.reduce((t, r) => t + (r.difference ?? 0n), 0n);
   if (depreciationDiff !== 0n) {
     corrections.push({ key: "auto:depreciation", label: "Selisih penyusutan komersial dan fiskal", direction: depreciationDiff > 0n ? "POSITIVE" : "NEGATIVE", kind: "TEMPORARY", amount: depreciationDiff < 0n ? -depreciationDiff : depreciationDiff, source: { type: "ASSETS" } });
+  }
+  // Leases (rule 5f): PSAK 116 depreciation + interest out, rent straight line over the term in.
+  const leases = (await db.lease.findMany({ where: { clientId, entityId, cancelEntryId: null } })).map((l) => { const t = leaseTerms(l); return positionAt(t, leaseSchedule(t), year, month); }).filter((p) => p.started);
+  const leaseDiff = leases.reduce((t, p) => t + p.year.depreciation + p.year.interest - p.year.fiscalRent, 0n);
+  if (leaseDiff !== 0n) {
+    corrections.push({ key: "auto:leases", label: "Sewa (PSAK 116): penyusutan hak guna + bunga dikurangi sewa fiskal", direction: leaseDiff > 0n ? "POSITIVE" : "NEGATIVE", kind: "TEMPORARY", amount: leaseDiff < 0n ? -leaseDiff : leaseDiff, source: { type: "LEASES" } });
   }
   // P&L accounts with their year-to-date amount as income (+) or expense (+): the statement negates other expenses (BEBAN_LAIN).
   const income = [...is.revenue, ...is.other.filter((i) => i.fsLine === "PENDAPATAN_LAIN")].flatMap((i) => i.accounts.map((a) => ({ ...a, fsLine: i.fsLine })));
@@ -145,6 +154,7 @@ export async function taxPack(db: Db, clientId: string, entityId: string, year: 
   // ---- pajak tangguhan (fixed-asset register and the receivable allowance) ----
   const held = await allowanceBalance(db, clientId, entityId, through);
   const allowance = held > 0n ? held : 0n;
+  const leaseTemporary = leases.reduce((t, p) => t + (p.paidToDate - p.fiscalToDate) - (p.rou - p.accumulated - p.liability), 0n);
   const fiscalValue = assets.reduce((t, r) => t + (r.fiscalBookValue ?? 0n), 0n);
   const bookValue = assets.reduce((t, r) => t + r.bookValue, 0n);
   // Only postings dated by the chosen month count; one dated later means the position is booked there.
@@ -156,8 +166,8 @@ export async function taxPack(db: Db, clientId: string, entityId: string, year: 
   const deferredBooked = [ACCOUNT_CODES.DEFERRED_TAX_ASSET, ACCOUNT_CODES.DEFERRED_TAX_LIABILITY].some((c) => (postedDeferred.get(c) ?? 0n) !== 0n);
   const deferred =
     entity.functionalCurrency !== "IDR" ? null
-    : (assets.length || allowance > 0n) && !final ? { assets: fiscalValue - bookValue, allowance, temporaryDifference: fiscalValue - bookValue + allowance, amount: deferredTax(fiscalValue - bookValue + allowance) }
-    : deferredBooked ? { assets: 0n, allowance: 0n, temporaryDifference: 0n, amount: 0n }
+    : (assets.length || allowance > 0n || leases.length) && !final ? { assets: fiscalValue - bookValue, allowance, leases: leaseTemporary, temporaryDifference: fiscalValue - bookValue + allowance + leaseTemporary, amount: deferredTax(fiscalValue - bookValue + allowance + leaseTemporary) }
+    : deferredBooked ? { assets: 0n, allowance: 0n, leases: 0n, temporaryDifference: 0n, amount: 0n }
     : null;
 
   const applicable = packApplies(entity);

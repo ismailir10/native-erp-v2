@@ -37,3 +37,10 @@ export function periodBounds(year: number, month: number) {
 export function toIsoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
+
+/** "2,5" / "2.5" / "100" (percent, up to two decimals) → basis points; null when not a percent. */
+export function percentToBp(text: string): number | null {
+  const m = text.trim().replace(/\s*%$/, "").match(/^(\d{1,3})(?:[.,](\d{1,2}))?$/);
+  if (!m) return null;
+  return Number(m[1]) * 100 + Number((m[2] ?? "").padEnd(2, "0"));
+}

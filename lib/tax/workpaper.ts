@@ -72,7 +72,7 @@ export async function taxWorkpaper(db: Db, pack: TaxPack, meta: { firm: string; 
     corrections.map((c) => {
       const m = c.source.type === "MANUAL" ? manual.find((x) => x.id === (c.source as { id: string }).id) : undefined;
       const code = c.source.type === "ACCOUNT" ? c.source.code : c.source.type === "MANUAL" ? c.source.code : null;
-      return [c.label, categoryByKey(m?.category)?.label ?? (c.source.type === "ASSETS" ? "Penyusutan" : c.source.type === "ACCOUNT" ? "Penghasilan PPh final" : "Manual"), KIND[c.kind], c.direction === "POSITIVE" ? "Positif" : "Negatif", m?.suggestion ? m.percent : null, code, source(c), n(c.amount)];
+      return [c.label, categoryByKey(m?.category)?.label ?? (c.source.type === "ASSETS" ? "Penyusutan" : c.source.type === "LEASES" ? "Sewa (PSAK 116)" : c.source.type === "ACCOUNT" ? "Penghasilan PPh final" : "Manual"), KIND[c.kind], c.direction === "POSITIVE" ? "Positif" : "Negatif", m?.suggestion ? m.percent : null, code, source(c), n(c.amount)];
     }),
     [8],
     [50, 34, 12, 10, 6, 10, 22, 18],
@@ -95,7 +95,7 @@ export async function taxWorkpaper(db: Db, pack: TaxPack, meta: { firm: string; 
 
   // 6. Pajak Tangguhan.
   const dt = wb.addWorksheet("Pajak Tangguhan");
-  header(dt, "Pajak tangguhan (SAK EP): daftar aset tetap dan cadangan kerugian piutang");
+  header(dt, "Pajak tangguhan: daftar aset tetap, cadangan kerugian piutang dan daftar sewa");
   const d = pack.deferred;
   table(
     dt,
@@ -104,6 +104,7 @@ export async function taxWorkpaper(db: Db, pack: TaxPack, meta: { firm: string; 
       ? [
           ["Aset tetap (nilai fiskal − nilai buku)", n(d.assets), "Aset Tetap"],
           ["Cadangan kerugian penurunan nilai piutang", n(d.allowance), "Buku besar 1135"],
+          ["Sewa PSAK 116 (sewa fiskal dibayar di muka − (hak guna − liabilitas sewa))", n(d.leases), "Daftar Sewa"],
           ["Beda temporer", n(d.temporaryDifference), null],
           [d.amount >= 0n ? "Aset pajak tangguhan (22%)" : "Liabilitas pajak tangguhan (22%)", n(d.amount < 0n ? -d.amount : d.amount), null],
         ]
@@ -127,5 +128,5 @@ export async function taxWorkpaper(db: Db, pack: TaxPack, meta: { firm: string; 
 }
 
 function source(c: TaxPack["corrections"][number]) {
-  return c.source.type === "ASSETS" ? "Aset Tetap" : c.source.type === "ACCOUNT" ? `Buku besar ${c.source.code}` : c.source.code ? `Buku besar ${c.source.code}` : "Diisi akuntan";
+  return c.source.type === "ASSETS" ? "Aset Tetap" : c.source.type === "LEASES" ? "Daftar Sewa" : c.source.type === "ACCOUNT" ? `Buku besar ${c.source.code}` : c.source.code ? `Buku besar ${c.source.code}` : "Diisi akuntan";
 }
