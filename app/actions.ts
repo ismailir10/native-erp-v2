@@ -20,7 +20,7 @@ import { taxPack } from "@/lib/tax/pack";
 import { postTax } from "@/lib/tax/post";
 import { acceptSuggestion, addCorrection, addCredit, deleteCorrection, deleteCredit, deleteLoss, dismissSuggestion, setCorrectionPercent, setLoss, setRegime, type CorrectionInput, type CreditInput } from "@/lib/tax/records";
 import type { TaxPostingKind, TaxRegime } from "@/lib/generated/prisma/enums";
-import { ParseError, YearNeededError } from "@/lib/import/types";
+import { AccountMismatchError, ParseError, YearNeededError } from "@/lib/import/types";
 import { PdfPasswordError } from "@/lib/import/parsers/pdf";
 import { MoneyError } from "@/lib/money";
 import { dateOnly } from "@/lib/format";
@@ -47,7 +47,7 @@ import type { MapMethod } from "@/lib/generated/prisma/enums";
  * Server actions — the only write path from the UI. Each returns {ok, …} or {ok:false, error}
  * with a Bahasa message the UI shows verbatim. Domain errors are expected; others are bugs.
  */
-type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string; needsPassword?: boolean; needsYear?: boolean; yearGuess?: number | null; fields?: Record<string, string> };
+type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string; needsPassword?: boolean; needsYear?: boolean; yearGuess?: number | null; fields?: Record<string, string>; suggestBankAccountId?: string };
 
 function fail(e: unknown): { ok: false; error: string; needsPassword?: boolean; needsYear?: boolean; yearGuess?: number | null } {
   if (e instanceof PdfPasswordError) return { ok: false, error: e.message, needsPassword: true };
@@ -61,6 +61,8 @@ function fail(e: unknown): { ok: false; error: string; needsPassword?: boolean; 
 const MAX_UPLOAD = 5 * 1024 * 1024;
 
 export async function importAction(formData: FormData): Promise<Result<{ summary: ImportSummary }>> {
+  let banks: { id: string; number: string }[] = [];
+  let selected = "";
   try {
     const clientId = String(formData.get("clientId"));
     const bankAccountId = String(formData.get("bankAccountId"));
@@ -70,6 +72,8 @@ export async function importAction(formData: FormData): Promise<Result<{ summary
     const year = yearText ? Number(yearText) : undefined;
     if (year !== undefined && !(Number.isInteger(year) && year >= 2000 && year <= 2100)) return { ok: false, error: "Tahun harus 4 angka, misalnya 2026.", needsYear: true };
     const client = await getClientForFirm(clientId);
+    banks = client.entities.flatMap((e) => e.bankAccounts);
+    selected = bankAccountId;
     if (!client.entities.some((e) => e.bankAccounts.some((b) => b.id === bankAccountId))) return { ok: false, error: "Pilih rekening bank dulu." };
     if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Pilih file rekening koran (PDF, CSV, XLS, atau XLSX)." };
     if (file.size > MAX_UPLOAD) return { ok: false, error: "File terlalu besar (maks. 5 MB)." };
@@ -77,6 +81,12 @@ export async function importAction(formData: FormData): Promise<Result<{ summary
     revalidatePath(`/clients/${clientId}`, "layout");
     return { ok: true, summary };
   } catch (e) {
+    // The file belongs to another account of this client: say which, so the form can switch to it in one click.
+    if (e instanceof AccountMismatchError) {
+      const digits = (s: string) => s.replace(/\D/g, "");
+      const match = banks.find((b) => b.id !== selected && e.fileNumbers.some((n) => digits(n) === digits(b.number)));
+      return { ...fail(e), suggestBankAccountId: match?.id };
+    }
     return fail(e);
   }
 }

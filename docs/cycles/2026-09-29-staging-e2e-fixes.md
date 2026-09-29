@@ -108,7 +108,7 @@ capability** — L11 deletes a client's posted entries (admin-only, typed confir
       respects caps; unit test for timeout copy.
 - [x] T7 H5 draft guard vs posted adjustment + no Prive for companies — accept: DB tests (guard blocks post and explains; CV still may use 3300).
 - [x] T8 M6 control start + M8 confirm dialogs — accept: DB test May-before-opening PASS, gap after start still REVIEW; e2e close asks first.
-- [ ] T9 L2 L3 L4 L5 import UX — accept: DB test 0-new-rows → no StatementImport; unit/e2e for mismatch suggestion and "impor juga".
+- [x] T9 L2 L3 L4 L5 import UX — accept: DB test 0-new-rows → no StatementImport; unit/e2e for mismatch suggestion and "impor juga".
 - [ ] T10 M5 L6 L7 L8 L9 L10 L1 polish — accept: unit test `NC:` label helper; e2e tab URL; typecheck/lint.
 - [ ] T11 M11 Tanya Buku transactions — accept: unit/DB test answers count/total/accounts for a payee in period, cites ledger links.
 - [ ] T12 L11 delete client — accept: DB test removes everything for one client and nothing of another; non-admin refused; e2e typed confirm.
@@ -124,6 +124,7 @@ capability** — L11 deletes a client's posted entries (admin-only, typed confir
 - T6: lib/ai/provider.ts (AI_TIMEOUT_MS 90 s, AI_LONG_TIMEOUT_MS 180 s, env overrides), lib/ai/classify.ts (aiFailureNote), lib/ai/retry.ts (simpleGuessRows, suggestAgainWithAi), app/actions.ts (suggestAgainAction; timeout copy in close review/explain), review page + queue banner *Minta saran AI untuk N transaksi*, close-review copy 3 menit, .env.example.
 - T7: lib/adjust/proposals.ts (priorCorrection; postProposal refuses first; proposalViews.blocked), lib/controls/explain.ts (no draft when already corrected — suggestion says so; 3300 Prive withheld for PT/foreign entities), components/app/proposals-card.tsx (blocked reason, only Abaikan), lib/adjust/suspense.ts.
 - T8: lib/controls/index.ts (bank reconciliation PASS 'Pembukuan rekening ini mulai …' for months ending before the entity's Saldo Awal, else before the account's first statement), components/app/close-panel.tsx (confirm dialog for Tutup buku and Buka kembali), investor e2e + docs/demo/investor-demo.md.
+- T9: lib/import/types.ts (AccountMismatchError), lib/import/pipeline.ts (otherAccounts, pendingReview; a 0-new-row re-import of a statement on file returns that import, no history row), app/actions.ts (suggestBankAccountId), components/app/import-form.tsx (inline mismatch with *Pakai rekening …*, *Impor juga ke …* for the file's other registered accounts, CTA to Review while lines wait), lib/tenant.ts (companies before individuals, banks by code), e2e/statement-mismatch.spec.ts.
 ## Verification
 - T1 gate: lint ✓ · typecheck ✓ · Test Files 80 passed (80) · Tests 578 passed (578) (new: 700 mappings incl. 120 new accounts in one call; infraErrorMessage).
 - T2 gate: lint ✓ · typecheck ✓ · Test Files 80 passed (80) · Tests 579 passed (579) (new: refuse other entity's bank, own bank posts, legacy leftover flagged, over-clear refused, exact clear accepted, control gone).
@@ -133,4 +134,5 @@ capability** — L11 deletes a client's posted entries (admin-only, typed confir
 - T6 gate: lint ✓ · typecheck ✓ · Test Files 81 passed (81) · Tests 584 passed (584) (new: retry touches only simple-guess lines, one call per unique key, nothing posted; Bahasa timeout note).
 - T7 gate: lint ✓ · typecheck ✓ · Test Files 81 passed (81) · Tests 586 passed (586) (new: draft blocked + post refused after a manual correction, Jelaskan gives words only; PT drafts never see 3300, a CV does).
 - T8 gate: lint ✓ · typecheck ✓ · Test Files 82 passed (82) · Tests 587 passed (587); e2e investor-demo 2 passed (confirm dialog).
+- T9 gate: lint ✓ · typecheck ✓ · Test Files 82 passed (82) · Tests 588 passed (588); e2e statement-mismatch 1 passed.
 ## Ship Notes

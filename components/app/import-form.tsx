@@ -36,12 +36,26 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
   };
   const [drag, setDrag] = useState(false);
   const [result, setResult] = useState<ImportSummary | null>(null);
+  // The file of the last successful import: "Impor juga ke …" reuses it for another account in the same PDF.
+  const [lastFile, setLastFile] = useState<File | null>(null);
+  // The file's number belongs to another account of this client: offered inline, one click re-runs with it.
+  const [mismatch, setMismatch] = useState<{ error: string; bankId: string } | null>(null);
+  const digits = (s: string) => s.replace(/\D/g, "");
+  const bankLabel = (id: string) => {
+    const b = banks.find((x) => x.id === id);
+    return b ? `${b.label} · ${b.number}` : "";
+  };
   const [pending, start] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
   const entities = [...new Set(banks.map((b) => b.entity))];
 
-  const done = (r: Awaited<ReturnType<typeof importAction>>) => {
+  const done = (r: Awaited<ReturnType<typeof importAction>>, sent: File | null = null) => {
+    setMismatch(null);
     if (!r.ok) {
+      if (r.suggestBankAccountId) {
+        setMismatch({ error: r.error, bankId: r.suggestBankAccountId });
+        return;
+      }
       if (r.needsPassword) setNeedsPassword(true);
       if (r.needsYear) {
         // Only prefill on the first ask; never overwrite what the accountant typed.
@@ -56,22 +70,31 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
       return;
     }
     setResult(r.summary);
+    if (sent) setLastFile(sent);
     setFile(null);
     toast.success(`${r.summary.rows - r.summary.duplicates} transaksi diproses`);
     router.refresh();
   };
 
-  const submit = () =>
+  const submit = (override?: { bankId: string; file: File }) =>
     start(async () => {
-      if (!file) return;
+      const f = override?.file ?? file;
+      if (!f) return;
       const fd = new FormData();
       fd.set("clientId", clientId);
-      fd.set("bankAccountId", bankId);
-      fd.set("file", file);
+      fd.set("bankAccountId", override?.bankId ?? bankId);
+      fd.set("file", f);
       if (password) fd.set("password", password);
       if (yearHint && year) fd.set("year", year);
-      done(await importAction(fd));
+      done(await importAction(fd), f);
     });
+  const switchAccount = (id: string, f: File) => {
+    setBankId(id);
+    submit({ bankId: id, file: f });
+  };
+  const alsoImport = result && lastFile
+    ? result.otherAccounts.flatMap((o) => banks.filter((b) => b.id !== bankId && digits(b.number) === digits(o.number)).map((b) => ({ id: b.id, label: `${b.label} · ${b.number}` })))
+    : [];
 
   return (
     <div className="grid gap-4 lg:grid-cols-5">
@@ -144,8 +167,16 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
               </FieldDescription>
             </Field>
           )}
+          {mismatch && file && (
+            <div role="alert" className="space-y-2 rounded-md border border-review/40 bg-review-subtle px-3 py-2 text-sm" data-testid="account-mismatch">
+              <p>{mismatch.error}</p>
+              <Button size="sm" variant="outline" disabled={pending} onClick={() => switchAccount(mismatch.bankId, file)}>
+                Pakai rekening {bankLabel(mismatch.bankId)}
+              </Button>
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant={result ? "outline" : "default"} onClick={submit} disabled={!file || !bankId || pending || (needsPassword && !password) || (!!yearHint && year.length !== 4)}>
+            <Button variant={result ? "outline" : "default"} onClick={() => submit()} disabled={!file || !bankId || pending || (needsPassword && !password) || (!!yearHint && year.length !== 4)}>
               {pending ? <Loader2 className="animate-spin" /> : <FileUp />} Proses mutasi
             </Button>
             {sample && (
@@ -202,14 +233,23 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
               {result.ai.note && <p className="text-xs text-muted-foreground">{result.ai.note}</p>}
               {result.duplicates > 0 && <p className="text-xs text-muted-foreground">{result.duplicates} baris dilewati karena sudah pernah diimpor.</p>}
               {result.otherSections.length > 0 && (
-                <div className="text-xs text-muted-foreground">
+                <div className="space-y-2 text-xs text-muted-foreground">
                   File ini juga berisi rekening lain:
                   <ul className="list-disc pl-4">{result.otherSections.map((o) => <li key={o}>{o}</li>)}</ul>
+                  {alsoImport.length > 0 && lastFile && (
+                    <div className="flex flex-wrap gap-2">
+                      {alsoImport.map((b) => (
+                        <Button key={b.id} size="sm" variant="outline" disabled={pending} onClick={() => switchAccount(b.id, lastFile)}>
+                          Impor juga ke {b.label}
+                        </Button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
-              {result.needsReview > 0 ? (
+              {result.needsReview > 0 || result.pendingReview > 0 ? (
                 <Link href={`/clients/${clientId}/review`} className={buttonVariants({ className: "w-full" })}>
-                  Review {result.needsReview} transaksi
+                  Review {result.needsReview || result.pendingReview} transaksi
                 </Link>
               ) : (
                 <Link href={`/clients/${clientId}/close`} className={buttonVariants({ variant: "outline", className: "w-full" })}>

@@ -30,6 +30,13 @@ export type ParsedStatement = {
 
 export class ParseError extends Error {}
 
+/** The file's account number(s) aren't the selected account: the action can offer the client's matching account instead. */
+export class AccountMismatchError extends ParseError {
+  constructor(message: string, readonly fileNumbers: string[]) {
+    super(message);
+  }
+}
+
 /** Dates without a year and none in the file's content: the accountant supplies it (prefilled with `guess` from the file name). */
 export class YearNeededError extends ParseError {
   constructor(readonly guess: number | null) {
