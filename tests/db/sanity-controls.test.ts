@@ -19,6 +19,7 @@ const statement = makePdf([
       [[40, "01/08/2026"], [130, "SALDO AWAL"], [500, "0,00"]],
       [[40, "04/08/2026"], [130, "PENCAIRAN PINJAMAN KMK"], [430, "100.000.000,00"], [510, "100.000.000,00"]],
       [[40, "10/08/2026"], [130, "BUNGA PINJAMAN KMK"], [360, "1.000.000,00"], [520, "99.000.000,00"]],
+      [[40, "20/08/2026"], [130, "ANGSURAN POKOK KMK"], [360, "1.000.000,00"], [520, "98.000.000,00"]],
     ]),
   ],
 ]);
@@ -36,11 +37,11 @@ describe("sanity controls", () => {
     const g = await makeGroup();
     await importStatement(db, { bankAccountId: g.pt.banks[1].id, fileName: "mandiri.pdf", data: statement, provider: null });
     const txs = await db.bankTransaction.findMany({ where: { entityId: g.pt.entity.id }, orderBy: { date: "asc" } });
-    // The classifier suggests the balance sheet for the loan and loan interest for its interest (both to review).
-    expect(txs.map((t) => [t.method, t.suggestedCode])).toEqual([["HEURISTIC", "2210"], ["HEURISTIC", "7110"]]);
-    // The accountant books the drawdown to revenue anyway (the mistake the control exists for) and accepts the interest guess as-is.
+    // Interest charged by the bank is a firm rule (7110, posted); drawdown and principal get balance-sheet suggestions to review.
+    expect(txs.map((t) => [t.method, t.suggestedCode ?? t.accountCode])).toEqual([["HEURISTIC", "2210"], ["RULE", "7110"], ["HEURISTIC", "2210"]]);
+    // The accountant books the drawdown to revenue anyway (the mistake the control exists for) and accepts the principal guess as-is.
     await reviewTransaction(db, { bankTxId: txs[0].id, accountCode: "4100", taxTag: null });
-    await reviewTransaction(db, { bankTxId: txs[1].id, accountCode: txs[1].suggestedCode!, taxTag: null });
+    await reviewTransaction(db, { bankTxId: txs[2].id, accountCode: txs[2].suggestedCode!, taxTag: null });
 
     const find = async (key: string) => (await runControls(db, g.client.id, 2026, 8)).find((c) => c.key === `${key}:${g.pt.entity.id}`);
     const financing = await find("pl-financing");
