@@ -5,7 +5,7 @@ export class DeleteClientError extends Error {}
 /**
  * Remove a client and everything that is its books (admin only, typed confirmation — the caller checks the role).
  * This is not a ledger correction (rule 3 still holds for books that stay): it removes a client entered by mistake or a
- * test copy, all or nothing in one transaction. Firm-level rules, exchange rates and the AI caches stay (they hold names
+ * test copy, all or nothing in one transaction (leases, employee benefits included). Firm-level rules, exchange rates and the AI caches stay (they hold names
  * and codes only, keyed per client). Order follows the foreign keys: leaves first.
  */
 export async function deleteClient(db: Db, input: { firmId: string; clientId: string; confirmName: string }) {
@@ -35,6 +35,11 @@ export async function deleteClient(db: Db, input: { firmId: string; clientId: st
       await tx.taxLossCarryforward.deleteMany({ where: { taxYearId: { in: taxYearIds } } });
       await tx.taxYear.deleteMany({ where: { clientId } });
       await tx.fixedAsset.deleteMany({ where: { clientId } });
+      await tx.leasePosting.deleteMany({ where: { lease: { clientId } } });
+      await tx.lease.deleteMany({ where: { clientId } });
+      await tx.benefitPosting.deleteMany({ where: byEntity });
+      await tx.employee.deleteMany({ where: byEntity });
+      await tx.benefitSetting.deleteMany({ where: byEntity });
       // Schedules and entries point at each other (a schedule's source line; installments' scheduleId): release the source
       // line on both columns at once (a CHECK keeps them paired), then entries, then schedules.
       await tx.adjustmentSchedule.updateMany({ where: { clientId }, data: { sourceEntryId: null, sourceAccountId: null } });
