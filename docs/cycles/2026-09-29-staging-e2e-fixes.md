@@ -110,7 +110,7 @@ capability** — L11 deletes a client's posted entries (admin-only, typed confir
 - [x] T8 M6 control start + M8 confirm dialogs — accept: DB test May-before-opening PASS, gap after start still REVIEW; e2e close asks first.
 - [x] T9 L2 L3 L4 L5 import UX — accept: DB test 0-new-rows → no StatementImport; unit/e2e for mismatch suggestion and "impor juga".
 - [x] T10 M5 L6 L7 L8 L9 L10 L1 polish — accept: unit test `NC:` label helper; e2e tab URL; typecheck/lint.
-- [ ] T11 M11 Tanya Buku transactions — accept: unit/DB test answers count/total/accounts for a payee in period, cites ledger links.
+- [x] T11 M11 Tanya Buku transactions — accept: unit/DB test answers count/total/accounts for a payee in period, cites ledger links.
 - [ ] T12 L11 delete client — accept: DB test removes everything for one client and nothing of another; non-admin refused; e2e typed confirm.
 - [ ] T13 Rules + docs (accounting-rules: bank-entity guard, generic keys, client deletion; README) — accept: end-of-cycle gates.
 
@@ -126,6 +126,7 @@ capability** — L11 deletes a client's posted entries (admin-only, typed confir
 - T8: lib/controls/index.ts (bank reconciliation PASS 'Pembukuan rekening ini mulai …' for months ending before the entity's Saldo Awal, else before the account's first statement), components/app/close-panel.tsx (confirm dialog for Tutup buku and Buka kembali), investor e2e + docs/demo/investor-demo.md.
 - T9: lib/import/types.ts (AccountMismatchError), lib/import/pipeline.ts (otherAccounts, pendingReview; a 0-new-row re-import of a statement on file returns that import, no history row), app/actions.ts (suggestBankAccountId), components/app/import-form.tsx (inline mismatch with *Pakai rekening …*, *Impor juga ke …* for the file's other registered accounts, CTA to Review while lines wait), lib/tenant.ts (companies before individuals, banks by code), e2e/statement-mismatch.spec.ts.
 - T10: app/layout.tsx (toast close button), reports page (1190 note says what cancels and what still has no counterpart; UrlTabs keeps ?tab=), components/app/url-tabs.tsx, client-form (foreign company: no NPWP), opening form (PRK sign caption), journal form (searchable AccountPicker, amounts tidied to 152.000.000 on blur), lib/ledger-import/code.ts (NC: key never displayed: reports, ledger, drawer, AI rows, mapping panel), lib/coa/options.ts (accountGroup).
+- T11: lib/workspace/index.ts — intent *transactions* (transfer/pembayaran/mutasi … + a counterparty: quoted, or after ke/dari/kepada/untuk/oleh/dengan): bank lines of the scope in the month whose description holds every word; count, totals per currency (zero side omitted), accounts they sit on (waiting lines = 1999 with their suggestion), 30 rows with ledger links; deterministic, no AI.
 ## Verification
 - T1 gate: lint ✓ · typecheck ✓ · Test Files 80 passed (80) · Tests 578 passed (578) (new: 700 mappings incl. 120 new accounts in one call; infraErrorMessage).
 - T2 gate: lint ✓ · typecheck ✓ · Test Files 80 passed (80) · Tests 579 passed (579) (new: refuse other entity's bank, own bank posts, legacy leftover flagged, over-clear refused, exact clear accepted, control gone).
@@ -137,4 +138,5 @@ capability** — L11 deletes a client's posted entries (admin-only, typed confir
 - T8 gate: lint ✓ · typecheck ✓ · Test Files 82 passed (82) · Tests 587 passed (587); e2e investor-demo 2 passed (confirm dialog).
 - T9 gate: lint ✓ · typecheck ✓ · Test Files 82 passed (82) · Tests 588 passed (588); e2e statement-mismatch 1 passed.
 - T10 gate: lint ✓ · typecheck ✓ · Test Files 83 passed (83) · Tests 589 passed (589); e2e ledger-import (tab URL + reload), tax-pack, fixed-assets 3 passed.
+- T11 gate: lint ✓ · typecheck ✓ · Test Files 83 passed (83) · Tests 591 passed (591) (new: intent + counterparty parsing; answer text, rows and citations).
 ## Ship Notes

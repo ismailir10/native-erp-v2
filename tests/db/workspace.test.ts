@@ -107,3 +107,22 @@ it("includes undated company context with an explicit non-historical label", asy
   const empty = await getWorkspaceOverview(db, g.firm.id, { period: "2026-08" });
   expect(empty.tasks.some(task => task.id === `statement:${g.client.id}` && task.href.includes("/import?"))).toBe(true);
 });
+
+it("answers who was paid: bank lines by counterparty in the month, totals, accounts and ledger links", async () => {
+  const g = await makeGroup();
+  const bank = g.pt.banks[0];
+  const imp = await db.statementImport.create({ data: { firmId: g.firm.id, bankAccountId: bank.id, fileName: "bca.pdf", format: "BCA", periodStart: dateOnly(2026, 6, 1), periodEnd: dateOnly(2026, 6, 30), openingBalance: 0n, closingBalance: 0n, rowCount: 3, continuityOk: true } });
+  const line = (hash: string, day: number, description: string, amount: bigint, status: "REVIEWED" | "NEEDS_REVIEW", accountCode: string) =>
+    db.bankTransaction.create({ data: { firmId: g.firm.id, entityId: g.pt.entity.id, bankAccountId: bank.id, importId: imp.id, date: dateOnly(2026, 6, day), description, merchantKey: "X", direction: amount < 0n ? "OUT" : "IN", amount, rowNumber: day, rawRow: "synthetic", hash, status, method: "MANUAL", confidence: 1, reason: "uji", accountCode, suggestedCode: "6190" } });
+  await line("a", 3, "BI-FAST DB BIF TRANSFER KE 002 ALFI YANDRA KBB", -105_000_000n, "REVIEWED", "1190");
+  await line("b", 10, "BI-FAST DB BIF TRANSFER KE 002 ALFI YANDRA KBB", -210_000_000n, "REVIEWED", "1190");
+  await line("c", 25, "TRSF E-BANKING DB 2506/FTSCY/WS95051 152000000.00 Belifi ALFI YANDRA", -152_000_000n, "NEEDS_REVIEW", "1999");
+  await line("d", 7, "TRSF E-BANKING CR bayar nota DINA PUSPITA", 70_475_000n, "REVIEWED", "4100");
+  const a = await askWorkspace(db, g.firm.id, { scope: `client:${g.client.id}`, period: "2026-06", question: "Berapa total transfer BCA PT ke ALFI YANDRA bulan Juni dan dicatat ke akun apa?" });
+  expect(a.text).toBe('3 mutasi bank dengan "ALFI YANDRA" pada Juni 2026: keluar Rp 467.000.000. Dicatat ke 1190 (2×), 1999 (1×).');
+  expect(a.rows).toHaveLength(3);
+  expect(a.rows[2].value).toBe("Keluar Rp 152.000.000 → menunggu review (usulan 6190)");
+  expect(a.citations.map((c) => c.href.split("?")[0])).toEqual([`/clients/${g.client.id}/ledger/1190`, `/clients/${g.client.id}/ledger/1999`]);
+  const none = await askWorkspace(db, g.firm.id, { scope: `client:${g.client.id}`, period: "2026-07", question: "transfer ke ALFI YANDRA" });
+  expect(none.text).toBe('Tidak ada mutasi bank dengan "ALFI YANDRA" pada Juli 2026 di cakupan ini.');
+});
