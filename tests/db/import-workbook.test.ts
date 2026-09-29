@@ -55,4 +55,54 @@ describe("workbook statement import", () => {
     const cont = (await runControls(db, g.client.id, 2026, 6)).find((c) => c.key === `cont:${g.pt.banks[0].id}`);
     expect(cont?.status).toBe("REVIEW");
   });
+
+  it("skips the same bank lines from another source of the statement, one to one, and keeps a genuine extra", async () => {
+    const g = await makeGroup();
+    const bankAccountId = g.pt.banks[0].id;
+    await postOpening(db, { clientId: g.client.id, entityId: g.pt.entity.id, date: dateOnly(2026, 4, 30), lines: [{ accountCode: "1101", debit: "10000000", credit: "0" }] });
+    await importStatement(db, { bankAccountId, fileName: "salinan.xls", data: workingCopy(), provider: null, year: 2026 });
+    // The bank's own export of May and June: other wording, the balance only on the day's last line, and one more 3 jt transfer on
+    // 2 May that the Excel copy missed.
+    const csv = [
+      "Tanggal;Keterangan;Debet;Kredit;Saldo",
+      "01/05/2026;SALDO AWAL;0;0;10000000",
+      "02/05/2026;TRSF E-BANKING CR 0205/FTSCY/WS95031 TOKO SATU BAYAR;0;3000000;",
+      "02/05/2026;TRSF E-BANKING CR 0205/FTSCY/WS95032 TOKO LAIN;0;3000000;16000000",
+      "31/05/2026;BIAYA ADM;30000;0;15970000",
+      "03/06/2026;TRSF E-BANKING CR TOKO DUA MEI;0;5000000;20970000",
+      "",
+    ].join("\n");
+    const s = await importStatement(db, { bankAccountId, fileName: "bca-mei-juni.csv", data: Buffer.from(csv), provider: null });
+    expect(s).toMatchObject({ rows: 4, duplicates: 3 });
+    expect(s.notes).toContain("3 baris sama dengan mutasi yang sudah diimpor dari file lain (tanggal dan nominal sama, keterangan berbeda); dilewati.");
+    const may = await db.bankTransaction.findMany({ where: { bankAccountId, date: dateOnly(2026, 5, 2) } });
+    expect(may.map((t) => t.amount)).toEqual([3_000_000n, 3_000_000n]);
+    // Imported again, the bank export adds nothing.
+    expect((await importStatement(db, { bankAccountId, fileName: "bca-mei-juni.csv", data: Buffer.from(csv), provider: null })).duplicates).toBe(4);
+  });
+
+  it("keeps a supplemental file's lines when it doesn't cover what is already imported", async () => {
+    const g = await makeGroup();
+    const bankAccountId = g.pt.banks[0].id;
+    await importStatement(db, { bankAccountId, fileName: "salinan.xls", data: workingCopy(), provider: null, year: 2026 });
+    // A one-line supplement for 2 May: same date and amount as TOKO SATU's transfer, but the file doesn't hold May's other lines.
+    const csv = ["Tanggal;Keterangan;Debet;Kredit;Saldo", "01/05/2026;SALDO AWAL;0;0;10000000", "02/05/2026;SETORAN TUNAI CABANG;0;3000000;13000000", ""].join("\n");
+    const s = await importStatement(db, { bankAccountId, fileName: "tambahan.csv", data: Buffer.from(csv), provider: null });
+    expect(s).toMatchObject({ rows: 1, duplicates: 0 });
+    expect(s.notes.at(-1)).toMatch(/^1 baris bertanggal dan bernominal sama .* tetap diimpor\. Periksa Rekonsiliasi bank bulan itu\.$/);
+    expect(await db.bankTransaction.count({ where: { bankAccountId, date: dateOnly(2026, 5, 2) } })).toBe(2);
+  });
+
+  it("never posts two copies of a statement imported at the same time", async () => {
+    const g = await makeGroup();
+    const bankAccountId = g.pt.banks[0].id;
+    const csv = ["Tanggal;Keterangan;Debet;Kredit;Saldo", "01/05/2026;SALDO AWAL;0;0;10000000", "02/05/2026;TRSF CR TOKO SATU BAYAR;0;3000000;13000000", "31/05/2026;BIAYA ADM;30000;0;12970000", ""].join("\n");
+    const results = await Promise.allSettled([
+      importStatement(db, { bankAccountId, fileName: "salinan.xls", data: workingCopy(), provider: null, year: 2026 }),
+      importStatement(db, { bankAccountId, fileName: "bca-mei.csv", data: Buffer.from(csv), provider: null }),
+    ]);
+    // Either the second saw the first and skipped its lines, or it refused and asks to retry; May holds each line once.
+    for (const r of results) if (r.status === "rejected") expect(String(r.reason)).toMatch(/Ulangi impor file ini/);
+    expect(await db.bankTransaction.count({ where: { bankAccountId, date: { gte: dateOnly(2026, 5, 1), lte: dateOnly(2026, 5, 31) } } })).toBe(2);
+  });
 });
