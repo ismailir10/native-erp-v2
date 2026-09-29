@@ -2,7 +2,7 @@ import type { Db, Tx } from "@/lib/db";
 import type { ClassifyMethod, Direction } from "@/lib/generated/prisma/enums";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { parseStatementSections } from "@/lib/import/parsers";
-import { checkContinuity, merchantKey, rowHash } from "@/lib/import/normalize";
+import { checkContinuity, isGenericKey, merchantKey, rowHash } from "@/lib/import/normalize";
 import { ParseError, type ParsedStatement } from "@/lib/import/types";
 import { matchRule, sortRules } from "@/lib/classify/rules";
 import { financingSuggestion } from "@/lib/classify/financing";
@@ -105,7 +105,8 @@ export async function importStatement(
 
   const rules = sortRules(await db.rule.findMany({ where: { firmId: client.firmId, OR: [{ clientId: client.id }, { clientId: null }] } }));
   const memories = await db.memory.findMany({ where: { clientId: client.id } });
-  const memoryMap = new Map(memories.map((m) => [`${m.merchantKey}|${m.direction}`, m]));
+  // Generic keys (no counterparty) were never meant to be learned; older books may still hold some — ignore them.
+  const memoryMap = new Map(memories.filter((m) => !isGenericKey(m.merchantKey)).map((m) => [`${m.merchantKey}|${m.direction}`, m]));
 
   const accounts = await db.account.findMany({ where: { clientId: client.id }, orderBy: { code: "asc" } });
   const codes = new Set(accounts.map((a) => a.code));

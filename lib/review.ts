@@ -2,6 +2,7 @@ import type { Db, Tx } from "@/lib/db";
 import type { TaxTag } from "@/lib/generated/prisma/enums";
 import { postBankTransaction } from "@/lib/ledger/bank";
 import { LedgerError } from "@/lib/ledger/post";
+import { isGenericKey } from "@/lib/import/normalize";
 
 type ReviewArgs = {
   bankTxId: string;
@@ -28,6 +29,10 @@ export async function reviewTransactionTx(tx: Tx, args: ReviewArgs) {
     include: { bankAccount: { include: { entity: true } }, settlements: { select: { invoice: { select: { number: true, arApAccount: { select: { code: true } } } } } } },
   });
   const clientId = t.bankAccount.entity.clientId;
+  const generic = isGenericKey(t.merchantKey);
+  if (args.createRule && generic) {
+    throw new LedgerError(`Keterangan "${t.merchantKey}" tidak menyebut pengirim atau penerima, jadi tidak bisa dijadikan aturan. Pilih akunnya per transaksi.`);
+  }
   // A line that settles invoices stays on their receivable/payable account (rule 5c): moving it would leave them paid by money the
   // ledger no longer shows there.
   const away = t.settlements.filter((s) => s.invoice.arApAccount.code !== args.accountCode);
@@ -46,7 +51,8 @@ export async function reviewTransactionTx(tx: Tx, args: ReviewArgs) {
       reason: changed ? "Diubah oleh reviewer" : t.reason,
     },
   });
-  if (args.learn !== false) await tx.memory.upsert({
+  // A key without a counterparty covers unrelated payments: never learned (normalize.ts, isGenericKey).
+  if (args.learn !== false && !generic) await tx.memory.upsert({
     where: { clientId_merchantKey_direction: { clientId, merchantKey: t.merchantKey, direction: t.direction } },
     create: { clientId, merchantKey: t.merchantKey, direction: t.direction, accountCode: args.accountCode, taxTag: args.taxTag },
     update: { accountCode: args.accountCode, taxTag: args.taxTag, hits: { increment: 1 } },
@@ -59,11 +65,16 @@ export async function reviewTransactionTx(tx: Tx, args: ReviewArgs) {
   return t.id;
 }
 
-/** Accept every open line with the same merchant key + direction using its suggestion. */
+/** Accept every open line with the same merchant key + direction using its suggestion. A generic key groups nothing. */
 export async function acceptSimilar(db: Db, bankTxId: string, scope?: { entityIds: string[]; through: Date }, actorId?: string | null) {
   const t = await db.bankTransaction.findUniqueOrThrow({ where: { id: bankTxId } });
   const peers = await db.bankTransaction.findMany({
-    where: { ...(scope ? { entityId: { in: scope.entityIds }, date: { lte: scope.through } } : {}), bankAccount: { entity: { clientId: (await db.entity.findUniqueOrThrow({ where: { id: t.entityId } })).clientId } }, merchantKey: t.merchantKey, direction: t.direction, status: "NEEDS_REVIEW" },
+    where: {
+      ...(scope ? { entityId: { in: scope.entityIds }, date: { lte: scope.through } } : {}),
+      bankAccount: { entity: { clientId: (await db.entity.findUniqueOrThrow({ where: { id: t.entityId } })).clientId } },
+      ...(isGenericKey(t.merchantKey) ? { id: t.id } : { merchantKey: t.merchantKey, direction: t.direction }),
+      status: "NEEDS_REVIEW",
+    },
   });
   for (const p of peers) {
     await reviewTransaction(db, { bankTxId: p.id, accountCode: t.suggestedCode ?? "6190", taxTag: t.taxTag, actorId });
