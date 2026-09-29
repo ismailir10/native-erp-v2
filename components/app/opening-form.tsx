@@ -36,6 +36,8 @@ export function OpeningForm({
   suggestedDate,
   banks,
   accounts,
+  deposits = [],
+  loanRows = 0,
 }: {
   clientId: string;
   entityId: string;
@@ -43,11 +45,15 @@ export function OpeningForm({
   suggestedDate: string;
   banks: BankLine[];
   accounts: { code: string; name: string }[];
+  /** Time deposits the statements list: proposed as lines the accountant can change or remove. */
+  deposits?: { accountCode: string; amount: string; note: string }[];
+  /** Imported rows suggested as loan principal: a loan balance at the opening date may be missing. */
+  loanRows?: number;
 }) {
   const router = useRouter();
   const [date, setDate] = useState(suggestedDate);
   const [bankBalances, setBankBalances] = useState(banks.map((b) => b.prefill));
-  const [others, setOthers] = useState<Line[]>([]);
+  const [others, setOthers] = useState<Line[]>(deposits.map((d) => ({ accountCode: d.accountCode, debit: d.amount, credit: "" })));
   const [busy, setBusy] = useState(false);
 
   const cur = currency === "IDR" ? "" : ` (${currency})`;
@@ -86,6 +92,21 @@ export function OpeningForm({
         <Input id={`opening-date-${entityId}`} type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         <FieldDescription>Sehari sebelum transaksi pertama yang akan diimpor.</FieldDescription>
       </Field>
+
+      {(deposits.length > 0 || loanRows > 0) && (
+        <div className="space-y-1 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
+          {deposits.map((d) => (
+            <p key={d.note}>
+              Rekening koran mencantumkan <span className="font-medium">{d.note}</span> senilai <span className="num font-medium">{d.amount}</span>. Sudah ditambahkan di bawah ke akun {d.accountCode}; ganti akunnya atau hapus barisnya kalau tidak dipakai.
+            </p>
+          ))}
+          {loanRows > 0 && (
+            <p>
+              Mutasi berisi {loanRows} angsuran atau pencairan pinjaman. Kalau ada sisa pinjaman per tanggal di atas, tambahkan saldonya di kredit 2210 Utang Bank.
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="overflow-x-auto rounded-lg border">
         <Table>

@@ -18,11 +18,13 @@ test("an unsaved correction survives a reload; Simpan saves in one click; Enter 
   await expect(items).toHaveCount(2);
   await expect(page.getByTestId("review-count")).toHaveText("2 menunggu");
 
-  // Change the rack purchase to a fixed asset through the searchable picker, then reload before saving.
+  // Change the rack purchase to a fixed asset by typing on the closed picker: the keys land in its search and Enter picks the
+  // first match. Then reload before saving.
   const rack = items.filter({ hasText: "RAK DISPLAY" });
-  await rack.getByRole("combobox", { name: "Akun", exact: true }).click();
-  await page.getByRole("combobox", { name: "Cari akun" }).fill("1210");
-  await page.getByRole("option", { name: /^1210 Aset Tetap/ }).click();
+  await rack.getByRole("combobox", { name: "Akun", exact: true }).focus();
+  await page.keyboard.type("1210");
+  await expect(page.getByRole("combobox", { name: "Cari akun" })).toHaveValue("1210");
+  await page.keyboard.press("Enter");
   await expect(rack.getByTestId("unsaved")).toHaveText("Belum disimpan");
   await page.reload();
   expect(dialogs).toContain("beforeunload");

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { makePdf, smbcCombinedPdf, table } from "../pdf-fixture";
+import { makePdf, smbcCombinedPdf, smbcGiroDepositPdf, table } from "../pdf-fixture";
 import { parseStatement } from "@/lib/import/parsers";
 import { PdfPasswordError } from "@/lib/import/parsers/pdf";
 import { checkContinuity } from "@/lib/import/normalize";
@@ -117,5 +117,26 @@ describe("combined statements (SMBC)", () => {
     for (const s of sections) expect(checkContinuity(s).ok).toBe(true);
     expect(sections[0].rows[0].description).toBe("Cr BI fast Incoming"); // posting-date column not in the description
     expect(sections[1].rows.map((r) => r.amount)).toEqual([35_000_000n, -17_222_773n]);
+  });
+
+  it("gives a line printed just above a row's amounts to that row, and reads the deposit table", async () => {
+    const { parseStatementSections } = await import("@/lib/import/parsers");
+    const [giro] = await parseStatementSections("Touchbiz_eStatement.pdf", smbcGiroDepositPdf());
+    expect(giro.accountNumber).toBe("05243002331");
+    expect(checkContinuity(giro).ok).toBe(true);
+    expect(giro.rows.map((r) => [r.description, r.amount])).toEqual([
+      ["Bunga - Interest DEP0524DEP004097", 14_794_521n],
+      ["Pajak Bunga - Tax on Interest DEP0524DEP004097", -2_958_904n],
+    ]);
+    expect(giro.rows[1].rawRow).toContain("Pajak Bunga - Tax on Interest");
+    expect(giro.deposits).toEqual([
+      { number: "0524DEP004097", product: "Deposito Berjangka", currency: "IDR", rate: "5%", maturity: "2026-08-26", idrBalance: 3_600_000_000n },
+    ]);
+  });
+
+  it("files without a deposit table carry no deposits", async () => {
+    const { parseStatementSections } = await import("@/lib/import/parsers");
+    const sections = await parseStatementSections("Touchbiz_eStatement.pdf", smbcCombinedPdf());
+    expect(sections.every((s) => s.deposits === undefined)).toBe(true);
   });
 });

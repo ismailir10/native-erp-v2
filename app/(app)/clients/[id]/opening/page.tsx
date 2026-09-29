@@ -76,6 +76,8 @@ export default async function OpeningPage({ params }: { params: Promise<{ id: st
                 suggestedDate={toIsoDate(c.suggestedDate)}
                 banks={c.banks.map((b) => ({ accountCode: b.accountCode, label: b.label, isOverdraft: b.isOverdraft, prefill: b.statementOpening === null ? "" : formatMoney(b.statementOpening, currencyOf(c.entity.id), { bare: true }), source: b.source }))}
                 accounts={accounts.map((a) => ({ code: a.code, name: a.name }))}
+                deposits={c.deposits.map((d) => ({ accountCode: ACCOUNT_CODES.DEPOSIT, amount: formatMoney(d.amount, currencyOf(c.entity.id), { bare: true }), note: d.note }))}
+                loanRows={c.loanRows}
               />
               </div>
             )}

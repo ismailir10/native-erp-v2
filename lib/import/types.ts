@@ -26,7 +26,12 @@ export type ParsedStatement = {
   notes?: string[];
   /** Workbook sources: the sheets read into this statement, in date order. */
   sheets?: string[];
+  /** Time deposits the file lists besides the transactions (SMBC "Detail Produk Deposito"): file-level, same on every section. */
+  deposits?: DepositProduct[];
 };
+
+/** A time deposit printed on a statement. `idrBalance` is the bank's IDR equivalent in whole Rupiah. */
+export type DepositProduct = { number: string; product: string; currency: string; rate: string | null; maturity: string | null; idrBalance: bigint };
 
 export class ParseError extends Error {}
 

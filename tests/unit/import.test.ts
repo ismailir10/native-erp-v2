@@ -78,8 +78,22 @@ describe("rules", () => {
       { pattern: "BIAYA ADM", direction: "OUT" as const, accountCode: "6190", taxTag: null, priority: 99, clientId: "c1" },
     ]);
     expect(matchRule(rules, "BIAYA ADM BULAN AGUSTUS", "OUT")?.accountCode).toBe("6190");
-    expect(matchRule(rules, "BUNGA", "OUT")).toBeNull();
     expect(matchRule(rules, "PAJAK BUNGA", "OUT")?.taxTag).toBe("PPH_4_2");
+  });
+
+  it("files bank interest, fees and stamp duty as printed by SMBC and BCA (real e-statements, 2026)", () => {
+    const rules = sortRules(FIRM_RULES.map((r) => ({ ...r, clientId: null })));
+    const code = (text: string, dir: "IN" | "OUT") => {
+      const m = matchRule(rules, text, dir);
+      return m && [m.accountCode, m.taxTag];
+    };
+    expect(code("Bunga - Interest", "OUT")).toEqual(["7110", null]); // PRK / loan interest
+    expect(code("Bunga - Interest DEP0524DEP004097", "IN")).toEqual(["4900", null]);
+    expect(code("Pajak Bunga - Tax on Interest DEP0524DEP004097", "OUT")).toEqual(["8200", "PPH_4_2"]);
+    expect(code("BIAYA - Fee Payment", "OUT")).toEqual(["7100", null]);
+    expect(code("Bea Materai - Stamp Duty", "OUT")).toEqual(["7100", null]);
+    expect(code("BI-FAST DB BIF BIAYA TXN KE 002 ALFI YANDRA KBB", "OUT")).toEqual(["7100", null]);
+    expect(code("Db BI Fast Outgoing - BI Fast Outgoing", "OUT")).toBeNull();
   });
 });
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { useKeepEarlyFile } from "@/components/app/keep-early-file";
 import Link from "next/link";
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -48,6 +49,8 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
   };
   const [pending, start] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
+  // A file chosen before the form hydrated is picked up.
+  useKeepEarlyFile(inputRef, (f) => setFileState(f));
   const entities = [...new Set(banks.map((b) => b.entity))];
 
   const done = (r: Awaited<ReturnType<typeof importAction>>, sent: { file: File; password: string } | null = null) => {
@@ -99,7 +102,7 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
     submit({ bankId: id, file: f, password: pw });
   };
   const alsoImport = result && lastFile
-    ? result.otherAccounts.flatMap((o) => banks.filter((b) => b.id !== bankId && digits(b.number) === digits(o.number)).map((b) => ({ id: b.id, label: `${b.label} · ${b.number}` })))
+    ? result.otherAccounts.filter((o) => !o.imported).flatMap((o) => banks.filter((b) => b.id !== bankId && digits(b.number) === digits(o.number)).map((b) => ({ id: b.id, label: `${b.label} · ${b.number}` })))
     : [];
 
   return (

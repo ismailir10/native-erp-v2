@@ -24,6 +24,17 @@ export async function openingContext(db: Db, clientId: string) {
     orderBy: { date: "asc" },
   });
   const firstTx = await db.bankTransaction.groupBy({ by: ["entityId"], where: { entityId: { in: entities.map((e) => e.id) } }, _min: { date: true } });
+  // Loan principal moving in the statements means a loan existed (or started): its balance at the opening date belongs in Saldo Awal.
+  const loanRows = await db.bankTransaction.groupBy({
+    by: ["entityId"],
+    where: { entityId: { in: entities.map((e) => e.id) }, OR: [{ suggestedCode: ACCOUNT_CODES.BANK_LOAN }, { accountCode: ACCOUNT_CODES.BANK_LOAN }] },
+    _count: true,
+  });
+  const imports = await db.statementImport.findMany({
+    where: { bankAccount: { entityId: { in: entities.map((e) => e.id) } } },
+    select: { fileName: true, deposits: true, periodStart: true, bankAccount: { select: { entityId: true } } },
+    orderBy: { createdAt: "asc" },
+  });
 
   return entities
     .sort((a, b) => Number(a.kind === "PERORANGAN") - Number(b.kind === "PERORANGAN")) // companies first
@@ -39,6 +50,13 @@ export async function openingContext(db: Db, clientId: string) {
           lines: existing.lines.map((l) => ({ code: l.account.code, name: l.account.name, debit: l.debit, credit: l.credit })),
         },
         firstTransactionDate: firstDate,
+        // Only deposits evidenced at the opening date: those listed on the entity's earliest statement period. A deposit placed
+        // later is a movement in the statements, not an opening balance.
+        deposits: depositsOf(
+          imports.filter((i) => i.bankAccount.entityId === e.id && firstImport && +i.periodStart === +firstImport.periodStart),
+          e.functionalCurrency,
+        ),
+        loanRows: loanRows.find((l) => l.entityId === e.id)?._count ?? 0,
         suggestedDate: suggested,
         banks: e.bankAccounts
           .sort((a, b) => a.account.code.localeCompare(b.account.code))
@@ -51,6 +69,22 @@ export async function openingContext(db: Db, clientId: string) {
           })),
       };
     });
+}
+
+export type OpeningDeposit = { number: string; amount: bigint; note: string };
+
+/** Time deposits the entity's statements list, once per deposit number, in the entity's currency only (IDR books, IDR deposits). */
+function depositsOf(imports: { fileName: string; deposits: unknown }[], currency: string): OpeningDeposit[] {
+  const out = new Map<string, OpeningDeposit>();
+  for (const imp of imports) {
+    for (const d of Array.isArray(imp.deposits) ? (imp.deposits as Record<string, unknown>[]) : []) {
+      const number = String(d.number ?? "");
+      if (!number || out.has(number) || d.currency !== currency || currency !== "IDR" || !/^\d+$/.test(String(d.idrBalance ?? ""))) continue;
+      const bits = [d.maturity ? `jatuh tempo ${formatDate(new Date(`${d.maturity}T00:00:00Z`))}` : null, d.rate ? `bunga ${d.rate}` : null].filter(Boolean);
+      out.set(number, { number, amount: BigInt(String(d.idrBalance)), note: `${d.product ?? "Deposito"} ${number} di ${imp.fileName}${bits.length ? ` (${bits.join(", ")})` : ""}` });
+    }
+  }
+  return [...out.values()];
 }
 
 function lastDayOfPreviousMonth() {

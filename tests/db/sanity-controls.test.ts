@@ -19,6 +19,7 @@ const statement = makePdf([
       [[40, "01/08/2026"], [130, "SALDO AWAL"], [500, "0,00"]],
       [[40, "04/08/2026"], [130, "PENCAIRAN PINJAMAN KMK"], [430, "100.000.000,00"], [510, "100.000.000,00"]],
       [[40, "10/08/2026"], [130, "BUNGA PINJAMAN KMK"], [360, "1.000.000,00"], [520, "99.000.000,00"]],
+      [[40, "20/08/2026"], [130, "ANGSURAN POKOK KMK"], [360, "1.000.000,00"], [520, "98.000.000,00"]],
     ]),
   ],
 ]);
@@ -36,11 +37,11 @@ describe("sanity controls", () => {
     const g = await makeGroup();
     await importStatement(db, { bankAccountId: g.pt.banks[1].id, fileName: "mandiri.pdf", data: statement, provider: null });
     const txs = await db.bankTransaction.findMany({ where: { entityId: g.pt.entity.id }, orderBy: { date: "asc" } });
-    // The classifier suggests the balance sheet for the loan and loan interest for its interest (both to review).
-    expect(txs.map((t) => [t.method, t.suggestedCode])).toEqual([["HEURISTIC", "2210"], ["HEURISTIC", "7110"]]);
-    // The accountant books the drawdown to revenue anyway (the mistake the control exists for) and accepts the interest guess as-is.
+    // Interest charged by the bank is a firm rule (7110, posted); drawdown and principal get balance-sheet suggestions to review.
+    expect(txs.map((t) => [t.method, t.suggestedCode ?? t.accountCode])).toEqual([["HEURISTIC", "2210"], ["RULE", "7110"], ["HEURISTIC", "2210"]]);
+    // The accountant books the drawdown to revenue anyway (the mistake the control exists for) and accepts the principal guess as-is.
     await reviewTransaction(db, { bankTxId: txs[0].id, accountCode: "4100", taxTag: null });
-    await reviewTransaction(db, { bankTxId: txs[1].id, accountCode: txs[1].suggestedCode!, taxTag: null });
+    await reviewTransaction(db, { bankTxId: txs[2].id, accountCode: txs[2].suggestedCode!, taxTag: null });
 
     const find = async (key: string) => (await runControls(db, g.client.id, 2026, 8)).find((c) => c.key === `${key}:${g.pt.entity.id}`);
     const financing = await find("pl-financing");
@@ -113,5 +114,47 @@ describe("sanity controls", () => {
     const activity = async (m: number) => (await runControls(db, client.id, 2026, m)).some((c) => c.key.startsWith("activity:"));
     expect(await activity(2)).toBe(false); // inside the file's Jan–Mar range, no rows: nothing happened
     expect(await activity(4)).toBe(true); // after the file ends: data missing
+  });
+
+  it("flags a company whose liabilities exceed its assets, never a person", async () => {
+    const g = await makeGroup();
+    const pt = g.pt.entity.id;
+    await post(pt, g.client.id, dateOnly(2026, 8, 1), "1120", "2210", 10_000_000n);
+    await post(pt, g.client.id, dateOnly(2026, 8, 20), "6190", "1120", 4_000_000n);
+    await post(pt, g.client.id, dateOnly(2026, 8, 21), "6190", "2120", 8_000_000n);
+    await post(g.owner.entity.id, g.client.id, dateOnly(2026, 8, 21), "3300", "2120", 1_000_000n);
+    const controls = await runControls(db, g.client.id, 2026, 8);
+    const gc = controls.find((c) => c.key === `going-concern:${pt}`)!;
+    expect(gc.status).toBe("REVIEW");
+    expect(gc.detail).toBe("Ekuitas -Rp 12.000.000: liabilitas Rp 18.000.000 melebihi aset Rp 6.000.000. Nilai kelangsungan usaha dan ungkapkan rencana manajemen di CALK");
+    expect(controls.find((c) => c.key === `going-concern:${g.owner.entity.id}`)).toBeUndefined();
+  });
+
+  it("flags sales without cost of sales for a trading business only", async () => {
+    const g = await makeGroup();
+    const pt = g.pt.entity.id;
+    await post(pt, g.client.id, dateOnly(2026, 8, 5), "1120", "4100", 50_000_000n);
+    const key = `no-cogs:${pt}`;
+    expect((await runControls(db, g.client.id, 2026, 8)).find((c) => c.key === key)).toBeUndefined(); // agritech: not trading
+
+    await db.client.update({ where: { id: g.client.id }, data: { industry: "perdagangan pakaian (gamis)" } });
+    const flag = (await runControls(db, g.client.id, 2026, 8)).find((c) => c.key === key)!;
+    expect(flag.status).toBe("REVIEW");
+    expect(flag.detail).toMatch(/^Penjualan Rp 50\.000\.000 bulan ini tanpa pembelian atau HPP/);
+
+    await post(pt, g.client.id, dateOnly(2026, 8, 6), "5100", "1120", 30_000_000n);
+    expect((await runControls(db, g.client.id, 2026, 8)).find((c) => c.key === key)).toBeUndefined();
+  });
+
+  it("reads assets and equity as the Neraca presents them: an intercompany credit is a liability, not negative assets", async () => {
+    const g = await makeGroup();
+    const pt = g.pt.entity.id;
+    await post(pt, g.client.id, dateOnly(2026, 8, 1), "1120", "3100", 60_000_000n);
+    await post(pt, g.client.id, dateOnly(2026, 8, 10), "6190", "1190", 100_000_000n); // the owner paid a PT expense
+    const controls = await runControls(db, g.client.id, 2026, 8);
+    expect(controls.find((c) => c.key === `nature-total:${pt}`)).toBeUndefined();
+    expect(controls.find((c) => c.key === `going-concern:${pt}`)?.detail).toBe(
+      "Ekuitas -Rp 40.000.000: liabilitas Rp 100.000.000 melebihi aset Rp 60.000.000. Nilai kelangsungan usaha dan ungkapkan rencana manajemen di CALK",
+    );
   });
 });

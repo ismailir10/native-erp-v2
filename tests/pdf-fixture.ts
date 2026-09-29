@@ -111,3 +111,34 @@ export function smbcCombinedPdf() {
     ],
   ]);
 }
+
+/**
+ * SMBC giro section with a time deposit: the deposit's interest and its tax print on the same day, the tax row's description
+ * centred on its amount line (one text line ~3 pt above, one below), then the "Detail Produk Deposito" table. Positions follow
+ * the real e-statement (Mei 2026).
+ */
+export function smbcGiroDepositPdf() {
+  const t = (x: number, y: number, text: string): PdfText => ({ x, y, text });
+  return makePdf([
+    [
+      t(32, 800, "PT Bank SMBC Indonesia Tbk"),
+      t(318, 788, "Periode Laporan"),
+      t(398, 788, ": 01 MEI 2026 - 31 MEI 2026"),
+      t(24, 740, "Aktivitas Rekening / Account Activities – GIRO KARYA (IDR) 05243002331"),
+      t(37, 702, "Tanggal Transaksi"), t(119, 702, "Tanggal Pembukuan"), t(246, 702, "Keterangan"), t(353, 702, "Mutasi Debet"), t(437, 702, "Mutasi Kredit"), t(531, 702, "Saldo"),
+      t(42, 680, "01-05-2026"), t(128, 680, "01-05-2026"), t(195, 680, "Saldo Awal - Beginning Balance"), t(529, 680, "649,569.00"),
+      t(42, 663, "26-05-2026"), t(128, 663, "26-05-2026"), t(195, 663, "Bunga - Interest DEP0524DEP004097"), t(445, 663, "14,794,521.00"), t(526, 663, "15,444,090.00"),
+      t(195, 645, "Pajak Bunga - Tax on Interest"),
+      t(42, 642, "26-05-2026"), t(128, 642, "26-05-2026"), t(362, 642, "2,958,904.00"), t(529, 642, "12,485,186.00"),
+      t(195, 636, "DEP0524DEP004097"),
+      t(44, 624, "Total"), t(232, 624, "1 DEBIT 1 KREDIT"), t(363, 624, "2,958,904.00"), t(448, 624, "14,794,521.00"),
+      t(39, 593, "Deposito / Time Deposit"),
+      t(24, 565, "Detail Produk Deposito / Time Deposit Product Details"),
+      t(36, 534, "No. Rekening"), t(107, 534, "Nama Produk"), t(168, 534, "Mata Uang Suku Bunga"), t(299, 534, "Tanggal Jatuh Tempo"), t(436, 534, "Saldo"),
+      t(360, 495, "AUTO ROLL"),
+      t(29, 487, "0524DEP004097"), t(98, 487, "Deposito Berjangka"), t(180, 487, "IDR"), t(221, 487, "5%"), t(266, 487, "12"), t(300, 487, "26-08-2026"), t(360, 487, "OVER"), t(424, 487, "3,600,000,000.00"), t(512, 487, "3,600,000,000.00"),
+      t(360, 478, "PRINCIPAL"),
+      t(34, 464, "Total in IDR"), t(511, 464, "3,600,000,000.00"),
+    ],
+  ]);
+}

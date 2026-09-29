@@ -45,11 +45,13 @@ describe("SMBC combined statement + PRK overdraft account", () => {
       "90022164251 JENIUS JPY ACCOUNT (JPY): tidak diimpor ke rekening ini",
     ]);
     expect(s1.otherAccounts).toEqual([
-      { number: "05243002879", label: "Pinjaman Rekening Koran BTB", currency: "IDR" },
-      { number: "90022164251", label: "JENIUS JPY ACCOUNT", currency: "JPY" },
+      { number: "05243002879", label: "Pinjaman Rekening Koran BTB", currency: "IDR", imported: false },
+      { number: "90022164251", label: "JENIUS JPY ACCOUNT", currency: "JPY", imported: false },
     ]);
     const s2 = await importStatement(db, { bankAccountId: prk.id, fileName: "smbc.pdf", data: pdf, provider: null });
     expect(s2).toMatchObject({ rows: 2, continuityOk: true });
+    // Jenius already holds this month from the file: no "Impor juga ke Jenius" after the PRK import.
+    expect(s2.otherAccounts.find((o) => o.number === "90022152088")?.imported).toBe(true);
     // The same file again: nothing new, no second history row, the existing import is named.
     const imports = await db.statementImport.count();
     const again = await importStatement(db, { bankAccountId: prk.id, fileName: "smbc.pdf", data: pdf, provider: null });

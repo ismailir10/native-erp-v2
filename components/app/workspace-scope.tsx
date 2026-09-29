@@ -20,13 +20,14 @@ export function WorkspaceScopeBar({ scope }: { scope: Scope }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  // Make the URL name the scope it shows (shareable, back button) without a server round trip: the page already rendered it.
   useEffect(() => {
     if (searchParams.has("scope") && searchParams.has("period")) return;
     const canonical = new URLSearchParams(searchParams.toString());
     canonical.set("scope", scope.key);
     canonical.set("period", scope.period);
-    router.replace(`${pathname}?${canonical}`, { scroll: false });
-  }, [pathname, router, scope.key, scope.period, searchParams]);
+    window.history.replaceState(window.history.state, "", `${pathname}?${canonical}`);
+  }, [pathname, scope.key, scope.period, searchParams]);
   const options = [
     { value: "all", label: "Semua klien" },
     ...scope.clients.flatMap((client) => [

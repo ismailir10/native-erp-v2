@@ -78,6 +78,35 @@ describe("equity changes, cash flow, other comprehensive income", () => {
     expect(revenue.total).toEqual(["Jumlah", 50n * J, 100n * J]); // 2025: the September cash sale
     expect(n.notes[1].paragraphs.join(" ")).toMatch(/SAK EP/);
     expect(n.directors[1]).toBe(`TENTANG TANGGUNG JAWAB ATAS LAPORAN KEUANGAN ${g.pt.entity.name.toUpperCase()}`);
+    expect(titles).not.toEqual(expect.arrayContaining([expect.stringMatching(/Kelangsungan usaha/)]));
+    // The deferred tax line equals the Neraca (nothing posted to 1270/2320 here): the pack's figure is an estimate not yet journalled.
+    const taxRows = n.notes.find((x) => x.title === "Pajak penghasilan")?.tables[0].rows.map((r) => r[0]) ?? [];
+    expect(taxRows).toContain("Laba sebelum pajak");
+    expect(taxRows).not.toContain("Aset pajak tangguhan");
+    expect(taxRows).not.toContain("Liabilitas pajak tangguhan");
+
+    // Once journalled, the line shows the posted balance (what the Neraca carries), and only a remaining difference as an estimate.
+    const id = async (code: string) => (await db.account.findFirstOrThrow({ where: { clientId: g.client.id, code } })).id;
+    await db.$transaction(async (tx) =>
+      postJournal(tx, { entityId: g.pt.entity.id, date: dateOnly(2026, 12, 31), kind: "ADJUSTMENT", memo: "Pajak tangguhan", lines: [{ accountId: await id("1270"), debit: 3n * J }, { accountId: await id("8110"), credit: 3n * J }] }),
+    );
+    const after = (await financialNotes(db, scope, 2026, 12)).notes.find((x) => x.title === "Pajak penghasilan")!.tables[0].rows;
+    expect(after.find((r) => r[0] === "Aset pajak tangguhan")?.[1]).toBe(3n * J);
+    const estimate = after.find((r) => String(r[0]).startsWith("Estimasi pajak tangguhan"));
+    if (estimate) expect(estimate[1]).not.toBe(0n);
+  });
+
+  it("adds a going-concern note when liabilities exceed assets", async () => {
+    const g = await makeGroup();
+    const id = async (code: string) => (await db.account.findFirstOrThrow({ where: { clientId: g.client.id, code } })).id;
+    await db.$transaction(async (tx) =>
+      postJournal(tx, { entityId: g.pt.entity.id, date: dateOnly(2026, 3, 1), kind: "ADJUSTMENT", memo: "Beban dibayar dengan utang", lines: [{ accountId: await id("6190"), debit: 80n * J }, { accountId: await id("2120"), credit: 80n * J }] }),
+    );
+    const n = await financialNotes(db, { clientId: g.client.id, entityIds: [g.pt.entity.id] }, 2026, 6);
+    expect(n.notes[1].title).toBe("Kelangsungan usaha");
+    expect(n.notes[1].paragraphs[0]).toBe(
+      "Per 30 Jun 2026 liabilitas Rp 80.000.000 melebihi aset Rp 0, sehingga ekuitas -Rp 80.000.000 dengan akumulasi rugi Rp 80.000.000. Kondisi ini menimbulkan ketidakpastian atas kemampuan Entitas mempertahankan kelangsungan usahanya.",
+    );
   });
 
   it("writes the whole set to one workbook from the same figures", async () => {
@@ -181,5 +210,16 @@ describe("equity changes, cash flow, other comprehensive income", () => {
     expect(cf.financing.map((i) => [i.key, i.amount])).toEqual([["LEASES", -10n * J], ["UTANG_BANK", 200n * J]]);
     expect(cf.operating.find((i) => i.key === "LEASE_INTEREST")!.amount).toBe(2_124_338n);
     expect(cf.net).toBe(cf.closingCash - cf.openingCash);
+  });
+
+  it("notes a posted deferred tax balance even where no PPh badan reconciliation applies", async () => {
+    const g = await makeGroup();
+    const id = async (code: string) => (await db.account.findFirstOrThrow({ where: { clientId: g.client.id, code } })).id;
+    await db.$transaction(async (tx) =>
+      postJournal(tx, { entityId: g.owner.entity.id, date: dateOnly(2026, 3, 31), kind: "ADJUSTMENT", memo: "Pajak tangguhan", lines: [{ accountId: await id("1270"), debit: 2n * J }, { accountId: await id("8110"), credit: 2n * J }] }),
+    );
+    const n = await financialNotes(db, { clientId: g.client.id, entityIds: [g.owner.entity.id] }, 2026, 6);
+    const note = n.notes.find((x) => x.title === "Pajak tangguhan")!;
+    expect(note.tables[0].rows).toEqual([["Aset pajak tangguhan", 2n * J]]);
   });
 });

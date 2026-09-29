@@ -1,5 +1,6 @@
 "use server";
 
+import { isGenericKey } from "@/lib/import/normalize";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { getClientForFirm, getCurrentFirm, getCurrentMember } from "@/lib/tenant";
@@ -117,12 +118,14 @@ async function assertTxInFirm(bankTxId: string) {
   return t.bankAccount.entity.clientId;
 }
 
-export async function reviewAction(input: { bankTxId: string; accountCode: string; taxTag: TaxTag | null; createRule?: boolean }): Promise<Result> {
+export async function reviewAction(input: { bankTxId: string; accountCode: string; taxTag: TaxTag | null; createRule?: boolean }): Promise<Result<{ learned: boolean }>> {
   try {
     const clientId = await assertTxInFirm(input.bankTxId);
     await reviewTransaction(prisma, { ...input, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${clientId}`, "layout");
-    return { ok: true };
+    // Memory learns only keys that name a counterparty (lib/review.ts): the toast must not promise more.
+    const { merchantKey } = await prisma.bankTransaction.findUniqueOrThrow({ where: { id: input.bankTxId }, select: { merchantKey: true } });
+    return { ok: true, learned: !isGenericKey(merchantKey) };
   } catch (e) {
     return fail(e);
   }

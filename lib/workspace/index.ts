@@ -94,6 +94,8 @@ export type WorkspaceAnswer = { id: string; question: string; scope: Pick<Worksp
 export function workspaceQuestionIntent(question: string) {
   const q = question.toLowerCase();
   if (/\b(prediksi|forecast|proyeksi|ramalan|tahun depan|bulan depan)\b/.test(q)) return "unsupported";
+  // "Transaksi apa yang belum jelas / perlu ditanyakan ke klien?": rows still waiting in Review (before the payee search reads "klien" as a name).
+  if (/belum jelas|(perlu|harus|mau) (di)?tanya|ditanyakan|tanya(kan)? (ke )?klien|pertanyaan (untuk|ke|buat) klien|konfirmasi (ke )?klien|belum (di)?klasifikasi|menunggu review/.test(q)) return "unclear";
   if (/\b(tutup buku|close|kesiapan|siap|hambatan|penghambat)\b/.test(q)) return "readiness";
   // "transfer ke ALFI YANDRA", "pembayaran dari DINA", "mutasi dengan \"PT PAKAN\"": bank lines by counterparty.
   if (/\b(transfer|transaksi|mutasi|pembayaran|bayar|dibayar|penerimaan|terima|diterima|kiriman|dikirim|setoran)\b/.test(q) && counterpartyOf(question)) return "transactions";
@@ -126,7 +128,44 @@ export async function askWorkspace(db: Db, firmId: string, input: WorkspaceInput
   const intent = workspaceQuestionIntent(question);
   const accountCode = question.match(/\b(?:akun|account)\s+([0-9][a-z0-9.-]{0,29})\b/i)?.[1];
   if (intent === "unsupported") {
-    answer.text = "Pertanyaan ini belum didukung. Coba kesiapan tutup buku, laba, saldo kas, transfer ke/dari nama tertentu, profil perusahaan, atau pencarian dokumen.";
+    answer.text = "Pertanyaan ini belum didukung. Coba kesiapan tutup buku, laba, saldo kas, transfer ke/dari nama tertentu, transaksi yang perlu ditanyakan ke klien, profil perusahaan, atau pencarian dokumen.";
+    return answer;
+  }
+  if (intent === "unclear") {
+    // Deterministic: bank lines still in Review (1999) up to the month's end, oldest first — the list to ask the client about.
+    const { end } = periodBounds(resolved.year, resolved.month);
+    const lines = await db.bankTransaction.findMany({
+      where: { firmId, entityId: { in: resolved.entityIds }, status: "NEEDS_REVIEW", date: { lte: end } },
+      include: { bankAccount: { include: { entity: true } } },
+      orderBy: [{ date: "asc" }, { rowNumber: "asc" }],
+    });
+    const names = new Map((await db.account.findMany({ where: { clientId: { in: resolved.clientIds } }, select: { clientId: true, code: true, name: true } })).map((a) => [`${a.clientId}|${a.code}`, a.name]));
+    const totals = new Map<string, { inn: bigint; out: bigint }>();
+    for (const t of lines) {
+      const sum = totals.get(t.bankAccount.currency) ?? { inn: 0n, out: 0n };
+      if (t.amount > 0n) sum.inn += t.amount;
+      else sum.out += -t.amount;
+      totals.set(t.bankAccount.currency, sum);
+    }
+    const total = [...totals].map(([cur, v]) => [v.inn ? `masuk ${formatMoney(v.inn, cur)}` : "", v.out ? `keluar ${formatMoney(v.out, cur)}` : ""].filter(Boolean).join(", ")).join("; ");
+    answer.text = lines.length
+      ? `${lines.length} transaksi belum jelas sampai ${periodLabel} (${total}). Tanyakan ke klien dari siapa uang masuk dan untuk apa uang keluar, lalu pilih akunnya di Review.`
+      : `Tidak ada transaksi yang menunggu review sampai ${periodLabel} di cakupan ini.`;
+    for (const t of lines.slice(0, 30)) {
+      const clientId = t.bankAccount.entity.clientId;
+      const href = workspaceHref(`/clients/${clientId}/review`, resolved, { entity: t.entityId });
+      const amount = t.amount < 0n ? -t.amount : t.amount;
+      const guess = t.suggestedCode ? `usulan ${t.suggestedCode} ${names.get(`${clientId}|${t.suggestedCode}`) ?? ""}`.trim() : "tanpa usulan";
+      answer.rows.push({
+        label: `${formatDate(t.date)} · ${t.bankAccount.entity.shortName} · ${t.bankAccount.label} · ${t.description.slice(0, 80)}`,
+        value: `${t.amount > 0n ? "Masuk" : "Keluar"} ${formatMoney(amount, t.bankAccount.currency)} · ${guess}`,
+        source: href,
+      });
+    }
+    const entities = [...new Map(lines.map((t) => [t.entityId, t.bankAccount.entity])).values()];
+    for (const e of entities) answer.citations.push({ label: `${e.shortName} · Review transaksi`, href: workspaceHref(`/clients/${e.clientId}/review`, resolved, { entity: e.id }) });
+    if (lines.length > 30) answer.limitations.push(`Menampilkan 30 dari ${lines.length} transaksi; totalnya dari semua.`);
+    answer.limitations.push("Dari mutasi bank yang masih di Review (1999). Transaksi yang sudah diterima dengan tebakan ada di kontrol Tutup Buku.");
     return answer;
   }
   if (intent === "transactions") {

@@ -54,8 +54,10 @@ Imports refuse a file whose account number doesn't match.
 
 ## 3. Saldo awal
 You land on **Saldo Awal** after saving. The date is the day before the first statement you'll import. If you import
-first, bank lines are prefilled from that statement's opening balance. Add receivables, fixed assets, loans and capital
-if you have them. The difference goes to 3200 Saldo Laba. One opening entry per entity; later corrections go through
+first, bank lines are prefilled from that statement's opening balance, and time deposits the statement lists (SMBC *Detail
+Produk Deposito*) are proposed on 1260 — change the account or remove the line. If the statements hold loan instalments or
+drawdowns, the page reminds you to enter the loan balance. Add receivables, fixed assets, loans and capital if you have them.
+The difference goes to 3200 Saldo Laba. One opening entry per entity; later corrections go through
 Jurnal Penyesuaian.
 
 ## 4. Import → review → close
@@ -67,7 +69,8 @@ The controls show whether the books match the bank:
 
 ## 5. Ledger or Neraca from the client's old system (Jurnal, Accurate, Excel)
 **Impor → Buku besar / neraca**. XLSX, XLS or CSV. A ledger needs tanggal, kode/nama akun, debit, kredit (optional: entitas,
-no. bukti, mata uang, kurs, notes with `Rate: 1.31`). A Neraca needs kode/nama akun and saldo (Jurnal's export works as is).
+no. bukti, mata uang, kurs, notes with `Rate: 1.31`). A Neraca needs kode/nama akun and saldo (Jurnal's export works as is). A Laba Rugi or arus kas export is refused with a message
+saying so: the year-to-date result is already in the Neraca's saldo laba.
 1. **Periksa file.** Nothing is posted yet. Choose the sheet if the file holds several tables.
 2. **Pemeriksaan file.** BLOCK items stop the import: fix the file, or for an unbalanced journal *Terima & catat selisih ke 1999*
    (the difference stays visible in 1999 and fails Tutup Buku until a Jurnal Penyesuaian moves it). REVIEW items (codes reused
