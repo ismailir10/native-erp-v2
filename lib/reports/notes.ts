@@ -11,7 +11,7 @@ import { ckpn, settingAt } from "@/lib/receivables/ckpn";
 import { leaseSchedule, positionAt } from "@/lib/leases/schedule";
 import { terms } from "@/lib/leases/register";
 import { valuation } from "@/lib/benefits/valuation";
-import { packApplies, taxPack } from "@/lib/tax/pack";
+import { glBalance, packApplies, taxPack } from "@/lib/tax/pack";
 
 /**
  * CALK draft and the directors' statement (accounting-rules 12): every figure comes from the same functions as its page — the statements,
@@ -42,6 +42,7 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
     otherComprehensiveIncome(db, scope, dateOnly(year, 1, 1), asOf),
   ]);
   const cur = formatPeriod(year, month);
+  const fmtAmount = (v: bigint) => formatMoney(v, currency);
   const bsCols = ["Akun", formatDate(asOf), formatDate(lastYearEnd)];
   const plCols = ["Akun", `1 Jan – ${formatDate(asOf)}`, `1 Jan – ${formatDate(priorTo)}`];
   const names = entities.map((e) => e.name).join(", ");
@@ -61,6 +62,15 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
     ...entities.filter((e) => e.npwp).map((e) => `${e.name}: NPWP ${e.npwp}.`),
     entities.length > 1 ? "Laporan gabungan ini adalah pandangan manajemen atas entitas-entitas dalam grup, bukan laporan konsolidasian menurut SAK." : "",
   ].filter(Boolean));
+
+  // Going concern: liabilities above assets is disclosed with the plans that support the going-concern basis (SAK EP).
+  if (bs.totals.equity < 0n) {
+    const deficit = bs.equity.filter((i) => i.fsLine === "SALDO_LABA" || i.fsLine === "LABA_BERJALAN").reduce((s, i) => s + i.amount, 0n);
+    add("Kelangsungan usaha", [
+      `Per ${formatDate(asOf)} liabilitas ${fmtAmount(bs.totals.liabilities)} melebihi aset ${fmtAmount(bs.totals.assets)}, sehingga ekuitas ${fmtAmount(bs.totals.equity)}${deficit < 0n ? ` dengan akumulasi rugi ${fmtAmount(-deficit)}` : ""}. Kondisi ini menimbulkan ketidakpastian atas kemampuan ${entities.length > 1 ? "grup" : "Entitas"} mempertahankan kelangsungan usahanya.`,
+      "Rencana manajemen untuk mengatasi kondisi tersebut: [isi oleh manajemen — mis. dukungan pendanaan pemegang saham, penundaan pembayaran utang pihak berelasi, rencana peningkatan pendapatan]. Laporan keuangan disusun dengan asumsi kelangsungan usaha.",
+    ]);
+  }
 
   // 2. Kebijakan akuntansi — only the policies of what the books contain.
   const has = async (where: Promise<number>) => (await where) > 0;
@@ -187,6 +197,15 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
   if (oci.items.length) {
     add("Penghasilan komprehensif lain", ["Pos yang tidak akan direklasifikasi ke laba rugi."], [{ columns: ["Pos", "Jumlah"], rows: oci.items.map((i) => [i.label, i.amount]), total: ["Jumlah", oci.total] }]);
   }
+  // The deferred tax line is what the Neraca carries (1270 − 2320); a computed amount that differs is an estimate not yet journalled.
+  const deferredRows = async (entityId: string, computed: bigint | null): Promise<NoteCell[][]> => {
+    const posted =
+      (await glBalance(db, scope.clientId, entityId, ACCOUNT_CODES.DEFERRED_TAX_ASSET, asOf)) + (await glBalance(db, scope.clientId, entityId, ACCOUNT_CODES.DEFERRED_TAX_LIABILITY, asOf));
+    const rows: NoteCell[][] = [];
+    if (posted !== 0n) rows.push([posted > 0n ? "Aset pajak tangguhan" : "Liabilitas pajak tangguhan", posted < 0n ? -posted : posted]);
+    if (computed !== null && computed !== posted) rows.push(["Estimasi pajak tangguhan belum dicatat (catat di Pajak Badan)", computed - posted]);
+    return rows;
+  };
   for (const e of entities.filter((x) => packApplies(x))) {
     const p = await taxPack(db, scope.clientId, e.id, year, month);
     if (!p || p.regime !== "NORMAL") continue;
@@ -200,7 +219,7 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
           ...(p.compensation > 0n ? [["Kompensasi kerugian", -p.compensation] as NoteCell[]] : []),
           ["Penghasilan kena pajak", p.tax.pkp],
           ["Pajak penghasilan kini", p.tax.due],
-          ...(p.deferred ? [[p.deferred.amount >= 0n ? "Aset pajak tangguhan" : "Liabilitas pajak tangguhan", p.deferred.amount < 0n ? -p.deferred.amount : p.deferred.amount] as NoteCell[]] : []),
+          ...(await deferredRows(e.id, p.deferred?.amount ?? null)),
         ],
       },
     ]);

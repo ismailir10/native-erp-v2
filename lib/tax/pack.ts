@@ -278,7 +278,7 @@ function temporary(assets: bigint, allowance: bigint, leases: bigint, employeeBe
 }
 
 /** Debit balance of an account of the entity at a date (0 when the client has no such account). */
-async function glBalance(db: Reader, clientId: string, entityId: string, code: string, asOf: Date) {
+export async function glBalance(db: Reader, clientId: string, entityId: string, code: string, asOf: Date) {
   const acc = await db.account.findFirst({ where: { clientId, code }, select: { id: true } });
   if (!acc) return 0n;
   const s = await db.journalLine.aggregate({ where: { entityId, accountId: acc.id, date: { lte: asOf } }, _sum: { debit: true, credit: true } });
