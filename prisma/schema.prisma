@@ -157,6 +157,7 @@ model Client {
   fixedAssets   FixedAsset[]
   contacts      Contact[]
   invoices      Invoice[]
+  taxYears      TaxYear[]
   coaVersion    Int                  @default(1)
 
   @@index([firmId])
@@ -180,6 +181,7 @@ model Entity {
   proposals          ProposedEntry[]
   fixedAssets        FixedAsset[]
   invoices           Invoice[]
+  taxYears           TaxYear[]
 
   @@index([clientId])
 }
@@ -211,6 +213,8 @@ model Account {
   fixedAssetsAcc  FixedAsset[]         @relation("AssetAccumulatedAccount")
   invoiceCounter  Invoice[]            @relation("InvoiceCounter")
   invoiceArAp     Invoice[]            @relation("InvoiceArAp")
+  taxCorrections  FiscalCorrection[]
+  taxCredits      TaxCredit[]
 
   @@unique([clientId, code])
 }
@@ -346,6 +350,8 @@ model JournalEntry {
   assetDisposal     FixedAsset?          @relation("AssetDisposal")
   /// The invoice this entry records (kind INVOICE).
   invoice           Invoice?             @relation("InvoiceEntry")
+  /// The tax pack posting this entry is (accounting-rules 5d).
+  taxPosting        TaxPosting?
   /// The proposal this entry was posted from (close copilot, 1999 correction).
   proposal          ProposedEntry?
   /// Member who posted it; null for seeds and system postings ("Sistem").
@@ -809,6 +815,9 @@ model FirmMember {
   fixedAssets      FixedAsset[]         @relation("AssetCreatedBy")
   invoicesCreated  Invoice[]            @relation("InvoiceCreatedBy")
   settlements      InvoiceSettlement[]  @relation("SettlementCreatedBy")
+  taxCorrections   FiscalCorrection[]
+  taxCredits       TaxCredit[]
+  taxPostings      TaxPosting[]
   proposalsDecided ProposedEntry[]      @relation("ProposalDecidedBy")
 
   @@index([firmId])
@@ -1045,4 +1054,114 @@ model InvoiceSettlement {
 
   @@unique([invoiceId, bankTransactionId])
   @@index([bankTransactionId])
+}
+
+enum TaxRegime {
+  /// Pasal 17 at 22 %, with the Pasal 31E reduction when turnover <= Rp 50 M.
+  NORMAL
+  /// PP 55/2022: final 0,5 % of turnover, chosen by the accountant.
+  FINAL_UMKM
+}
+
+enum CorrectionDirection {
+  POSITIVE
+  NEGATIVE
+}
+
+enum CorrectionKind {
+  /// Beda tetap.
+  PERMANENT
+  /// Beda waktu.
+  TEMPORARY
+}
+
+enum TaxCreditType {
+  PPH_22
+  PPH_23
+  PPH_24
+  OTHER
+}
+
+enum TaxPostingKind {
+  CURRENT
+  DEFERRED
+}
+
+/// An entity's fiscal year in the tax pack (accounting-rules 5d): the regime and what the accountant recorded for it. Every tax figure is
+/// computed at read time from the GL and these rows; nothing computed is stored.
+model TaxYear {
+  id                   String             @id @default(cuid())
+  firmId               String
+  clientId             String
+  client               Client             @relation(fields: [clientId], references: [id])
+  entityId             String
+  entity               Entity             @relation(fields: [entityId], references: [id])
+  year                 Int
+  regime               TaxRegime          @default(NORMAL)
+  /// Keys of non-deductible-expense suggestions the accountant dismissed.
+  dismissedSuggestions String[]           @default([])
+  createdAt            DateTime           @default(now())
+  corrections          FiscalCorrection[]
+  credits              TaxCredit[]
+  postings             TaxPosting[]
+
+  @@unique([entityId, year])
+  @@index([clientId])
+}
+
+/// A manual koreksi fiskal (amount > 0; the direction gives the sign).
+model FiscalCorrection {
+  id          String              @id @default(cuid())
+  firmId      String
+  taxYearId   String
+  taxYear     TaxYear             @relation(fields: [taxYearId], references: [id])
+  description String
+  direction   CorrectionDirection
+  kind        CorrectionKind
+  amount      BigInt
+  /// The account it comes from, when there is one (an accepted suggestion always has it).
+  accountId   String?
+  account     Account?            @relation(fields: [accountId], references: [id])
+  /// The suggestion key it was accepted from, so the suggestion isn't offered twice.
+  suggestion  String?
+  createdById String?
+  createdBy   FirmMember?         @relation(fields: [createdById], references: [id])
+  createdAt   DateTime            @default(now())
+
+  @@index([taxYearId])
+}
+
+/// A tax credit withheld by others (bukti potong), recorded on the account where its amount sits.
+model TaxCredit {
+  id          String        @id @default(cuid())
+  firmId      String
+  taxYearId   String
+  taxYear     TaxYear       @relation(fields: [taxYearId], references: [id])
+  type        TaxCreditType
+  reference   String
+  date        DateTime      @db.Date
+  amount      BigInt
+  accountId   String
+  account     Account       @relation(fields: [accountId], references: [id])
+  createdById String?
+  createdBy   FirmMember?   @relation(fields: [createdById], references: [id])
+  createdAt   DateTime      @default(now())
+
+  @@index([taxYearId])
+}
+
+/// A tax journal posted from the pack: each books the difference between the computed position and earlier postings of its kind.
+model TaxPosting {
+  id          String         @id @default(cuid())
+  firmId      String
+  taxYearId   String
+  taxYear     TaxYear        @relation(fields: [taxYearId], references: [id])
+  kind        TaxPostingKind
+  entryId     String         @unique
+  entry       JournalEntry   @relation(fields: [entryId], references: [id], onDelete: Restrict)
+  createdById String?
+  createdBy   FirmMember?    @relation(fields: [createdById], references: [id])
+  createdAt   DateTime       @default(now())
+
+  @@index([taxYearId])
 }
