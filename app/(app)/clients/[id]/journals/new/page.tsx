@@ -9,6 +9,7 @@ import { candidateViews, proposalViews, scheduleViews } from "@/lib/adjust/view"
 import { Money } from "@/components/app/money";
 import { NextStep, PageHeader } from "@/components/app/page-header";
 import { JournalForm } from "@/components/app/journal-form";
+import { accountGroup } from "@/lib/coa/options";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default async function NewJournalPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
@@ -50,7 +51,7 @@ export default async function NewJournalPage({ params, searchParams }: { params:
             <JournalForm
               clientId={client.id}
               entities={entities}
-              accounts={accounts.map((a) => ({ code: a.code, name: a.name, entityId: a.bankAccounts[0]?.entityId ?? null }))}
+              accounts={accounts.map((a) => ({ code: a.code, name: a.name, group: accountGroup(a), entityId: a.bankAccounts[0]?.entityId ?? null }))}
               defaultDate={toIsoDate(period.end)}
             />
           </CardContent>

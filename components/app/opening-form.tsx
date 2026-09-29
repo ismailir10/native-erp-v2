@@ -13,7 +13,7 @@ import { formatMoney, moneyExample, parseMoney } from "@/lib/money";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 type Line = { accountCode: string; debit: string; credit: string };
-type BankLine = { accountCode: string; label: string; prefill: string; source: string | null };
+type BankLine = { accountCode: string; label: string; prefill: string; source: string | null; isOverdraft?: boolean };
 
 /** Typed amount → minor units, or the Bahasa reason it can't be read. */
 const read = (s: string, currency: string): { value: bigint; error?: undefined } | { value: 0n; error: string } => {
@@ -114,6 +114,7 @@ export function OpeningForm({
                     onChange={(e) => setBankBalances((vs) => vs.map((v, j) => (j === i ? e.target.value : v)))}
                     placeholder={`Saldo di bank, mis. ${moneyExample(currency)}`}
                   />
+                  {b.isOverdraft && <p className="mt-1 text-right text-xs text-muted-foreground">Negatif = utang ke bank (PRK), dicatat di kredit.</p>}
                 </TableCell>
                 <TableCell />
               </TableRow>

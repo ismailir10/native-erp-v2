@@ -10,7 +10,8 @@ import { FsTable, type FsParts } from "@/components/app/fs-table";
 import { Money } from "@/components/app/money";
 import { StatusPill } from "@/components/app/status";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { UrlTabs } from "@/components/app/url-tabs";
 import { currencyNote, FxMissing, withFx } from "@/components/app/fx-missing";
 import { FxMissingError } from "@/lib/reports/fx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -23,7 +24,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
   const multi = client.entities.length > 1;
   const href = (code: string) => withParams(`${base}/ledger/${code}`, { period: period.key, entity: scope.value });
   const tab = typeof sp.tab === "string" ? sp.tab : "pl";
-  const combinedNote = `Gabungan adalah pandangan manajemen, bukan konsolidasi menurut SAK (yang berlaku untuk induk–anak). Saldo antar entitas (1190) dieliminasi.${
+  const combinedNote = `Gabungan adalah pandangan manajemen, bukan konsolidasi menurut SAK (yang berlaku untuk induk–anak). Saldo antar entitas (1190) saling meniadakan bila kedua sisinya sudah tercatat; saldo 1190 yang masih tampil belum ada pasangannya di entitas lain.${
     mixed ? " Entitas non-Rupiah dijabarkan: aset & liabilitas dengan kurs penutup, laba rugi dengan kurs rata-rata, ekuitas dengan kurs historis; selisihnya di akun 3900." : ""
   }`;
   const note = currencyNote(currency, mixed);
@@ -87,7 +88,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
       {header}
       <NextStep>Pilih nama akun untuk menelusuri buku besar sampai baris sumbernya.</NextStep>
       {scope.mode === "combined" && <p className="text-sm text-muted-foreground">{combinedNote}</p>}
-      <Tabs defaultValue={tab}>
+      <UrlTabs defaultValue={tab}>
         <TabsList>
           <TabsTrigger value="pl">Laba Rugi</TabsTrigger>
           <TabsTrigger value="bs">Neraca</TabsTrigger>
@@ -188,7 +189,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
             </Card>
           </TabsContent>
         )}
-      </Tabs>
+      </UrlTabs>
     </div>
   );
 }

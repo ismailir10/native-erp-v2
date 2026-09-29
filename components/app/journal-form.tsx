@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AccountPicker } from "@/components/app/account-picker";
 import { StatusPill } from "@/components/app/status";
 import { adjustmentAction } from "@/app/actions";
 import { formatMoney, parseMoney } from "@/lib/money";
@@ -29,7 +30,7 @@ const TEMPLATES: { label: string; memo: string; lines: Line[] }[] = [
   { label: "Piutang usaha", memo: "Pengakuan piutang atas penjualan belum dibayar", lines: [{ accountCode: "1130", debit: "", credit: "" }, { accountCode: "4100", debit: "", credit: "" }] },
 ];
 
-export function JournalForm({ clientId, entities, accounts, defaultDate }: { clientId: string; entities: { id: string; name: string; currency: string }[]; accounts: { code: string; name: string; entityId: string | null }[]; defaultDate: string }) {
+export function JournalForm({ clientId, entities, accounts, defaultDate }: { clientId: string; entities: { id: string; name: string; currency: string }[]; accounts: { code: string; name: string; group: string; entityId: string | null }[]; defaultDate: string }) {
   const router = useRouter();
   const [entityId, setEntityId] = useState(entities[0]?.id ?? "");
   const [date, setDate] = useState(defaultDate);
@@ -45,6 +46,11 @@ export function JournalForm({ clientId, entities, accounts, defaultDate }: { cli
   const error = parsed.flatMap((p) => [p.debit.error, p.credit.error]).find(Boolean);
   const balanced = dr === cr && dr > 0n && !error;
   const setLine = (i: number, patch: Partial<Line>) => setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
+  // Typed "152000000" reads back as "152.000.000" once the field is left, so a missing digit is visible.
+  const tidy = (i: number, side: "debit" | "credit") => {
+    const r = read(lines[i][side], currency);
+    if (!r.error && r.value > 0n) setLine(i, { [side]: formatMoney(r.value, currency, { bare: true }) });
+  };
   // A bank account belongs to one entity: another entity's books never use it (postJournal refuses it too).
   const usable = accounts.filter((a) => !a.entityId || a.entityId === entityId);
   const changeEntity = (id: string) => {
@@ -87,13 +93,10 @@ export function JournalForm({ clientId, entities, accounts, defaultDate }: { cli
             {lines.map((l, i) => (
               <TableRow key={i} className="border-t">
                 <TableCell className="p-2 pl-3">
-                  <Select value={l.accountCode} onValueChange={(v) => setLine(i, { accountCode: v as string })}>
-                    <SelectTrigger className="w-full min-w-64" aria-label={`Akun baris ${i + 1}`}><SelectValue placeholder="Pilih akun" /></SelectTrigger>
-                    <SelectContent>{usable.map((a) => <SelectItem key={a.code} value={a.code}>{a.code} {a.name}</SelectItem>)}</SelectContent>
-                  </Select>
+                  <AccountPicker value={l.accountCode} onChange={(v) => setLine(i, { accountCode: v })} options={usable} ariaLabel={`Akun baris ${i + 1}`} className="min-w-64" />
                 </TableCell>
-                <TableCell className="p-2"><Input aria-label={`Debit baris ${i + 1}`} aria-invalid={!!parsed[i].debit.error || undefined} inputMode="decimal" className="num text-right" value={l.debit} onChange={(e) => setLine(i, { debit: e.target.value, credit: e.target.value ? "" : l.credit })} placeholder={formatMoney(0n, currency, { bare: true })} /></TableCell>
-                <TableCell className="p-2"><Input aria-label={`Kredit baris ${i + 1}`} aria-invalid={!!parsed[i].credit.error || undefined} inputMode="decimal" className="num text-right" value={l.credit} onChange={(e) => setLine(i, { credit: e.target.value, debit: e.target.value ? "" : l.debit })} placeholder={formatMoney(0n, currency, { bare: true })} /></TableCell>
+                <TableCell className="p-2"><Input aria-label={`Debit baris ${i + 1}`} aria-invalid={!!parsed[i].debit.error || undefined} inputMode="decimal" className="num text-right" value={l.debit} onBlur={() => tidy(i, "debit")} onChange={(e) => setLine(i, { debit: e.target.value, credit: e.target.value ? "" : l.credit })} placeholder={formatMoney(0n, currency, { bare: true })} /></TableCell>
+                <TableCell className="p-2"><Input aria-label={`Kredit baris ${i + 1}`} aria-invalid={!!parsed[i].credit.error || undefined} inputMode="decimal" className="num text-right" value={l.credit} onBlur={() => tidy(i, "credit")} onChange={(e) => setLine(i, { credit: e.target.value, debit: e.target.value ? "" : l.debit })} placeholder={formatMoney(0n, currency, { bare: true })} /></TableCell>
                 <TableCell className="p-2">{lines.length > 2 && <Button variant="ghost" size="icon-sm" aria-label="Hapus baris" onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}><Trash2 /></Button>}</TableCell>
               </TableRow>
             ))}

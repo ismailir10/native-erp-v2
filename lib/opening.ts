@@ -45,6 +45,7 @@ export async function openingContext(db: Db, clientId: string) {
           .map((b) => ({
             accountCode: b.account.code,
             label: `${b.label} · ${b.number}`,
+            isOverdraft: b.isOverdraft,
             statementOpening: b.imports[0]?.openingBalance ?? null,
             source: b.imports[0] ? `Saldo awal di ${b.imports[0].fileName} (${formatDate(b.imports[0].periodStart)})` : null,
           })),

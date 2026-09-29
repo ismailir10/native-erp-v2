@@ -115,6 +115,10 @@ test("ledger import: checks, mapping, post, Kurs, Gabungan in IDR, client accoun
   await expect(ws).toContainText("Selisih Penjabaran Mata Uang Asing");
   await page.getByRole("tab", { name: "Neraca" }).click();
   await expect(page.getByText("Seimbang").first()).toBeVisible();
+  // The tab is kept in the URL: a reload (or a shared link) opens the same view.
+  await expect(page).toHaveURL(/tab=bs/);
+  await page.reload();
+  await expect(page.getByRole("tab", { name: "Neraca" })).toHaveAttribute("aria-selected", "true");
 
   // Client COA first: one entity with its own accounts opens in those accounts, each with its own ledger.
   // Clicks right after a navigation can land before hydration: retry each step until its effect shows.

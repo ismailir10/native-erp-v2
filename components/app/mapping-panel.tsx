@@ -12,6 +12,7 @@ import { MethodBadge } from "@/components/app/status";
 import { acceptMappingsAction, suggestMappingsAction } from "@/app/actions";
 import { cn } from "@/lib/utils";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { displaySourceCode } from "@/lib/ledger-import/code";
 
 export type MappingRow = {
   id: string;
@@ -166,7 +167,7 @@ export function MappingPanel({
                   <TableRow key={r.id} className="border-t align-top">
                     <TableCell className="whitespace-normal p-2 pl-3">
                       <div>
-                        <span className="num text-muted-foreground">{r.code.replace(/^NC:/, "")}</span> {r.name}
+                        <span className="num text-muted-foreground">{displaySourceCode(r.code)}</span> {r.name}
                       </div>
                       <div className="text-xs text-muted-foreground">
                         {r.entity}
