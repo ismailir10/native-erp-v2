@@ -29,7 +29,7 @@ Supported evidence formats include text PDFs, XLSX, XLS, CSV, Google Docs/Sheets
 
 ### Current experience and limits
 
-**Available in this implementation:** invitation-only login with email + password (Supabase Auth; admin and akuntan roles), dashboard-level Tanya Buku, shared client/company and period selectors, prioritized work, document evidence and company-context review, financial reports, and controlled month-end close. Staging and main use the same authenticated application screens with separate databases, users, secrets, and provider settings.
+**Available in this implementation:** invitation-only login with email + password (Supabase Auth; admin and akuntan roles), dashboard-level Tanya Buku, shared client/company and period selectors, prioritized work, document evidence and company-context review, financial reports, and controlled month-end close. Production (`main`) is the only deployed environment; the synthetic staging Supabase project backs local development and e2e Auth.
 
 **Tanya Buku supports bounded read-only questions:** close readiness, posted profit/revenue, cash and account balances, bank transfers to or from a named party in the month (count, totals, accounts they sit on), document search, and company context. Its portfolio answers are calculated with deterministic tools; unsupported questions say so. Answers retain the scope and period at submission, with source links and session-only history. Document-specific AI tools remain available within their existing budget controls; an AI answer plan with harmless slips is normalised, one that names an entity outside the chosen scope is ignored with a note, and Pengaturan shows the 30-day plan-rejection rate. Cross-client views compare companies in their own currencies; they do not consolidate them. Always-on agents and live bank feeds are not implemented.
 
@@ -126,8 +126,10 @@ Supabase organisation **Rightjet**, two projects in `ap-southeast-1`: `native-er
 | Vercel environment | Supabase project | `DEMO_MODE` | Who sees it |
 |---|---|---|---|
 | Production (`main`) | `native-erp-v2` | `false` | Invited accountants. **The real workspace**, see [docs/real-data.md](docs/real-data.md) |
-| Preview, git branch `staging` | `native-erp-v2-staging` | `true` | Invited users + Vercel protection. Synthetic pre-production |
-| Preview (PR branches) | `native-erp-v2-staging` | `true` | Invited users + Vercel protection |
+| Preview (on demand only, `vercel deploy`) | `native-erp-v2-staging` | `true` | Invited users + Vercel protection. Synthetic |
+
+Git deployments are on for `main` only (`vercel.json` → `git.deploymentEnabled`): PRs and other branches build no preview, so every
+merge to `main` is one production deploy.
 
 `vercel-build` (`scripts/vercel-build.sh`) then runs `prisma migrate deploy` on the non-pooling URL, seeds the demo **only if the
 database is empty**, runs the first-admin bootstrap, and builds. `npm run demo:reset` is destructive operator tooling: it removes all
@@ -157,15 +159,13 @@ session and credentials and is ignored by Git.
 
 ## Branch workflow
 
-Only `staging` and `main` are permanent branches. `staging` is the repository default and the base for new work.
-Create a temporary `task/<slug>` branch from current staging, open its PR against `staging`, and merge after CI passes.
-GitHub automatically deletes the merged task branch; remove its local copy after returning to staging.
-Promote tested staging to production with a separate `staging` → `main` PR using a **merge commit** to preserve ancestry.
-Both permanent branches are protected from deletion and force-push, and require the CI `check` result.
+`main` is the repository default, the base for new work and production. Create a temporary `task/<slug>` branch from current
+`main`, open its PR against `main`, and merge after CI passes — the merge deploys to production. GitHub automatically deletes the
+merged task branch; remove its local copy after returning to `main`. `staging` is frozen: kept, protected, no new work.
+Both branches are protected from deletion and force-push, and require the CI `check` result.
 
-Supabase mirrors git: project `native-erp-v2` (real workspace, git `main`) and project `native-erp-v2-staging` (synthetic demo,
-every preview). Nothing else. Staging keeps the `native-erp-v2-git-real-data-…vercel.app` domain for saved links; it serves the
-synthetic staging database.
+Supabase: project `native-erp-v2` (real workspace, git `main`) and project `native-erp-v2-staging` (synthetic demo: local-dev Auth,
+e2e from a laptop, on-demand previews). Nothing else.
 
 ## For contributors (humans and agents)
 Read [AGENTS.md](AGENTS.md) (also reachable as `CLAUDE.md`): the spec → build → ship loop, gates, and which skill (`.agents/skills/`) governs which folder.
