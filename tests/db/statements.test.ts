@@ -211,4 +211,15 @@ describe("equity changes, cash flow, other comprehensive income", () => {
     expect(cf.operating.find((i) => i.key === "LEASE_INTEREST")!.amount).toBe(2_124_338n);
     expect(cf.net).toBe(cf.closingCash - cf.openingCash);
   });
+
+  it("notes a posted deferred tax balance even where no PPh badan reconciliation applies", async () => {
+    const g = await makeGroup();
+    const id = async (code: string) => (await db.account.findFirstOrThrow({ where: { clientId: g.client.id, code } })).id;
+    await db.$transaction(async (tx) =>
+      postJournal(tx, { entityId: g.owner.entity.id, date: dateOnly(2026, 3, 31), kind: "ADJUSTMENT", memo: "Pajak tangguhan", lines: [{ accountId: await id("1270"), debit: 2n * J }, { accountId: await id("8110"), credit: 2n * J }] }),
+    );
+    const n = await financialNotes(db, { clientId: g.client.id, entityIds: [g.owner.entity.id] }, 2026, 6);
+    const note = n.notes.find((x) => x.title === "Pajak tangguhan")!;
+    expect(note.tables[0].rows).toEqual([["Aset pajak tangguhan", 2n * J]]);
+  });
 });

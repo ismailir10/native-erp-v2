@@ -72,4 +72,18 @@ describe("Saldo Awal from the statements", () => {
     const plug = (await db.journalLine.findMany({ where: { entryId: entry.id }, include: { account: true } })).find((l) => l.account.code === "3200");
     expect(plug?.credit).toBe(649_569n);
   });
+
+  it("offers only deposits listed on the earliest statement period, not ones placed later", async () => {
+    const g = await owner();
+    await importStatement(db, { bankAccountId: g.owner.banks[0].id, fileName: "smbc-mei.pdf", data: smbcGiroDepositPdf(), provider: null });
+    // A June statement listing a second deposit, opened in June: a movement, not an opening balance.
+    await db.statementImport.create({
+      data: {
+        firmId: g.client.firmId, bankAccountId: g.owner.banks[0].id, fileName: "smbc-juni.pdf", format: "SMBC",
+        periodStart: dateOnly(2026, 6, 1), periodEnd: dateOnly(2026, 6, 30), openingBalance: 12_485_186n, closingBalance: 12_485_186n, rowCount: 0, continuityOk: true,
+        deposits: [{ number: "0624DEP009999", product: "Deposito Berjangka", currency: "IDR", rate: "4,5%", maturity: "2026-09-30", idrBalance: "500000000" }],
+      },
+    });
+    expect((await openingContext(db, g.client.id))[0].deposits.map((d) => d.number)).toEqual(["0524DEP004097"]);
+  });
 });

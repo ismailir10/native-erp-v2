@@ -206,9 +206,14 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
     if (computed !== null && computed !== posted) rows.push(["Estimasi pajak tangguhan belum dicatat (catat di Pajak Badan)", computed - posted]);
     return rows;
   };
-  for (const e of entities.filter((x) => packApplies(x))) {
-    const p = await taxPack(db, scope.clientId, e.id, year, month);
-    if (!p || p.regime !== "NORMAL") continue;
+  for (const e of entities) {
+    const p = packApplies(e) ? await taxPack(db, scope.clientId, e.id, year, month) : null;
+    if (!p || p.regime !== "NORMAL") {
+      // No PPh badan reconciliation here (final regime, a person, other books), but a 1270/2320 balance on the Neraca still has its note.
+      const posted = await deferredRows(e.id, null);
+      if (posted.length) add(`Pajak tangguhan${entities.length > 1 ? ` · ${e.shortName}` : ""}`, ["Saldo pajak tangguhan yang tercatat di buku besar."], [{ columns: ["Uraian", "Jumlah"], rows: posted }]);
+      continue;
+    }
     add(`Pajak penghasilan${entities.length > 1 ? ` · ${e.shortName}` : ""}`, [`Rekonsiliasi laba komersial ke laba fiskal ${year} s.d. ${cur} (estimasi, bukan SPT).`], [
       {
         columns: ["Uraian", "Jumlah"],

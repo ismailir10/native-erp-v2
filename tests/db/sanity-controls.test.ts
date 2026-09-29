@@ -145,4 +145,16 @@ describe("sanity controls", () => {
     await post(pt, g.client.id, dateOnly(2026, 8, 6), "5100", "1120", 30_000_000n);
     expect((await runControls(db, g.client.id, 2026, 8)).find((c) => c.key === key)).toBeUndefined();
   });
+
+  it("reads assets and equity as the Neraca presents them: an intercompany credit is a liability, not negative assets", async () => {
+    const g = await makeGroup();
+    const pt = g.pt.entity.id;
+    await post(pt, g.client.id, dateOnly(2026, 8, 1), "1120", "3100", 60_000_000n);
+    await post(pt, g.client.id, dateOnly(2026, 8, 10), "6190", "1190", 100_000_000n); // the owner paid a PT expense
+    const controls = await runControls(db, g.client.id, 2026, 8);
+    expect(controls.find((c) => c.key === `nature-total:${pt}`)).toBeUndefined();
+    expect(controls.find((c) => c.key === `going-concern:${pt}`)?.detail).toBe(
+      "Ekuitas -Rp 40.000.000: liabilitas Rp 100.000.000 melebihi aset Rp 60.000.000. Nilai kelangsungan usaha dan ungkapkan rencana manajemen di CALK",
+    );
+  });
 });

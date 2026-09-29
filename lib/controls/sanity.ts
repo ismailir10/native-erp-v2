@@ -20,6 +20,8 @@ type Args = {
   entity: { id: string; shortName: string; functionalCurrency: string; kind: EntityKind };
   /** The client's *Bidang usaha* as typed (free text). */
   industry: string | null;
+  /** The Neraca's totals at period end (intercompany 1190 credits presented as liabilities, as the report shows them). */
+  bsTotals: { assets: bigint; liabilities: bigint; equity: bigint };
   tb: TbRow[];
   start: Date;
   end: Date;
@@ -36,8 +38,8 @@ export async function sanityControls(db: Db, a: Args): Promise<Control[]> {
   const control = (key: string, title: string, status: Control["status"], detail: string, href?: string) =>
     out.push({ key: `${key}:${e.id}`, title, scope: e.shortName, status, detail, href, ack: status === "REVIEW" ? a.acks.get(`${key}:${e.id}`) : undefined });
 
-  // 1. Total assets can't be negative.
-  const assets = a.tb.filter((r) => r.account.type === "ASET").reduce((s, r) => s + r.net, 0n);
+  // 1. Total assets can't be negative — as the Neraca presents them (an intercompany 1190 credit is a liability there).
+  const assets = a.bsTotals.assets;
   if (assets < 0n) control("nature-total", "Total aset negatif", "FAIL", `Total aset ${fmt(assets)} — tidak mungkin; cek klasifikasi transaksi`, `${a.base}/reports?entity=${e.id}`);
 
   // 2. Balance-sheet accounts against their nature (contra accounts already carry the opposite normal balance).
@@ -83,8 +85,7 @@ export async function sanityControls(db: Db, a: Args): Promise<Control[]> {
 
   // 6. Capital deficiency: a company whose liabilities exceed its assets (going concern, SAK EP / PSAK 1).
   if (e.kind !== "PERORANGAN" && assets >= 0n) {
-    const liabilities = -a.tb.filter((r) => r.account.type === "LIABILITAS").reduce((s, r) => s + r.net, 0n);
-    const equity = assets - liabilities;
+    const { liabilities, equity } = a.bsTotals;
     if (equity < 0n) {
       control(
         "going-concern",

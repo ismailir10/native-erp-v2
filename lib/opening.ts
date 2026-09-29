@@ -32,7 +32,7 @@ export async function openingContext(db: Db, clientId: string) {
   });
   const imports = await db.statementImport.findMany({
     where: { bankAccount: { entityId: { in: entities.map((e) => e.id) } } },
-    select: { fileName: true, deposits: true, bankAccount: { select: { entityId: true } } },
+    select: { fileName: true, deposits: true, periodStart: true, bankAccount: { select: { entityId: true } } },
     orderBy: { createdAt: "asc" },
   });
 
@@ -50,7 +50,12 @@ export async function openingContext(db: Db, clientId: string) {
           lines: existing.lines.map((l) => ({ code: l.account.code, name: l.account.name, debit: l.debit, credit: l.credit })),
         },
         firstTransactionDate: firstDate,
-        deposits: depositsOf(imports.filter((i) => i.bankAccount.entityId === e.id), e.functionalCurrency),
+        // Only deposits evidenced at the opening date: those listed on the entity's earliest statement period. A deposit placed
+        // later is a movement in the statements, not an opening balance.
+        deposits: depositsOf(
+          imports.filter((i) => i.bankAccount.entityId === e.id && firstImport && +i.periodStart === +firstImport.periodStart),
+          e.functionalCurrency,
+        ),
         loanRows: loanRows.find((l) => l.entityId === e.id)?._count ?? 0,
         suggestedDate: suggested,
         banks: e.bankAccounts

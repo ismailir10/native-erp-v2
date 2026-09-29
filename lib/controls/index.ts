@@ -149,7 +149,7 @@ export async function runControls(db: Db, clientId: string, year: number, month:
     });
 
     const sane = [
-      ...(await sanityControls(db, { clientId, entity: e, industry, tb, start, end, base, acks, statementMissing })),
+      ...(await sanityControls(db, { clientId, entity: e, industry, bsTotals: bs.totals, tb, start, end, base, acks, statementMissing })),
       ...(await anomalyControls(db, { clientId, entity: e, year, month, base, acks })),
     ];
     controls.push(
