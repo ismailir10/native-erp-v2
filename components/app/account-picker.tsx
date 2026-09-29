@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Combobox as ComboboxPrimitive } from "@base-ui/react";
 import { ChevronDownIcon } from "lucide-react";
 import { ComboboxCollection, ComboboxContent, ComboboxEmpty, ComboboxGroup, ComboboxItem, ComboboxLabel, ComboboxList } from "@/components/ui/combobox";
@@ -12,7 +12,8 @@ type Group = { value: string; items: Item[] };
 
 /**
  * Searchable account select: looks like a Select, opens a list with a search box on top. Type a code ("6150") or part
- * of a name ("pemasaran"). `extra` items (e.g. "+ Buat akun baru") come first, outside any group.
+ * of a name ("pemasaran"). `extra` items (e.g. "+ Buat akun baru") come first, outside any group. The first match is highlighted,
+ * so Enter picks it; keys typed on the closed trigger open the list with them already in the search (none lost while it opens).
  */
 export function AccountPicker({
   value,
@@ -39,10 +40,20 @@ export function AccountPicker({
     return [...(extra.length ? [{ value: "", items: extra }] : []), ...[...byGroup].map(([g, items]) => ({ value: g, items }))];
   }, [options, extra]);
   const selected = useMemo(() => groups.flatMap((g) => g.items).find((i) => i.value === value) ?? null, [groups, value]);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
 
   return (
     <ComboboxPrimitive.Root
       items={groups}
+      open={open}
+      onOpenChange={(next: boolean) => {
+        setOpen(next);
+        if (!next) setQuery("");
+      }}
+      inputValue={query}
+      onInputValueChange={(v: string) => setQuery(v)}
+      autoHighlight
       value={selected}
       onValueChange={(v: Item | null) => v && onChange(v.value)}
       itemToStringLabel={(i: Item) => i.label}
@@ -52,6 +63,12 @@ export function AccountPicker({
     >
       <ComboboxPrimitive.Trigger
         aria-label={ariaLabel}
+        onKeyDown={(e) => {
+          if (e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey || e.key === " ") return;
+          e.preventDefault();
+          setQuery((q) => (open ? q : "") + e.key);
+          setOpen(true);
+        }}
         className={cn(
           "flex h-8 w-full items-center justify-between gap-1.5 rounded-lg border border-input bg-transparent py-2 pr-2 pl-2.5 text-left text-sm whitespace-nowrap transition-colors outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50",
           className,

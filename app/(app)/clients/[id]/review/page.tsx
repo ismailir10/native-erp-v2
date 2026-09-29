@@ -8,6 +8,8 @@ import { ScopeBar } from "@/components/app/scope-bar";
 import { ReviewQueue } from "@/components/app/review-queue";
 import { isGenericKey } from "@/lib/import/normalize";
 import { simpleGuessRows } from "@/lib/ai/retry";
+import { resolveAiConfig } from "@/lib/settings/ai";
+import { getCurrentMember } from "@/lib/tenant";
 
 export default async function ReviewPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, base, scope, period, scopeLabel, entityOptions, periodOptions } = await loadClientPage(params, searchParams);
@@ -17,6 +19,8 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
     orderBy: [{ date: "asc" }, { rowNumber: "asc" }],
   });
   const simpleGuesses = (await simpleGuessRows(prisma, { clientId: client.id, entityIds: scope.entityIds, through: period.end })).length;
+  const ai = await resolveAiConfig(prisma);
+  const member = await getCurrentMember();
   const accounts = await prisma.account.findMany({ where: { clientId: client.id, isBank: false, isSuspense: false }, orderBy: { code: "asc" } });
   const similarCount = new Map<string, number>();
   for (const t of txs) similarCount.set(`${t.merchantKey}|${t.direction}`, (similarCount.get(`${t.merchantKey}|${t.direction}`) ?? 0) + 1);
@@ -49,7 +53,7 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
       ) : (
         <NextStep href={`${base}/close?entity=${scope.value}&period=${period.key}`} cta="Tutup buku" tone="done">Tidak ada transaksi menunggu review dalam cakupan ini.</NextStep>
       )}
-      <ReviewQueue items={items} accounts={options} scope={{ entityIds: scope.entityIds, period: period.key }} clientId={client.id} simpleGuesses={simpleGuesses} />
+      <ReviewQueue items={items} accounts={options} scope={{ entityIds: scope.entityIds, period: period.key }} clientId={client.id} simpleGuesses={simpleGuesses} aiReady={Boolean(ai.apiKey && ai.model)} canSetUpAi={member.role === "ADMIN"} />
     </div>
   );
 }

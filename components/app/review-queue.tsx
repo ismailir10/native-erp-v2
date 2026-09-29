@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Check, CheckCheck, Loader2 } from "lucide-react";
@@ -78,6 +79,8 @@ export function ReviewQueue({
   scope,
   clientId,
   simpleGuesses = 0,
+  aiReady = true,
+  canSetUpAi = false,
 }: {
   items: ReviewItem[];
   accounts: AccountOption[];
@@ -85,10 +88,15 @@ export function ReviewQueue({
   clientId?: string;
   /** Lines in scope that only have the simple guess (the AI gave none at import): offer to ask again. */
   simpleGuesses?: number;
+  /** An AI key and model are set (Pengaturan or env): asking again can work. */
+  aiReady?: boolean;
+  /** The member may set the AI key (admin): the banner links to Pengaturan. */
+  canSetUpAi?: boolean;
 }) {
   const router = useRouter();
   const [done, setDone] = useState<Set<string>>(new Set());
-  const [active, setActive] = useState(0);
+  // The active card is tracked by id, so refreshes and accepts elsewhere in the list never move it to another transaction.
+  const [activeId, setActiveId] = useState<string | null>(null);
   const draftsJson = useSyncExternalStore(subscribe, snapshot, () => "{}");
   const choice = useMemo<Record<string, Choice>>(() => JSON.parse(draftsJson), [draftsJson]);
   // Only the bulk "serupa" action blocks the queue; single accepts are optimistic (the card leaves at once, saves run in order).
@@ -98,6 +106,15 @@ export function ReviewQueue({
   const queue = useRef<Promise<void>>(Promise.resolve());
   const [saving, setSaving] = useState(0);
   const visible = useMemo(() => items.filter((i) => !done.has(i.id)), [items, done]);
+  const active = Math.max(0, visible.findIndex((i) => i.id === activeId));
+  const focus = (idx: number) => {
+    const next = visible[Math.max(0, Math.min(idx, visible.length - 1))];
+    if (next) setActiveId(next.id);
+  };
+  // Keyboard moves and accepts bring the active card into view (the list can be long).
+  useEffect(() => {
+    if (activeId) document.querySelector(`[data-review-id="${activeId}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [activeId]);
   const nameOf = (code: string | null) => accounts.find((a) => a.code === code)?.name ?? "—";
 
   const suggestion = (i: ReviewItem): Choice => ({ code: i.suggestedCode ?? "", tax: i.taxTag ?? "none", rule: false });
@@ -135,7 +152,9 @@ export function ReviewQueue({
     if (!c.code) return void toast.error("Pilih akun dulu");
     // Optimistic: the next card is active at once, so Enter keeps working while this one saves.
     setDone((d) => new Set(d).add(i.id));
-    setActive((a) => Math.max(0, Math.min(a, visible.length - 2)));
+    // Accepting the active card moves to the next one (or the previous at the end); accepting another card keeps the active one.
+    const at = visible.findIndex((v) => v.id === i.id);
+    if (at === active) setActiveId((visible[at + 1] ?? visible[at - 1])?.id ?? null);
     inFlight.current += 1;
     setSaving(inFlight.current);
     const save = () => reviewAction({ bankTxId: i.id, accountCode: c.code, taxTag: c.tax === "none" ? null : (c.tax as never), createRule: c.rule }).then((r) => {
@@ -148,7 +167,13 @@ export function ReviewQueue({
         toast.error(r.error);
       } else {
         clearDraft(i.id);
-        toast.success(`${c.code} ${nameOf(c.code)}`, { description: c.rule ? "Aturan baru dibuat" : "Buku Besar diperbarui · pilihan ini dipakai lagi di impor berikutnya" });
+        toast.success(`${c.code} ${nameOf(c.code)}`, {
+          description: c.rule
+            ? "Aturan baru dibuat"
+            : r.learned
+              ? "Buku Besar diperbarui · pilihan ini dipakai lagi di impor berikutnya"
+              : "Buku Besar diperbarui · keterangannya tidak menyebut pengirim atau penerima, jadi tidak diingat",
+        });
       }
       settle();
     });
@@ -164,6 +189,9 @@ export function ReviewQueue({
     setBusy(null);
     if (!r.ok) return void toast.error(r.error);
     for (const id of r.ids) clearDraft(id);
+    // Keep the place in the list: the first remaining card from the active one on.
+    const left = new Set(r.ids);
+    setActiveId((visible.slice(active).find((v) => !left.has(v.id)) ?? visible.find((v) => !left.has(v.id)))?.id ?? null);
     setDone((d) => new Set([...d, ...r.ids]));
     toast.success(`${r.ids.length} transaksi serupa dicatat ke ${c.code} ${nameOf(c.code)}`);
     router.refresh();
@@ -185,8 +213,10 @@ export function ReviewQueue({
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
       if (el?.closest?.("input, textarea, [role=combobox], [role=listbox], [role=dialog]")) return;
-      if (e.key === "ArrowDown" || e.key === "j") { e.preventDefault(); setActive((a) => Math.min(a + 1, visible.length - 1)); }
-      if (e.key === "ArrowUp" || e.key === "k") { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
+      // Enter on a focused button or checkbox does that control's own action, not "accept the active card".
+      if (e.key === "Enter" && el?.closest?.("button, a, [role=button], [role=checkbox], [role=option], select")) return;
+      if (e.key === "ArrowDown" || e.key === "j") { e.preventDefault(); focus(active + 1); }
+      if (e.key === "ArrowUp" || e.key === "k") { e.preventDefault(); focus(active - 1); }
       if (e.key === "Enter" && visible[active] && busy === null) { e.preventDefault(); accept(visible[active]); }
     };
     window.addEventListener("keydown", onKey);
@@ -220,10 +250,23 @@ export function ReviewQueue({
       </div>
       {simpleGuesses > 0 && clientId && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-review/40 bg-review-subtle px-4 py-3 text-sm" data-testid="simple-guesses">
-          <span>{simpleGuesses} transaksi hanya punya tebakan sederhana karena AI tidak memberi saran saat impor.</span>
-          <Button variant="outline" size="sm" disabled={asking} onClick={askAi}>
-            {asking && <Loader2 className="animate-spin" />} Minta saran AI untuk {simpleGuesses} transaksi
-          </Button>
+          {aiReady ? (
+            <>
+              <span>{simpleGuesses} transaksi hanya punya tebakan sederhana karena AI tidak memberi saran saat impor.</span>
+              <Button variant="outline" size="sm" disabled={asking} onClick={askAi}>
+                {asking && <Loader2 className="animate-spin" />} Minta saran AI untuk {simpleGuesses} transaksi
+              </Button>
+            </>
+          ) : (
+            <>
+              <span>{simpleGuesses} transaksi hanya punya tebakan sederhana karena AI belum diatur. Pilih akunnya langsung{canSetUpAi ? ", atau atur AI dulu." : "; admin bisa mengisi kunci AI di Pengaturan."}</span>
+              {canSetUpAi && (
+                <Button variant="outline" size="sm" render={<Link href="/settings" />}>
+                  Atur AI di Pengaturan
+                </Button>
+              )}
+            </>
+          )}
         </div>
       )}
       <ul className="space-y-2" data-testid="review-list">
@@ -234,8 +277,9 @@ export function ReviewQueue({
           return (
             <li
               key={i.id}
-              onClick={() => setActive(idx)}
+              onClick={() => setActiveId(i.id)}
               data-testid="review-item"
+              data-review-id={i.id}
               className={cn("rounded-lg border bg-card p-4", idx === active && "ring-2 ring-primary/40")}
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
