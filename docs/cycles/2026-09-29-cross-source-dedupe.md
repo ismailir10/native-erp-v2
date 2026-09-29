@@ -23,6 +23,8 @@ transactions twice; the bank reconciliation would FAIL only after the fact.
 - T1: `lib/import/pipeline.ts` (exact hash first, then one-to-one date + amount twins, balance as tie-break; note), `tests/db/import-workbook.test.ts`.
   Found while testing: requiring equal balances missed every line after one the Excel copy lacked — the balance now only chooses the twin.
 
+- Review of #53: matching across sources now needs coverage — every line already imported within the new file's statement period has a twin in the file; a supplement or partial slice keeps its lines and gets a note to check the bank reconciliation. The dedupe runs again inside the write transaction under a per-bank-account advisory lock; if a concurrent import changed the answer, the import refuses and asks to retry. Tests: supplement kept, concurrent copies never double-post. Real files unchanged (31 of 31 skipped, recon PASS). Gates: `Tests 555 passed`, build ✓, e2e 14 passed, `verify:books` ALL PASS.
+
 ## Verification
 - Real files (local scratch firm, reseeded after): Belifi Excel copy May–Jul, then the bank's June PDF → `pdfRows 31, duplicates 31 (18 by hash + 13 from the other source), new rows 0`; recon PASS May Rp 156.680.500, June Rp 4.635.500, July Rp 359.000.
 - Gates: lint ✓ typecheck ✓ `Test Files 75 passed (75) · Tests 553 passed (553)` · build ✓ · `npx playwright test` → `14 passed` · `verify:books` → `ALL PASS — 1477 pemeriksaan saldo cocok dengan ground truth.`

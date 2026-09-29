@@ -1,9 +1,9 @@
-import type { Db } from "@/lib/db";
+import type { Db, Tx } from "@/lib/db";
 import type { ClassifyMethod, Direction } from "@/lib/generated/prisma/enums";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { parseStatementSections } from "@/lib/import/parsers";
 import { checkContinuity, merchantKey, rowHash } from "@/lib/import/normalize";
-import { ParseError } from "@/lib/import/types";
+import { ParseError, type ParsedStatement } from "@/lib/import/types";
 import { matchRule, sortRules } from "@/lib/classify/rules";
 import { financingSuggestion } from "@/lib/classify/financing";
 import { matchTransfers, type TransferCandidate } from "@/lib/classify/transfer";
@@ -69,38 +69,11 @@ export async function importStatement(
     throw new ParseError(`Periode ${formatPeriod(lockedHit.date.getUTCFullYear(), lockedHit.date.getUTCMonth() + 1)} sudah ditutup. Buka periode dulu atau pilih file lain.`);
   }
 
-  // Dedupe against what's already imported for this bank account. First the same row again (same file: same hash); then the same bank
-  // line from another source of the same statement — a PDF and the accountant's Excel copy word descriptions differently, and a PDF may
-  // print the balance only once a day — matched one to one on date and amount (a line dropped wrongly or twice shows in the bank
-  // reconciliation either way).
+  // Dedupe against what's already imported for this bank account (see `dedupe`); checked again under the account's lock when writing.
   const hashes = st.rows.map(rowHash);
-  const dates = st.rows.map((r) => +r.date);
-  const already = st.rows.length
-    ? await db.bankTransaction.findMany({
-        where: { bankAccountId: bankAccount.id, date: { gte: new Date(Math.min(...dates)), lte: new Date(Math.max(...dates)) } },
-        select: { id: true, hash: true, date: true, amount: true, balance: true },
-        orderBy: [{ date: "asc" }, { rowNumber: "asc" }],
-      })
-    : [];
-  const unmatched = new Set(already.map((t) => t.id));
-  const duplicate = hashes.map((h) => {
-    const same = already.find((t) => t.hash === h && unmatched.has(t.id));
-    if (same) unmatched.delete(same.id);
-    return !!same;
-  });
-  let fromOtherSource = 0;
-  st.rows.forEach((r, i) => {
-    if (duplicate[i]) return;
-    // The balance only picks among twins: when one source missed a line, every later balance of it is off, yet the lines are the same.
-    const twins = already.filter((t) => unmatched.has(t.id) && +t.date === +r.date && t.amount === r.amount);
-    const twin = twins.find((t) => t.balance !== null && t.balance === r.balance) ?? twins[0];
-    if (!twin) return;
-    unmatched.delete(twin.id);
-    duplicate[i] = true;
-    fromOtherSource++;
-  });
-  const fresh = st.rows.map((r, i) => ({ r, hash: hashes[i] })).filter((_, i) => !duplicate[i]);
-  const notes = [...(st.notes ?? []), ...(fromOtherSource ? [`${fromOtherSource} baris sama dengan mutasi yang sudah diimpor dari file lain (tanggal dan nominal sama, keterangan berbeda); dilewati.`] : [])];
+  const seen = await dedupe(db, bankAccount.id, st, hashes);
+  const fresh = st.rows.map((r, i) => ({ r, hash: hashes[i] })).filter((_, i) => !seen.duplicate[i]);
+  const notes = [...(st.notes ?? []), ...seen.notes];
 
   const items = fresh.map(({ r, hash }, i) => ({
     id: `new-${i}`,
@@ -178,6 +151,10 @@ export async function importStatement(
 
   const importId = await db.$transaction(
     async (tx) => {
+      // Two copies of a statement imported at once must not both pass the dedupe: serialise per bank account and look again.
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`import:${bankAccount.id}`}, 0))::text`;
+      const now = await dedupe(tx, bankAccount.id, st, hashes);
+      if (now.duplicate.some((d, i) => d !== seen.duplicate[i])) throw new ParseError("Rekening ini baru saja menerima impor lain. Ulangi impor file ini.");
       const imp = await tx.statementImport.create({
         data: {
           firmId: client.firmId,
@@ -277,4 +254,53 @@ function monthsOf(start: Date, end: Date): string[] {
   const out: string[] = [];
   for (let k = index(start); k <= index(end); k++) out.push(formatPeriod(Math.floor(k / 12), (k % 12) + 1));
   return out;
+}
+
+/**
+ * Lines of `st` already in the books of the bank account. First the same row again (same file: same hash). Then, only when the file
+ * covers what is already there — every line already imported within the file's statement period has a twin (same date and amount) in
+ * the file — the same bank line from another source of that statement: a PDF and the accountant's Excel copy word descriptions
+ * differently, and a PDF may print the balance only once a day. Twins are matched one to one; the balance only picks among them (a
+ * source that missed a line has every later balance off). A file that doesn't cover the period (a supplement, a partial slice) keeps its
+ * lines, with a note when some look like lines already there.
+ */
+async function dedupe(db: Db | Tx, bankAccountId: string, st: ParsedStatement, hashes: string[]) {
+  const already = await db.bankTransaction.findMany({
+    where: { bankAccountId, date: { gte: st.periodStart, lte: st.periodEnd } },
+    select: { id: true, hash: true, date: true, amount: true, balance: true },
+    orderBy: [{ date: "asc" }, { rowNumber: "asc" }],
+  });
+  const unmatched = new Set(already.map((t) => t.id));
+  const duplicate = hashes.map((h) => {
+    const same = already.find((t) => t.hash === h && unmatched.has(t.id));
+    if (same) unmatched.delete(same.id);
+    return !!same;
+  });
+  // Coverage: every remaining line already imported in the period must have a twin among the file's remaining lines.
+  const key = (d: Date, a: bigint) => `${+d}|${a}`;
+  const offered = new Map<string, number>();
+  st.rows.forEach((r, i) => !duplicate[i] && offered.set(key(r.date, r.amount), (offered.get(key(r.date, r.amount)) ?? 0) + 1));
+  const needed = new Map<string, number>();
+  for (const t of already.filter((x) => unmatched.has(x.id))) needed.set(key(t.date, t.amount), (needed.get(key(t.date, t.amount)) ?? 0) + 1);
+  const covers = [...needed].every(([k, n]) => (offered.get(k) ?? 0) >= n);
+  let fromOtherSource = 0;
+  let lookAlike = 0;
+  st.rows.forEach((r, i) => {
+    if (duplicate[i]) return;
+    const twins = already.filter((t) => unmatched.has(t.id) && +t.date === +r.date && t.amount === r.amount);
+    if (!twins.length) return;
+    if (!covers) {
+      lookAlike++;
+      return;
+    }
+    const twin = twins.find((t) => t.balance !== null && t.balance === r.balance) ?? twins[0];
+    unmatched.delete(twin.id);
+    duplicate[i] = true;
+    fromOtherSource++;
+  });
+  const notes = [
+    ...(fromOtherSource ? [`${fromOtherSource} baris sama dengan mutasi yang sudah diimpor dari file lain (tanggal dan nominal sama, keterangan berbeda); dilewati.`] : []),
+    ...(lookAlike ? [`${lookAlike} baris bertanggal dan bernominal sama dengan mutasi yang sudah ada, tetapi file ini tidak mencakup semua mutasi periodenya, jadi tetap diimpor. Periksa Rekonsiliasi bank bulan itu.`] : []),
+  ];
+  return { duplicate, notes };
 }
