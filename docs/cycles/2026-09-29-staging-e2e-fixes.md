@@ -104,7 +104,7 @@ capability** — L11 deletes a client's posted entries (admin-only, typed confir
       optimistic accept, *Simpan untuk N serupa*) — accept: e2e: change account, accept 3 others, reload → draft kept; one click *Simpan*
       saves; serupa with chosen account; Enter ×3 fast accepts 3.
 - [x] T5 M2 drawer *Ubah akun* — accept: e2e reclass from the drawer moves the ledger; locked month shows the lock error.
-- [ ] T6 H4 AI timeouts + Bahasa errors + *Minta saran AI* on Review — accept: DB test with MockProvider updates HEURISTIC rows only,
+- [x] T6 H4 AI timeouts + Bahasa errors + *Minta saran AI* on Review — accept: DB test with MockProvider updates HEURISTIC rows only,
       respects caps; unit test for timeout copy.
 - [ ] T7 H5 draft guard vs posted adjustment + no Prive for companies — accept: DB tests (guard blocks post and explains; CV still may use 3300).
 - [ ] T8 M6 control start + M8 confirm dialogs — accept: DB test May-before-opening PASS, gap after start still REVIEW; e2e close asks first.
@@ -121,10 +121,12 @@ capability** — L11 deletes a client's posted entries (admin-only, typed confir
 - T3: lib/import/normalize.ts (isGenericKey, BI FAST with a space), lib/review.ts, lib/import/pipeline.ts, review + client settings pages — keys naming no counterparty are never learned, never matched from older memories, never a rule (Bahasa error) and never grouped as serupa.
 - T4: components/app/review-queue.tsx, lib/review.ts, app/actions.ts, review page, e2e/review-safety.spec.ts — drafts in sessionStorage (useSyncExternalStore) survive reload/remount, *Belum disimpan* + beforeunload (also while saves run), searchable non-modal AccountPicker, optimistic Terima/Enter with a *Menyimpan N…* indicator and rollback on error, *Simpan untuk N serupa* applies the chosen account (acceptSimilar choice → ids), count shown from the cards.
 - T5: components/app/ledger-table.tsx, lib/reports/account-ledger.ts, lib/coa/options.ts (shared with Review), ledger/[code] page, e2e/ledger-reclass.spec.ts — the drawer of a bank-derived line has *Ubah akun* (searchable picker) posting through reviewAction (RECLASS of the difference + memory); a locked month shows the lock message.
+- T6: lib/ai/provider.ts (AI_TIMEOUT_MS 90 s, AI_LONG_TIMEOUT_MS 180 s, env overrides), lib/ai/classify.ts (aiFailureNote), lib/ai/retry.ts (simpleGuessRows, suggestAgainWithAi), app/actions.ts (suggestAgainAction; timeout copy in close review/explain), review page + queue banner *Minta saran AI untuk N transaksi*, close-review copy 3 menit, .env.example.
 ## Verification
 - T1 gate: lint ✓ · typecheck ✓ · Test Files 80 passed (80) · Tests 578 passed (578) (new: 700 mappings incl. 120 new accounts in one call; infraErrorMessage).
 - T2 gate: lint ✓ · typecheck ✓ · Test Files 80 passed (80) · Tests 579 passed (579) (new: refuse other entity's bank, own bank posts, legacy leftover flagged, over-clear refused, exact clear accepted, control gone).
 - T3 gate: lint ✓ · typecheck ✓ · Test Files 80 passed (80) · Tests 581 passed (581) · demo:reset + verify:books → ALL PASS — 1525 pemeriksaan saldo cocok dengan ground truth.
 - T4 gate: lint ✓ · typecheck ✓ · Test Files 80 passed (80) · Tests 582 passed (582); e2e review-safety 1 passed, investor-demo 2 passed; screenshot checked.
 - T5 gate: lint ✓ · typecheck ✓ · Test Files 80 passed (80) · Tests 582 passed (582); e2e ledger-reclass 1 passed.
+- T6 gate: lint ✓ · typecheck ✓ · Test Files 81 passed (81) · Tests 584 passed (584) (new: retry touches only simple-guess lines, one call per unique key, nothing posted; Bahasa timeout note).
 ## Ship Notes

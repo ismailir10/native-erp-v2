@@ -10,7 +10,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AccountPicker } from "@/components/app/account-picker";
 import { MethodBadge } from "@/components/app/status";
-import { acceptSimilarAction, reviewAction } from "@/app/actions";
+import { acceptSimilarAction, reviewAction, suggestAgainAction } from "@/app/actions";
 import { formatMoney } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
@@ -72,7 +72,20 @@ const subscribe = (l: () => void) => {
   return () => void listeners.delete(l);
 };
 
-export function ReviewQueue({ items, accounts, scope }: { items: ReviewItem[]; accounts: AccountOption[]; scope: { entityIds: string[]; period: string } }) {
+export function ReviewQueue({
+  items,
+  accounts,
+  scope,
+  clientId,
+  simpleGuesses = 0,
+}: {
+  items: ReviewItem[];
+  accounts: AccountOption[];
+  scope: { entityIds: string[]; period: string };
+  clientId?: string;
+  /** Lines in scope that only have the simple guess (the AI gave none at import): offer to ask again. */
+  simpleGuesses?: number;
+}) {
   const router = useRouter();
   const [done, setDone] = useState<Set<string>>(new Set());
   const [active, setActive] = useState(0);
@@ -153,6 +166,18 @@ export function ReviewQueue({ items, accounts, scope }: { items: ReviewItem[]; a
     router.refresh();
   };
 
+  const [asking, setAsking] = useState(false);
+  const askAi = async () => {
+    if (!clientId) return;
+    setAsking(true);
+    const r = await suggestAgainAction(clientId, scope);
+    setAsking(false);
+    if (!r.ok) return void toast.error(r.error);
+    if (r.updated > 0) toast.success(`${r.updated} dari ${r.rows} transaksi mendapat usulan AI`, { description: r.note });
+    else toast.error(r.note ?? "AI belum memberi usulan untuk transaksi ini. Pilih akunnya langsung.");
+    router.refresh();
+  };
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
@@ -190,6 +215,14 @@ export function ReviewQueue({ items, accounts, scope }: { items: ReviewItem[]; a
         <span><Kbd>Enter</Kbd> terima usulan</span>
         {savingNote}
       </div>
+      {simpleGuesses > 0 && clientId && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-review/40 bg-review-subtle px-4 py-3 text-sm" data-testid="simple-guesses">
+          <span>{simpleGuesses} transaksi hanya punya tebakan sederhana karena AI tidak memberi saran saat impor.</span>
+          <Button variant="outline" size="sm" disabled={asking} onClick={askAi}>
+            {asking && <Loader2 className="animate-spin" />} Minta saran AI untuk {simpleGuesses} transaksi
+          </Button>
+        </div>
+      )}
       <ul className="space-y-2" data-testid="review-list">
         {visible.map((i, idx) => {
           const c = get(i);

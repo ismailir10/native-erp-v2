@@ -35,7 +35,8 @@ import { explainControl, ExplainError, type ControlExplanation } from "@/lib/con
 import { dismissProposal, postProposal } from "@/lib/adjust/proposals";
 import { postSuspenseCorrection, SUSPENSE_NOT_DISMISSABLE, SUSPENSE_PREFIX } from "@/lib/adjust/suspense";
 import { AiBudgetError } from "@/lib/ai/budget";
-import { AiAnswerError } from "@/lib/ai/provider";
+import { AI_LONG_TIMEOUT_MS, AiAnswerError } from "@/lib/ai/provider";
+import { suggestAgainWithAi } from "@/lib/ai/retry";
 import { acceptCheck, LedgerImportError, postImport, stageImport } from "@/lib/ledger-import/post";
 import { acceptMappings, MappingError, suggestMappings } from "@/lib/ledger-import/mapping";
 import { infraErrorMessage } from "@/lib/db-errors";
@@ -106,6 +107,22 @@ export async function reviewAction(input: { bankTxId: string; accountCode: strin
     await reviewTransaction(prisma, { ...input, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${clientId}`, "layout");
     return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** *Minta saran AI* on Review for lines that only have the simple guess (lib/ai/retry.ts). Suggestions only; nothing posts. */
+export async function suggestAgainAction(clientId: string, scope: { entityIds: string[]; period: string }): Promise<Result<{ rows: number; updated: number; note?: string }>> {
+  try {
+    const client = await getClientForFirm(clientId);
+    if (!scope || !/^(19|20|21)\d{2}-(0[1-9]|1[0-2])$/.test(scope.period) || !scope.entityIds.length || scope.entityIds.some((id) => !client.entities.some((e) => e.id === id))) return { ok: false, error: "Cakupan review tidak valid. Muat ulang halaman." };
+    const provider = await resolveProvider(prisma);
+    if (!provider) return { ok: false, error: "AI belum diatur di Pengaturan, jadi belum ada saran AI. Pilih akunnya langsung." };
+    const through = new Date(Date.UTC(Number(scope.period.slice(0, 4)), Number(scope.period.slice(5)), 0));
+    const r = await suggestAgainWithAi(prisma, { clientId: client.id, entityIds: scope.entityIds, through, provider });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, rows: r.rows, updated: r.updated, note: r.note };
   } catch (e) {
     return fail(e);
   }
@@ -460,7 +477,11 @@ export async function closeReviewAction(clientId: string, year: number, month: n
     return { ok: true, review: await reviewClose(prisma, client.firmId, client.id, year, month, provider) };
   } catch (e) {
     if (e instanceof AiBudgetError || e instanceof AiAnswerError) return { ok: false, error: e.message };
-    if (e instanceof Error && (e.name === "TimeoutError" || /^(AI \d|Model )/.test(e.message))) {
+    if (e instanceof Error && e.name === "TimeoutError") {
+      console.error(e);
+      return { ok: false, error: `AI tidak menjawab dalam ${Math.round(AI_LONG_TIMEOUT_MS / 60_000)} menit. Kontrol tetap berjalan; coba lagi nanti.` };
+    }
+    if (e instanceof Error && /^(AI \d|Model )/.test(e.message)) {
       console.error(e);
       return { ok: false, error: "AI tidak tersedia saat ini. Kontrol tetap berjalan; coba lagi nanti." };
     }
@@ -480,7 +501,11 @@ export async function explainControlAction(clientId: string, year: number, month
     return { ok: true, explanation };
   } catch (e) {
     if (e instanceof AiBudgetError || e instanceof AiAnswerError || e instanceof ExplainError) return { ok: false, error: e.message };
-    if (e instanceof Error && (e.name === "TimeoutError" || /^(AI \d|Model )/.test(e.message))) {
+    if (e instanceof Error && e.name === "TimeoutError") {
+      console.error(e);
+      return { ok: false, error: `AI tidak menjawab dalam ${Math.round(AI_LONG_TIMEOUT_MS / 60_000)} menit. Kontrol tetap berjalan; coba lagi nanti.` };
+    }
+    if (e instanceof Error && /^(AI \d|Model )/.test(e.message)) {
       console.error(e);
       return { ok: false, error: "AI tidak tersedia saat ini. Kontrol tetap berjalan; coba lagi nanti." };
     }

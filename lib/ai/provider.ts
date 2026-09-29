@@ -27,8 +27,17 @@ export type EvidenceAnswerPlan = { intent: EvidenceIntent; terms: string[]; acco
 export type EvidenceAnalysisResult = { analysis: EvidenceAnalysis; promptTokens: number; completionTokens: number; model: string };
 export type EvidencePlanResult = { plan: EvidenceAnswerPlan; promptTokens: number; completionTokens: number; model: string };
 export const EVIDENCE_MAX_TOKENS = 2000;
-/** Classification/mapping prompts are small; evidence prompts carry up to 24 passages and answer up to 2,000 tokens. */
-export const AI_TIMEOUT_MS = 30_000;
+const envMs = (name: string, fallback: number) => {
+  const v = Number(process.env[name]);
+  return Number.isFinite(v) && v >= 5_000 ? v : fallback;
+};
+/**
+ * Timeouts. Classification/mapping batches (≤ 40 items) get 90 s — reasoning models (e.g. kimi-k3) need well over 30 s for a
+ * full batch; close review and *Jelaskan* get 180 s. Both stay under Vercel's maxDuration = 300. Env overrides: AI_TIMEOUT_MS,
+ * AI_LONG_TIMEOUT_MS. Evidence prompts (≤ 24 passages) keep 90 s.
+ */
+export const AI_TIMEOUT_MS = envMs("AI_TIMEOUT_MS", 90_000);
+export const AI_LONG_TIMEOUT_MS = envMs("AI_LONG_TIMEOUT_MS", 180_000);
 export const EVIDENCE_TIMEOUT_MS = 90_000;
 export const ANSWER_PLAN_MAX_TOKENS = 1000;
 export const EVIDENCE_PROMPT_VERSION = "evidence-v1";
@@ -401,14 +410,14 @@ export class OpenAiCompatibleProvider implements AiProvider {
 
   async explainControl(input: ControlExplainInput): Promise<ControlExplainResult> {
     const { system, user } = buildControlExplainPrompt(input);
-    const r = await this.complete(system, user, CONTROL_EXPLAIN_MAX_TOKENS, false, EVIDENCE_TIMEOUT_MS);
+    const r = await this.complete(system, user, CONTROL_EXPLAIN_MAX_TOKENS, false, AI_LONG_TIMEOUT_MS);
     try { return { ...r, ...parseControlExplain(r.text, input) }; }
     catch { throw new AiAnswerError("Penjelasan AI tidak valid; periksa kontrol secara manual.", r.promptTokens, r.completionTokens, r.model); }
   }
 
   async reviewClose(input: CloseReviewInput): Promise<CloseReviewResult> {
     const { system, user } = buildCloseReviewPrompt(input);
-    const r = await this.complete(system, user, CLOSE_REVIEW_MAX_TOKENS, false, EVIDENCE_TIMEOUT_MS);
+    const r = await this.complete(system, user, CLOSE_REVIEW_MAX_TOKENS, false, AI_LONG_TIMEOUT_MS);
     try { return { ...r, items: parseCloseReview(r.text, input) }; }
     catch { throw new AiAnswerError("Tinjauan AI tidak valid; periksa kontrol secara manual.", r.promptTokens, r.completionTokens, r.model); }
   }
