@@ -203,7 +203,7 @@ export function ClientForm({ initial, evidenceIntakeId, onCreated }: { initial?:
                 </div>
               ))}
               <FieldError>{err(`entities.${i}.banks`)}</FieldError>
-              <Button variant="outline" size="sm" onClick={() => setEntity(i, { banks: [...e.banks, newBank()] })}>
+              <Button variant="outline" size="sm" onClick={() => setEntity(i, { banks: [...e.banks, { ...newBank(), bank: e.banks.at(-1)?.bank ?? "BCA" }] })}>
                 <Plus /> Tambah rekening
               </Button>
             </div>

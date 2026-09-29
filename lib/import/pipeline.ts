@@ -27,7 +27,7 @@ export type ImportSummary = {
   /** Combined statements: the other account sections in the file, not imported into this bank account. */
   otherSections: string[];
   /** The same sections as data, so the form can offer "Impor juga ke …" for the client's matching accounts. */
-  otherAccounts: { number: string; label: string; currency: string }[];
+  otherAccounts: { number: string; label: string; currency: string; imported: boolean }[];
   /** Lines of this client still waiting in Review after the import (any month), for the result's next step. */
   pendingReview: number;
   /** Choices the parser made (direction read from the balance, sheets joined): stored on the import and shown. */
@@ -62,7 +62,21 @@ export async function importStatement(
   }
   const others = sections.filter((s) => s !== st);
   const otherSections = others.map((s) => `${s.accountNumber} ${s.section?.label ?? ""} (${s.section?.currency ?? "IDR"}): tidak diimpor ke rekening ini`);
-  const otherAccounts = others.flatMap((s) => (s.accountNumber ? [{ number: s.accountNumber, label: s.section?.label ?? "", currency: s.section?.currency ?? "IDR" }] : []));
+  // An account of this client already holding an import of the same period doesn't need "Impor juga ke …" again.
+  const done = await db.statementImport.findMany({
+    where: { bankAccount: { entity: { clientId: client.id } }, OR: others.map((s) => ({ periodStart: s.periodStart, periodEnd: s.periodEnd })) },
+    select: { periodStart: true, periodEnd: true, bankAccount: { select: { number: true } } },
+  });
+  const otherAccounts = others.flatMap((s) =>
+    s.accountNumber
+      ? [{
+          number: s.accountNumber,
+          label: s.section?.label ?? "",
+          currency: s.section?.currency ?? "IDR",
+          imported: done.some((d) => digits(d.bankAccount.number) === digits(s.accountNumber) && +d.periodStart === +s.periodStart && +d.periodEnd === +s.periodEnd),
+        }]
+      : [],
+  );
   const pendingReviewCount = () => db.bankTransaction.count({ where: { bankAccount: { entity: { clientId: client.id } }, status: "NEEDS_REVIEW" } });
   const continuity = checkContinuity(st);
 
