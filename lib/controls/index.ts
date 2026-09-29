@@ -101,6 +101,29 @@ export async function runControls(db: Db, clientId: string, year: number, month:
       });
     }
 
+    // Books posted before postJournal refused it may still use another entity's bank account (its reconciliation can't see them).
+    const foreignLines = await db.journalLine.groupBy({
+      by: ["accountId"],
+      where: { entityId: e.id, date: { lte: end }, account: { isBank: true, bankAccounts: { some: { entityId: { not: e.id } } } } },
+      _sum: { debit: true, credit: true },
+    });
+    const foreignBank = foreignLines.filter((l) => (l._sum.debit ?? 0n) !== (l._sum.credit ?? 0n));
+    if (foreignBank.length) {
+      const bkKey = `bank-entity:${e.id}`;
+      const accs = await db.account.findMany({ where: { id: { in: foreignBank.map((l) => l.accountId) } }, orderBy: { code: "asc" } });
+      const names = accs.map((a) => `${a.code} ${a.name}`).join(", ");
+      const held = foreignBank.reduce((s, l) => s + (l._sum.debit ?? 0n) - (l._sum.credit ?? 0n), 0n);
+      controls.push({
+        key: bkKey,
+        title: "Rekening bank entitas lain",
+        scope: e.shortName,
+        status: "REVIEW",
+        detail: `Buku ${e.shortName} menyimpan saldo ${fmt(held)} di ${names}. Kosongkan dengan Jurnal Penyesuaian di buku ini (Buku menerima jurnal yang mengembalikan saldonya ke nol), lalu catat lewat 1190 di buku masing-masing.`,
+        href: `${base}/ledger/${accs[0].code}?entity=${e.id}`,
+        ack: acks.get(bkKey),
+      });
+    }
+
     const clearing = tb.find((r) => r.account.code === ACCOUNT_CODES.CLEARING)?.net ?? 0n;
     const clKey = `clearing:${e.id}`;
     controls.push({

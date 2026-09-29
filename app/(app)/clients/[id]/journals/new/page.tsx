@@ -24,7 +24,7 @@ export default async function NewJournalPage({ params, searchParams }: { params:
   const next = period.month === 12 ? `${period.year + 1}-01` : `${period.year}-${String(period.month + 1).padStart(2, "0")}`;
   // Companies first: an adjusting entry almost always belongs to the PT/CV, not the owner.
   const entities = [...client.entities].sort((a, b) => Number(a.kind === "PERORANGAN") - Number(b.kind === "PERORANGAN")).map((e) => ({ id: e.id, name: e.name, currency: e.functionalCurrency }));
-  const accounts = await prisma.account.findMany({ where: { clientId: client.id, isSuspense: false }, orderBy: { code: "asc" } });
+  const accounts = await prisma.account.findMany({ where: { clientId: client.id, isSuspense: false }, orderBy: { code: "asc" }, include: { bankAccounts: { select: { entityId: true } } } });
   const recent = await prisma.journalEntry.findMany({
     where: { entity: { clientId: client.id }, kind: "ADJUSTMENT" },
     include: { entity: true, lines: true },
@@ -50,7 +50,7 @@ export default async function NewJournalPage({ params, searchParams }: { params:
             <JournalForm
               clientId={client.id}
               entities={entities}
-              accounts={accounts.map((a) => ({ code: a.code, name: a.name }))}
+              accounts={accounts.map((a) => ({ code: a.code, name: a.name, entityId: a.bankAccounts[0]?.entityId ?? null }))}
               defaultDate={toIsoDate(period.end)}
             />
           </CardContent>

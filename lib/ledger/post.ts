@@ -80,6 +80,27 @@ export async function postJournal(tx: Tx, input: PostInput) {
   if (accounts.length !== accountIds.length || accounts.some((a) => a.clientId !== entity.clientId)) {
     throw new LedgerError("Akun tidak termasuk bagan akun klien ini");
   }
+  // A bank GL account belongs to one entity (BankAccount.entityId): another entity's books never touch it — money between
+  // entities goes through 1190 in each entity's own books (rule 10), else its reconciliation breaks with no pointer to why.
+  // The one exception clears what older books left there: a move toward zero of this entity's balance on that account.
+  const bankIds = accounts.filter((a) => a.isBank).map((a) => a.id);
+  if (bankIds.length) {
+    const foreign = await tx.bankAccount.findMany({
+      where: { accountId: { in: bankIds }, entityId: { not: entity.id } },
+      select: { accountId: true, entity: { select: { shortName: true } }, account: { select: { code: true, name: true } } },
+    });
+    for (const f of foreign) {
+      const held = await tx.journalLine.aggregate({ where: { entityId: entity.id, accountId: f.accountId }, _sum: { debit: true, credit: true } });
+      const balance = (held._sum.debit ?? 0n) - (held._sum.credit ?? 0n);
+      const move = lines.filter((l) => l.accountId === f.accountId).reduce((s, l) => s + l.debit - l.credit, 0n);
+      const clears = balance > 0n ? move < 0n && -move <= balance : balance < 0n ? move > 0n && move <= -balance : false;
+      if (!clears) {
+        throw new LedgerError(
+          `Akun ${f.account.code} ${f.account.name} adalah rekening bank ${f.entity.shortName}, jadi tidak bisa dipakai di buku ${entity.shortName}. Untuk uang antar entitas pakai 1190 Piutang/Utang Antar Entitas di buku masing-masing.`,
+        );
+      }
+    }
+  }
 
   const sourceIds = [...new Set(lines.map((l) => l.sourceAccountId).filter((x): x is string => !!x))];
   if (sourceIds.length) {

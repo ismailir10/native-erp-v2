@@ -29,7 +29,7 @@ const TEMPLATES: { label: string; memo: string; lines: Line[] }[] = [
   { label: "Piutang usaha", memo: "Pengakuan piutang atas penjualan belum dibayar", lines: [{ accountCode: "1130", debit: "", credit: "" }, { accountCode: "4100", debit: "", credit: "" }] },
 ];
 
-export function JournalForm({ clientId, entities, accounts, defaultDate }: { clientId: string; entities: { id: string; name: string; currency: string }[]; accounts: { code: string; name: string }[]; defaultDate: string }) {
+export function JournalForm({ clientId, entities, accounts, defaultDate }: { clientId: string; entities: { id: string; name: string; currency: string }[]; accounts: { code: string; name: string; entityId: string | null }[]; defaultDate: string }) {
   const router = useRouter();
   const [entityId, setEntityId] = useState(entities[0]?.id ?? "");
   const [date, setDate] = useState(defaultDate);
@@ -45,6 +45,13 @@ export function JournalForm({ clientId, entities, accounts, defaultDate }: { cli
   const error = parsed.flatMap((p) => [p.debit.error, p.credit.error]).find(Boolean);
   const balanced = dr === cr && dr > 0n && !error;
   const setLine = (i: number, patch: Partial<Line>) => setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
+  // A bank account belongs to one entity: another entity's books never use it (postJournal refuses it too).
+  const usable = accounts.filter((a) => !a.entityId || a.entityId === entityId);
+  const changeEntity = (id: string) => {
+    setEntityId(id);
+    const ok = new Set(accounts.filter((a) => !a.entityId || a.entityId === id).map((a) => a.code));
+    setLines((ls) => ls.map((l) => (l.accountCode && !ok.has(l.accountCode) ? { ...l, accountCode: "" } : l)));
+  };
 
   return (
     <div className="space-y-5">
@@ -57,7 +64,7 @@ export function JournalForm({ clientId, entities, accounts, defaultDate }: { cli
       <div className="grid gap-4 sm:grid-cols-3">
         <Field>
           <FieldLabel>Entitas</FieldLabel>
-          <Select value={entityId} onValueChange={(v) => setEntityId(v as string)}>
+          <Select value={entityId} onValueChange={(v) => changeEntity(v as string)}>
             <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
             <SelectContent>{entities.map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}</SelectContent>
           </Select>
@@ -82,7 +89,7 @@ export function JournalForm({ clientId, entities, accounts, defaultDate }: { cli
                 <TableCell className="p-2 pl-3">
                   <Select value={l.accountCode} onValueChange={(v) => setLine(i, { accountCode: v as string })}>
                     <SelectTrigger className="w-full min-w-64" aria-label={`Akun baris ${i + 1}`}><SelectValue placeholder="Pilih akun" /></SelectTrigger>
-                    <SelectContent>{accounts.map((a) => <SelectItem key={a.code} value={a.code}>{a.code} {a.name}</SelectItem>)}</SelectContent>
+                    <SelectContent>{usable.map((a) => <SelectItem key={a.code} value={a.code}>{a.code} {a.name}</SelectItem>)}</SelectContent>
                   </Select>
                 </TableCell>
                 <TableCell className="p-2"><Input aria-label={`Debit baris ${i + 1}`} aria-invalid={!!parsed[i].debit.error || undefined} inputMode="decimal" className="num text-right" value={l.debit} onChange={(e) => setLine(i, { debit: e.target.value, credit: e.target.value ? "" : l.credit })} placeholder={formatMoney(0n, currency, { bare: true })} /></TableCell>
