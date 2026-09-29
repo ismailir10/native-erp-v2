@@ -109,5 +109,8 @@ test("statement in → reviewed → traceable reports → combined → closed", 
   }
   await expect(page.getByTestId("lock")).toBeEnabled();
   await page.getByTestId("lock").click();
+  // Locking is confirmed first: the dialog names the month and what closing means.
+  await expect(page.getByRole("dialog", { name: "Tutup buku Agustus 2026?" })).toBeVisible();
+  await page.getByTestId("confirm-lock").click();
   await expect(page.getByText("Buku Agustus 2026 sudah ditutup")).toBeVisible();
 });

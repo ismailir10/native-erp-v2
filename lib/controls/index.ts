@@ -65,6 +65,8 @@ export async function runControls(db: Db, clientId: string, year: number, month:
     });
 
     let statementMissing = false;
+    // Books start at the entity's Saldo Awal (else the account's first statement): a month ending before that needs no statement.
+    const opening = await db.journalEntry.findFirst({ where: { entityId: e.id, kind: "OPENING" }, orderBy: { date: "asc" }, select: { date: true } });
     for (const ba of e.bankAccounts) {
       const lastTx = await db.bankTransaction.findFirst({
         where: { bankAccountId: ba.id, date: { lte: end }, balance: { not: null } },
@@ -75,6 +77,13 @@ export async function runControls(db: Db, clientId: string, year: number, month:
       const gl = glRow?.net ?? 0n;
       const key = `bank:${ba.id}`;
       if (coverage.length === 0) {
+        const first = opening ? null : await db.statementImport.findFirst({ where: { bankAccountId: ba.id }, orderBy: { periodStart: "asc" }, select: { periodStart: true } });
+        const startsAfter = opening ? end.getTime() <= opening.date.getTime() : !!first && end.getTime() < first.periodStart.getTime();
+        if (startsAfter) {
+          const from = opening ? new Date(opening.date.getTime() + 86_400_000) : first!.periodStart;
+          controls.push({ key, title: `Rekonsiliasi ${ba.label}`, scope: e.shortName, status: "PASS", detail: `Pembukuan rekening ini mulai ${formatDate(from)}` });
+          continue;
+        }
         statementMissing = true;
         controls.push({ key, title: `Rekonsiliasi ${ba.label}`, scope: e.shortName, status: "REVIEW", detail: "Mutasi bulan ini belum diimpor", href: `${base}/import`, ack: acks.get(key) });
         continue;
