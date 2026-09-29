@@ -3,10 +3,10 @@ import { bankLineAccounts, citedBankIds } from "@/lib/controls/cited";
 import type { Db } from "@/lib/db";
 import { runControls } from "@/lib/controls";
 import { bankLineState, gather, snapshotOf, CLOSE_REVIEW_TOKEN_LIMIT, type ReviewLink } from "@/lib/controls/ai-review";
-import { formatPeriod } from "@/lib/format";
+import { formatPeriod, periodBounds } from "@/lib/format";
 import { runBudgetedAi } from "@/lib/ai/budget";
 import { AiAnswerError, amountOf, CONTROL_EXPLAIN_MAX_TOKENS, CONTROL_EXPLAIN_PROMPT_VERSION, buildControlExplainPrompt, parseControlExplain, type AiProvider, type ControlExplainAnswer, type ControlExplainInput } from "@/lib/ai/provider";
-import { saveProposal, type ProposalLine } from "@/lib/adjust/proposals";
+import { priorCorrection, saveProposal, type ProposalLine } from "@/lib/adjust/proposals";
 
 /**
  * Close copilot — "Jelaskan" (ADR 0009, accounting-rules 20b). One flagged control, its own rows only, one budgeted and cached call.
@@ -30,7 +30,9 @@ export async function explainControl(db: Db, firmId: string, clientId: string, y
   const client = await db.client.findUniqueOrThrow({ where: { id: clientId }, include: { entities: true } });
   // Entity-scoped controls (`kind:<entityId>`) may get a draft journal for that entity; group-level ones get words only.
   const entity = client.entities.find((e) => e.id === controlKey.split(":")[1]) ?? null;
-  const accounts = (await db.account.findMany({ where: { clientId, isBank: false }, select: { code: true, name: true }, orderBy: { code: "asc" } }));
+  // Prive (3300) is an owner's withdrawal from a sole proprietorship or a CV partner; a PT or foreign company's draft never uses it.
+  const noPrive = entity !== null && (entity.kind === "PT" || entity.kind === "BADAN_USAHA_ASING");
+  const accounts = (await db.account.findMany({ where: { clientId, isBank: false, ...(noPrive ? { fsLine: { not: "PRIVE" } } : {}) }, select: { code: true, name: true }, orderBy: { code: "asc" } }));
   const input: ControlExplainInput = { client: client.name, period: formatPeriod(year, month), currency: entity?.functionalCurrency ?? client.entities[0]?.functionalCurrency ?? "IDR", accounts, control: reviewed, canDraft: entity !== null };
 
   const key = createHash("sha256").update(JSON.stringify([firmId, clientId, input, provider.model, CONTROL_EXPLAIN_PROMPT_VERSION])).digest("hex");
@@ -53,6 +55,7 @@ export async function explainControl(db: Db, firmId: string, clientId: string, y
   }
 
   let proposal: ControlExplanation["proposal"] = null;
+  let suggestion = answer.suggestion;
   if (answer.entry && entity) {
     const lines: ProposalLine[] = answer.entry.lines.map((l) => {
       const minor = amountOf(l.amount, input.currency)!.toString(); // grounded: parsed from a cited row's amount
@@ -60,12 +63,15 @@ export async function explainControl(db: Db, firmId: string, clientId: string, y
     });
     // Only the rows the answer cites can be the bank line it moves; two cited lines that both fit make the draft ambiguous.
     const bank = await reclassedBankLine(db, entity.id, answer.refs, answer.entry, input.currency);
-    if (bank !== "AMBIGUOUS") {
+    const line = bank && bank !== "AMBIGUOUS" ? await db.bankTransaction.findUnique({ where: { id: bank } }) : null;
+    const twice = line ? await priorCorrection(db, line, periodBounds(year, month).end) : null;
+    if (twice) suggestion = `${twice} Beri catatan pada kontrol ini; tidak perlu jurnal lagi.`;
+    else if (bank !== "AMBIGUOUS") {
       const p = await saveProposal(db, { firmId, clientId, entityId: entity.id, year, month, source: "AI_CONTROL", controlKey, key: `AI:${key}`, memo: answer.entry.memo, lines, reason: answer.explanation, refs: answer.refs, bankTransactionId: bank, snapshot: snapshotOf(reviewed.rows, await bankLineState(db, bank)) });
       proposal = { id: p.id, status: p.status };
     }
   }
-  return { controlKey, explanation: answer.explanation, suggestion: answer.suggestion, note: control.status === "REVIEW" ? answer.note : "", links: answer.refs.flatMap((r) => (g.links.has(r) ? [g.links.get(r)!] : [])), proposal };
+  return { controlKey, explanation: answer.explanation, suggestion, note: control.status === "REVIEW" ? answer.note : "", links: answer.refs.flatMap((r) => (g.links.has(r) ? [g.links.get(r)!] : [])), proposal };
 }
 
 /**

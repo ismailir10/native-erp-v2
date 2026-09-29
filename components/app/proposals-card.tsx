@@ -19,6 +19,8 @@ export type ProposalView = {
   /** Re-classifies one bank line: its current account (line `fixed`) can't change, only the target. */
   fixed: number | null;
   lines: { accountCode: string; debit: string; credit: string }[];
+  /** Why it can't be posted (e.g. a Jurnal Penyesuaian already made this correction); only *Abaikan* is offered. */
+  blocked?: string | null;
 };
 
 /** Draft journals of the period (accounting-rules 20b). Accounts may be changed, amounts never; posting is the accountant's click. */
@@ -60,10 +62,13 @@ export function ProposalsCard({ clientId, periodLabel, items, accounts, locked }
                 </div>
               ))}
             </div>
+            {p.blocked && <p className="text-sm font-medium text-review" data-testid="proposal-blocked">{p.blocked}</p>}
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" disabled={locked || busy !== null} onClick={() => run(p.id, () => postProposalAction(clientId, p.id, codesOf(p)), "Jurnal koreksi dicatat")}>
-                {busy === p.id ? "Mencatat…" : "Catat jurnal"}
-              </Button>
+              {!p.blocked && (
+                <Button variant="outline" size="sm" disabled={locked || busy !== null} onClick={() => run(p.id, () => postProposalAction(clientId, p.id, codesOf(p)), "Jurnal koreksi dicatat")}>
+                  {busy === p.id ? "Mencatat…" : "Catat jurnal"}
+                </Button>
+              )}
               {/* A 1999 difference has to be corrected before the close, so its correction can't be dismissed. */}
               {p.source !== "SUSPENSE" && <Button variant="ghost" size="sm" disabled={locked || busy !== null} onClick={() => run(`x:${p.id}`, () => dismissProposalAction(clientId, p.id), "Usulan diabaikan")}>Abaikan</Button>}
             </div>
