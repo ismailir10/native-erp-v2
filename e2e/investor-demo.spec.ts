@@ -49,6 +49,7 @@ test("statement in → reviewed → traceable reports → combined → closed", 
     await expect(items).toHaveCount(n - 1);
   }
   await expect(page.getByText("Antrean kosong")).toBeVisible();
+  await expect(page.getByTestId("review-saving")).toHaveCount(0); // accepts are optimistic: every save done
 
   // 4. Every number traces to its bank row: P&L → account → ledger line → statement row
   await page.getByRole("link", { name: "Laporan Keuangan" }).click();

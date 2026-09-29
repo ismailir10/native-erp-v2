@@ -63,6 +63,8 @@ test("leases: register, commencement, monthly journals, payments, control", asyn
     await item.getByTestId("accept").click();
     await expect(items.filter({ hasText: "GRAHA PROPERTI" })).toHaveCount(n - 1);
   }
+  // Accepts are optimistic: wait until the queue says every save is done before leaving.
+  await expect(page.getByTestId("review-saving")).toHaveCount(0);
 
   await page.goto(`${base}/leases?period=2026-08`);
   await expect(reg).toContainText("Cocok dengan buku besar");
