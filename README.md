@@ -120,7 +120,7 @@ Supabase organisation **Rightjet**, two projects in `ap-southeast-1`: `native-er
    **Custom SMTP** (Authentication → Emails → SMTP) is required before invitations reach addresses outside the Supabase organisation;
    the Bahasa templates to paste are in `supabase/templates/`.
 4. **Connect Git** (Settings → Git): `ismailir10/native-erp-v2`; production branch `main`.
-5. **Access**: application login is required on both staging and main. Production is the one real workspace ([ADR 0008](docs/adrs/0008-one-workspace.md)); staging keeps Vercel protection as an additional boundary and holds synthetic data only. Do not copy staging users or secrets into production.
+5. **Access**: application login is required everywhere. Production is the one real workspace ([ADR 0008](docs/adrs/0008-one-workspace.md), releases per [ADR 0011](docs/adrs/0011-main-only-releases.md)); on-demand previews keep Vercel protection as an additional boundary and hold synthetic data only. Do not copy staging users or secrets into production.
 6. Functions run in `sin1` (Settings → Functions), the same region as the Supabase projects — every page runs many queries.
 
 | Vercel environment | Supabase project | `DEMO_MODE` | Who sees it |
@@ -173,4 +173,4 @@ Decisions live in [docs/adrs](docs/adrs/README.md). Demo data is synthetic — n
 
 ## Document evidence workspace
 
-`/documents` is the same authenticated workspace in both environments. It accepts mixed uploads or read-only Drive folders, retains versioned evidence, prepares imports and company context, and answers cited questions before posting. `/clients/[id]/documents` redirects into this shared view with the client scope. Collections can span periods; this is stated explicitly, while question and report periods remain in the URL. Setup and limits: [docs/evidence-workspace.md](docs/evidence-workspace.md). Architecture: [ADR 0007](docs/adrs/0007-evidence-workspace.md). Core implementation lives in `lib/evidence/`.
+`/documents` is the same authenticated workspace in every environment. It accepts mixed uploads or read-only Drive folders, retains versioned evidence, prepares imports and company context, and answers cited questions before posting. `/clients/[id]/documents` redirects into this shared view with the client scope. Collections can span periods; this is stated explicitly, while question and report periods remain in the URL. Setup and limits: [docs/evidence-workspace.md](docs/evidence-workspace.md). Architecture: [ADR 0007](docs/adrs/0007-evidence-workspace.md). Core implementation lives in `lib/evidence/`.

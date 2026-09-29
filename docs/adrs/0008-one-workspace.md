@@ -1,5 +1,7 @@
 # 0008 — One workspace: production is the real firm
 
+> **Superseded in part by [0011](0011-main-only-releases.md)** (2026-09-29): staging is no longer deployed or used for release smoke tests; PRs merge to `main` directly.
+
 **Context.** Production (`main`) was a synthetic public demo that linked to a separate "ruang kerja privat" on the protected staging preview, where real client files lived. Accountants therefore had two places to go, and the product shown to them was not the product they worked in. Since [workspace-auth](../cycles/2026-09-25-workspace-auth.md), both environments require invitation-only login and run the same screens.
 
 **Decision.**

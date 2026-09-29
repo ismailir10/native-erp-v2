@@ -19,6 +19,7 @@ when `main` changes; keep `staging` frozen and the synthetic Supabase staging pr
 
 ## Implementation
 - T1: vercel.json, .github/workflows/ci.yml, AGENTS.md, .agents/skills/ship/SKILL.md, README.md, docs/real-data.md.
+- Review: ADR 0011 supersedes the staging pre-production and promotion parts of ADR 0008; docs/evidence-workspace.md and the demo guide no longer point at a deployed staging.
 
 ## Verification
 - `vercel.json` parses as JSON; the PR itself gets no Vercel preview build; its merge produces one production deployment.
