@@ -10,7 +10,11 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
 
 ## Ledger
 1. **GL is the single source of truth for Buku books.** Never store derived ledger balances. Versioned source-reported figures in `lib/evidence/` are evidence, explicitly labeled separately, and never feed Buku financial reports directly (ADR 0007). TB, Laba Rugi, Neraca, combined worksheet,
-   charts and tax card are all derived from `JournalLine` at read time (`lib/reports/*`).
+   charts and tax card are all derived from `JournalLine` at read time (`lib/reports/*`). So are the other comprehensive income (movement
+   of the PKL equity lines), the changes in equity and the indirect cash flow (`lib/reports/statements.ts`: every balance-sheet account's
+   movement, classified by FS line — leases, employee benefits and deferred tax by code; single-currency scopes), whose opening is 31
+   December plus the year's Saldo Awal (kind OPENING) entries — never a flow — and each is checked against the Neraca. CALK and the Excel
+   set (`lib/reports/notes.ts`, `workbook.ts`) reuse those functions and the registers; notes are never stored.
 2. **`postJournal()` (`lib/ledger/post.ts`) is the only writer.** It enforces Σdebit = Σcredit, ≥2 lines,
    one positive side per line, open period, accounts in the entity's client COA. The DB also CHECKs
    `debit>=0, credit>=0, (debit=0) <> (credit=0)` (init migration). Never `prisma.journalLine.create` elsewhere.
