@@ -185,6 +185,9 @@ model Entity {
   taxYears           TaxYear[]
   ckpnSetting        CkpnSetting?
   leases             Lease[]
+  employees          Employee[]
+  benefitSetting     BenefitSetting?
+  benefitPostings    BenefitPosting[]
 
   @@index([clientId])
 }
@@ -359,6 +362,8 @@ model JournalEntry {
   leaseCommenced    Lease?               @relation("LeaseCommencement")
   leaseCancelled    Lease?               @relation("LeaseCancel")
   leasePosting      LeasePosting?
+  /// The employee-benefit valuation journal this entry is (accounting-rules 5g).
+  benefitPosting    BenefitPosting?
   /// The proposal this entry was posted from (close copilot, 1999 correction).
   proposal          ProposedEntry?
   /// Member who posted it; null for seeds and system postings ("Sistem").
@@ -1272,4 +1277,75 @@ model LeasePosting {
   entry   JournalEntry @relation(fields: [entryId], references: [id], onDelete: Restrict)
 
   @@unique([leaseId, month])
+}
+
+enum Sex {
+  MALE
+  FEMALE
+}
+
+/// A mortality table uploaded by the firm (e.g. TMI IV 2019): qx × 10⁹ by age from 0, per sex (accounting-rules 5g).
+model MortalityTable {
+  id        String           @id @default(cuid())
+  firmId    String
+  name      String
+  male      Int[]
+  female    Int[]
+  createdAt DateTime         @default(now())
+  settings  BenefitSetting[]
+
+  @@unique([firmId, name])
+}
+
+/// An employee of an entity for the PSAK 24 census: monthly wage (upah) in minor units; leftOn when they left.
+model Employee {
+  id         String    @id @default(cuid())
+  firmId     String
+  clientId   String
+  entityId   String
+  entity     Entity    @relation(fields: [entityId], references: [id])
+  name       String
+  employeeNo String?
+  sex        Sex
+  birthDate  DateTime  @db.Date
+  hireDate   DateTime  @db.Date
+  wage       BigInt
+  leftOn     DateTime? @db.Date
+  createdAt  DateTime  @default(now())
+
+  @@unique([entityId, employeeNo])
+  @@index([clientId])
+}
+
+/// PSAK 24 assumptions of an entity. Rates in basis points a year; resignation falls linearly from resignFlatUntil to 0 at resignZeroAge.
+model BenefitSetting {
+  id               String          @id @default(cuid())
+  firmId           String
+  entityId         String          @unique
+  entity           Entity          @relation(fields: [entityId], references: [id])
+  mortalityTableId String?
+  mortalityTable   MortalityTable? @relation(fields: [mortalityTableId], references: [id])
+  discountBp       Int
+  salaryBp         Int
+  retirementAge    Int             @default(56)
+  disabilityBp     Int             @default(1000)
+  resignBp         Int             @default(500)
+  resignFlatUntil  Int             @default(30)
+  resignZeroAge    Int             @default(55)
+  updatedAt        DateTime        @updatedAt
+}
+
+/// A PSAK 24 valuation journal of an entity (the first one decides whether the opening obligation goes to Saldo Laba).
+model BenefitPosting {
+  id        String       @id @default(cuid())
+  firmId    String
+  entityId  String
+  entity    Entity       @relation(fields: [entityId], references: [id])
+  year      Int
+  month     Int
+  entryId   String       @unique
+  entry     JournalEntry @relation(fields: [entryId], references: [id], onDelete: Restrict)
+  createdAt DateTime     @default(now())
+
+  @@index([entityId])
 }
