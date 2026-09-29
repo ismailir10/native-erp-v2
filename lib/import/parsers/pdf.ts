@@ -2,7 +2,7 @@ import { extractTextItems, getDocumentProxy } from "unpdf";
 import type { BankCode } from "@/lib/generated/prisma/enums";
 import { dateOnly } from "@/lib/format";
 import { parseRupiah } from "@/lib/money";
-import { ParseError, type ParsedRow, type ParsedStatement } from "@/lib/import/types";
+import { ParseError, type DepositProduct, type ParsedRow, type ParsedStatement } from "@/lib/import/types";
 import { closingFromRows, monthBoundsOf, periodFromText } from "@/lib/import/parsers/common";
 
 /**
@@ -64,8 +64,10 @@ export async function parsePdfSections(data: Buffer, opts: { password?: string }
   if (lines.reduce((n, l) => n + l.cells.reduce((m, c) => m + c.text.replace(/\s/g, "").length, 0), 0) < 20) {
     throw new ParseError("PDF ini hasil scan (tanpa teks). Minta rekening koran versi e-statement, atau ekspor CSV/Excel dari internet banking.");
   }
+  const deposits = depositProducts(lines);
+  const withDeposits = (st: ParsedStatement): ParsedStatement => (deposits.length ? { ...st, deposits } : st);
   const starts = lines.map((l, i) => ({ i, m: lineText(l).match(SECTION) })).filter((x) => x.m);
-  if (starts.length === 0) return [parseLines(lines)];
+  if (starts.length === 0) return [withDeposits(parseLines(lines))];
   const docText = lines.map(lineText).join("\n");
   const format = detectFormat(docText);
   const period = periodOf(docText);
@@ -74,9 +76,42 @@ export async function parsePdfSections(data: Buffer, opts: { password?: string }
     const segment = lines.slice(i + 1, k + 1 < starts.length ? starts[k + 1].i : lines.length);
     if (!segment.some((l) => headerColumns(l))) return; // a section title without a transaction table
     const st = parseLines(segment, { period, format, allowEmpty: true });
-    out.push({ ...st, accountNumber: m![3], section: { label: m![1].trim(), currency: m![2].toUpperCase() } });
+    out.push(withDeposits({ ...st, accountNumber: m![3], section: { label: m![1].trim(), currency: m![2].toUpperCase() } }));
   });
-  if (!out.length) return [parseLines(lines)];
+  if (!out.length) return [withDeposits(parseLines(lines))];
+  return out;
+}
+
+const DEPOSIT_TITLE = /detail produk deposito|time deposit product details/i;
+const DEPOSIT_END = /^(total\b|detail produk|ini adalah akhir)/i;
+
+/**
+ * Time deposits listed after the account activity (SMBC "Detail Produk Deposito / Time Deposit Product Details"): one row per
+ * deposit — number, product, currency, rate, tenor, maturity, instruction, balance, IDR equivalent. Read so Saldo Awal can
+ * offer them (a deposit pledged for a PRK is the other half of that loan); never posted from here.
+ */
+export function depositProducts(lines: Line[]): DepositProduct[] {
+  const out: DepositProduct[] = [];
+  const start = lines.findIndex((l) => DEPOSIT_TITLE.test(lineText(l)));
+  if (start < 0) return out;
+  for (const line of lines.slice(start + 1)) {
+    const text = lineText(line).trim();
+    if (DEPOSIT_END.test(text)) break;
+    const cells = line.cells.map((c) => c.text.trim());
+    const number = cells[0];
+    const currency = cells.find((c) => /^[A-Z]{3}$/.test(c));
+    const amounts = cells.filter((c) => /^-?\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?$/.test(c));
+    if (!number || !/\d/.test(number) || !/^[0-9A-Z]{6,}$/i.test(number) || !currency || amounts.length === 0) continue;
+    const maturity = cells.map((c) => parseDate(c, null)).find(Boolean) ?? null;
+    out.push({
+      number,
+      product: cells[1] && !/^[A-Z]{3}$/.test(cells[1]) ? cells[1] : "Deposito",
+      currency,
+      rate: cells.find((c) => /^\d+(?:[.,]\d+)?\s*%$/.test(c))?.replace(/\s/g, "") ?? null,
+      maturity: maturity ? maturity.toISOString().slice(0, 10) : null,
+      idrBalance: parseRupiah(amounts[amounts.length - 1]),
+    });
+  }
   return out;
 }
 
@@ -236,6 +271,16 @@ function parseDate(text: string, period: { start: Date; end: Date } | null): Dat
   return m && mo ? dateOnly(Number(m[3]), mo, Number(m[1])) : null;
 }
 
+/** Points between a lead-in description line and the amount line below it (SMBC prints ~3 pt; rows are ≥ 9 pt apart). */
+const LEAD_GAP = 5;
+
+function startsWithDate(line: Line, descCol: Column, period: { start: Date; end: Date } | null): boolean {
+  const first = line.cells[0];
+  if (!first || first.x0 >= descCol.x0 - 1) return false;
+  const tokens = first.text.split(/\s+/);
+  return Boolean(parseDate(tokens.slice(0, 3).join(" "), period) ?? parseDate(tokens[0], period));
+}
+
 function money(text: string): { value: bigint; flag: "DB" | "CR" | null } {
   const m = text.trim().match(NUMBER)!;
   const f = m[1]?.toUpperCase();
@@ -266,13 +311,16 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
   let opening: bigint | null = null;
   let closing: bigint | null = null;
   let lineNo = 0;
+  // Description text printed just above a row's amount line (SMBC centres a two-line description on it): held for that row.
+  let lead: string[] = [];
 
-  for (const line of lines) {
+  for (const [index, line] of lines.entries()) {
     lineNo++;
     const header = headerColumns(line);
     if (header) {
       cols = header;
       current = null;
+      lead = [];
       continue;
     }
     const text = lineText(line);
@@ -325,7 +373,9 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
     if (date) {
       // A second date column (posting date, "Tanggal Pembukuan") isn't part of the description.
       if (descParts.length && parseDate(descParts[0], period)) descParts.shift();
-      const desc = descParts.join(" ").replace(/\s+/g, " ").trim();
+      const desc = [...lead, ...descParts].join(" ").replace(/\s+/g, " ").trim();
+      const leadRaw = lead.length ? `${lead.join(" / ")} / ` : "";
+      lead = [];
       const bal = nums.find((n) => n.kind === "balance");
       if (OPENING.test(desc) && nums.every((n) => n.kind === "balance")) {
         if (bal) opening ??= bal.value;
@@ -341,7 +391,7 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
         amount: amt ? amt.value : cr - dr,
         balance: bal?.value ?? null,
         rowNumber: lineNo,
-        rawRow: `hal. ${line.page} · ${line.cells.map((c) => c.text).join(" | ")}`,
+        rawRow: `hal. ${line.page} · ${leadRaw}${line.cells.map((c) => c.text).join(" | ")}`,
         flag: amt?.flag ?? flag,
         parts: [desc],
         page: line.page,
@@ -350,6 +400,16 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
       if (!amt && dr === 0n && cr === 0n) current.amount = 0n;
       drafts.push(current);
       continue;
+    }
+
+    // A text line sitting just above the next row's amounts, nearer to it than to the current row, starts that row's description.
+    const next = lines[index + 1];
+    if (descParts.length && !nums.length && next && next.page === line.page && !FOOTER.test(text) && startsWithDate(next, descCol, period)) {
+      const gap = line.y - next.y;
+      if (gap >= 0 && gap <= LEAD_GAP && (!current || current.page !== line.page || current.lastY - line.y > gap)) {
+        lead.push(descParts.join(" "));
+        continue;
+      }
     }
 
     // Continuation of the previous row's description (same page, close below, not a footer).
