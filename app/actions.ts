@@ -38,6 +38,7 @@ import { AiBudgetError } from "@/lib/ai/budget";
 import { AiAnswerError } from "@/lib/ai/provider";
 import { acceptCheck, LedgerImportError, postImport, stageImport } from "@/lib/ledger-import/post";
 import { acceptMappings, MappingError, suggestMappings } from "@/lib/ledger-import/mapping";
+import { infraErrorMessage } from "@/lib/db-errors";
 import type { FsLine } from "@/lib/coa/template";
 import type { MapMethod } from "@/lib/generated/prisma/enums";
 
@@ -51,8 +52,9 @@ function fail(e: unknown): { ok: false; error: string; needsPassword?: boolean; 
   if (e instanceof PdfPasswordError) return { ok: false, error: e.message, needsPassword: true };
   if (e instanceof YearNeededError) return { ok: false, error: e.message, needsYear: true, yearGuess: e.guess };
   if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError || e instanceof MoneyError || e instanceof RateError || e instanceof RevaluationError || e instanceof LedgerImportError || e instanceof MappingError) return { ok: false, error: e.message };
+  const infra = infraErrorMessage(e);
   console.error(e);
-  return { ok: false, error: "Terjadi kesalahan tak terduga. Coba lagi." };
+  return { ok: false, error: infra ?? "Terjadi kesalahan tak terduga. Coba lagi." };
 }
 
 const MAX_UPLOAD = 5 * 1024 * 1024;

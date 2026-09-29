@@ -94,7 +94,7 @@ capability** — L11 deletes a client's posted entries (admin-only, typed confir
 6. Timeouts: 90 s classify / 180 s long calls fit Vercel `maxDuration = 300`.
 
 ## Tasks
-- [ ] T1 H1 `acceptMappings` batched + timeout; `fail()` maps Prisma P2028/P2024 — accept: DB test maps 700 sources incl. 125 new accounts
+- [x] T1 H1 `acceptMappings` batched + timeout; `fail()` maps Prisma P2028/P2024 — accept: DB test maps 700 sources incl. 125 new accounts
       correctly (codes, names, coaVersion +1) and an error test shows the Bahasa message.
 - [ ] T2 H2 `postJournal` bank-entity guard, journal form filters by entity, control `bank-entity:` — accept: DB tests (refuse other
       entity's bank; own bank still posts; control REVIEW on legacy line); existing suites green.
@@ -116,5 +116,7 @@ capability** — L11 deletes a client's posted entries (admin-only, typed confir
 
 ## Implementation
 - Plan: tasks T1–T13 sequential, done inline (they share review/import/close files and one test DB; no independent slice worth a subagent).
+- T1: lib/ledger-import/mapping.ts, lib/db-errors.ts, app/actions.ts, app/settings-actions.ts — acceptMappings reads the chart once, allocates new codes in memory (allocateAccountCode), createMany + updateMany per target account, coaVersion +1 per call, 60 s timeout; Prisma P2028/P2024 → Bahasa message instead of 'kesalahan tak terduga'.
 ## Verification
+- T1 gate: lint ✓ · typecheck ✓ · Test Files 80 passed (80) · Tests 578 passed (578) (new: 700 mappings incl. 120 new accounts in one call; infraErrorMessage).
 ## Ship Notes
