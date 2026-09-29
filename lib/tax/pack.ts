@@ -5,6 +5,7 @@ import { assetRegister } from "@/lib/assets/register";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { dateOnly, periodBounds } from "@/lib/format";
 import { corporateTax, deferredTax, roundDownThousands, settlement, type CorporateTax, type Settlement } from "@/lib/tax/compute";
+import { categoryByKey, categoryOf, compensate, share, type LossRow } from "@/lib/tax/categories";
 
 /**
  * The tax pack of one entity and fiscal year, through a month (accounting-rules 5d): commercial profit → koreksi fiskal → PKP → PPh
@@ -12,7 +13,6 @@ import { corporateTax, deferredTax, roundDownThousands, settlement, type Corpora
  * accountant's records at request time; nothing computed is stored.
  */
 
-export const NON_DEDUCTIBLE = /sumbangan|donasi|denda|sanksi|bunga penagihan|natura|kenikmatan|entertain|jamuan|representasi/i;
 /** Bank interest and jasa giro: income already taxed finally under PPh 4(2), so it leaves fiscal profit. */
 export const FINAL_TAXED_INCOME = /bunga|jasa giro|deposito/i;
 
@@ -25,7 +25,8 @@ export type Correction = {
   /** Where it comes from: the asset register, an account's ledger, or the accountant's own row. */
   source: { type: "ASSETS" } | { type: "ACCOUNT"; code: string; name: string } | { type: "MANUAL"; id: string; code: string | null };
 };
-export type Suggestion = { key: string; code: string; name: string; amount: bigint };
+/** A correction category matched by an expense account's name (lib/tax/categories.ts); `amount` is the account, `corrected` its share. */
+export type Suggestion = { key: string; code: string; name: string; amount: bigint; category: string; label: string; percent: number; direction: CorrectionDirection; kind: CorrectionKind; corrected: bigint };
 export type Credit = { key: string; type: TaxCreditType | "PPH_25"; label: string; date: Date; amount: bigint; accountCode: string; source: { type: "BANK"; bankTransactionId: string } | { type: "MANUAL"; id: string } };
 export type ProposalLine = { code: string; amount: bigint };
 
@@ -44,6 +45,11 @@ export type TaxPack = {
   positive: bigint;
   negative: bigint;
   fiscalProfit: bigint;
+  /** Kompensasi kerugian: each origin year's use this year, and the total taken off fiscal profit. */
+  losses: LossRow[];
+  compensation: bigint;
+  /** Last year's fiscal loss as Buku computed it (December), offered as an origin-year row. */
+  lossSuggestion: { originYear: number; amount: bigint } | null;
   tax: CorporateTax;
   credits: Credit[];
   settlement: Settlement | null;
@@ -59,12 +65,12 @@ type Reader = Db | Tx;
 /** A PPh badan pack applies to companies (not individuals) keeping IDR books. */
 export const packApplies = (e: { kind: string; functionalCurrency: string }) => e.kind !== "PERORANGAN" && e.functionalCurrency === "IDR";
 
-export async function taxPack(db: Db, clientId: string, entityId: string, year: number, month: number): Promise<TaxPack | null> {
+export async function taxPack(db: Db, clientId: string, entityId: string, year: number, month: number, opts: { nested?: boolean } = {}): Promise<TaxPack | null> {
   const entity = await db.entity.findFirst({ where: { id: entityId, clientId }, select: { id: true, name: true, shortName: true, kind: true, functionalCurrency: true } });
   if (!entity) return null;
   const through = periodBounds(year, month).end;
   const from = dateOnly(year, 1, 1);
-  const taxYear = await db.taxYear.findUnique({ where: { entityId_year: { entityId, year } }, include: { corrections: { include: { account: true }, orderBy: { createdAt: "asc" } }, credits: { include: { account: true }, orderBy: [{ date: "asc" }, { createdAt: "asc" }] } } });
+  const taxYear = await db.taxYear.findUnique({ where: { entityId_year: { entityId, year } }, include: { losses: true, corrections: { include: { account: true }, orderBy: { createdAt: "asc" } }, credits: { include: { account: true }, orderBy: [{ date: "asc" }, { createdAt: "asc" }] } } });
   const regime: TaxRegime = taxYear?.regime ?? "NORMAL";
   const scope = { clientId, entityIds: [entityId] };
   const is = await incomeStatement(db, scope, from, through);
@@ -85,24 +91,35 @@ export async function taxPack(db: Db, clientId: string, entityId: string, year: 
     corrections.push({ key: `auto:final:${a.code}`, label: `Penghasilan yang dikenai PPh final: ${a.name}`, direction: "NEGATIVE", kind: "PERMANENT", amount: a.amount, source: { type: "ACCOUNT", code: a.code, name: a.name } });
   }
   for (const c of taxYear?.corrections ?? []) {
-    // An accepted suggestion follows its account's year-to-date expense; a typed correction keeps its amount.
+    // An accepted suggestion follows its account's year-to-date expense × its %; a typed correction keeps its amount.
     const live = c.suggestion && c.account ? (expenses.find((x) => x.code === c.account!.code)?.amount ?? 0n) : null;
     // Kept at zero when the account has no expense this year, so the accountant still sees (and can remove) it.
-    const amount = live !== null && live < 0n ? 0n : (live ?? c.amount);
+    const amount = live === null ? c.amount : live > 0n ? share(live, c.percent) : 0n;
     corrections.push({ key: `manual:${c.id}`, label: c.description, direction: c.direction, kind: c.kind, amount, source: { type: "MANUAL", id: c.id, code: c.account?.code ?? null } });
   }
   const accepted = new Set((taxYear?.corrections ?? []).flatMap((c) => (c.suggestion ? [c.suggestion] : [])));
   const dismissed = new Set(taxYear?.dismissedSuggestions ?? []);
-  const suggestions: Suggestion[] = expenses
-    .filter((x) => NON_DEDUCTIBLE.test(x.name) && x.amount > 0n)
-    .map((x) => ({ key: `nd:${x.code}`, code: x.code, name: x.name, amount: x.amount }))
-    .filter((s) => !accepted.has(s.key) && !dismissed.has(s.key));
+  const suggestions: Suggestion[] = expenses.flatMap((x) => {
+    const c = categoryOf(x.name);
+    const key = `nd:${x.code}`;
+    if (!c || x.amount <= 0n || accepted.has(key) || dismissed.has(key)) return [];
+    return [{ key, code: x.code, name: x.name, amount: x.amount, category: c.key, label: c.label, percent: c.percent, direction: c.direction, kind: c.kind, corrected: share(x.amount, c.percent) }];
+  });
 
   const final = regime === "FINAL_UMKM";
   const positive = final ? 0n : corrections.filter((c) => c.direction === "POSITIVE").reduce((t, c) => t + c.amount, 0n);
   const negative = final ? 0n : corrections.filter((c) => c.direction === "NEGATIVE").reduce((t, c) => t + c.amount, 0n);
   const fiscalProfit = profitBeforeTax + positive - negative;
-  const tax = corporateTax({ regime, pkp: roundDownThousands(fiscalProfit), turnover });
+  const carried = final ? { rows: [], used: 0n } : compensate(fiscalProfit, year, taxYear?.losses ?? []);
+  const tax = corporateTax({ regime, pkp: roundDownThousands(fiscalProfit - carried.used), turnover });
+  // Last year's fiscal loss from Buku's own December pack (when that year has books), offered until recorded or dismissed.
+  let lossSuggestion: { originYear: number; amount: bigint } | null = null;
+  const lossKey = `loss:${year - 1}`;
+  if (!opts.nested && !final && !(taxYear?.losses ?? []).some((l) => l.originYear === year - 1) && !(taxYear?.dismissedSuggestions ?? []).includes(lossKey)) {
+    const booked = await db.journalLine.findFirst({ where: { entityId, date: { gte: dateOnly(year - 1, 1, 1), lte: dateOnly(year - 1, 12, 31) }, entry: { kind: { not: "OPENING" } } }, select: { id: true } });
+    const prior = booked ? await taxPack(db, clientId, entityId, year - 1, 12, { nested: true }) : null;
+    if (prior && prior.regime === "NORMAL" && prior.fiscalProfit < 0n) lossSuggestion = { originYear: year - 1, amount: -prior.fiscalProfit };
+  }
 
   // ---- kredit pajak ----
   const instalments = await db.bankTransaction.findMany({ where: { entityId, taxTag: "PPH_25", direction: "OUT", date: { gte: from, lte: through }, status: { not: "NEEDS_REVIEW" } }, orderBy: [{ date: "asc" }, { rowNumber: "asc" }] });
@@ -139,7 +156,7 @@ export async function taxPack(db: Db, clientId: string, entityId: string, year: 
     proposals.CURRENT = diff(target, postedCurrent);
   }
   if (applicable && deferred && !laterPosting.DEFERRED) proposals.DEFERRED = deferredDiff(deferred.amount, postedDeferred);
-  return { entity, year, month, through, applicable, regime, taxYearId: taxYear?.id ?? null, profitBeforeTax, turnover, corrections, suggestions, positive, negative, fiscalProfit, tax, credits, settlement: settled, deferred, proposals, laterPosting };
+  return { entity, year, month, through, applicable, regime, taxYearId: taxYear?.id ?? null, profitBeforeTax, turnover, corrections, suggestions, positive, negative, fiscalProfit, losses: carried.rows, compensation: carried.used, lossSuggestion, tax, credits, settlement: settled, deferred, proposals, laterPosting };
 }
 
 /**

@@ -39,7 +39,7 @@ DER / thin-cap limits; PPh 24 credit limit; PDF export.
 
 ## Tasks
 - [x] T1 Schema: migration `tax_losses_categories` — accept: `migrate diff` empty; gate green.
-- [ ] T2 Carry-forward + categories in the pack (`lib/tax/categories.ts`, `lib/tax/pack.ts`, `lib/tax/records.ts`) — accept: unit tests (oldest
+- [x] T2 Carry-forward + categories in the pack (`lib/tax/categories.ts`, `lib/tax/pack.ts`, `lib/tax/records.ts`) — accept: unit tests (oldest
       first, expiry, partial use, loss year) and DB tests (categories with %, live amount × %, last year's loss suggested).
 - [ ] T3 Workpaper: `lib/tax/workpaper.ts` + route — accept: unit test reads the generated .xlsx back (sheet names, key figures equal the pack).
 - [ ] T4 UI: loss rows, category + % on corrections, *Unduh kertas kerja* — accept: e2e extends `e2e/tax-pack.spec.ts` (loss used, % changed,
@@ -49,5 +49,7 @@ DER / thin-cap limits; PPh 24 credit limit; PDF export.
 ## Implementation
 - Plan: T1–T5 sequential, inline. Scope approved with the five-cycle plan ("all in that order").
 - T1: `prisma/schema.prisma`, migration `20260929030000_tax_losses_categories` (TaxLossCarryforward, FiscalCorrection.category/percent, CHECKs).
+- T2: `lib/tax/categories.ts` (8 categories, `share`, `compensate`), `lib/tax/pack.ts` (category suggestions with default % and the corrected share; accepted ones follow account × %; compensation before PKP; last year's December fiscal loss suggested, the prior pack computed once without its own suggestion), `lib/tax/records.ts` (`acceptSuggestion` with %, `setCorrectionPercent`, `setLoss`/`deleteLoss`, `dismissSuggestion` also for `loss:YYYY`), tests `tests/unit/tax-categories.test.ts`, `tests/db/tax-records.test.ts`, `tests/db/tax-pack.test.ts`.
+
 ## Verification
 ## Ship Notes
