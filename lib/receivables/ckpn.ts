@@ -5,7 +5,7 @@ import { templateAccounts } from "@/lib/coa/ensure";
 import { closeLock } from "@/lib/adjust/schedules";
 import { LedgerError, postJournal } from "@/lib/ledger/post";
 import { formatDate, formatPeriod, percentToBp, periodBounds } from "@/lib/format";
-import { BUCKETS, BUCKET_LABEL, bucketOf, type Bucket } from "@/lib/receivables/aging";
+import { BUCKETS, BUCKET_LABEL, bucketOf, openingDates, subledgerFrom, type Bucket } from "@/lib/receivables/aging";
 
 /**
  * CKPN piutang usaha (PSAK 109 simplified approach, accounting-rules 5e): a provision matrix on the aging of the entity's sales invoices.
@@ -31,7 +31,7 @@ export type CkpnSettingValues = {
 
 export const DEFAULT_SETTING: CkpnSettingValues = { method: "ROLL_RATE", historyMonths: 12, currentBp: 0, d1to30Bp: 0, d31to60Bp: 0, d61to90Bp: 0, lastBucketBp: 10_000, forwardBp: 10_000 };
 
-/** An invoice as the matrix needs it: when it falls due, its total, and its settlements by date. */
+/** An invoice as the matrix needs it: when it enters the subledger (`issueDate`; a Saldo Awal item: the opening date), when it falls due, its total, and its settlements by date. */
 export type LedgerInvoice = { id: string; issueDate: Date; dueDate: Date; total: bigint; settlements: { date: Date; amount: bigint }[] };
 
 const openAt = (i: LedgerInvoice, asOf: Date) => i.total - i.settlements.filter((s) => +s.date <= +asOf).reduce((t, s) => t + s.amount, 0n);
@@ -168,9 +168,16 @@ export async function ckpn(db: Db | Tx, clientId: string, entityId: string, year
   const through = periodBounds(year, month).end;
   const rows = await db.invoice.findMany({
     where: { clientId, entityId, direction: "SALES", issueDate: { lte: through } },
-    select: { id: true, issueDate: true, dueDate: true, total: true, settlements: { select: { amount: true, bankTransaction: { select: { date: true } } } } },
+    select: { id: true, entityId: true, issueDate: true, opening: true, dueDate: true, total: true, settlements: { select: { amount: true, bankTransaction: { select: { date: true } } } } },
   });
-  const invoices: LedgerInvoice[] = rows.map((r) => ({ ...r, settlements: r.settlements.map((s) => ({ date: s.bankTransaction.date, amount: s.amount })) }));
+  const openings = await openingDates(db, rows.some((r) => r.opening) ? [entityId] : []);
+  const invoices: LedgerInvoice[] = rows.map((r) => ({
+    id: r.id,
+    issueDate: subledgerFrom(r, openings),
+    dueDate: r.dueDate,
+    total: r.total,
+    settlements: r.settlements.map((s) => ({ date: s.bankTransaction.date, amount: s.amount })),
+  }));
   const open = agingAt(invoices, through);
 
   const first = invoices.reduce<Date | null>((d, i) => (!d || +i.issueDate < +d ? i.issueDate : d), null);

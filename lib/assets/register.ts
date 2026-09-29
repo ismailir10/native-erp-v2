@@ -94,6 +94,12 @@ export async function createAsset(db: Db, input: AssetInput) {
   }
   const effective = opening && +acquiredOn < +opening.date ? opening.date : acquiredOn;
   const monthIndex = (d: Date) => d.getUTCFullYear() * 12 + d.getUTCMonth() + 1;
+  // Depreciation — a new schedule or one linked to this asset — can't start before the asset exists, nor, for an asset in Saldo Awal,
+  // in months its opening accumulation covers.
+  const assertStart = (start: { year: number; month: number }) => {
+    if (start.year * 12 + start.month < monthIndex(acquiredOn)) throw new LedgerError("Penyusutan tidak bisa dimulai sebelum bulan perolehan.");
+    if (openingAccumulated > 0n && opening && start.year * 12 + start.month <= monthIndex(opening.date)) throw new LedgerError(`Akumulasi penyusutan awal sudah mencakup sampai ${formatDate(opening.date)}: mulai penyusutan sesudah bulan Saldo Awal.`);
+  };
   // A locked month's register can't change after the fact (rule 4): refuse an asset that would enter it. Checked under the close lock.
   // The asset is listed in every register from its effective month on, so any locked month from then on would change after the fact.
   const assertOpen = async (tx: Tx) => {
@@ -138,6 +144,7 @@ export async function createAsset(db: Db, input: AssetInput) {
     if (s.amount !== cost - residual - openingAccumulated) throw new LedgerError("Harga perolehan − nilai sisa − akumulasi awal harus sama dengan total jadwal penyusutan.");
     const credit = accounts.find((a) => a.id === s.creditAccountId);
     if (credit?.fsLine !== "AKUM_PENYUSUTAN") throw new LedgerError("Jadwal ini tidak mengkredit akun akumulasi penyusutan; buat aset baru dengan akun akumulasi penyusutan.");
+    assertStart({ year: s.startYear, month: s.startMonth });
     const life = input.usefulLifeMonths ?? s.months;
     // The schedule's own purchase line, when it stored one on this asset account.
     const sourceEntryId = input.sourceEntryId ?? (s.sourceAccountId === assetAccount.id ? s.sourceEntryId : null);
@@ -160,9 +167,7 @@ export async function createAsset(db: Db, input: AssetInput) {
   // Fully depreciated in Saldo Awal: registered without a schedule.
   if (depreciable === 0n) return guarded((tx) => tx.fixedAsset.create({ data: { ...base, usefulLifeMonths: life, accumulatedAccountId: accumulated.id } }));
   const start = input.startYear && input.startMonth ? { year: input.startYear, month: input.startMonth } : nextMonth(effective);
-  // Depreciation can't start before the asset exists, nor — for an asset in Saldo Awal — in months its opening accumulation covers.
-  if (start.year * 12 + start.month < monthIndex(acquiredOn)) throw new LedgerError("Penyusutan tidak bisa dimulai sebelum bulan perolehan.");
-  if (openingAccumulated > 0n && opening && start.year * 12 + start.month <= monthIndex(opening.date)) throw new LedgerError(`Akumulasi penyusutan awal sudah mencakup sampai ${formatDate(opening.date)}: mulai penyusutan sesudah bulan Saldo Awal.`);
+  assertStart(start);
   let assetId = "";
   await createSchedule(
     db,

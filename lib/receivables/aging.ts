@@ -1,4 +1,4 @@
-import type { Db } from "@/lib/db";
+import type { Db, Tx } from "@/lib/db";
 import type { InvoiceDirection } from "@/lib/generated/prisma/enums";
 
 /**
@@ -37,13 +37,31 @@ export type OpenItem = {
 
 const DAY = 86_400_000;
 
-/** Every invoice of the direction issued by `asOf`, with what was settled by then; `open` may be 0 (paid). */
+/** Each entity's opening date (its first OPENING entry), for the entities given. */
+export async function openingDates(db: Db | Tx, entityIds: string[]): Promise<Map<string, Date>> {
+  if (!entityIds.length) return new Map();
+  const rows = await db.journalEntry.groupBy({ by: ["entityId"], where: { entityId: { in: entityIds }, kind: "OPENING" }, _min: { date: true } });
+  return new Map(rows.flatMap((r) => (r._min.date ? [[r.entityId, r._min.date] as const] : [])));
+}
+
+/**
+ * When an invoice enters the subledger: its issue date, or — for a Saldo Awal item, whose balance the opening entry holds — the opening
+ * date (never before its issue date). Aging still runs from its own due date.
+ */
+export function subledgerFrom(i: { entityId: string; issueDate: Date; opening: boolean }, openings: Map<string, Date>): Date {
+  const opened = i.opening ? openings.get(i.entityId) : undefined;
+  return opened && +opened > +i.issueDate ? opened : i.issueDate;
+}
+
+/** Every invoice of the direction in the subledger by `asOf`, with what was settled by then; `open` may be 0 (paid). */
 export async function invoicesAt(db: Db, clientId: string, direction: InvoiceDirection, asOf: Date, entityIds?: string[]): Promise<OpenItem[]> {
-  const invoices = await db.invoice.findMany({
+  const found = await db.invoice.findMany({
     where: { clientId, direction, issueDate: { lte: asOf }, ...(entityIds ? { entityId: { in: entityIds } } : {}) },
     include: { contact: { select: { id: true, name: true } }, arApAccount: { select: { code: true } }, settlements: { select: { amount: true, bankTransaction: { select: { date: true } } } } },
     orderBy: [{ dueDate: "asc" }, { number: "asc" }],
   });
+  const openings = await openingDates(db, [...new Set(found.filter((i) => i.opening).map((i) => i.entityId))]);
+  const invoices = found.filter((i) => +subledgerFrom(i, openings) <= +asOf);
   return invoices.map((i) => {
     const settled = i.settlements.filter((s) => +s.bankTransaction.date <= +asOf).reduce((t, s) => t + s.amount, 0n);
     const daysPastDue = Math.floor((+asOf - +i.dueDate) / DAY);

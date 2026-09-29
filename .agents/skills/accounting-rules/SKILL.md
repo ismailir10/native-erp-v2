@@ -36,7 +36,8 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
 5b. **Fixed-asset register** (`lib/assets`): a `FixedAsset` per entity (fiscal group, fiscal method, acquisition date, cost, residual,
     book life, asset account, accumulated-depreciation account — none for land). Its book depreciation **is** its `AdjustmentSchedule`
     (rule 5a, straight line of cost − residual − opening accumulated), created with the asset in one transaction, or an existing
-    depreciation schedule linked when it depreciates exactly that amount. Accumulated depreciation and book value are **read from the GL**
+    depreciation schedule linked when it depreciates exactly that amount and starts no earlier than a new one could (not before the
+    acquisition month; with opening accumulated depreciation, after the opening month). Accumulated depreciation and book value are **read from the GL**
     (opening accumulated + the schedule's posted installments at the date asked), never stored. One asset per purchase line
     (`sourceEntryId` + asset account, rule 15). **Fiscal depreciation** (`lib/assets/fiscal.ts`, UU PPh Pasal 11 / PMK 72/2023) is an
     estimate for the tax computation, never posted: from the acquisition month; a yearly amount = the group's rate on the cost (straight
@@ -50,7 +51,8 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
 5c. **Receivable/payable subledger** (`lib/receivables`, ADR 0004 amendment): an `Invoice` per entity (SALES = piutang, PURCHASE =
     utang; contact, number unique per entity + direction, issue ≤ due date, DPP + PPN = total > 0, counter account, receivable/payable
     account PIUTANG_USAHA / UTANG_USAHA). Saving posts it through `postJournal()` (kind **INVOICE**): sales Dr receivable / Cr revenue +
-    2130; purchases Dr expense or asset + 1150 / Cr payable; a **Saldo Awal** invoice posts nothing and is dated by the opening. PPN is
+    2130; purchases Dr expense or asset + 1150 / Cr payable; a **Saldo Awal** invoice posts nothing and is dated by the opening (open items, aging, CKPN and
+    `ar:`/`ap:` include it only from the opening date; it ages from its own due date). PPN is
     the tax invoice's amount (prefill = effective 11 %, rule 8). An `InvoiceSettlement` links a **bank line** to an invoice for an
     amount — a subledger link only, never a journal: the line must be the entity's, in the invoice's direction, **posted to the invoice's
     receivable/payable account**, in an open month; Σ per invoice ≤ total and Σ per line ≤ its amount under row locks. A line elsewhere

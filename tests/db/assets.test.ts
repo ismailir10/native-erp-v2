@@ -75,6 +75,8 @@ describe("fixed-asset register", () => {
     const s = await createSchedule(db, { clientId: g.client.id, entityId: g.pt.entity.id, kind: "DEPRECIATION", memo: "Penyusutan mesin", debitCode: "6180", creditCode: "1219", amount: "12000000", months: 12, startYear: 2026, startMonth: 9 });
     expect((await unregisteredSchedules(db, g.client.id)).map((x) => x.id)).toEqual([s.id]);
     await expect(createAsset(db, { ...base(g), name: "Mesin", acquiredOn: "2026-08-01", cost: "15000000", scheduleId: s.id })).rejects.toThrow(/total jadwal/);
+    // A schedule that starts before the acquisition would count pre-acquisition depreciation.
+    await expect(createAsset(db, { ...base(g), name: "Mesin baru", acquiredOn: "2026-10-01", cost: "12000000", scheduleId: s.id })).rejects.toThrow(/sebelum bulan perolehan/);
     const asset = await createAsset(db, { ...base(g), name: "Mesin jahit", acquiredOn: "2026-08-01", cost: "12000000", scheduleId: s.id });
     expect(asset).toMatchObject({ scheduleId: s.id, usefulLifeMonths: 12 });
     expect(await unregisteredSchedules(db, g.client.id)).toEqual([]);
