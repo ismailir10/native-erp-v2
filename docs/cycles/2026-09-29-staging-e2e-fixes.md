@@ -112,7 +112,7 @@ capability** — L11 deletes a client's posted entries (admin-only, typed confir
 - [x] T10 M5 L6 L7 L8 L9 L10 L1 polish — accept: unit test `NC:` label helper; e2e tab URL; typecheck/lint.
 - [x] T11 M11 Tanya Buku transactions — accept: unit/DB test answers count/total/accounts for a payee in period, cites ledger links.
 - [x] T12 L11 delete client — accept: DB test removes everything for one client and nothing of another; non-admin refused; e2e typed confirm.
-- [ ] T13 Rules + docs (accounting-rules: bank-entity guard, generic keys, client deletion; README) — accept: end-of-cycle gates.
+- [x] T13 Rules + docs (accounting-rules: bank-entity guard, generic keys, client deletion; README) — accept: end-of-cycle gates.
 
 ## Implementation
 - Plan: tasks T1–T13 sequential, done inline (they share review/import/close files and one test DB; no independent slice worth a subagent).
@@ -128,6 +128,9 @@ capability** — L11 deletes a client's posted entries (admin-only, typed confir
 - T10: app/layout.tsx (toast close button), reports page (1190 note says what cancels and what still has no counterpart; UrlTabs keeps ?tab=), components/app/url-tabs.tsx, client-form (foreign company: no NPWP), opening form (PRK sign caption), journal form (searchable AccountPicker, amounts tidied to 152.000.000 on blur), lib/ledger-import/code.ts (NC: key never displayed: reports, ledger, drawer, AI rows, mapping panel), lib/coa/options.ts (accountGroup).
 - T11: lib/workspace/index.ts — intent *transactions* (transfer/pembayaran/mutasi … + a counterparty: quoted, or after ke/dari/kepada/untuk/oleh/dengan): bank lines of the scope in the month whose description holds every word; count, totals per currency (zero side omitted), accounts they sit on (waiting lines = 1999 with their suggestion), 30 rows with ledger links; deterministic, no AI.
 - T12: lib/clients/delete.ts (deleteClient: firm-scoped, exact typed name, one transaction in foreign-key order: close records, proposals, invoices, tax, assets, journals, schedules, bank and ledger imports, memories, client rules, evidence intakes, periods, accounts, entities), app/actions.ts (deleteClientAction: admin only, audit line in the server log), components/app/delete-client.tsx + client settings page (admins only), e2e/delete-client.spec.ts. Checked against the seeded demo: every demo client deleted without a foreign-key error.
+- T13: .agents/skills/accounting-rules/SKILL.md (rule 2 bank-entity guard, rule 14 generic keys + *Ubah akun*, rule 17 timeouts + *Minta saran AI*, rule 20b no double correction / no Prive for companies, rule 22 bank control from the books' start, new rule 25 client deletion), README (Tanya Buku transfers, AI timeouts env, admin *Hapus klien*).
+- Merge of origin/staging (leases, employee benefits, full statements, cash flow) into this branch: kept batched acceptMappings with staging's template-account-on-first-use; createClientAccount kept as a thin wrapper (staging test); deleteClient extended to Lease/LeasePosting/Employee/BenefitSetting/BenefitPosting; lease + investor e2e wait for optimistic saves (`review-saving`).
+- Found by deleting every client of the post-e2e database: a schedule made from a journal line blocked deletion (AdjustmentSchedule_source_line_check) → source line released first (regression test fails without it).
 ## Verification
 - T1 gate: lint ✓ · typecheck ✓ · Test Files 80 passed (80) · Tests 578 passed (578) (new: 700 mappings incl. 120 new accounts in one call; infraErrorMessage).
 - T2 gate: lint ✓ · typecheck ✓ · Test Files 80 passed (80) · Tests 579 passed (579) (new: refuse other entity's bank, own bank posts, legacy leftover flagged, over-clear refused, exact clear accepted, control gone).
@@ -141,4 +144,13 @@ capability** — L11 deletes a client's posted entries (admin-only, typed confir
 - T10 gate: lint ✓ · typecheck ✓ · Test Files 83 passed (83) · Tests 589 passed (589); e2e ledger-import (tab URL + reload), tax-pack, fixed-assets 3 passed.
 - T11 gate: lint ✓ · typecheck ✓ · Test Files 83 passed (83) · Tests 591 passed (591) (new: intent + counterparty parsing; answer text, rows and citations).
 - T12 gate: lint ✓ · typecheck ✓ · Test Files 85 passed (85) · Tests 593 passed (593) (new: one client removed, the other untouched; wrong name / other firm refused; akuntan refused); e2e delete-client 1 passed.
+- End of cycle (after merging origin/staging): lint ✓ · typecheck ✓ · `Test Files 92 passed (92) · Tests 621 passed (621)` · build ✓ · `demo:reset` + `verify:books` → `ALL PASS — 1717 pemeriksaan saldo cocok dengan ground truth.` · `playwright test` (own server on :3310, BASE_URL) → `22 passed (56.4s)`.
+- Client deletion stress: every client of the post-e2e database (13, incl. invoices, fixed asset, schedules, tax year, 3 ledger imports, CKPN, lease with 3 postings, 4 employees + benefit posting, evidence) deleted without a foreign-key error; only 2 client-less evidence intakes remain, as designed.
 ## Ship Notes
+- **Migrations:** none.
+- **Env (optional):** `AI_TIMEOUT_MS` (default 90000), `AI_LONG_TIMEOUT_MS` (default 180000). Defaults fit Vercel `maxDuration = 300`.
+- **Behaviour changes to know:** `postJournal` refuses another entity's bank account (legacy leftovers show as REVIEW `bank-entity:` and can be cleared); generic merchant keys are no longer learned (older memories with such keys are ignored); Review accepts are optimistic (a *Menyimpan N…* indicator, unload warning); *Tutup buku* asks for confirmation.
+- **Manual after deploy to staging:** delete the three test clients "Belifi / Goers / Chickin (uji staging 29-09)" with *Pengaturan klien → Hapus klien* (admin), then re-run the Chickin OPCO mapping accept on a fresh throwaway client to confirm H1 on Supabase.
+- **For future cycles:** a new table that references a client or entity must be added to `lib/clients/delete.ts` (accounting rule 25).
+- **Rollback:** revert the merge PR; no data migration to undo (client deletion is the only destructive path and is admin + typed-name gated).
+

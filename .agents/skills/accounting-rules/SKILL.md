@@ -18,6 +18,9 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
 2. **`postJournal()` (`lib/ledger/post.ts`) is the only writer.** It enforces Σdebit = Σcredit, ≥2 lines,
    one positive side per line, open period, accounts in the entity's client COA. The DB also CHECKs
    `debit>=0, credit>=0, (debit=0) <> (credit=0)` (init migration). Never `prisma.journalLine.create` elsewhere.
+   A bank GL account belongs to one entity (`BankAccount.entityId`): another entity's entry may not use it — money between
+   entities goes through 1190 in each entity's own books (rule 10). The only exception clears what older books left there (a
+   line moving that entity's balance on the account toward zero); close control `bank-entity:` (REVIEW) shows such leftovers.
 3. **Posted entries are immutable.** Corrections = new entry. Bank lines change via `postBankTransaction()`,
    which posts a **RECLASS of the difference** on the classification side only; the bank side never changes.
 4. **Locked periods reject every write** — imports, reclasses, adjustments. Unlock is explicit (`unlockAction`).
@@ -145,6 +148,10 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     HEURISTIC and goes to review.
 14. **Only deterministic methods (TRANSFER/RULE/MEMORY, confidence ≥ 0.9) auto-post.** AI and heuristic results
     post to **1999** with `NEEDS_REVIEW` and a prefilled suggestion. Reviewer accept → reclass + Memory upsert.
+    A merchant key that names no counterparty (only channel/transfer/loan/cash words, refs and digits — `isGenericKey`,
+    `lib/import/normalize.ts`: "BI FAST OUTGOING", "PINJAMAN LOAN", a bare "TRSF E-BANKING DB <ref>") covers unrelated payments:
+    it is never written to or read from Memory, never made a rule, never grouped as *serupa*. An accepted line can be moved later
+    from its ledger drawer (*Ubah akun*) through the same reviewer's writer.
 15. Every bank-derived entry carries `bankTransactionId`; `BankTransaction` keeps `rawRow`, `rowNumber`, `importId`.
     Every ledger-derived entry carries `ledgerImportId` + `sourceRef` (`sheet!row` range) and its lines keep their row refs.
     That chain is the product's trust story — don't break it.
@@ -165,6 +172,9 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     batched (≤40/call), cached in `AiSuggestion` with firm/client isolation (key implementation: `lib/ai/classify.ts`).
     Account mapping (rule 9a) follows the same discipline: names + type hints only (no amounts, no descriptions), ≤40 per call,
     cached by `(normalised name, type hint, coaVersion)`, whitelisted against the client chart, counted in the same caps.
+    Timeouts: 90 s per classification/mapping call, 180 s for close review and *Jelaskan* (`AI_TIMEOUT_MS`, `AI_LONG_TIMEOUT_MS`).
+    A failed call leaves the simple guess; Review offers *Minta saran AI* for those lines (`lib/ai/retry.ts`: the same cache, batches,
+    caps and budget; financing text excluded; it only replaces the suggestion of lines still in review — nothing posts).
 18. All paid paths reserve the shared monthly allowance atomically through `lib/ai/budget.ts` before network calls. Evidence context proposals and read-only query plans use bounded source passages, versioned citations, and scope/model/prompt caches; monetary answers are deterministic tool results (ADR 0007). Existing classification/mapping payload restrictions still apply. Hard caps: `AI_MAX_CALLS_PER_IMPORT`, `AI_MONTHLY_TOKEN_BUDGET`; every call logged in `AiUsage`. No retry loops.
 19. Bank text is untrusted: output codes must be in the client's COA whitelist (`parseAiResponse`), else dropped.
 20. Tests and the seed **never** call a real model (`MockProvider`, pre-cached answers). `npm run ai:smoke` is the only live call.
@@ -179,6 +189,9 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     (`jl:`/`je:`, as the ledger anomaly scans cite) counts as its bank line when it came from one, and every account that line posts
     to (classification, tax split, suspense) is part of it. Group-level
     controls get words only. Deterministic proposals (e.g. 1999 corrections) use the same table.
+    A draft that moves a bank line is not created, shown as blocked and refused on post when an `ADJUSTMENT` of that entity, dated from
+    the line's date to the period end, already moves exactly its amount off its account (`priorCorrection`): never correct twice.
+    Drafts for a PT or foreign company never see the Prive line (3300); a CV's or an individual's may.
 21. Provider is OpenAI-compatible `fetch` (OpenCode Zen default) behind `AiProvider`; swap by config, not code.
     Key + model: **Pengaturan (DB, encrypted) overrides env** — resolve via `resolveAiConfig()` (`lib/settings/ai.ts`).
     `AI_BASE_URL` stays **env-only** so a visitor can't redirect the stored key. *Cek koneksi* hits `GET /models` (no tokens).
@@ -187,6 +200,8 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
 22. Controls (`lib/controls`): TB balanced, A = L + E, bank statement balance = GL per account, continuity,
     1199 = 0, 1999 empty, 1190 eliminated, ledger-import checks (accepted BLOCK = FAIL, REVIEW = REVIEW),
     FX revaluation posted when a foreign-currency balance exists. **REVIEW ≠ bug** — it needs a human note. **FAIL blocks** Tutup Buku.
+    A bank account needs a statement only from the month its books start: a month ending on or before the entity's OPENING entry
+    (without one, before the account's first statement) passes with "Pembukuan rekening ini mulai …". Gaps after the start still flag.
 22a. **Sanity controls** (`lib/controls/sanity.ts`, ADR 0009) check that the books make sense, not only that they add up:
     negative total assets = **FAIL**; balance-sheet balances against their `normalBalance`, financing text (loan, PRK, deposit,
     own-account transfer) classified to the P&L, a month without data between active months, and accepted guesses
@@ -203,3 +218,8 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
 
 ## Tenancy
 24. Every row has `firmId`. Server actions resolve the client through `getClientForFirm()` before any write.
+25. **Deleting a client** (`lib/clients/delete.ts`) is not a ledger correction: an admin removes a client entered by mistake or a test
+    copy after typing its exact name. Everything that is its books (entities, accounts, periods, journals, bank and ledger imports,
+    memories, client rules, proposals, invoices, assets, schedules, leases, employee benefits, tax records, evidence) goes in one
+    transaction; firm rules, rates, mortality tables and
+    AI caches stay. A new table that references a client or entity must be added to that function.
