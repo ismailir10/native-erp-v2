@@ -15,7 +15,7 @@
 Company facts remain proposals until confirmed. Confirmed context from included older versions survives refresh with a visible source warning; differing new proposals remain conflicting until reviewed. Excluding a document removes its facts from analysis without deleting the audit history. Missing/conflicting information is visible. **Minta usulan konteks AI** sends bounded text passages to the configured AI provider; it does not post or approve facts. Uploaded text may contain mistakes or instructions; quoting a source does not validate it.
 
 ## Supported input and limits
-Text PDFs (including password-protected PDFs), XLSX, CSV, Google Docs/Sheets, TXT, Markdown. Google Docs export to text; Sheets export to XLSX. Scanned PDFs, images, Word, PowerPoint, and legacy XLS need supported exports. PDF passwords are not persisted.
+Text PDFs (including password-protected PDFs), XLSX, XLS (old Excel or an HTML table saved as .xls, read as the workbook it converts to; the stored file stays the original), CSV, Google Docs/Sheets, TXT, Markdown. Google Docs export to text; Sheets export to XLSX. Scanned PDFs, images, Word, and PowerPoint need supported exports. PDF passwords are not persisted.
 
 Defaults: 10 MiB/file, 100 MiB retained snapshots plus pending uploads/intake, 500 discovered files, 20 folder levels; uploads use 1 MiB chunks. Old versions count toward storage. Evidence PDFs stop at 300 pages or 100,000 text items. Extracted content also has row/text/decompression limits and reports truncation. Conflict review stops at 10,000 comparisons, 500 conflicts or 5,000 facts and stays visibly incomplete. Large/partial folders must be split into smaller intakes. Google export limits can reject an otherwise valid native file.
 

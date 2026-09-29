@@ -18,5 +18,8 @@ export async function getClientForFirm(clientId: string) {
     include: { entities: { include: { bankAccounts: { include: { account: true } } }, orderBy: { name: "asc" } } },
   });
   if (!client) throw new Error("Klien tidak ditemukan");
+  // Companies before individuals everywhere entities are listed (PT/CV/foreign, then the owner); bank accounts by code.
+  client.entities.sort((x, y) => Number(x.kind === "PERORANGAN") - Number(y.kind === "PERORANGAN") || x.name.localeCompare(y.name, "id"));
+  for (const e of client.entities) e.bankAccounts.sort((x, y) => x.account.code.localeCompare(y.account.code));
   return client;
 }

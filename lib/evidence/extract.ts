@@ -5,6 +5,7 @@ import { readLines } from "@/lib/import/parsers/pdf";
 import { centsToMinor, parseCents } from "@/lib/money";
 import { CURRENCY_CODES } from "@/lib/fx/currency";
 import { detectTables, readSheets, readTable } from "@/lib/ledger-import/read";
+import { asXlsx, sniffFile } from "@/lib/import/workbook";
 import type { EvidenceKind, EvidencePassage, EvidenceTable, EvidenceUnit, Extraction } from "./types";
 
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -342,12 +343,15 @@ async function postableTables(name: string, data: Buffer): Promise<Map<string, E
 
 export async function extractEvidence(name: string, data: Buffer, opts: { password?: string } = {}): Promise<Extraction> {
   if (data.length > MAX_BYTES) throw new Error("File melebihi batas 10 MiB; pecah file sebelum mengunggah.");
-  if (/\.xls$/i.test(name)) throw new Error("File .xls belum didukung. Simpan sebagai .xlsx atau CSV.");
-  if (/\.(docx?|pptx?|png|jpe?g|gif|webp|heic|tiff?|bmp)$/i.test(name)) throw new Error("Format ini belum didukung. Ekspor sebagai PDF dengan teks, XLSX, CSV, atau TXT.");
-  if (/\.xlsx$/i.test(name)) {
-    checkWorkbookSize(data);
+  if (/\.(docx?|pptx?|png|jpe?g|gif|webp|heic|tiff?|bmp)$/i.test(name)) throw new Error("Format ini belum didukung. Ekspor sebagai PDF dengan teks, XLSX, XLS, CSV, atau TXT.");
+  // Old Excel (and HTML tables banks save as .xls) is read as the .xlsx it converts to; the stored bytes stay the original.
+  const legacy = /\.xls$/i.test(name) || sniffFile(data) === "XLS";
+  if (legacy || /\.xlsx$/i.test(name)) {
+    const book = legacy ? asXlsx(data) : data;
+    if (!book) throw new Error("File .xls ini berisi teks, bukan Excel. Simpan sebagai .xlsx atau CSV.");
+    checkWorkbookSize(book);
     const workbook = new ExcelJS.Workbook();
-    try { await workbook.xlsx.load(data as unknown as ArrayBuffer); } catch { throw new Error("File Excel tidak bisa dibuka. Simpan ulang sebagai .xlsx."); }
+    try { await workbook.xlsx.load(book as unknown as ArrayBuffer); } catch { throw new Error("File Excel tidak bisa dibuka. Simpan ulang sebagai .xlsx."); }
     const issues: string[] = workbook.worksheets.length > MAX_SHEETS ? [TRUNCATED] : [];
     const tables = await postableTables(name, data);
     const units = workbook.worksheets.slice(0, MAX_SHEETS).map((sheet) => {

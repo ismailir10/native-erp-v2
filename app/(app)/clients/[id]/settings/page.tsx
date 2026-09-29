@@ -12,12 +12,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ChevronRight } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { isGenericKey } from "@/lib/import/normalize";
+import { requireWorkspaceSession } from "@/lib/auth/session";
+import { DeleteClientCard } from "@/components/app/delete-client";
 
 export default async function SettingsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client } = await loadClientPage(params, searchParams);
+  const { member } = await requireWorkspaceSession();
   const [rules, memories, auto, usage, cacheSize, cfg] = await Promise.all([
     prisma.rule.findMany({ where: { firmId: client.firmId, OR: [{ clientId: client.id }, { clientId: null }] }, orderBy: [{ clientId: "asc" }, { priority: "asc" }] }),
-    prisma.memory.findMany({ where: { clientId: client.id }, orderBy: { hits: "desc" }, take: 15 }),
+    prisma.memory.findMany({ where: { clientId: client.id }, orderBy: { hits: "desc" }, take: 40 }).then((ms) => ms.filter((m) => !isGenericKey(m.merchantKey)).slice(0, 15)),
     automationByMonth([client.id]),
     prisma.aiUsage.aggregate({ where: { firmId: client.firmId }, _sum: { calls: true, promptTokens: true, completionTokens: true, keysRequested: true } }),
     prisma.aiSuggestion.count(),
@@ -94,6 +98,7 @@ export default async function SettingsPage({ params, searchParams }: { params: P
           </CardContent>
         </Card>
       </div>
+      {member.role === "ADMIN" && <DeleteClientCard clientId={client.id} name={client.name} />}
     </div>
   );
 }

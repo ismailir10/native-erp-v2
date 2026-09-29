@@ -3,7 +3,8 @@ import type { Db, Tx } from "@/lib/db";
 import type { AccountTerm, AccountType, MapMethod } from "@/lib/generated/prisma/enums";
 import { AI_BATCH_SIZE, ACCOUNT_MAPPING_PROMPT_VERSION, aiConfig, buildMapPrompt, maxTokensFor, type AiProvider, type MapItem } from "@/lib/ai/provider";
 import { AiBudgetError, runBudgetedAi } from "@/lib/ai/budget";
-import { ACCOUNT_CODES, FS_LINES, type FsLine } from "@/lib/coa/template";
+import { ACCOUNT_CODES, COA_TEMPLATE, FS_LINES, type FsLine } from "@/lib/coa/template";
+import { templateAccounts } from "@/lib/coa/ensure";
 
 /**
  * Source account → client account mapping (accounting-rules §9a, §17).
@@ -102,7 +103,7 @@ export const newFsLineOf = (code: string | null | undefined): FsLine | null =>
   code?.startsWith(NEW_PREFIX) && (code.slice(NEW_PREFIX.length) as FsLine) in FS_LINES ? (code.slice(NEW_PREFIX.length) as FsLine) : null;
 const CATCH_ALL_NAME = /(lain ?lain|lainnya|\bother\b|others|misc|sundry|\bumum\b|general|serba ?serbi)/;
 
-const KEYWORDS: { re: RegExp; code: string; types?: AccountType[]; not?: RegExp; generic?: FsLine }[] = [
+const KEYWORDS: { re: RegExp; code: string; types?: AccountType[]; not?: RegExp; generic?: FsLine; template?: boolean }[] = [
   { re: /(akumulasi|accumulated|accumulation).*(penyusutan|depreciation|amortization|amortisasi)/, code: "1219" },
   { re: /(penyusutan|depreciation|amortisasi|amortization)/, code: "6180", types: ["BEBAN"] },
   { re: /(rounding|pembulatan)/, code: ACCOUNT_CODES.ROUNDING },
@@ -116,7 +117,10 @@ const KEYWORDS: { re: RegExp; code: string; types?: AccountType[]; not?: RegExp;
   { re: /(bank charge|admin(istrasi)? bank|biaya bank|bank administration|bank admin|provisi|biaya transfer)/, code: "7100", types: ["BEBAN"] },
   { re: /(petty cash|kas kecil|cash in transit|\bkas\b|cash on hand)/, code: "1110", types: ["ASET"], not: /bank/ },
   { re: /\b(bank|giro|tabungan|deposito|time deposits?|call a ?c|ocbc|bca|bri|bni|mandiri|cimb|dbs|uob|citibank|permata|doku|flip|xendit|midtrans)\b/, code: "1120", types: ["ASET"], not: /(non ?bank|payable|utang|hutang|loan|pinjaman)/ },
-  { re: /(allowance|penyisihan|cadangan kerugian|\becl\b)/, code: "1130", types: ["ASET"] },
+  // The allowance always goes to its contra account 1135 (created from the template on posting if the client predates it): netted into
+  // 1130 it would reduce receivables a second time once CKPN posts to 1135.
+  { re: /(allowance|penyisihan|cadangan kerugian|\becl\b|ckpn)/, code: "1135", types: ["ASET"], template: true },
+  { re: /(bad debts?|doubtful|piutang tak tertagih|ckpn|\becl\b|(penyisihan|cadangan|penurunan nilai|impairment).*(piutang|receivable))/, code: "6185", types: ["BEBAN"] },
   { re: /(ppn masukan|vat[- ]?in\b|input vat)/, code: "1150", types: ["ASET"] },
   { re: /(prepaid.*(tax|pajak|\bpph\b|article|pasal)|pajak dibayar di ?muka|uang muka pajak|pph .*dibayar di ?muka|tax receivable)/, code: "1180", types: ["ASET"] },
   // Loans to staff and related parties are other receivables, not trade (1140 below).
@@ -202,7 +206,7 @@ function keywordSuggestion(
     if (!k.re.test(n)) continue;
     if (k.not?.test(n)) continue;
     if (k.types && type && !k.types.includes(type)) continue;
-    const acc = ctx.accounts.find((a) => a.code === k.code);
+    const acc = ctx.accounts.find((a) => a.code === k.code) ?? (k.template ? COA_TEMPLATE.find((a) => a.code === k.code) : undefined);
     if (!acc) continue;
     if (k.generic && !CATCH_ALL_NAME.test(n) && RANGES[k.generic]) {
       return { accountCode: `${NEW_PREFIX}${k.generic}`, method: "NEW", confidence: 0.7, reason: `Hanya kata umum "${n.match(k.re)?.[0]}" yang cocok; usulkan akun baru di ${FS_LINES[k.generic].label} dengan nama dari file` };
@@ -319,6 +323,8 @@ export class MappingError extends Error {}
 /**
  * The accountant's explicit accept (rule 9a). `items` = source account id → client account code, or
  * `{ newAccount: { fsLine, name } }` to create a client account under an FS line (never a special code).
+ * Built for whole files (hundreds of accounts): the chart is read once, new codes are allocated in memory,
+ * created in one statement and the mappings written per target account — a handful of queries, not one per row.
  */
 export async function acceptMappings(
   db: Db,
@@ -326,35 +332,75 @@ export async function acceptMappings(
   items: { sourceAccountId: string; accountCode?: string; newAccount?: { fsLine: FsLine; name: string }; method: MapMethod }[],
   actorId?: string | null,
 ) {
-  return db.$transaction(async (tx) => {
-    const sources = await tx.sourceAccount.findMany({ where: { id: { in: items.map((i) => i.sourceAccountId) }, clientId } });
-    if (sources.length !== new Set(items.map((i) => i.sourceAccountId)).size) throw new MappingError("Akun sumber tidak ditemukan untuk klien ini");
-    let created = 0;
-    // One shared client chart: the same name from several entities (or accepted twice) is one account, not one per row.
-    const byName = new Map<string, string>();
-    for (const a of await tx.account.findMany({ where: { clientId }, select: { code: true, name: true, isBank: true, isSuspense: true, isClearing: true } })) {
-      if (!a.isBank && !a.isSuspense && !a.isClearing) byName.set(normName(a.name), a.code);
-    }
-    for (const it of items) {
-      let code = it.accountCode;
-      // A `new:<FS_LINE>` suggestion accepted as-is creates the account under that line, named after the client's account.
-      const suggestedLine = it.newAccount ? null : newFsLineOf(it.accountCode);
-      const newAccount = it.newAccount ?? (suggestedLine ? { fsLine: suggestedLine, name: sources.find((x) => x.id === it.sourceAccountId)!.name } : null);
-      if (newAccount) {
-        const existing = byName.get(normName(newAccount.name));
-        if (existing) code = existing;
-        else {
-          code = await createClientAccount(tx, clientId, newAccount.fsLine, newAccount.name);
-          byName.set(normName(newAccount.name), code);
-          created++;
+  return db.$transaction(
+    async (tx) => {
+      const sources = await tx.sourceAccount.findMany({ where: { id: { in: items.map((i) => i.sourceAccountId) }, clientId } });
+      if (sources.length !== new Set(items.map((i) => i.sourceAccountId)).size) throw new MappingError("Akun sumber tidak ditemukan untuk klien ini");
+      const nameOf = new Map(sources.map((x) => [x.id, x.name]));
+      const client = await tx.client.findUniqueOrThrow({ where: { id: clientId }, select: { firmId: true } });
+      const chart = await tx.account.findMany({ where: { clientId }, select: { id: true, code: true, name: true, isBank: true, isSuspense: true, isClearing: true } });
+      const byCode = new Map(chart.map((a) => [a.code, a]));
+      const used = new Set(chart.map((a) => a.code));
+      // One shared client chart: the same name from several entities (or accepted twice) is one account, not one per row.
+      const byName = new Map<string, string>();
+      for (const a of chart) if (!a.isBank && !a.isSuspense && !a.isClearing) byName.set(normName(a.name), a.code);
+
+      // A template account the client predates (e.g. 1135) is created on first use when its code is free.
+      const templateCodes = [...new Set(items.flatMap((it) => (!it.newAccount && it.accountCode && !byCode.has(it.accountCode) && COA_TEMPLATE.some((a) => a.code === it.accountCode) ? [it.accountCode] : [])))];
+      if (templateCodes.length) {
+        await templateAccounts(tx, clientId, templateCodes);
+        for (const a of await tx.account.findMany({ where: { clientId, code: { in: templateCodes } }, select: { id: true, code: true, name: true, isBank: true, isSuspense: true, isClearing: true } })) {
+          byCode.set(a.code, a);
+          used.add(a.code);
+          if (!a.isBank && !a.isSuspense && !a.isClearing) byName.set(normName(a.name), a.code);
         }
       }
-      const acc = code ? await tx.account.findFirst({ where: { clientId, code } }) : null;
-      if (!acc || acc.isBank || acc.isSuspense || acc.isClearing) throw new MappingError(`Akun ${code ?? "(kosong)"} tidak bisa dipakai untuk pemetaan`);
-      await tx.sourceAccount.update({ where: { id: it.sourceAccountId }, data: { accountId: acc.id, mappedBy: newAccount ? "NEW" : it.method, mappedById: actorId ?? null } });
-    }
-    return { mapped: items.length, created };
-  });
+
+      const toCreate: { code: string; name: string; fsLine: FsLine }[] = [];
+      const plan: { sourceAccountId: string; code: string; mappedBy: MapMethod }[] = [];
+      for (const it of items) {
+        let code = it.accountCode;
+        // A `new:<FS_LINE>` suggestion accepted as-is creates the account under that line, named after the client's account.
+        const suggestedLine = it.newAccount ? null : newFsLineOf(it.accountCode);
+        const newAccount = it.newAccount ?? (suggestedLine ? { fsLine: suggestedLine, name: nameOf.get(it.sourceAccountId)! } : null);
+        if (newAccount) {
+          const existing = byName.get(normName(newAccount.name));
+          if (existing) code = existing;
+          else {
+            code = allocateAccountCode(newAccount.fsLine, used);
+            used.add(code);
+            byName.set(normName(newAccount.name), code);
+            toCreate.push({ code, name: newAccount.name, fsLine: newAccount.fsLine });
+          }
+        } else {
+          const acc = code ? byCode.get(code) : undefined;
+          if (!acc || acc.isBank || acc.isSuspense || acc.isClearing) throw new MappingError(`Akun ${code ?? "(kosong)"} tidak bisa dipakai untuk pemetaan`);
+        }
+        plan.push({ sourceAccountId: it.sourceAccountId, code: code!, mappedBy: newAccount ? "NEW" : it.method });
+      }
+
+      if (toCreate.length) {
+        await tx.account.createMany({ data: toCreate.map((a) => ({ firmId: client.firmId, clientId, ...newAccountData(a.fsLine, a.name), code: a.code })) });
+        for (const a of await tx.account.findMany({ where: { clientId, code: { in: toCreate.map((x) => x.code) } }, select: { id: true, code: true, name: true, isBank: true, isSuspense: true, isClearing: true } })) byCode.set(a.code, a);
+        // The chart changed, so cached AI answers keyed on the old chart no longer apply.
+        await tx.client.update({ where: { id: clientId }, data: { coaVersion: { increment: 1 } } });
+      }
+
+      const groups = new Map<string, { accountId: string; mappedBy: MapMethod; ids: string[] }>();
+      for (const p of plan) {
+        const accountId = byCode.get(p.code)!.id;
+        const k = `${accountId}|${p.mappedBy}`;
+        const g = groups.get(k) ?? { accountId, mappedBy: p.mappedBy, ids: [] };
+        g.ids.push(p.sourceAccountId);
+        groups.set(k, g);
+      }
+      for (const g of groups.values()) {
+        await tx.sourceAccount.updateMany({ where: { id: { in: g.ids }, clientId }, data: { accountId: g.accountId, mappedBy: g.mappedBy, mappedById: actorId ?? null } });
+      }
+      return { mapped: items.length, created: toCreate.length };
+    },
+    { timeout: 60_000, maxWait: 10_000 },
+  );
 }
 
 /** Code ranges per FS line for "Buat akun baru". Special codes are skipped. */
@@ -386,29 +432,38 @@ const RANGES: Partial<Record<FsLine, [number, number]>> = {
 /** FS lines under which "Buat akun baru" can create a client account, in template order. */
 export const NEW_ACCOUNT_FS_LINES = (Object.keys(FS_LINES) as FsLine[]).filter((k) => RANGES[k]).map((k) => ({ key: k, label: FS_LINES[k].label }));
 
-const SPECIAL = new Set(["1190", "1199", "1999", "3200", "3900", "7190", "7200", ...Array.from({ length: 9 }, (_, i) => `110${i + 1}`), ...Array.from({ length: 9 }, (_, i) => `220${i + 1}`)]);
+// Template codes are skipped too: accounts added to the template later (1135, 1181, 2146 …) are created on first use and must stay free.
+const SPECIAL = new Set(["1190", "1199", "1999", "3200", "3900", "7190", "7200", ...Array.from({ length: 9 }, (_, i) => `110${i + 1}`), ...Array.from({ length: 9 }, (_, i) => `220${i + 1}`), ...COA_TEMPLATE.map((a) => a.code)]);
 const SECTION_TYPE: Record<string, AccountType> = { ASET_LANCAR: "ASET", ASET_TIDAK_LANCAR: "ASET", LIABILITAS_JANGKA_PENDEK: "LIABILITAS", LIABILITAS_JANGKA_PANJANG: "LIABILITAS", EKUITAS: "EKUITAS" };
 
-export async function createClientAccount(tx: Tx, clientId: string, fsLine: FsLine, name: string): Promise<string> {
+/** Next free code under an FS line's range, then under its anchor (1140 → 114001 … 114099, 1140100 … 1140999; sorts right after 1140). */
+export function allocateAccountCode(fsLine: FsLine, used: Set<string>): string {
   const range = RANGES[fsLine];
   if (!range) throw new MappingError(`Akun baru tidak bisa dibuat di ${FS_LINES[fsLine]?.label ?? fsLine}`);
-  const client = await tx.client.findUniqueOrThrow({ where: { id: clientId } });
-  const used = new Set((await tx.account.findMany({ where: { clientId }, select: { code: true } })).map((a) => a.code));
   let code: string | null = null;
   for (let c = range[0]; c <= range[1]; c++) if (!used.has(String(c)) && !SPECIAL.has(String(c))) (code ??= String(c));
-  // Past the 4-digit range, keep going under the line's anchor: 1140 → 114001 … 114099, then 1140100 … 1140999
-  // (sorts right after 1140 as text; ≥ 1,000 detailed accounts per line).
   for (let i = 1; !code && i <= 999; i++) {
     const c = `${range[0] - 1}${String(i).padStart(2, "0")}`;
     if (!used.has(c)) code = c;
   }
   if (!code) throw new MappingError(`Rentang kode untuk ${FS_LINES[fsLine].label} sudah penuh`);
+  return code;
+}
+
+/** One new client account under an FS line (the batched path is acceptMappings). */
+export async function createClientAccount(tx: Tx, clientId: string, fsLine: FsLine, name: string): Promise<string> {
+  const client = await tx.client.findUniqueOrThrow({ where: { id: clientId }, select: { firmId: true } });
+  const code = allocateAccountCode(fsLine, new Set((await tx.account.findMany({ where: { clientId }, select: { code: true } })).map((a) => a.code)));
+  await tx.account.create({ data: { firmId: client.firmId, clientId, ...newAccountData(fsLine, name), code } });
+  // The chart changed, so cached AI answers keyed on the old chart no longer apply.
+  await tx.client.update({ where: { id: clientId }, data: { coaVersion: { increment: 1 } } });
+  return code;
+}
+
+function newAccountData(fsLine: FsLine, name: string) {
   const section = FS_LINES[fsLine].section;
   const type: AccountType =
     SECTION_TYPE[section] ?? (fsLine === "PENDAPATAN_USAHA" || fsLine === "PENDAPATAN_LAIN" ? "PENDAPATAN" : "BEBAN");
   const normalBalance = type === "ASET" || type === "BEBAN" ? (fsLine === "AKUM_PENYUSUTAN" ? "CREDIT" : "DEBIT") : "CREDIT";
-  await tx.account.create({ data: { firmId: client.firmId, clientId, code, name: name.slice(0, 80), type, normalBalance, fsLine } });
-  // The chart changed, so cached AI answers keyed on the old chart no longer apply.
-  await tx.client.update({ where: { id: clientId }, data: { coaVersion: { increment: 1 } } });
-  return code;
+  return { name: name.slice(0, 80), type, normalBalance, fsLine } as const;
 }

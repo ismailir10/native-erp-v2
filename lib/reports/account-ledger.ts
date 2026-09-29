@@ -4,6 +4,7 @@ import type { LedgerRow } from "@/components/app/ledger-table";
 import { dateOnly, formatDate, formatDateTime } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
 import { formatRateId } from "@/lib/fx/currency";
+import { sourceAccountLabel } from "@/lib/ledger-import/code";
 
 /**
  * One account's ledger for a month: opening balance, lines with running balance, and the source behind each line
@@ -59,14 +60,14 @@ export async function accountLedger(
       balance: balances[idx].toString(),
       entry: { lines: l.entry.lines.map((x) => ({ code: x.account.code, name: x.account.name, debit: x.debit.toString(), credit: x.credit.toString() })) },
       source: t
-        ? { fileName: t.import.fileName, rowNumber: t.rowNumber, rawRow: t.rawRow, description: t.description, amount: t.amount.toString(), bank: `${t.bankAccount.label} · ${t.bankAccount.number}`, method: t.method, reason: t.reason, status: t.status }
+        ? { bankTxId: t.id, accountCode: t.accountCode, taxTag: t.taxTag, fileName: t.import.fileName, sheet: t.sourceSheet, rowNumber: t.rowNumber, rawRow: t.rawRow, description: t.description, amount: t.amount.toString(), bank: `${t.bankAccount.label} · ${t.bankAccount.number}`, method: t.method, reason: t.reason, status: t.status }
         : null,
       fileSource: l.entry.ledgerImport
         ? {
             fileName: l.entry.ledgerImport.fileName,
             entryRef: l.entry.sourceRef ?? "",
             lineRef: l.sourceRef,
-            sourceAccount: l.sourceAccount ? `${l.sourceAccount.code} ${l.sourceAccount.name}` : null,
+            sourceAccount: l.sourceAccount ? sourceAccountLabel(l.sourceAccount) : null,
             lineMemo: l.memo,
             fx: l.currency && l.fxAmount !== null && l.fxRate ? `${formatMoney(l.fxAmount, l.currency)} × kurs ${formatRateId(l.fxRate)}` : null,
           }

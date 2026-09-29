@@ -2,6 +2,7 @@ import type { Db } from "@/lib/db";
 import type { AccountType } from "@/lib/generated/prisma/enums";
 import { dateOnly } from "@/lib/format";
 import { postedBasis } from "@/lib/reports/account-ledger";
+import { displaySourceCode } from "@/lib/ledger-import/code";
 
 /**
  * Neraca Saldo in the entity's own accounts (rule 9a): lines grouped by source account, in the entity's functional currency.
@@ -55,7 +56,7 @@ export async function sourceTrialBalance(db: Db, entityId: string, asOf: Date, s
     const key = s ? `s:${s.id}` : `a:${a.id}`;
     const row = rows.get(key) ?? {
       key,
-      code: s?.code ?? a.code,
+      code: s ? displaySourceCode(s.code) : a.code,
       name: s?.name ?? a.name,
       previousNames: s?.previousNames ?? [],
       clientAccount: s ? { code: a.code, name: a.name } : null,
@@ -124,7 +125,7 @@ export async function clientAccountsByAccount(db: Db, entityId: string, range: {
     const a = accounts.get(g.accountId)!;
     const s = g.sourceAccountId ? sources.get(g.sourceAccountId) : null;
     const list = out.get(a.code) ?? [];
-    list.push(s ? { sourceAccountId: s.id, code: s.code, name: s.name, net } : { sourceAccountId: null, code: a.code, name: "Tanpa akun klien (mutasi bank, penyesuaian)", net });
+    list.push(s ? { sourceAccountId: s.id, code: displaySourceCode(s.code), name: s.name, net } : { sourceAccountId: null, code: a.code, name: "Tanpa akun klien (mutasi bank, penyesuaian)", net });
     out.set(a.code, list);
   }
   for (const list of out.values()) list.sort((x, y) => Number(x.sourceAccountId === null) - Number(y.sourceAccountId === null) || x.code.localeCompare(y.code, "id", { numeric: true }));

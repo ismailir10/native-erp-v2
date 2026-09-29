@@ -72,7 +72,7 @@ export function CloseReviewCard({ clientId, year, month, flagged, aiReady, initi
                 setReview(res.review);
               }}
             >
-              {busy ? "Meninjau… (bisa sampai 1 menit)" : "Tinjau dengan AI"}
+              {busy ? "Meninjau… (bisa sampai 3 menit)" : "Tinjau dengan AI"}
             </Button>
           )}
         </CardContent>

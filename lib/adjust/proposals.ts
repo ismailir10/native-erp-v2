@@ -1,7 +1,8 @@
 import type { Db, Tx } from "@/lib/db";
 import type { ProposalSource } from "@/lib/generated/prisma/enums";
 import { LedgerError, postJournal } from "@/lib/ledger/post";
-import { periodBounds } from "@/lib/format";
+import { formatDate, periodBounds } from "@/lib/format";
+import { formatMoney } from "@/lib/money";
 import { reviewTransactionTx } from "@/lib/review";
 import { controlSnapshot } from "@/lib/controls/ai-review";
 import { amountOf } from "@/lib/ai/provider";
@@ -14,6 +15,23 @@ import { bankLineAccounts, citedBankIds } from "@/lib/controls/cited";
  */
 
 export type ProposalLine = { accountCode: string; debit: string; credit: string };
+
+/**
+ * A Jurnal Penyesuaian already made the correction a draft would make: an ADJUSTMENT of the line's entity, dated from the line's
+ * date to the period end, moving exactly the line's amount off its current account. Reclassifying the line as well would correct
+ * it twice (staging E2E 2026-09-29, H5). Returns the Bahasa reason, or null.
+ */
+export async function priorCorrection(db: Db | Tx, t: { entityId: string; date: Date; amount: bigint; accountCode: string | null }, until: Date): Promise<string | null> {
+  if (!t.accountCode) return null;
+  const abs = t.amount < 0n ? -t.amount : t.amount;
+  const line = await db.journalLine.findFirst({
+    where: { entityId: t.entityId, account: { code: t.accountCode }, date: { gte: t.date, lte: until }, entry: { kind: "ADJUSTMENT", bankTransactionId: null }, ...(t.amount < 0n ? { credit: abs } : { debit: abs }) },
+    select: { date: true, entry: { select: { memo: true, entity: { select: { functionalCurrency: true } } } } },
+    orderBy: { date: "asc" },
+  });
+  if (!line) return null;
+  return `Sudah ada Jurnal Penyesuaian ${formatDate(line.date)} "${line.entry.memo}" yang memindahkan ${formatMoney(abs, line.entry.entity.functionalCurrency)} dari ${t.accountCode}; mencatat usulan ini akan mengoreksi dua kali.`;
+}
 
 const DIGITS = /^\d{1,18}$/;
 
@@ -101,6 +119,11 @@ export async function postProposal(db: Db, input: { clientId: string; proposalId
     return await db.$transaction(
       async (tx) => {
         await input.guard?.(tx); // a caller's own precondition, checked on the same serializable snapshot as the write
+        if (p.bankTransactionId) {
+          const t = await tx.bankTransaction.findFirst({ where: { id: p.bankTransactionId, entityId: p.entityId } });
+          const twice = t ? await priorCorrection(tx, t, date) : null;
+          if (twice) throw new LedgerError(`${twice} Abaikan usulan ini.`);
+        }
         if (p.source === "AI_CONTROL" && !p.bankTransactionId) {
           // A free draft must not touch any account a bank line it cites (directly or through its journal row) posts to, its tax
           // split included: that line only moves through the reviewer's writer (rule 3). Catches drafts stored before `jl:`/`je:` citations resolved to bank lines.
@@ -173,12 +196,19 @@ export async function dismissProposal(db: Db, input: { clientId: string; proposa
 export async function proposalViews(db: Db, clientId: string, year: number, month: number) {
   // 1999 corrections are shown from their source line (lib/adjust/suspense), never twice.
   const rows = (await openProposals(db, clientId, year, month)).filter((p) => p.source !== "SUSPENSE");
-  const txs = new Map((await db.bankTransaction.findMany({ where: { id: { in: rows.flatMap((p) => (p.bankTransactionId ? [p.bankTransactionId] : [])) } }, select: { id: true, accountCode: true, taxTag: true } })).map((t) => [t.id, t]));
+  const txs = new Map((await db.bankTransaction.findMany({ where: { id: { in: rows.flatMap((p) => (p.bankTransactionId ? [p.bankTransactionId] : [])) } }, select: { id: true, entityId: true, date: true, amount: true, accountCode: true, taxTag: true } })).map((t) => [t.id, t]));
+  const end = periodBounds(year, month).end;
+  const blocked = new Map<string, string>();
+  for (const p of rows) {
+    const t = p.bankTransactionId ? txs.get(p.bankTransactionId) : null;
+    const why = t ? await priorCorrection(db, t, end) : null;
+    if (why) blocked.set(p.id, why);
+  }
   return rows.map((p) => {
     const lines = readLines(p.lines);
     const tx = p.bankTransactionId ? txs.get(p.bankTransactionId) : null;
     const fixed = tx?.accountCode ? lines.findIndex((l) => l.accountCode === tx.accountCode) : -1;
     const reason = tx?.taxTag ? `${p.reason} · Tag pajak transaksi ini dilepas saat dicatat; transaksinya kembali ke Review untuk memastikan pajaknya.` : p.reason;
-    return { id: p.id, memo: p.memo, reason, source: p.source, entity: p.entity.shortName, currency: p.entity.functionalCurrency, fixed: fixed >= 0 ? fixed : null, lines };
+    return { id: p.id, memo: p.memo, reason, source: p.source, entity: p.entity.shortName, currency: p.entity.functionalCurrency, fixed: fixed >= 0 ? fixed : null, lines, blocked: blocked.get(p.id) ?? null };
   });
 }

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Db } from "@/lib/db";
 import type { Direction } from "@/lib/generated/prisma/enums";
-import { AI_BATCH_SIZE, CLASSIFICATION_PROMPT_VERSION, DEMO_AI_MODEL, aiConfig, buildPrompt, maxTokensFor, type AiItem, type AiProvider } from "@/lib/ai/provider";
+import { AI_BATCH_SIZE, AI_TIMEOUT_MS, CLASSIFICATION_PROMPT_VERSION, DEMO_AI_MODEL, aiConfig, buildPrompt, maxTokensFor, type AiItem, type AiProvider } from "@/lib/ai/provider";
 import { AiBudgetError, runBudgetedAi } from "@/lib/ai/budget";
 import type { Classification } from "@/lib/classify/types";
 
@@ -12,6 +12,15 @@ export function aiCacheKey(merchantKey: string, direction: Direction, coaVersion
 }
 
 type Pending = { key: string; direction: Direction; sample: string };
+
+/** What the accountant reads when a classification call fails (Bahasa; the raw provider text is kept short). */
+export function aiFailureNote(e: unknown): string {
+  const err = e as Error;
+  if (err?.name === "TimeoutError" || err?.name === "AbortError") {
+    return `AI tidak menjawab dalam ${Math.round(AI_TIMEOUT_MS / 1000)} detik, jadi transaksinya memakai tebakan sederhana. Minta saran AI lagi dari halaman Review.`;
+  }
+  return `AI gagal: ${String(err?.message ?? e).slice(0, 120)}`;
+}
 
 /**
  * Resolve leftovers via cache first, then (budget permitting) the provider in batches.
@@ -73,7 +82,7 @@ export async function suggestWithAi(
         suggestions.set(`${a.key}|${p.direction}`, { method: "AI", accountCode: a.accountCode, taxTag: a.taxTag, confidence: a.confidence, reason: `AI: ${a.reason}` });
       }
     } catch (e) {
-      note = e instanceof AiBudgetError ? e.message : `AI gagal: ${(e as Error).message.slice(0, 120)}`;
+      note = e instanceof AiBudgetError ? e.message : aiFailureNote(e);
       break; // no retry loop — credit protection
     }
   }

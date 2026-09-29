@@ -8,6 +8,7 @@ import { postProposal, proposalViews, saveProposal } from "@/lib/adjust/proposal
 import { controlSnapshot } from "@/lib/controls/ai-review";
 import { postJournal } from "@/lib/ledger/post";
 import { dateOnly } from "@/lib/format";
+import { postAdjustment } from "@/lib/ledger/adjustment";
 import { runControls } from "@/lib/controls";
 import { MockProvider, parseControlExplain, type AiProvider } from "@/lib/ai/provider";
 
@@ -230,6 +231,39 @@ describe("close copilot — Jelaskan", () => {
     const entries = await db.journalEntry.count();
     await expect(postProposal(db, { clientId: g.client.id, proposalId: stale.proposal!.id })).rejects.toThrow("Buku berubah sejak draf ini dibuat");
     expect(await db.journalEntry.count()).toBe(entries); // nothing posted twice
+  });
+  it("never corrects twice: a Jurnal Penyesuaian that already moved the line blocks the draft, and Jelaskan says so", async () => {
+    const { g, key } = await loanInRevenue();
+    const r = await explainControl(db, g.firm.id, g.client.id, 2026, 8, key, new MockProvider());
+    const p = await db.proposedEntry.findUniqueOrThrow({ where: { id: r.proposal!.id } });
+    // The accountant fixed it by hand instead of posting the draft.
+    await postAdjustment(db, { clientId: g.client.id, entityId: g.pt.entity.id, date: dateOnly(2026, 8, 31), memo: "Koreksi pinjaman", lines: [{ accountCode: "4100", debit: "100.000.000", credit: "" }, { accountCode: "2210", debit: "", credit: "100.000.000" }] });
+    const view = (await proposalViews(db, g.client.id, 2026, 8)).find((v) => v.id === p.id)!;
+    expect(view.blocked).toContain('Sudah ada Jurnal Penyesuaian 31 Agu 2026 "Koreksi pinjaman" yang memindahkan Rp 100.000.000 dari 4100');
+    const entries = await db.journalEntry.count();
+    await expect(postProposal(db, { clientId: g.client.id, proposalId: p.id })).rejects.toThrow("mengoreksi dua kali");
+    expect(await db.journalEntry.count()).toBe(entries);
+    await db.proposedEntry.update({ where: { id: p.id }, data: { status: "DISMISSED" } });
+    const again = await explainControl(db, g.firm.id, g.client.id, 2026, 8, key, new MockProvider());
+    expect(again.proposal).toBeNull();
+    expect(again.suggestion).toContain("mengoreksi dua kali");
+  });
+
+  it("never offers Prive to a PT's draft; a CV keeps it", async () => {
+    const { g, key } = await loanInRevenue();
+    const seen: string[][] = [];
+    class Spy extends MockProvider {
+      override async explainControl(input: Parameters<MockProvider["explainControl"]>[0]) {
+        seen.push(input.accounts.map((a) => a.code));
+        return super.explainControl(input);
+      }
+    }
+    await explainControl(db, g.firm.id, g.client.id, 2026, 8, key, new Spy());
+    expect(seen[0]).not.toContain("3300");
+    await db.entity.update({ where: { id: g.pt.entity.id }, data: { kind: "CV" } });
+    await db.evidenceAiCache.deleteMany();
+    await explainControl(db, g.firm.id, g.client.id, 2026, 8, key, new Spy());
+    expect(seen[1]).toContain("3300");
   });
 });
 

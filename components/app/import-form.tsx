@@ -25,46 +25,89 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
   const [file, setFileState] = useState<File | null>(null);
   const [password, setPassword] = useState("");
   const [needsPassword, setNeedsPassword] = useState(false);
+  const [year, setYear] = useState("");
+  const [yearHint, setYearHint] = useState<{ guessed: boolean } | null>(null);
   const setFile = (f: File | null) => {
     setFileState(f);
     setPassword("");
     setNeedsPassword(false);
+    setYear("");
+    setYearHint(null);
   };
   const [drag, setDrag] = useState(false);
   const [result, setResult] = useState<ImportSummary | null>(null);
+  // The file of the last successful import: "Impor juga ke …" reuses it for another account in the same PDF.
+  // With its PDF password (kept in this page only, never sent anywhere else or stored) so another account in it needs no re-typing.
+  const [lastFile, setLastFile] = useState<{ file: File; password: string } | null>(null);
+  // The file's number belongs to another account of this client: offered inline, one click re-runs with it.
+  const [mismatch, setMismatch] = useState<{ error: string; bankId: string } | null>(null);
+  const digits = (s: string) => s.replace(/\D/g, "");
+  const bankLabel = (id: string) => {
+    const b = banks.find((x) => x.id === id);
+    return b ? `${b.label} · ${b.number}` : "";
+  };
   const [pending, start] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
   const entities = [...new Set(banks.map((b) => b.entity))];
 
-  const done = (r: Awaited<ReturnType<typeof importAction>>) => {
+  const done = (r: Awaited<ReturnType<typeof importAction>>, sent: { file: File; password: string } | null = null) => {
+    setMismatch(null);
     if (!r.ok) {
+      if (r.suggestBankAccountId) {
+        setMismatch({ error: r.error, bankId: r.suggestBankAccountId });
+        return;
+      }
       if (r.needsPassword) setNeedsPassword(true);
+      if (r.needsYear) {
+        // Only prefill on the first ask; never overwrite what the accountant typed.
+        if (!yearHint) {
+          setYear(r.yearGuess ? String(r.yearGuess) : "");
+          setYearHint({ guessed: !!r.yearGuess });
+        }
+        toast.error(r.error);
+        return;
+      }
       toast.error(r.error);
       return;
     }
     setResult(r.summary);
+    if (sent) setLastFile(sent);
     setFile(null);
     toast.success(`${r.summary.rows - r.summary.duplicates} transaksi diproses`);
     router.refresh();
   };
 
-  const submit = () =>
+  const submit = (override?: { bankId: string; file: File; password?: string }) =>
     start(async () => {
-      if (!file) return;
+      const f = override?.file ?? file;
+      if (!f) return;
+      const pw = override?.password ?? password;
       const fd = new FormData();
       fd.set("clientId", clientId);
-      fd.set("bankAccountId", bankId);
-      fd.set("file", file);
-      if (password) fd.set("password", password);
-      done(await importAction(fd));
+      fd.set("bankAccountId", override?.bankId ?? bankId);
+      fd.set("file", f);
+      if (pw) fd.set("password", pw);
+      if (yearHint && year) fd.set("year", year);
+      done(await importAction(fd), { file: f, password: pw });
     });
+  // Re-run the same file for another account. The file (and its password) go back into the form first, so a password or year
+  // prompt for that account can be answered with the normal *Proses mutasi*.
+  const switchAccount = (id: string, f: File, pw = password) => {
+    setBankId(id);
+    setFileState(f);
+    if (pw) setPassword(pw);
+    submit({ bankId: id, file: f, password: pw });
+  };
+  const alsoImport = result && lastFile
+    ? result.otherAccounts.flatMap((o) => banks.filter((b) => b.id !== bankId && digits(b.number) === digits(o.number)).map((b) => ({ id: b.id, label: `${b.label} · ${b.number}` })))
+    : [];
 
   return (
     <div className="grid gap-4 lg:grid-cols-5">
       <Card className="lg:col-span-3">
         <CardHeader>
           <CardTitle>Unggah rekening koran</CardTitle>
-          <CardDescription>PDF e-statement, CSV KlikBCA, Excel Mandiri, CSV BRI, atau file lain yang punya kolom tanggal, keterangan, debet/kredit, dan saldo.</CardDescription>
+          <CardDescription>PDF e-statement, CSV KlikBCA, CSV BRI, Excel (.xlsx atau .xls, termasuk salinan kerja satu lembar per bulan), atau file lain yang punya kolom tanggal, keterangan, debet/kredit, dan saldo.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
           <Field>
@@ -111,7 +154,7 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
               {file ? <span className="font-medium">{file.name}</span> : <span><span className="font-medium text-primary">Pilih file</span> atau tarik ke sini</span>}
               <span className="text-xs text-muted-foreground">Maks. 5 MB · baris yang sudah pernah diimpor otomatis dilewati</span>
             </button>
-            <input ref={inputRef} type="file" accept=".pdf,.csv,.xlsx" className="sr-only" data-testid="file-input" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            <input ref={inputRef} type="file" accept=".pdf,.csv,.xlsx,.xls" className="sr-only" data-testid="file-input" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
             <FieldDescription>Saldo berjalan dicek di setiap baris. Kalau ada baris yang hilang, hasilnya ditandai Ada celah.</FieldDescription>
           </Field>
           {needsPassword && (
@@ -121,8 +164,25 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
               <FieldDescription>Biasanya tanggal lahir atau kode dari bank. Hanya dipakai untuk membuka file ini, tidak disimpan.</FieldDescription>
             </Field>
           )}
+          {yearHint && (
+            <Field>
+              <FieldLabel htmlFor="statement-year">Tahun bulan pertama di file</FieldLabel>
+              <Input id="statement-year" inputMode="numeric" maxLength={4} autoFocus className="w-32" value={year} onChange={(e) => setYear(e.target.value.replace(/\D/g, ""))} onKeyDown={(e) => e.key === "Enter" && submit()} />
+              <FieldDescription>
+                Tanggal di file ini hanya hari dan bulan. {yearHint.guessed ? "Tahun diisi dari nama file; pastikan benar sebelum memproses." : "Isi tahunnya, misalnya 2026."} Bulan berikutnya mengikuti, termasuk pergantian Desember ke Januari.
+              </FieldDescription>
+            </Field>
+          )}
+          {mismatch && file && (
+            <div role="alert" className="space-y-2 rounded-md border border-review/40 bg-review-subtle px-3 py-2 text-sm" data-testid="account-mismatch">
+              <p>{mismatch.error}</p>
+              <Button size="sm" variant="outline" disabled={pending} onClick={() => switchAccount(mismatch.bankId, file)}>
+                Pakai rekening {bankLabel(mismatch.bankId)}
+              </Button>
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant={result ? "outline" : "default"} onClick={submit} disabled={!file || !bankId || pending || (needsPassword && !password)}>
+            <Button variant={result ? "outline" : "default"} onClick={() => submit()} disabled={!file || !bankId || pending || (needsPassword && !password) || (!!yearHint && year.length !== 4)}>
               {pending ? <Loader2 className="animate-spin" /> : <FileUp />} Proses mutasi
             </Button>
             {sample && (
@@ -162,6 +222,16 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
                 <StatusPill status={result.continuityOk ? "PASS" : "REVIEW"} label={result.continuityOk ? "Nyambung" : "Ada celah"} />
               </div>
               {result.continuityNote && <p className="text-xs text-review">{result.continuityNote}</p>}
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-muted-foreground">Periode</span>
+                <span className="text-right">{result.months.length > 1 ? `${result.months[0]} – ${result.months.at(-1)} (${result.months.length} bulan)` : result.months[0]}</span>
+              </div>
+              {result.notes.length > 0 && (
+                <div className="space-y-1 rounded-md border px-3 py-2 text-xs" data-testid="import-notes">
+                  <div className="eyebrow">Cara file dibaca</div>
+                  <ul className="list-disc space-y-1 pl-4 text-muted-foreground">{result.notes.map((n) => <li key={n}>{n}</li>)}</ul>
+                </div>
+              )}
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Panggilan AI</span>
                 <span className="num">{result.ai.calls} panggilan · {result.ai.cacheHits} dari jawaban tersimpan</span>
@@ -169,14 +239,23 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
               {result.ai.note && <p className="text-xs text-muted-foreground">{result.ai.note}</p>}
               {result.duplicates > 0 && <p className="text-xs text-muted-foreground">{result.duplicates} baris dilewati karena sudah pernah diimpor.</p>}
               {result.otherSections.length > 0 && (
-                <div className="text-xs text-muted-foreground">
+                <div className="space-y-2 text-xs text-muted-foreground">
                   File ini juga berisi rekening lain:
                   <ul className="list-disc pl-4">{result.otherSections.map((o) => <li key={o}>{o}</li>)}</ul>
+                  {alsoImport.length > 0 && lastFile && (
+                    <div className="flex flex-wrap gap-2">
+                      {alsoImport.map((b) => (
+                        <Button key={b.id} size="sm" variant="outline" disabled={pending} onClick={() => switchAccount(b.id, lastFile.file, lastFile.password)}>
+                          Impor juga ke {b.label}
+                        </Button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
-              {result.needsReview > 0 ? (
+              {result.needsReview > 0 || result.pendingReview > 0 ? (
                 <Link href={`/clients/${clientId}/review`} className={buttonVariants({ className: "w-full" })}>
-                  Review {result.needsReview} transaksi
+                  Review {result.needsReview || result.pendingReview} transaksi
                 </Link>
               ) : (
                 <Link href={`/clients/${clientId}/close`} className={buttonVariants({ variant: "outline", className: "w-full" })}>

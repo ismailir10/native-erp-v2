@@ -9,6 +9,7 @@ import { formatPeriod } from "@/lib/format";
 import { PageHeader } from "@/components/app/page-header";
 import { ScopeBar } from "@/components/app/scope-bar";
 import { LedgerTable } from "@/components/app/ledger-table";
+import { classifiableOptions } from "@/lib/coa/options";
 import { accountLedger } from "@/lib/reports/account-ledger";
 import { Card, CardContent } from "@/components/ui/card";
 import { NextStep } from "@/components/app/page-header";
@@ -55,7 +56,7 @@ export default async function AccountLedger({ params, searchParams }: { params: 
       />
       <Card>
         <CardContent className="px-0">
-          <LedgerTable rows={rows} opening={opening.toString()} currency={currency} />
+          <LedgerTable rows={rows} opening={opening.toString()} currency={currency} accounts={rows.some((r) => r.source) ? classifiableOptions(await prisma.account.findMany({ where: { clientId: client.id }, orderBy: { code: "asc" } })) : undefined} />
           {rows.length === 0 && <p className="px-6 py-8 text-center text-sm text-muted-foreground">Tidak ada transaksi di periode ini.</p>}
         </CardContent>
       </Card>

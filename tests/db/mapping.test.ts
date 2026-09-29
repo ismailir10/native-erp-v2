@@ -80,7 +80,7 @@ describe("deterministic mapping", () => {
 
   it("proposes a new account for generic matches, keeps catch-alls for catch-all names and specific rules as they are", () => {
     expect(sug("Platform Subscription Expense")).toBe("new:BEBAN_UMUM_ADM");
-    expect(sug("Beban Penyisihan Piutang CKP")).toBe("new:BEBAN_UMUM_ADM");
+    expect(sug("Beban Penyisihan Piutang CKP")).toBe("6185"); // the impairment expense has its own account
     expect(sug("Payable to Event")).toBe("new:UTANG_LAIN");
     expect(sug("Event Revenue")).toBe("new:PENDAPATAN_USAHA");
     expect(sug("Beban Umum Lain-lain")).toBe("6190"); // the name is the catch-all
@@ -219,5 +219,37 @@ describe("suggestMappings + acceptMappings", () => {
     expect(codes).toHaveLength(121); // 1140 + 9 four-digit + 99 two-digit overflow + 12 three-digit overflow
     expect(new Set(codes).size).toBe(121);
     expect(codes).toContain("1140100");
+  });
+  it("accepts a whole file at once: 700 mappings incl. 125 new accounts, one chart bump, names shared across entities", async () => {
+    const g = await makeGroup();
+    const before = (await db.client.findUniqueOrThrow({ where: { id: g.client.id } })).coaVersion;
+    const rows = [
+      ...Array.from({ length: 575 }, (_, i) => ({ entityId: g.pt.entity.id, code: `X${i}`, name: `Biaya Operasional ${i}` })),
+      ...Array.from({ length: 120 }, (_, i) => ({ entityId: g.pt.entity.id, code: `N${i}`, name: `Beban Detail ${i}` })),
+      ...Array.from({ length: 5 }, (_, i) => ({ entityId: g.owner.entity.id, code: `N${i}`, name: `Beban Detail ${i}` })), // same names, other entity
+    ];
+    await db.sourceAccount.createMany({ data: rows.map((r) => ({ firmId: g.firm.id, clientId: g.client.id, ...r })) });
+    const src = await db.sourceAccount.findMany({ where: { clientId: g.client.id } });
+    const r = await acceptMappings(
+      db,
+      g.client.id,
+      src.map((x) => (x.code.startsWith("X") ? { sourceAccountId: x.id, accountCode: "6190", method: "KEYWORD" as const } : { sourceAccountId: x.id, accountCode: "new:BEBAN_UMUM_ADM", method: "NEW" as const })),
+    );
+    expect(r).toEqual({ mapped: 700, created: 120 });
+    const mapped = await db.sourceAccount.findMany({ where: { clientId: g.client.id }, include: { account: true } });
+    expect(mapped.every((m) => m.accountId)).toBe(true);
+    expect(mapped.filter((m) => m.account!.code === "6190").map((m) => m.mappedBy)).toEqual(Array(575).fill("KEYWORD"));
+    const created = await db.account.findMany({ where: { clientId: g.client.id, name: { startsWith: "Beban Detail" } } });
+    expect(created).toHaveLength(120);
+    expect(created.every((a) => a.type === "BEBAN" && a.normalBalance === "DEBIT" && a.fsLine === "BEBAN_UMUM_ADM")).toBe(true);
+    const pt0 = mapped.find((m) => m.entityId === g.pt.entity.id && m.code === "N0")!;
+    const owner0 = mapped.find((m) => m.entityId === g.owner.entity.id && m.code === "N0")!;
+    expect(owner0.accountId).toBe(pt0.accountId);
+    expect(owner0.mappedBy).toBe("NEW");
+    expect((await db.client.findUniqueOrThrow({ where: { id: g.client.id } })).coaVersion).toBe(before + 1);
+    // Nothing is half-done when one item is refused.
+    const [bad] = await sources(g, ["Tidak Boleh"], "B");
+    await expect(acceptMappings(db, g.client.id, [{ sourceAccountId: bad.id, accountCode: "new:BEBAN_UMUM_ADM", method: "NEW" }, { sourceAccountId: pt0.id, accountCode: "1999", method: "MANUAL" }])).rejects.toThrow(MappingError);
+    expect(await db.account.count({ where: { clientId: g.client.id, name: "Tidak Boleh" } })).toBe(0);
   });
 });

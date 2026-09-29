@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Db } from "@/lib/db";
-import { formatPeriod, periodBounds } from "@/lib/format";
+import { formatDate, formatPeriod, periodBounds } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
 import { incomeStatement, trialBalance } from "@/lib/reports/ledger";
 import { closeReadiness, runControls } from "@/lib/controls";
@@ -95,11 +95,26 @@ export function workspaceQuestionIntent(question: string) {
   const q = question.toLowerCase();
   if (/\b(prediksi|forecast|proyeksi|ramalan|tahun depan|bulan depan)\b/.test(q)) return "unsupported";
   if (/\b(tutup buku|close|kesiapan|siap|hambatan|penghambat)\b/.test(q)) return "readiness";
+  // "transfer ke ALFI YANDRA", "pembayaran dari DINA", "mutasi dengan \"PT PAKAN\"": bank lines by counterparty.
+  if (/\b(transfer|transaksi|mutasi|pembayaran|bayar|dibayar|penerimaan|terima|diterima|kiriman|dikirim|setoran)\b/.test(q) && counterpartyOf(question)) return "transactions";
   if (/\b(profil|profile|usaha|industry|industri|konteks)\b/.test(q)) return "context";
   if (/\b(dokumen|file|sumber|rekening koran|laporan unggahan)\b/.test(q)) return "evidence";
   if (/\b(laba|profit|pendapatan|revenue)\b/.test(q)) return "profit";
   if (/\b(saldo|kas|bank|balance)\b/.test(q)) return "balances";
   return "unsupported";
+}
+
+const PHRASE_END = /\s+(?:bulan|tahun|dan|di|yang|pada|sampai|dicatat|masuk|keluar|periode|berapa|total|ke akun|di akun)\b|[?.,;:!]|$/i;
+/** The counterparty named in a question: a quoted phrase, else the words after ke/dari/kepada/untuk/oleh/dengan. */
+export function counterpartyOf(question: string): string | null {
+  const quoted = question.match(/["“']([^"”']{3,60})["”']/)?.[1];
+  if (quoted) return quoted.trim();
+  const m = question.match(/\b(?:ke|dari|kepada|untuk|oleh|dengan)\s+([\p{L}][\p{L}\p{N} .&'-]{2,60})/iu);
+  if (!m) return null;
+  const name = m[1].split(PHRASE_END)[0].trim();
+  // "ke akun apa", "dari bank" name no one.
+  if (!name || /^(akun|rekening|bank|mana|siapa|apa)\b/i.test(name) || name.replace(/[^\p{L}]/gu, "").length < 3) return null;
+  return name;
 }
 
 export async function askWorkspace(db: Db, firmId: string, input: WorkspaceInput & { question: string }): Promise<WorkspaceAnswer> {
@@ -111,10 +126,55 @@ export async function askWorkspace(db: Db, firmId: string, input: WorkspaceInput
   const intent = workspaceQuestionIntent(question);
   const accountCode = question.match(/\b(?:akun|account)\s+([0-9][a-z0-9.-]{0,29})\b/i)?.[1];
   if (intent === "unsupported") {
-    answer.text = "Pertanyaan ini belum didukung. Coba kesiapan tutup buku, laba, saldo kas, profil perusahaan, atau pencarian dokumen.";
+    answer.text = "Pertanyaan ini belum didukung. Coba kesiapan tutup buku, laba, saldo kas, transfer ke/dari nama tertentu, profil perusahaan, atau pencarian dokumen.";
     return answer;
   }
-  if (intent === "context" || intent === "evidence") {
+  if (intent === "transactions") {
+    // Deterministic: bank lines of the scope's entities in the month whose description holds every word of the name.
+    const who = counterpartyOf(question)!;
+    const words = who.split(/\s+/).filter((w) => w.length >= 2).slice(0, 6);
+    const { start, end } = periodBounds(resolved.year, resolved.month);
+    const lines = await db.bankTransaction.findMany({
+      where: { firmId, entityId: { in: resolved.entityIds }, date: { gte: start, lte: end }, AND: words.map((w) => ({ description: { contains: w, mode: "insensitive" as const } })) },
+      include: { bankAccount: { include: { entity: true } } },
+      orderBy: [{ date: "asc" }, { rowNumber: "asc" }],
+      take: 201,
+    });
+    const shown = lines.slice(0, 200);
+    const names = new Map((await db.account.findMany({ where: { clientId: { in: resolved.clientIds } }, select: { clientId: true, code: true, name: true } })).map((a) => [`${a.clientId}|${a.code}`, a.name]));
+    const byCurrency = new Map<string, { inn: bigint; out: bigint }>();
+    const byAccount = new Map<string, number>();
+    for (const t of shown) {
+      const cur = t.bankAccount.currency;
+      const sum = byCurrency.get(cur) ?? { inn: 0n, out: 0n };
+      if (t.amount > 0n) sum.inn += t.amount;
+      else sum.out += -t.amount;
+      byCurrency.set(cur, sum);
+      const code = t.status === "NEEDS_REVIEW" ? "1999" : (t.accountCode ?? "1999");
+      byAccount.set(code, (byAccount.get(code) ?? 0) + 1);
+    }
+    const totals = [...byCurrency].map(([cur, v]) => [v.inn ? `masuk ${formatMoney(v.inn, cur)}` : "", v.out ? `keluar ${formatMoney(v.out, cur)}` : ""].filter(Boolean).join(", ")).join("; ");
+    const accounts = [...byAccount].sort((a, b) => b[1] - a[1]).map(([code, n]) => `${code} (${n}×)`).join(", ");
+    answer.text = shown.length
+      ? `${shown.length} mutasi bank dengan "${who}" pada ${periodLabel}: ${totals}. Dicatat ke ${accounts}.`
+      : `Tidak ada mutasi bank dengan "${who}" pada ${periodLabel} di cakupan ini.`;
+    for (const t of shown.slice(0, 30)) {
+      const clientId = t.bankAccount.entity.clientId;
+      const waiting = t.status === "NEEDS_REVIEW";
+      const code = waiting ? "1999" : (t.accountCode ?? "1999");
+      const href = workspaceHref(`/clients/${clientId}/ledger/${encodeURIComponent(code)}`, resolved, { entity: t.entityId });
+      const amount = t.amount < 0n ? -t.amount : t.amount;
+      answer.rows.push({
+        label: `${formatDate(t.date)} · ${t.bankAccount.entity.shortName} · ${t.bankAccount.label} · ${t.description.slice(0, 80)}`,
+        value: `${t.amount > 0n ? "Masuk" : "Keluar"} ${formatMoney(amount, t.bankAccount.currency)} → ${waiting ? `menunggu review (usulan ${t.suggestedCode ?? "-"})` : `${code} ${names.get(`${clientId}|${code}`) ?? ""}`.trim()}`,
+        source: href,
+      });
+      answer.citations.push({ label: `${t.bankAccount.entity.shortName} · buku besar ${code}`, href });
+    }
+    if (lines.length > 200) answer.limitations.push("Lebih dari 200 mutasi cocok; total dihitung dari 200 pertama. Persempit namanya atau pilih perusahaan.");
+    if (shown.length > 30) answer.limitations.push(`Menampilkan 30 dari ${shown.length} mutasi; totalnya dari semua yang cocok.`);
+    answer.limitations.push("Dicari dari keterangan rekening koran pada bulan terpilih; jurnal penyesuaian dan buku besar impor tidak ikut dihitung.");
+  } else if (intent === "context" || intent === "evidence") {
     // Intake client ownership plus confirmed entity/period selections restrict source passages.
     const intakes = await db.evidenceIntake.findMany({ where: { firmId, clientId: { in: resolved.clientIds } }, orderBy: { id: "asc" }, take: 11 });
     for (const intake of intakes.slice(0, 10)) {

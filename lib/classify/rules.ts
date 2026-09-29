@@ -49,7 +49,8 @@ export const FIRM_RULES: Omit<RuleLike, "clientId">[] = [
   { pattern: "ADM BULANAN", direction: "OUT", accountCode: "7100", taxTag: null, priority: 20 },
   { pattern: "SETORAN PPN", direction: "OUT", accountCode: "2130", taxTag: "PPN_KELUARAN", priority: 15 },
   { pattern: "PPH 21", direction: "OUT", accountCode: "6100", taxTag: "PPH_21", priority: 15 },
-  { pattern: "PPH 25", direction: "OUT", accountCode: "8100", taxTag: "PPH_25", priority: 15 },
+  // An instalment is a prepayment credited against the year's PPh badan (accounting-rules 5d), not an expense.
+  { pattern: "PPH 25", direction: "OUT", accountCode: "1180", taxTag: "PPH_25", priority: 15 },
   { pattern: "PAYROLL", direction: "OUT", accountCode: "6100", taxTag: null, priority: 30 },
   { pattern: "GAJI", direction: "OUT", accountCode: "6100", taxTag: null, priority: 30 },
   { pattern: "BPJS", direction: "OUT", accountCode: "6110", taxTag: null, priority: 30 },

@@ -6,6 +6,7 @@ import { requireMember } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
 import { settingsSecretConfigured } from "@/lib/settings/secret";
 import { clearAiKey, fetchModels, resolveAiConfig, saveAiSettings, SettingsError, validateAiInput } from "@/lib/settings/ai";
+import { infraErrorMessage } from "@/lib/db-errors";
 
 /**
  * Pengaturan → AI. Every action requires a workspace session; credential changes need the ADMIN role.
@@ -22,7 +23,7 @@ async function guard(): Promise<string | null> {
 function fail(e: unknown): { ok: false; error: string } {
   if (e instanceof SettingsError) return { ok: false, error: e.message };
   console.error(e);
-  return { ok: false, error: "Terjadi kesalahan tak terduga. Coba lagi." };
+  return { ok: false, error: infraErrorMessage(e) ?? "Terjadi kesalahan tak terduga. Coba lagi." };
 }
 
 export async function saveAiSettingsAction(input: { apiKey: string; model: string }): Promise<Result<{ keyLast4: string | null }>> {

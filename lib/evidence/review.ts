@@ -173,7 +173,9 @@ async function prepare(db: Db, firmId: string, intakeId: string, versionId: stri
     const bank = await db.bankAccount.findFirst({ where: { id: selection.bankAccountId ?? "", firmId, entityId: entity.id } });
     if (!bank) throw new Error("Pilih rekening milik entitas sumber.");
     if (selection.currency !== "IDR") throw new Error("Rekening koran valuta asing tersedia sebagai bukti; pencatatan bank belum didukung.");
-    const sections = await parseStatementSections(version.name, Buffer.from(version.data), { password });
+    // A statement dated dd/MM takes the year of the confirmed source range, the accountant's own answer.
+    const year = Number(selection.periodStart!.slice(0, 4));
+    const sections = await parseStatementSections(version.name, Buffer.from(version.data), { password, year });
     const digits = (value: string | null) => (value ?? "").replace(/\D/g, "");
     const st = sections.find(s => digits(s.accountNumber) === digits(bank.number)) ?? (sections.length === 1 && !sections[0].accountNumber ? sections[0] : null);
     if (!st) throw new Error("Nomor rekening tidak ditemukan pada file atau berbeda dengan rekening terpilih.");
@@ -183,7 +185,7 @@ async function prepare(db: Db, firmId: string, intakeId: string, versionId: stri
     const locked = await db.period.findMany({ where: { firmId, clientId: intake.clientId, status: "LOCKED" }, select: { year: true, month: true } });
     if (st.rows.some(row => locked.some(p => p.year === row.date.getUTCFullYear() && p.month === row.date.getUTCMonth() + 1))) throw new Error("Periode sumber sudah ditutup. Buka periode terlebih dahulu.");
     const continuity = checkContinuity(st);
-    return { kind: "BANK", rows: st.rows.length, continuityOk: continuity.ok, bankAccountId: bank.id };
+    return { kind: "BANK", rows: st.rows.length, continuityOk: continuity.ok, bankAccountId: bank.id, year };
   }
   try {
     const staged = await stageImport(db, { firmId, clientId: intake.clientId, fileName: version.name, data: Buffer.from(version.data), sheet: unit.label, entityId: entity?.id, date: new Date(selection.periodEnd), actorId, evidenceVersionId: versionId, evidenceUnitKey: unitKey, currencyMode, allowedPeriod: { start: selection.periodStart, end: selection.periodEnd, currency: selection.currency, entityIds: entities.map(e => e.id) } });
@@ -212,7 +214,7 @@ export async function postEvidenceBank(db: Db, firmId: string, intakeId: string,
     let importId: string;
     try {
       // Existing deterministic pipeline remains the sole writer; AI suggestions are reviewed later.
-      const result = await importStatement(db, { bankAccountId: preview.bankAccountId!, fileName: version.name, data: Buffer.from(version.data), provider: null, password, actorId, evidenceVersionId: versionId, evidenceUnitKey: unitKey });
+      const result = await importStatement(db, { bankAccountId: preview.bankAccountId!, fileName: version.name, data: Buffer.from(version.data), provider: null, password, year: preview.year, actorId, evidenceVersionId: versionId, evidenceUnitKey: unitKey });
       importId = result.importId;
     } catch (error) {
       const found = await db.statementImport.findFirst({ where: { firmId, evidenceVersionId: versionId, evidenceUnitKey: unitKey } });

@@ -1,7 +1,7 @@
 import type { Db } from "@/lib/db";
 import { sourceSuspenseNet } from "@/lib/controls/suspense-net";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
-import { periodBounds } from "@/lib/format";
+import { formatDate, periodBounds } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
 import { FxMissingError } from "@/lib/reports/fx";
 import { revaluationProposals } from "@/lib/fx/revalue";
@@ -9,6 +9,12 @@ import { balanceSheet, combinedWorksheet, trialBalance } from "@/lib/reports/led
 import { sanityControls } from "@/lib/controls/sanity";
 import { anomalyControls } from "@/lib/controls/anomaly";
 import { closeLock, dueProposals, schedulesDueBy } from "@/lib/adjust/schedules";
+import { registerVsLedger } from "@/lib/assets/register";
+import { subledgerVsLedger } from "@/lib/receivables/aging";
+import { ckpn, settingAt } from "@/lib/receivables/ckpn";
+import { leasesVsLedger } from "@/lib/leases/register";
+import { valuation } from "@/lib/benefits/valuation";
+import { packApplies, taxPack } from "@/lib/tax/pack";
 
 /**
  * Close controls (analog of belifi 16_CONTROLS). PASS / REVIEW / FAIL.
@@ -61,6 +67,8 @@ export async function runControls(db: Db, clientId: string, year: number, month:
     });
 
     let statementMissing = false;
+    // Books start at the entity's Saldo Awal (else the account's first statement): a month ending before that needs no statement.
+    const opening = await db.journalEntry.findFirst({ where: { entityId: e.id, kind: "OPENING" }, orderBy: { date: "asc" }, select: { date: true } });
     for (const ba of e.bankAccounts) {
       const lastTx = await db.bankTransaction.findFirst({
         where: { bankAccountId: ba.id, date: { lte: end }, balance: { not: null } },
@@ -71,6 +79,13 @@ export async function runControls(db: Db, clientId: string, year: number, month:
       const gl = glRow?.net ?? 0n;
       const key = `bank:${ba.id}`;
       if (coverage.length === 0) {
+        const first = opening ? null : await db.statementImport.findFirst({ where: { bankAccountId: ba.id }, orderBy: { periodStart: "asc" }, select: { periodStart: true } });
+        const startsAfter = opening ? end.getTime() <= opening.date.getTime() : !!first && end.getTime() < first.periodStart.getTime();
+        if (startsAfter) {
+          const from = opening ? new Date(opening.date.getTime() + 86_400_000) : first!.periodStart;
+          controls.push({ key, title: `Rekonsiliasi ${ba.label}`, scope: e.shortName, status: "PASS", detail: `Pembukuan rekening ini mulai ${formatDate(from)}` });
+          continue;
+        }
         statementMissing = true;
         controls.push({ key, title: `Rekonsiliasi ${ba.label}`, scope: e.shortName, status: "REVIEW", detail: "Mutasi bulan ini belum diimpor", href: `${base}/import`, ack: acks.get(key) });
         continue;
@@ -94,6 +109,29 @@ export async function runControls(db: Db, clientId: string, year: number, month:
         status: broken.length ? "REVIEW" : "PASS",
         detail: broken.length ? broken.map((b) => `${b.fileName}: ${b.continuityNote}`).join("; ") : "Saldo berjalan nyambung dari awal ke akhir",
         ack: acks.get(ckey),
+      });
+    }
+
+    // Books posted before postJournal refused it may still use another entity's bank account (its reconciliation can't see them).
+    const foreignLines = await db.journalLine.groupBy({
+      by: ["accountId"],
+      where: { entityId: e.id, date: { lte: end }, account: { isBank: true, bankAccounts: { some: { entityId: { not: e.id } } } } },
+      _sum: { debit: true, credit: true },
+    });
+    const foreignBank = foreignLines.filter((l) => (l._sum.debit ?? 0n) !== (l._sum.credit ?? 0n));
+    if (foreignBank.length) {
+      const bkKey = `bank-entity:${e.id}`;
+      const accs = await db.account.findMany({ where: { id: { in: foreignBank.map((l) => l.accountId) } }, orderBy: { code: "asc" } });
+      const names = accs.map((a) => `${a.code} ${a.name}`).join(", ");
+      const held = foreignBank.reduce((s, l) => s + (l._sum.debit ?? 0n) - (l._sum.credit ?? 0n), 0n);
+      controls.push({
+        key: bkKey,
+        title: "Rekening bank entitas lain",
+        scope: e.shortName,
+        status: "REVIEW",
+        detail: `Buku ${e.shortName} menyimpan saldo ${fmt(held)} di ${names}. Kosongkan dengan Jurnal Penyesuaian di buku ini (Buku menerima jurnal yang mengembalikan saldonya ke nol), lalu catat lewat 1190 di buku masing-masing.`,
+        href: `${base}/ledger/${accs[0].code}?entity=${e.id}`,
+        ack: acks.get(bkKey),
       });
     }
 
@@ -133,6 +171,120 @@ export async function runControls(db: Db, clientId: string, year: number, month:
         href: `${base}/journals/new?period=${year}-${String(month).padStart(2, "0")}`,
         ack: acks.get(sKey),
       });
+    }
+
+    // Fixed-asset register (rule 5b): its cost and accumulated depreciation against the GL accounts it uses, for entities with assets.
+    const [fa] = await registerVsLedger(db, clientId, year, month, [e.id]);
+    if (fa) {
+      const faKey = `fa:${e.id}`;
+      const diff = [
+        fa.register.cost !== fa.ledger.cost ? `Harga perolehan: daftar ${fmt(fa.register.cost)} vs buku besar ${fmt(fa.ledger.cost)} (${fa.assetAccounts.join(", ")})` : "",
+        fa.register.accumulated !== fa.ledger.accumulated ? `Akumulasi penyusutan: daftar ${fmt(fa.register.accumulated)} vs buku besar ${fmt(fa.ledger.accumulated)} (${fa.accumulatedAccounts.join(", ")})` : "",
+      ].filter(Boolean);
+      controls.push({
+        key: faKey,
+        title: "Daftar aset tetap = buku besar",
+        scope: e.shortName,
+        status: fa.equal ? "PASS" : "REVIEW",
+        detail: fa.equal ? `Harga perolehan ${fmt(fa.register.cost)}, akumulasi penyusutan ${fmt(fa.register.accumulated)}` : `${diff.join("; ")}. Aset yang belum didaftarkan atau jurnal manual di akun aset menjelaskan selisih ini`,
+        href: `${base}/assets?period=${year}-${String(month).padStart(2, "0")}&entity=${e.id}`,
+        ack: acks.get(faKey),
+      });
+    }
+
+    // Receivable/payable subledger (rule 5c): open invoices against the GL accounts they use, for entities with invoices.
+    for (const direction of ["SALES", "PURCHASE"] as const) {
+      const [sub] = await subledgerVsLedger(db, clientId, direction, end, [e.id]);
+      if (!sub) continue;
+      const sales = direction === "SALES";
+      const key = `${sales ? "ar" : "ap"}:${e.id}`;
+      const what = sales ? "Piutang" : "Utang";
+      controls.push({
+        key,
+        title: sales ? "Piutang usaha = daftar faktur" : "Utang usaha = daftar tagihan",
+        scope: e.shortName,
+        status: sub.equal ? "PASS" : "REVIEW",
+        detail: sub.equal
+          ? `${what} terbuka ${fmt(sub.subledger)} (${sub.accounts.join(", ")})`
+          : `${what} terbuka: daftar ${fmt(sub.subledger)} vs buku besar ${fmt(sub.ledger)} (${sub.accounts.join(", ")})${sub.unsettledLines ? `; ${sub.unsettledLines} mutasi bank di akun itu belum dicocokkan ke faktur` : ""}`,
+        href: `${base}/receivables?period=${year}-${String(month).padStart(2, "0")}&entity=${e.id}&tab=${sales ? "piutang" : "utang"}`,
+        ack: acks.get(key),
+      });
+    }
+
+    // CKPN (rule 5e): once the entity has a setting, the allowance (1135) should equal the matrix at the month-end.
+    if (await settingAt(db, e.id, year, month)) {
+      const c = await ckpn(db, clientId, e.id, year, month);
+      const cKey = `ckpn:${e.id}`;
+      const d = c.difference;
+      controls.push({
+        key: cKey,
+        title: "CKPN piutang = matriks provisi",
+        scope: e.shortName,
+        status: d === 0n ? "PASS" : "REVIEW",
+        detail:
+          c.blocker ?? (d === 0n
+            ? `Cadangan kerugian ${fmt(c.balance)} sesuai matriks`
+            : `Matriks ${fmt(c.total!)} vs cadangan di buku besar ${fmt(c.balance)}: ${d! > 0n ? "tambah" : "pulihkan"} ${fmt(d! > 0n ? d! : -d!)}${c.later ? ` (sudah dijurnal per ${formatDate(c.later)})` : ""}`),
+        href: `${base}/receivables?period=${year}-${String(month).padStart(2, "0")}&entity=${e.id}&tab=piutang`,
+        ack: acks.get(cKey),
+      });
+    }
+
+    // Lease register (rule 5f): monthly journals posted, and 1230 / 1239 / 2170 + 2400 equal to the register.
+    const lease = await leasesVsLedger(db, clientId, e.id, year, month);
+    if (lease) {
+      const lKey = `lease:${e.id}`;
+      const r = lease.register;
+      const l = lease.ledger;
+      const diff = [
+        lease.due ? `${lease.due} jurnal bulanan sewa belum dicatat` : "",
+        r.rou !== l.rou ? `Aset hak guna: daftar ${fmt(r.rou)} vs buku besar ${fmt(l.rou)} (1230)` : "",
+        r.accumulated !== l.accumulated ? `Akumulasi: daftar ${fmt(r.accumulated)} vs buku besar ${fmt(l.accumulated)} (1239)` : "",
+        r.liability !== l.liability ? `Liabilitas sewa: daftar ${fmt(r.liability)} vs buku besar ${fmt(l.liability)} (2170 + 2400); pembayaran sewa di rekening koran diklasifikasikan ke 2170?` : "",
+      ].filter(Boolean);
+      controls.push({
+        key: lKey,
+        title: "Sewa (PSAK 116) = daftar sewa",
+        scope: e.shortName,
+        status: lease.equal ? "PASS" : "REVIEW",
+        detail: lease.equal ? `Aset hak guna ${fmt(r.rou - r.accumulated)} (neto), liabilitas sewa ${fmt(r.liability)}` : diff.join("; "),
+        href: `${base}/leases?period=${year}-${String(month).padStart(2, "0")}&entity=${e.id}`,
+        ack: acks.get(lKey),
+      });
+    }
+
+    // Employee benefits (rule 5g): in December, once the entity has assumptions, 2310 should equal the PSAK 24 obligation.
+    if (month === 12 && (await db.benefitSetting.findUnique({ where: { entityId: e.id }, select: { id: true } }))) {
+      const v = await valuation(db, clientId, e.id, year, month);
+      const ebKey = `eb:${e.id}`;
+      controls.push({
+        key: ebKey,
+        title: "Imbalan kerja (PSAK 24) = valuasi",
+        scope: e.shortName,
+        status: !v.blocker && !v.lines.length ? "PASS" : "REVIEW",
+        detail: v.blocker ?? (v.lines.length ? `Liabilitas imbalan kerja ${fmt(v.dbo)} vs buku besar ${fmt(v.ledger.liability)} (2310); jurnal valuasi belum dicatat${v.later ? ` (sudah dijurnal per ${formatDate(v.later)})` : ""}` : `Liabilitas imbalan kerja ${fmt(v.dbo)} sesuai valuasi (${v.employees.length} karyawan)`),
+        href: `${base}/benefits?period=${year}-12&entity=${e.id}`,
+        ack: acks.get(ebKey),
+      });
+    }
+
+    // Tax pack (rule 5d): in December, a company's PPh badan for the year should be booked.
+    if (month === 12 && packApplies(e)) {
+      const pack = await taxPack(db, clientId, e.id, year, month);
+      const expense = pack?.proposals.CURRENT.find((l) => l.code === ACCOUNT_CODES.CURRENT_TAX)?.amount ?? 0n;
+      if (pack && pack.proposals.CURRENT.length) {
+        const tKey = `tax:${e.id}`;
+        controls.push({
+          key: tKey,
+          title: `PPh badan ${year} belum dijurnal`,
+          scope: e.shortName,
+          status: "REVIEW",
+          detail: `Estimasi PPh terutang ${fmt(pack.tax.due)}; jurnal pajak kini yang belum dicatat ${expense >= 0n ? "" : "mengurangi beban "}${fmt(expense < 0n ? -expense : expense)}`,
+          href: `${base}/tax?period=${year}-12&entity=${e.id}`,
+          ack: acks.get(tKey),
+        });
+      }
     }
   }
 

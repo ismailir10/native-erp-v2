@@ -148,7 +148,7 @@ describe("Bounded Drive downloads", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(new Uint8Array(DRIVE_FILE_LIMIT))));
     expect((await downloadDriveFile("a", file)).data.byteLength).toBe(DRIVE_FILE_LIMIT);
   });
-  it.each(["archive.xls", "letter.docx", "scan.png", "slides.pptx"])("rejects unsupported %s before fetching", async (name) => {
+  it.each(["archive.zip", "letter.docx", "scan.png", "slides.pptx"])("rejects unsupported %s before fetching", async (name) => {
     const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
     await expect(downloadDriveFile("a", { ...file, name })).rejects.toMatchObject({ code: "UNSUPPORTED" });
     expect(fetcher).not.toHaveBeenCalled();

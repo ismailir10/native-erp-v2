@@ -55,7 +55,8 @@ export async function scheduleCandidates(db: Db, clientId: string, year: number,
       where: {
         entityId: e.id,
         date: { gte: start, lte: end },
-        entry: { kind: { not: "OPENING" }, scheduleId: null },
+        // Lease journals depreciate through the lease register (rule 5f), never a schedule.
+        entry: { kind: { not: "OPENING" }, scheduleId: null, leaseCommenced: null, leaseCancelled: null, leasePosting: null },
         OR: [{ account: { fsLine: { in: ["ASET_TETAP", "BIAYA_DIBAYAR_DIMUKA"] } } }, { account: { code: DEFERRED_REVENUE } }, ...["diterima di muka", "unearned", "deferred revenue"].map((w) => ({ account: { type: "LIABILITAS" as const, name: { contains: w, mode: "insensitive" as const } } }))],
       },
       include: { account: true, entry: { select: { id: true, memo: true, date: true, bankTransaction: { select: { description: true } } } } },

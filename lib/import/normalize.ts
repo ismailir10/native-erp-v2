@@ -9,7 +9,7 @@ import type { ParsedRow, ParsedStatement } from "@/lib/import/types";
 const NOISE = [
   /\bTRSF\b|\bTRF\b|\bTRANSFER\b|\bE-BANKING\b|\bEBANKING\b|\bM-BANKING\b|\bMB\b|\bIB\b/g,
   /\bDB\b|\bCR\b|\bKR\b|\bDR\b/g,
-  /\bBI-?FAST\b|\bRTGS\b|\bSKN\b|\bLLG\b|\bSWITCHING\b|\bKE\b|\bDARI\b|\bFROM\b|\bTO\b|\bKLIRING\b/g,
+  /\bBI[- ]?FAST\b|\bRTGS\b|\bSKN\b|\bLLG\b|\bSWITCHING\b|\bKE\b|\bDARI\b|\bFROM\b|\bTO\b|\bKLIRING\b/g,
   /\b\d{2,4}\/[A-Z0-9]+\/[A-Z0-9]+\b/g, // 0108/FTSCY/WS95051
   /\b[A-Z]{0,4}\d[A-Z0-9]{5,}\b/g, // reference numbers
   /\b\d+([.,]\d+)*\b/g, // amounts, dates, account numbers
@@ -21,6 +21,26 @@ export function merchantKey(description: string): string {
   for (const re of NOISE) s = s.replace(re, " ");
   s = s.replace(/\s+/g, " ").trim();
   return s || description.toUpperCase().slice(0, 40).trim();
+}
+
+/**
+ * Words that say how money moved, not who it came from or went to. A key made only of these (plus references and digits)
+ * names no counterparty — "BI FAST OUTGOING", "PINJAMAN LOAN", "TRSF E-BANKING DB 0108/…" — so the same key covers
+ * unrelated payments: it must never be learned (Memory), turned into a rule or grouped as *serupa*.
+ * Fee, interest, tax and stamp words are not here: those descriptions mean the same thing every time.
+ */
+const CHANNEL_WORDS = new Set(
+  (
+    "BI FAST BIF OUTGOING INCOMING TRSF TRF TRANSFER TRANSFERS EBANKING MBANKING IBANKING BANKING INTERNET MOBILE ONLINE DB CR KR DR DEBIT KREDIT CREDIT " +
+    "RTGS SKN LLG KLIRING CLEARING SWITCHING ONLINE KE DARI FROM TO VIA ATAS NAMA AN OVERBOOKING PINDAH DANA BUKU PB " +
+    "PINJAMAN LOAN LOANS SETORAN SETOR TUNAI TARIK TARIKAN PENARIKAN CASH WITHDRAWAL ATM DEP DEPOSIT VA VIRTUAL ACCOUNT " +
+    "TOPUP TOP UP REVERSAL KOREKSI REVERSE PAYMENT PEMBAYARAN BAYAR"
+  ).split(" "),
+);
+
+export function isGenericKey(key: string): boolean {
+  const words = key.toUpperCase().split(/\s+/).filter((w) => /^[A-Z]{2,}$/.test(w));
+  return words.every((w) => CHANNEL_WORDS.has(w));
 }
 
 export function rowHash(row: ParsedRow): string {
@@ -39,17 +59,19 @@ export type ContinuityResult = { ok: boolean; note: string | null; brokenRows: n
 export function checkContinuity(st: ParsedStatement): ContinuityResult {
   let running = st.openingBalance;
   const broken: number[] = [];
+  const labels: string[] = [];
   for (const r of st.rows) {
     running += r.amount;
     if (r.balance !== null && r.balance !== running) {
       broken.push(r.rowNumber);
+      labels.push(r.sheet ? `${r.sheet}!${r.rowNumber}` : String(r.rowNumber));
       running = r.balance;
     }
   }
   const endOk = running === st.closingBalance;
   if (broken.length === 0 && endOk) return { ok: true, note: null, brokenRows: [] };
   const parts: string[] = [];
-  if (broken.length) parts.push(`Saldo berjalan tidak nyambung di baris ${broken.slice(0, 5).join(", ")}${broken.length > 5 ? "…" : ""}`);
+  if (broken.length) parts.push(`Saldo berjalan tidak nyambung di baris ${labels.slice(0, 5).join(", ")}${labels.length > 5 ? "…" : ""}`);
   if (!endOk) parts.push("Saldo akhir tidak sama dengan saldo awal + mutasi");
   return { ok: false, note: parts.join(". "), brokenRows: broken };
 }

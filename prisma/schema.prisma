@@ -79,6 +79,8 @@ enum EntryKind {
   RECLASS
   ADJUSTMENT
   IMPORTED
+  /// A sales invoice or purchase bill (accounting-rules 5c).
+  INVOICE
 }
 
 enum MapMethod {
@@ -152,6 +154,11 @@ model Client {
   ledgerImports LedgerImport[]
   schedules     AdjustmentSchedule[]
   proposals     ProposedEntry[]
+  fixedAssets   FixedAsset[]
+  contacts      Contact[]
+  invoices      Invoice[]
+  taxYears      TaxYear[]
+  leases        Lease[]
   coaVersion    Int                  @default(1)
 
   @@index([firmId])
@@ -173,6 +180,14 @@ model Entity {
   sourceAccounts     SourceAccount[]
   schedules          AdjustmentSchedule[]
   proposals          ProposedEntry[]
+  fixedAssets        FixedAsset[]
+  invoices           Invoice[]
+  taxYears           TaxYear[]
+  ckpnSettings       CkpnSetting[]
+  leases             Lease[]
+  employees          Employee[]
+  benefitSetting     BenefitSetting?
+  benefitPostings    BenefitPosting[]
 
   @@index([clientId])
 }
@@ -200,6 +215,12 @@ model Account {
   scheduleDebits  AdjustmentSchedule[] @relation("ScheduleDebit")
   scheduleCredits AdjustmentSchedule[] @relation("ScheduleCredit")
   scheduleSources AdjustmentSchedule[] @relation("ScheduleSourceAccount")
+  fixedAssets     FixedAsset[]         @relation("AssetAccount")
+  fixedAssetsAcc  FixedAsset[]         @relation("AssetAccumulatedAccount")
+  invoiceCounter  Invoice[]            @relation("InvoiceCounter")
+  invoiceArAp     Invoice[]            @relation("InvoiceArAp")
+  taxCorrections  FiscalCorrection[]
+  taxCredits      TaxCredit[]
 
   @@unique([clientId, code])
 }
@@ -259,6 +280,8 @@ model StatementImport {
   duplicateCount    Int               @default(0)
   continuityOk      Boolean
   continuityNote    String?
+  /// Choices the parser made that change how the file is read (direction from the balance, sheets joined), shown to the accountant.
+  parseNotes        String[]          @default([])
   importedById      String?
   importedBy        FirmMember?       @relation("StatementImportedBy", fields: [importedById], references: [id])
   createdAt         DateTime          @default(now())
@@ -268,14 +291,14 @@ model StatementImport {
 }
 
 model BankTransaction {
-  id            String          @id @default(cuid())
+  id            String              @id @default(cuid())
   firmId        String
   importId      String
-  import        StatementImport @relation(fields: [importId], references: [id])
+  import        StatementImport     @relation(fields: [importId], references: [id])
   bankAccountId String
-  bankAccount   BankAccount     @relation(fields: [bankAccountId], references: [id])
+  bankAccount   BankAccount         @relation(fields: [bankAccountId], references: [id])
   entityId      String
-  date          DateTime        @db.Date
+  date          DateTime            @db.Date
   description   String
   merchantKey   String
   direction     Direction
@@ -283,6 +306,8 @@ model BankTransaction {
   amount        BigInt
   balance       BigInt?
   rowNumber     Int
+  /// Workbook sources: the sheet the row is on; rowNumber counts within it.
+  sourceSheet   String?
   rawRow        String
   hash          String
   status        TxStatus
@@ -295,7 +320,9 @@ model BankTransaction {
   matchedTxId   String?
   entries       JournalEntry[]
   proposals     ProposedEntry[]
-  createdAt     DateTime        @default(now())
+  /// Invoices this bank line settles (a subledger link; the line itself already moved the GL).
+  settlements   InvoiceSettlement[]
+  createdAt     DateTime            @default(now())
 
   @@unique([bankAccountId, hash])
   @@index([entityId, date])
@@ -324,6 +351,19 @@ model JournalEntry {
   installment       Int?
   /// Schedules created from this entry (a fixed-asset purchase, a prepayment).
   schedulesFrom     AdjustmentSchedule[] @relation("ScheduleSource")
+  /// Fixed assets registered from this entry (its purchase line), and the asset this entry disposed of.
+  assetsFrom        FixedAsset[]         @relation("AssetSource")
+  assetDisposal     FixedAsset?          @relation("AssetDisposal")
+  /// The invoice this entry records (kind INVOICE).
+  invoice           Invoice?             @relation("InvoiceEntry")
+  /// The tax pack posting this entry is (accounting-rules 5d).
+  taxPosting        TaxPosting?
+  /// The lease this entry commences, cancels, or books a month of (accounting-rules 5f).
+  leaseCommenced    Lease?               @relation("LeaseCommencement")
+  leaseCancelled    Lease?               @relation("LeaseCancel")
+  leasePosting      LeasePosting?
+  /// The employee-benefit valuation journal this entry is (accounting-rules 5g).
+  benefitPosting    BenefitPosting?
   /// The proposal this entry was posted from (close copilot, 1999 correction).
   proposal          ProposedEntry?
   /// Member who posted it; null for seeds and system postings ("Sistem").
@@ -775,16 +815,24 @@ model FirmMember {
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 
-  postedEntries    JournalEntry[]       @relation("EntryPostedBy")
-  signoffs         CloseSignoff[]       @relation("SignoffDoneBy")
-  lockedPeriods    Period[]             @relation("PeriodLockedBy")
-  acks             ControlAck[]         @relation("AckDoneBy")
-  statementImports StatementImport[]    @relation("StatementImportedBy")
-  ledgerImports    LedgerImport[]       @relation("LedgerImportedBy")
-  ledgerPostings   LedgerImport[]       @relation("LedgerPostedBy")
-  mappings         SourceAccount[]      @relation("MappingAcceptedBy")
-  schedules        AdjustmentSchedule[] @relation("ScheduleCreatedBy")
-  proposalsDecided ProposedEntry[]      @relation("ProposalDecidedBy")
+  postedEntries    JournalEntry[]        @relation("EntryPostedBy")
+  signoffs         CloseSignoff[]        @relation("SignoffDoneBy")
+  lockedPeriods    Period[]              @relation("PeriodLockedBy")
+  acks             ControlAck[]          @relation("AckDoneBy")
+  statementImports StatementImport[]     @relation("StatementImportedBy")
+  ledgerImports    LedgerImport[]        @relation("LedgerImportedBy")
+  ledgerPostings   LedgerImport[]        @relation("LedgerPostedBy")
+  mappings         SourceAccount[]       @relation("MappingAcceptedBy")
+  schedules        AdjustmentSchedule[]  @relation("ScheduleCreatedBy")
+  fixedAssets      FixedAsset[]          @relation("AssetCreatedBy")
+  invoicesCreated  Invoice[]             @relation("InvoiceCreatedBy")
+  leasesCreated    Lease[]               @relation("LeaseCreatedBy")
+  settlements      InvoiceSettlement[]   @relation("SettlementCreatedBy")
+  taxCorrections   FiscalCorrection[]
+  taxCredits       TaxCredit[]
+  taxPostings      TaxPosting[]
+  taxLosses        TaxLossCarryforward[]
+  proposalsDecided ProposedEntry[]       @relation("ProposalDecidedBy")
 
   @@index([firmId])
 }
@@ -833,6 +881,8 @@ model AdjustmentSchedule {
   createdBy       FirmMember?    @relation("ScheduleCreatedBy", fields: [createdById], references: [id])
   createdAt       DateTime       @default(now())
   entries         JournalEntry[] @relation("ScheduleEntries")
+  /// The fixed asset this schedule depreciates (accounting-rules 5b).
+  asset           FixedAsset?    @relation("AssetSchedule")
 
   @@index([clientId])
   @@index([entityId])
@@ -882,4 +932,425 @@ model ProposedEntry {
   createdAt         DateTime         @default(now())
 
   @@index([clientId, year, month])
+}
+
+/// Fiscal asset groups (UU PPh Pasal 11, PMK 72/2023): the useful life and rates of the fiscal depreciation estimate.
+enum AssetTaxGroup {
+  KELOMPOK_1
+  KELOMPOK_2
+  KELOMPOK_3
+  KELOMPOK_4
+  BANGUNAN_PERMANEN
+  BANGUNAN_TIDAK_PERMANEN
+  TANAH
+}
+
+enum FiscalMethod {
+  GARIS_LURUS
+  SALDO_MENURUN
+}
+
+/// Fixed-asset register (accounting-rules 5b). Book depreciation is the asset's AdjustmentSchedule (rule 5a); accumulated
+/// depreciation and book value are read from the GL, never stored. The fiscal figures are computed (lib/assets/fiscal.ts).
+/// Amounts are minor units of the entity's functional currency. CHECKs in the migration: cost > 0, 0 <= residual < cost,
+/// openingAccumulated >= 0.
+model FixedAsset {
+  id                   String              @id @default(cuid())
+  firmId               String
+  clientId             String
+  client               Client              @relation(fields: [clientId], references: [id])
+  entityId             String
+  entity               Entity              @relation(fields: [entityId], references: [id])
+  name                 String
+  taxGroup             AssetTaxGroup
+  fiscalMethod         FiscalMethod
+  acquiredOn           DateTime            @db.Date
+  cost                 BigInt
+  residual             BigInt              @default(0)
+  /// Book useful life (PSAK 16, the entity's estimate); null for land.
+  usefulLifeMonths     Int?
+  /// Assets from Saldo Awal: accumulated book depreciation at the opening date (already in the opening entry).
+  openingAccumulated   BigInt              @default(0)
+  assetAccountId       String
+  assetAccount         Account             @relation("AssetAccount", fields: [assetAccountId], references: [id])
+  /// Where its accumulated depreciation sits (AKUM_PENYUSUTAN); null for land.
+  accumulatedAccountId String?
+  accumulatedAccount   Account?            @relation("AssetAccumulatedAccount", fields: [accumulatedAccountId], references: [id])
+  /// Book depreciation; null for land.
+  scheduleId           String?             @unique
+  schedule             AdjustmentSchedule? @relation("AssetSchedule", fields: [scheduleId], references: [id], onDelete: Restrict)
+  /// The purchase entry whose debit on assetAccount this asset is (rule 15 chain); one asset per purchase line.
+  sourceEntryId        String?
+  sourceEntry          JournalEntry?       @relation("AssetSource", fields: [sourceEntryId], references: [id], onDelete: Restrict)
+  disposedOn           DateTime?           @db.Date
+  proceeds             BigInt?
+  disposalEntryId      String?             @unique
+  disposalEntry        JournalEntry?       @relation("AssetDisposal", fields: [disposalEntryId], references: [id], onDelete: Restrict)
+  createdById          String?
+  createdBy            FirmMember?         @relation("AssetCreatedBy", fields: [createdById], references: [id])
+  createdAt            DateTime            @default(now())
+
+  @@unique([sourceEntryId, assetAccountId])
+  @@index([clientId])
+  @@index([entityId])
+}
+
+enum InvoiceDirection {
+  /// Piutang: the entity invoiced a customer.
+  SALES
+  /// Utang: a supplier billed the entity.
+  PURCHASE
+}
+
+/// A customer or supplier of a client (accounting-rules 5c).
+model Contact {
+  id        String    @id @default(cuid())
+  firmId    String
+  clientId  String
+  client    Client    @relation(fields: [clientId], references: [id])
+  name      String
+  npwp      String?
+  createdAt DateTime  @default(now())
+  invoices  Invoice[]
+
+  @@unique([clientId, name])
+}
+
+/// Receivable/payable subledger item (accounting-rules 5c). Posted through postJournal (kind INVOICE, `entryId`) unless it is a Saldo
+/// Awal item (`opening`, already in the opening entry). Amounts in minor units of the entity's functional currency. CHECKs in the
+/// migration: dpp, ppn >= 0, total = dpp + ppn > 0, dueDate >= issueDate, opening <=> no entry.
+model Invoice {
+  id               String              @id @default(cuid())
+  firmId           String
+  clientId         String
+  client           Client              @relation(fields: [clientId], references: [id])
+  entityId         String
+  entity           Entity              @relation(fields: [entityId], references: [id])
+  contactId        String
+  contact          Contact             @relation(fields: [contactId], references: [id])
+  direction        InvoiceDirection
+  number           String
+  issueDate        DateTime            @db.Date
+  dueDate          DateTime            @db.Date
+  description      String
+  dpp              BigInt
+  ppn              BigInt              @default(0)
+  total            BigInt
+  counterAccountId String
+  counterAccount   Account             @relation("InvoiceCounter", fields: [counterAccountId], references: [id])
+  arApAccountId    String
+  arApAccount      Account             @relation("InvoiceArAp", fields: [arApAccountId], references: [id])
+  opening          Boolean             @default(false)
+  entryId          String?             @unique
+  entry            JournalEntry?       @relation("InvoiceEntry", fields: [entryId], references: [id], onDelete: Restrict)
+  createdById      String?
+  createdBy        FirmMember?         @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
+  createdAt        DateTime            @default(now())
+  settlements      InvoiceSettlement[]
+
+  @@unique([entityId, direction, number])
+  @@index([clientId])
+  @@index([contactId])
+}
+
+/// A bank line settling (part of) an invoice. Σ per invoice ≤ its total and Σ per bank line ≤ its amount, enforced under row locks.
+model InvoiceSettlement {
+  id                String          @id @default(cuid())
+  firmId            String
+  invoiceId         String
+  invoice           Invoice         @relation(fields: [invoiceId], references: [id])
+  bankTransactionId String
+  bankTransaction   BankTransaction @relation(fields: [bankTransactionId], references: [id])
+  amount            BigInt
+  createdById       String?
+  createdBy         FirmMember?     @relation("SettlementCreatedBy", fields: [createdById], references: [id])
+  createdAt         DateTime        @default(now())
+
+  @@unique([invoiceId, bankTransactionId])
+  @@index([bankTransactionId])
+}
+
+enum TaxRegime {
+  /// Pasal 17 at 22 %, with the Pasal 31E reduction when turnover <= Rp 50 M.
+  NORMAL
+  /// PP 55/2022: final 0,5 % of turnover, chosen by the accountant.
+  FINAL_UMKM
+}
+
+enum CorrectionDirection {
+  POSITIVE
+  NEGATIVE
+}
+
+enum CorrectionKind {
+  /// Beda tetap.
+  PERMANENT
+  /// Beda waktu.
+  TEMPORARY
+}
+
+enum TaxCreditType {
+  PPH_22
+  PPH_23
+  PPH_24
+  OTHER
+}
+
+enum TaxPostingKind {
+  CURRENT
+  DEFERRED
+}
+
+/// An entity's fiscal year in the tax pack (accounting-rules 5d): the regime and what the accountant recorded for it. Every tax figure is
+/// computed at read time from the GL and these rows; nothing computed is stored.
+model TaxYear {
+  id                   String                @id @default(cuid())
+  firmId               String
+  clientId             String
+  client               Client                @relation(fields: [clientId], references: [id])
+  entityId             String
+  entity               Entity                @relation(fields: [entityId], references: [id])
+  year                 Int
+  regime               TaxRegime             @default(NORMAL)
+  /// Keys of non-deductible-expense suggestions the accountant dismissed.
+  dismissedSuggestions String[]              @default([])
+  createdAt            DateTime              @default(now())
+  corrections          FiscalCorrection[]
+  credits              TaxCredit[]
+  postings             TaxPosting[]
+  losses               TaxLossCarryforward[]
+
+  @@unique([entityId, year])
+  @@index([clientId])
+}
+
+/// A manual koreksi fiskal (amount > 0; the direction gives the sign).
+model FiscalCorrection {
+  id          String              @id @default(cuid())
+  firmId      String
+  taxYearId   String
+  taxYear     TaxYear             @relation(fields: [taxYearId], references: [id])
+  description String
+  direction   CorrectionDirection
+  kind        CorrectionKind
+  amount      BigInt
+  /// The account it comes from, when there is one (an accepted suggestion always has it).
+  accountId   String?
+  account     Account?            @relation(fields: [accountId], references: [id])
+  /// The suggestion key it was accepted from, so the suggestion isn't offered twice.
+  suggestion  String?
+  /// The correction category it was accepted as (lib/tax/categories.ts), and the share of the account taken (1–100).
+  category    String?
+  percent     Int                 @default(100)
+  createdById String?
+  createdBy   FirmMember?         @relation(fields: [createdById], references: [id])
+  createdAt   DateTime            @default(now())
+
+  @@index([taxYearId])
+}
+
+/// A tax credit withheld by others (bukti potong), recorded on the account where its amount sits.
+model TaxCredit {
+  id          String        @id @default(cuid())
+  firmId      String
+  taxYearId   String
+  taxYear     TaxYear       @relation(fields: [taxYearId], references: [id])
+  type        TaxCreditType
+  reference   String
+  date        DateTime      @db.Date
+  amount      BigInt
+  accountId   String
+  account     Account       @relation(fields: [accountId], references: [id])
+  createdById String?
+  createdBy   FirmMember?   @relation(fields: [createdById], references: [id])
+  createdAt   DateTime      @default(now())
+
+  @@index([taxYearId])
+}
+
+/// A tax journal posted from the pack: each books the difference between the computed position and earlier postings of its kind.
+model TaxPosting {
+  id          String         @id @default(cuid())
+  firmId      String
+  taxYearId   String
+  taxYear     TaxYear        @relation(fields: [taxYearId], references: [id])
+  kind        TaxPostingKind
+  entryId     String         @unique
+  entry       JournalEntry   @relation(fields: [entryId], references: [id], onDelete: Restrict)
+  createdById String?
+  createdBy   FirmMember?    @relation(fields: [createdById], references: [id])
+  createdAt   DateTime       @default(now())
+
+  @@index([taxYearId])
+}
+
+/// Kompensasi kerugian (UU PPh Pasal 6 ayat 2): a fiscal loss of an origin year still unused at 1 January of the tax year, as on the prior SPT.
+model TaxLossCarryforward {
+  id          String      @id @default(cuid())
+  firmId      String
+  taxYearId   String
+  taxYear     TaxYear     @relation(fields: [taxYearId], references: [id])
+  originYear  Int
+  amount      BigInt
+  createdById String?
+  createdBy   FirmMember? @relation(fields: [createdById], references: [id])
+  createdAt   DateTime    @default(now())
+
+  @@unique([taxYearId, originYear])
+}
+
+enum CkpnMethod {
+  /// Loss rates from roll rates of Buku's own month-end aging.
+  ROLL_RATE
+  /// Loss rates typed by the accountant.
+  MANUAL
+}
+
+/// CKPN piutang usaha (PSAK 109 simplified approach, accounting-rules 5e) of one entity. Rates are basis points (10000 = 100 %).
+model CkpnSetting {
+  id             String     @id @default(cuid())
+  firmId         String
+  entityId       String
+  entity         Entity     @relation(fields: [entityId], references: [id])
+  method         CkpnMethod @default(ROLL_RATE)
+  historyMonths  Int        @default(12)
+  /// Manual loss rates per bucket: belum jatuh tempo, 1–30, 31–60, 61–90 (the last bucket is lastBucketBp).
+  currentBp      Int        @default(0)
+  d1to30Bp       Int        @default(0)
+  d31to60Bp      Int        @default(0)
+  d61to90Bp      Int        @default(0)
+  lastBucketBp   Int        @default(10000)
+  forwardBp      Int        @default(10000)
+  /// The first month the setting applies to; a later version takes over from its own month, so closed months keep theirs.
+  effectiveYear  Int        @default(2000)
+  effectiveMonth Int        @default(1)
+  updatedAt      DateTime   @updatedAt
+
+  @@unique([entityId, effectiveYear, effectiveMonth])
+}
+
+enum LeaseTiming {
+  /// Each payment at the start of its interval.
+  ADVANCE
+  /// Each payment at the end of its interval.
+  ARREARS
+}
+
+/// A lease of an entity as lessee (PSAK 116, accounting-rules 5f): the contract only; the schedule is computed from it.
+model Lease {
+  id             String         @id @default(cuid())
+  firmId         String
+  clientId       String
+  client         Client         @relation(fields: [clientId], references: [id])
+  entityId       String
+  entity         Entity         @relation(fields: [entityId], references: [id])
+  name           String
+  lessor         String
+  /// Month 1 of the term (the start month counts in full).
+  startYear      Int
+  startMonth     Int
+  months         Int
+  /// Each payment, in minor units of the entity's currency.
+  payment        BigInt
+  intervalMonths Int
+  timing         LeaseTiming
+  /// Annual discount rate (incremental borrowing rate), basis points; monthly rate = annual ÷ 12.
+  rateBp         Int
+  /// The commencement entry (Dr 1230 / Cr 2170 + 2400).
+  entryId        String?        @unique
+  entry          JournalEntry?  @relation("LeaseCommencement", fields: [entryId], references: [id], onDelete: Restrict)
+  /// Its reversal when the lease was cancelled as a mistake.
+  cancelEntryId  String?        @unique
+  cancelEntry    JournalEntry?  @relation("LeaseCancel", fields: [cancelEntryId], references: [id], onDelete: Restrict)
+  createdById    String?
+  createdBy      FirmMember?    @relation("LeaseCreatedBy", fields: [createdById], references: [id])
+  createdAt      DateTime       @default(now())
+  postings       LeasePosting[]
+
+  @@index([clientId])
+  @@index([entityId])
+}
+
+/// The monthly journal of a lease for month k of its term (depreciation, interest, reclass); unique so a double click posts once.
+model LeasePosting {
+  id      String       @id @default(cuid())
+  firmId  String
+  leaseId String
+  lease   Lease        @relation(fields: [leaseId], references: [id])
+  month   Int
+  entryId String       @unique
+  entry   JournalEntry @relation(fields: [entryId], references: [id], onDelete: Restrict)
+
+  @@unique([leaseId, month])
+}
+
+enum Sex {
+  MALE
+  FEMALE
+}
+
+/// A mortality table uploaded by the firm (e.g. TMI IV 2019): qx × 10⁹ by age from 0, per sex (accounting-rules 5g).
+model MortalityTable {
+  id        String           @id @default(cuid())
+  firmId    String
+  name      String
+  male      Int[]
+  female    Int[]
+  createdAt DateTime         @default(now())
+  settings  BenefitSetting[]
+
+  @@unique([firmId, name])
+}
+
+/// An employee of an entity for the PSAK 24 census: monthly wage (upah) in minor units; leftOn when they left.
+model Employee {
+  id         String    @id @default(cuid())
+  firmId     String
+  clientId   String
+  entityId   String
+  entity     Entity    @relation(fields: [entityId], references: [id])
+  name       String
+  employeeNo String?
+  sex        Sex
+  birthDate  DateTime  @db.Date
+  hireDate   DateTime  @db.Date
+  wage       BigInt
+  leftOn     DateTime? @db.Date
+  createdAt  DateTime  @default(now())
+
+  @@unique([entityId, employeeNo])
+  @@index([clientId])
+}
+
+/// PSAK 24 assumptions of an entity. Rates in basis points a year; resignation falls linearly from resignFlatUntil to 0 at resignZeroAge.
+model BenefitSetting {
+  id               String          @id @default(cuid())
+  firmId           String
+  entityId         String          @unique
+  entity           Entity          @relation(fields: [entityId], references: [id])
+  mortalityTableId String?
+  mortalityTable   MortalityTable? @relation(fields: [mortalityTableId], references: [id])
+  discountBp       Int
+  salaryBp         Int
+  retirementAge    Int             @default(56)
+  disabilityBp     Int             @default(1000)
+  resignBp         Int             @default(500)
+  resignFlatUntil  Int             @default(30)
+  resignZeroAge    Int             @default(55)
+  updatedAt        DateTime        @updatedAt
+}
+
+/// A PSAK 24 valuation journal of an entity (the first one decides whether the opening obligation goes to Saldo Laba).
+model BenefitPosting {
+  id        String       @id @default(cuid())
+  firmId    String
+  entityId  String
+  entity    Entity       @relation(fields: [entityId], references: [id])
+  year      Int
+  month     Int
+  entryId   String       @unique
+  entry     JournalEntry @relation(fields: [entryId], references: [id], onDelete: Restrict)
+  createdAt DateTime     @default(now())
+
+  @@index([entityId])
 }

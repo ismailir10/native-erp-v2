@@ -4,6 +4,7 @@ import ExcelJS from "exceljs";
 import { extractEvidence } from "@/lib/evidence/extract";
 import { readLines } from "@/lib/import/parsers/pdf";
 import { makePdf } from "../pdf-fixture";
+import { htmlXls } from "@/tests/xls-fixture";
 
 async function workbook(sheets: Record<string, unknown[][]>) {
   const wb = new ExcelJS.Workbook();
@@ -26,6 +27,12 @@ describe("evidence extraction", () => {
   it("handles leap-day year ends without skipping a day", async () => {
     const { units: [unit] } = await extractEvidence("report.txt", Buffer.from("Financial statements\nYear ended 29 February 2024\nUSD\nRevenue: 100"));
     expect(unit.periodStart).toBe("2023-03-01");
+  });
+
+  it("reads a bank export saved as an HTML .xls like a workbook", async () => {
+    const data = htmlXls([["PT Citra Ternak"], ["Rekening koran"], ["IDR"], ["Periode 2024-01-01 - 2024-01-31"], ["Tanggal", "Keterangan", "Debit", "Kredit", "Saldo"], ["2024-01-02", "Setoran", "", "100", "100"]]);
+    const { units } = await extractEvidence("mutasi.xls", data);
+    expect(units.map((u) => u.kind)).toEqual(["BANK"]);
   });
 
   it("classifies mixed workbook sheets independently and preserves cached formula coordinates", async () => {

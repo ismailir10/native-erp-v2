@@ -4,6 +4,7 @@ import { smbcCombinedPdf } from "../pdf-fixture";
 import { createFirm } from "@/lib/setup";
 import { addClient } from "@/lib/onboarding";
 import { importStatement } from "@/lib/import/pipeline";
+import { AccountMismatchError } from "@/lib/import/types";
 import { postJournal } from "@/lib/ledger/post";
 import { runControls } from "@/lib/controls";
 import { balanceSheet } from "@/lib/reports/ledger";
@@ -43,8 +44,17 @@ describe("SMBC combined statement + PRK overdraft account", () => {
       "05243002879 Pinjaman Rekening Koran BTB (IDR): tidak diimpor ke rekening ini",
       "90022164251 JENIUS JPY ACCOUNT (JPY): tidak diimpor ke rekening ini",
     ]);
+    expect(s1.otherAccounts).toEqual([
+      { number: "05243002879", label: "Pinjaman Rekening Koran BTB", currency: "IDR" },
+      { number: "90022164251", label: "JENIUS JPY ACCOUNT", currency: "JPY" },
+    ]);
     const s2 = await importStatement(db, { bankAccountId: prk.id, fileName: "smbc.pdf", data: pdf, provider: null });
     expect(s2).toMatchObject({ rows: 2, continuityOk: true });
+    // The same file again: nothing new, no second history row, the existing import is named.
+    const imports = await db.statementImport.count();
+    const again = await importStatement(db, { bankAccountId: prk.id, fileName: "smbc.pdf", data: pdf, provider: null });
+    expect([again.importId, again.duplicates, again.needsReview, await db.statementImport.count()]).toEqual([s2.importId, 2, 0, imports]);
+    expect(again.pendingReview).toBe(await db.bankTransaction.count({ where: { status: "NEEDS_REVIEW" } }));
 
     // Opening: the overdraft is owed to the bank (credit on 2201).
     const acc = async (code: string) => (await db.account.findUniqueOrThrow({ where: { clientId_code: { clientId: client.id, code } } })).id;
@@ -76,5 +86,13 @@ describe("SMBC combined statement + PRK overdraft account", () => {
     const client = await addClient(db, firm.id, { name: "X", industry: "", entities: [{ name: "X", shortName: "X", kind: "PT", npwp: "", banks: [{ bank: "SMBC", number: "11112222333", label: "" }] }] });
     const bank = await db.bankAccount.findFirstOrThrow({ where: { entity: { clientId: client.id } } });
     await expect(importStatement(db, { bankAccountId: bank.id, fileName: "smbc.pdf", data: smbcCombinedPdf(), provider: null })).rejects.toThrow(/berisi 3 rekening.*tidak ada nomor 11112222333/);
+  });
+  it("names the file's account when it isn't the selected one", async () => {
+    const firm = await db.$transaction((tx) => createFirm(tx, "KJA"));
+    const client = await addClient(db, firm.id, { name: "Uji", industry: "", entities: [{ name: "Uji", shortName: "Uji", kind: "PERORANGAN", npwp: "", banks: [{ bank: "SMBC", number: "1111111111", label: "Lain" }] }] });
+    const bank = await db.bankAccount.findFirstOrThrow({ where: { entity: { clientId: client.id } } });
+    const err = await importStatement(db, { bankAccountId: bank.id, fileName: "smbc.pdf", data: smbcCombinedPdf(), provider: null }).catch((e) => e);
+    expect(err).toBeInstanceOf(AccountMismatchError);
+    expect(err.fileNumbers).toEqual(["90022152088", "05243002879", "90022164251"]);
   });
 });

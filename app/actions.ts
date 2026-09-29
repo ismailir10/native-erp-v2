@@ -10,7 +10,20 @@ import { CloseError, lockPeriod } from "@/lib/controls";
 import { LedgerError } from "@/lib/ledger/post";
 import { postAdjustment } from "@/lib/ledger/adjustment";
 import { createSchedule, postAllDue, postInstallment, stopSchedule, type ScheduleInput } from "@/lib/adjust/schedules";
-import { ParseError } from "@/lib/import/types";
+import { createAsset, type AssetInput } from "@/lib/assets/register";
+import { disposeAsset, type DisposalInput } from "@/lib/assets/dispose";
+import { cancelLease, createLease, postLeaseMonths, type LeaseInput } from "@/lib/leases/register";
+import { deleteEmployee, importCensus, saveBenefitSetting, saveEmployee, uploadMortality, type BenefitSettingInput, type EmployeeInput } from "@/lib/benefits/census";
+import { postBenefits } from "@/lib/benefits/valuation";
+import { createInvoice, type InvoiceInput } from "@/lib/receivables/invoices";
+import { settleWithReclass, unsettle } from "@/lib/receivables/settle";
+import { candidateViews, type CandidateView } from "@/lib/receivables/view";
+import { postCkpn, saveCkpnSetting, type CkpnSettingInput } from "@/lib/receivables/ckpn";
+import { taxPack } from "@/lib/tax/pack";
+import { postTax } from "@/lib/tax/post";
+import { acceptSuggestion, addCorrection, addCredit, deleteCorrection, deleteCredit, deleteLoss, dismissSuggestion, setCorrectionPercent, setLoss, setRegime, type CorrectionInput, type CreditInput } from "@/lib/tax/records";
+import type { TaxPostingKind, TaxRegime } from "@/lib/generated/prisma/enums";
+import { AccountMismatchError, ParseError, YearNeededError } from "@/lib/import/types";
 import { PdfPasswordError } from "@/lib/import/parsers/pdf";
 import { MoneyError } from "@/lib/money";
 import { dateOnly } from "@/lib/format";
@@ -25,9 +38,13 @@ import { explainControl, ExplainError, type ControlExplanation } from "@/lib/con
 import { dismissProposal, postProposal } from "@/lib/adjust/proposals";
 import { postSuspenseCorrection, SUSPENSE_NOT_DISMISSABLE, SUSPENSE_PREFIX } from "@/lib/adjust/suspense";
 import { AiBudgetError } from "@/lib/ai/budget";
-import { AiAnswerError } from "@/lib/ai/provider";
+import { AI_LONG_TIMEOUT_MS, AiAnswerError } from "@/lib/ai/provider";
+import { suggestAgainWithAi } from "@/lib/ai/retry";
 import { acceptCheck, LedgerImportError, postImport, stageImport } from "@/lib/ledger-import/post";
 import { acceptMappings, MappingError, suggestMappings } from "@/lib/ledger-import/mapping";
+import { infraErrorMessage } from "@/lib/db-errors";
+import { deleteClient, DeleteClientError } from "@/lib/clients/delete";
+import { requireMember } from "@/lib/auth/session";
 import type { FsLine } from "@/lib/coa/template";
 import type { MapMethod } from "@/lib/generated/prisma/enums";
 
@@ -35,31 +52,47 @@ import type { MapMethod } from "@/lib/generated/prisma/enums";
  * Server actions — the only write path from the UI. Each returns {ok, …} or {ok:false, error}
  * with a Bahasa message the UI shows verbatim. Domain errors are expected; others are bugs.
  */
-type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string; needsPassword?: boolean; fields?: Record<string, string> };
+type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string; needsPassword?: boolean; needsYear?: boolean; yearGuess?: number | null; fields?: Record<string, string>; suggestBankAccountId?: string };
 
-function fail(e: unknown): { ok: false; error: string; needsPassword?: boolean } {
+function fail(e: unknown): { ok: false; error: string; needsPassword?: boolean; needsYear?: boolean; yearGuess?: number | null } {
   if (e instanceof PdfPasswordError) return { ok: false, error: e.message, needsPassword: true };
+  if (e instanceof YearNeededError) return { ok: false, error: e.message, needsYear: true, yearGuess: e.guess };
+  if (e instanceof DeleteClientError) return { ok: false, error: e.message };
   if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError || e instanceof MoneyError || e instanceof RateError || e instanceof RevaluationError || e instanceof LedgerImportError || e instanceof MappingError) return { ok: false, error: e.message };
+  const infra = infraErrorMessage(e);
   console.error(e);
-  return { ok: false, error: "Terjadi kesalahan tak terduga. Coba lagi." };
+  return { ok: false, error: infra ?? "Terjadi kesalahan tak terduga. Coba lagi." };
 }
 
 const MAX_UPLOAD = 5 * 1024 * 1024;
 
 export async function importAction(formData: FormData): Promise<Result<{ summary: ImportSummary }>> {
+  let banks: { id: string; number: string }[] = [];
+  let selected = "";
   try {
     const clientId = String(formData.get("clientId"));
     const bankAccountId = String(formData.get("bankAccountId"));
     const file = formData.get("file");
     const password = String(formData.get("password") ?? "") || undefined; // used once to open the PDF, never stored
+    const yearText = String(formData.get("year") ?? "").trim();
+    const year = yearText ? Number(yearText) : undefined;
+    if (year !== undefined && !(Number.isInteger(year) && year >= 2000 && year <= 2100)) return { ok: false, error: "Tahun harus 4 angka, misalnya 2026.", needsYear: true };
     const client = await getClientForFirm(clientId);
+    banks = client.entities.flatMap((e) => e.bankAccounts);
+    selected = bankAccountId;
     if (!client.entities.some((e) => e.bankAccounts.some((b) => b.id === bankAccountId))) return { ok: false, error: "Pilih rekening bank dulu." };
-    if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Pilih file rekening koran (PDF, CSV, atau XLSX)." };
+    if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Pilih file rekening koran (PDF, CSV, XLS, atau XLSX)." };
     if (file.size > MAX_UPLOAD) return { ok: false, error: "File terlalu besar (maks. 5 MB)." };
-    const summary = await importStatement(prisma, { bankAccountId, fileName: file.name, data: Buffer.from(await file.arrayBuffer()), provider: await resolveProvider(prisma), password, actorId: (await getCurrentMember()).id });
+    const summary = await importStatement(prisma, { bankAccountId, fileName: file.name, data: Buffer.from(await file.arrayBuffer()), provider: await resolveProvider(prisma), password, year, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${clientId}`, "layout");
     return { ok: true, summary };
   } catch (e) {
+    // The file belongs to another account of this client: say which, so the form can switch to it in one click.
+    if (e instanceof AccountMismatchError) {
+      const digits = (s: string) => s.replace(/\D/g, "");
+      const match = banks.find((b) => b.id !== selected && e.fileNumbers.some((n) => digits(n) === digits(b.number)));
+      return { ...fail(e), suggestBankAccountId: match?.id };
+    }
     return fail(e);
   }
 }
@@ -95,7 +128,27 @@ export async function reviewAction(input: { bankTxId: string; accountCode: strin
   }
 }
 
-export async function acceptSimilarAction(bankTxId: string, scope: { entityIds: string[]; period: string }): Promise<Result<{ count: number }>> {
+/** *Minta saran AI* on Review for lines that only have the simple guess (lib/ai/retry.ts). Suggestions only; nothing posts. */
+export async function suggestAgainAction(clientId: string, scope: { entityIds: string[]; period: string }): Promise<Result<{ rows: number; updated: number; note?: string }>> {
+  try {
+    const client = await getClientForFirm(clientId);
+    if (!scope || !/^(19|20|21)\d{2}-(0[1-9]|1[0-2])$/.test(scope.period) || !scope.entityIds.length || scope.entityIds.some((id) => !client.entities.some((e) => e.id === id))) return { ok: false, error: "Cakupan review tidak valid. Muat ulang halaman." };
+    const provider = await resolveProvider(prisma);
+    if (!provider) return { ok: false, error: "AI belum diatur di Pengaturan, jadi belum ada saran AI. Pilih akunnya langsung." };
+    const through = new Date(Date.UTC(Number(scope.period.slice(0, 4)), Number(scope.period.slice(5)), 0));
+    const r = await suggestAgainWithAi(prisma, { clientId: client.id, entityIds: scope.entityIds, through, provider });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, rows: r.rows, updated: r.updated, note: r.note };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function acceptSimilarAction(
+  bankTxId: string,
+  scope: { entityIds: string[]; period: string },
+  choice?: { accountCode: string; taxTag: TaxTag | null },
+): Promise<Result<{ ids: string[] }>> {
   try {
     const clientId = await assertTxInFirm(bankTxId);
     const client = await getClientForFirm(clientId);
@@ -103,9 +156,10 @@ export async function acceptSimilarAction(bankTxId: string, scope: { entityIds: 
     if (!scope || !/^(19|20|21)\d{2}-(0[1-9]|1[0-2])$/.test(scope.period) || !scope.entityIds.length || scope.entityIds.some(id => !client.entities.some(e => e.id === id)) || !scope.entityIds.includes(source.entityId)) return { ok: false, error: "Cakupan review tidak valid. Muat ulang halaman." };
     const through = new Date(Date.UTC(Number(scope.period.slice(0, 4)), Number(scope.period.slice(5)), 0));
     if (source.date > through) return { ok: false, error: "Transaksi berada di luar periode review." };
-    const count = await acceptSimilar(prisma, bankTxId, { entityIds: scope.entityIds, through }, (await getCurrentMember()).id);
+    if (choice && !(await prisma.account.findFirst({ where: { clientId, code: choice.accountCode, isBank: false, isSuspense: false } }))) return { ok: false, error: `Akun ${choice.accountCode} tidak ada di bagan akun klien ini.` };
+    const ids = await acceptSimilar(prisma, bankTxId, { entityIds: scope.entityIds, through }, (await getCurrentMember()).id, choice);
     revalidatePath(`/clients/${clientId}`, "layout");
-    return { ok: true, count };
+    return { ok: true, ids };
   } catch (e) {
     return fail(e);
   }
@@ -197,6 +251,186 @@ export async function createScheduleAction(input: Omit<ScheduleInput, "actorId">
   } catch (e) {
     return fail(e);
   }
+}
+
+/** Register a fixed asset (and its depreciation schedule, in the same transaction). Nothing posts. */
+export async function createAssetAction(input: Omit<AssetInput, "actorId">): Promise<Result<{ assetId: string }>> {
+  try {
+    const client = await getClientForFirm(input.clientId);
+    const a = await createAsset(prisma, { ...input, clientId: client.id, actorId: (await getCurrentMember()).id });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, assetId: a.id };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Lease register (rule 5f): registration posts the commencement entry; monthly journals and cancellation by click. */
+export async function createLeaseAction(input: Omit<LeaseInput, "actorId">) {
+  return taxWrite(input.clientId, (clientId, actorId) => createLease(prisma, { ...input, clientId, actorId }));
+}
+export async function postLeaseMonthsAction(input: { clientId: string; entityId: string; year: number; month: number }) {
+  return taxWrite(input.clientId, (clientId, actorId) => postLeaseMonths(prisma, { ...input, clientId, actorId }));
+}
+export async function cancelLeaseAction(clientId: string, leaseId: string) {
+  return taxWrite(clientId, (id, actorId) => cancelLease(prisma, { clientId: id, leaseId, actorId }));
+}
+
+/** Employee benefits (rule 5g): census, the firm's mortality table, assumptions, and the valuation journal by click. */
+async function uploaded(formData: FormData, what: string) {
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) throw new LedgerError(`Pilih file ${what} (XLSX, XLS, atau CSV).`);
+  if (file.size > MAX_UPLOAD) throw new LedgerError("File terlalu besar (maks. 5 MB).");
+  return { fileName: file.name, data: Buffer.from(await file.arrayBuffer()) };
+}
+export async function importCensusAction(formData: FormData): Promise<Result<{ added: number; updated: number }>> {
+  try {
+    const client = await getClientForFirm(String(formData.get("clientId")));
+    const r = await importCensus(prisma, { clientId: client.id, entityId: String(formData.get("entityId")), ...(await uploaded(formData, "sensus karyawan")) });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, ...r };
+  } catch (e) {
+    return fail(e);
+  }
+}
+export async function uploadMortalityAction(formData: FormData): Promise<Result<{ tableId: string }>> {
+  try {
+    const client = await getClientForFirm(String(formData.get("clientId")));
+    const t = await uploadMortality(prisma, { firmId: client.firmId, name: String(formData.get("name") ?? ""), ...(await uploaded(formData, "tabel mortalita")) });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, tableId: t.id };
+  } catch (e) {
+    return fail(e);
+  }
+}
+export async function saveEmployeeAction(input: EmployeeInput) {
+  return taxWrite(input.clientId, (clientId) => saveEmployee(prisma, { ...input, clientId }));
+}
+export async function deleteEmployeeAction(clientId: string, employeeId: string) {
+  return taxWrite(clientId, (id) => deleteEmployee(prisma, { clientId: id, employeeId }));
+}
+export async function saveBenefitSettingAction(input: BenefitSettingInput) {
+  return taxWrite(input.clientId, (clientId) => saveBenefitSetting(prisma, { ...input, clientId }));
+}
+export async function postBenefitsAction(input: { clientId: string; entityId: string; year: number; month: number }) {
+  return taxWrite(input.clientId, (clientId, actorId) => postBenefits(prisma, { ...input, clientId, actorId }));
+}
+
+/** The accountant's click: one disposal entry (rule 5b). */
+export async function disposeAssetAction(input: Omit<DisposalInput, "actorId">): Promise<Result<{ entryId: string }>> {
+  try {
+    const client = await getClientForFirm(input.clientId);
+    const r = await disposeAsset(prisma, { ...input, clientId: client.id, actorId: (await getCurrentMember()).id });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, entryId: r.entryId };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Record a sales invoice or purchase bill (posts its journal unless it is a Saldo Awal item). */
+export async function createInvoiceAction(input: Omit<InvoiceInput, "actorId">): Promise<Result<{ invoiceId: string }>> {
+  try {
+    const client = await getClientForFirm(input.clientId);
+    const inv = await createInvoice(prisma, { ...input, clientId: client.id, actorId: (await getCurrentMember()).id });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, invoiceId: inv.id };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Bank lines that could settle an invoice (read-only). */
+export async function settleCandidatesAction(clientId: string, invoiceId: string): Promise<Result<{ candidates: CandidateView[] }>> {
+  try {
+    const client = await getClientForFirm(clientId);
+    return { ok: true, candidates: await candidateViews(prisma, client.id, invoiceId) };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Settle an invoice with a bank line; a line not on the invoice's account is classified to it first (reviewer's writer). */
+export async function settleAction(input: { clientId: string; invoiceId: string; bankTransactionId: string; amount?: string | null }): Promise<Result> {
+  try {
+    const client = await getClientForFirm(input.clientId);
+    await settleWithReclass(prisma, { ...input, clientId: client.id, actorId: (await getCurrentMember()).id });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function unsettleAction(clientId: string, settlementId: string): Promise<Result> {
+  try {
+    const client = await getClientForFirm(clientId);
+    await unsettle(prisma, { clientId: client.id, settlementId });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Tax pack (accounting-rules 5d): every write is tenant-checked and returns the verbatim Bahasa error. */
+async function taxWrite(clientId: string, write: (clientId: string, actorId: string) => Promise<unknown>): Promise<Result> {
+  try {
+    const client = await getClientForFirm(clientId);
+    await write(client.id, (await getCurrentMember()).id);
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function setRegimeAction(input: { clientId: string; entityId: string; year: number; regime: TaxRegime }) {
+  return taxWrite(input.clientId, (clientId) => setRegime(prisma, { ...input, clientId }));
+}
+export async function addCorrectionAction(input: Omit<CorrectionInput, "actorId">) {
+  return taxWrite(input.clientId, (clientId, actorId) => addCorrection(prisma, { ...input, clientId, actorId }));
+}
+export async function deleteCorrectionAction(clientId: string, correctionId: string) {
+  return taxWrite(clientId, (id) => deleteCorrection(prisma, { clientId: id, correctionId }));
+}
+/** The amount is read again from the ledger here, never taken from the page. */
+export async function acceptSuggestionAction(input: { clientId: string; entityId: string; year: number; month: number; accountCode: string; percent?: number }) {
+  return taxWrite(input.clientId, async (clientId, actorId) => {
+    const pack = await taxPack(prisma, clientId, input.entityId, input.year, input.month);
+    const s = pack?.suggestions.find((x) => x.code === input.accountCode);
+    if (!s) throw new LedgerError("Usulan ini sudah tidak berlaku. Muat ulang halaman.");
+    await acceptSuggestion(prisma, { clientId, entityId: input.entityId, year: input.year, accountCode: s.code, amount: s.amount, percent: input.percent, actorId });
+  });
+}
+export async function setCorrectionPercentAction(clientId: string, correctionId: string, percent: number) {
+  return taxWrite(clientId, (id) => setCorrectionPercent(prisma, { clientId: id, correctionId, percent }));
+}
+export async function setLossAction(input: { clientId: string; entityId: string; year: number; originYear: number; amount: string }) {
+  return taxWrite(input.clientId, (clientId, actorId) => setLoss(prisma, { ...input, clientId, actorId }));
+}
+export async function deleteLossAction(clientId: string, lossId: string) {
+  return taxWrite(clientId, (id) => deleteLoss(prisma, { clientId: id, lossId }));
+}
+export async function dismissSuggestionAction(input: { clientId: string; entityId: string; year: number; key: string }) {
+  return taxWrite(input.clientId, (clientId) => dismissSuggestion(prisma, { ...input, clientId }));
+}
+export async function addCreditAction(input: Omit<CreditInput, "actorId">) {
+  return taxWrite(input.clientId, (clientId, actorId) => addCredit(prisma, { ...input, clientId, actorId }));
+}
+export async function deleteCreditAction(clientId: string, creditId: string) {
+  return taxWrite(clientId, (id) => deleteCredit(prisma, { clientId: id, creditId }));
+}
+/** The accountant's click: the tax journal of a kind, as the difference from what is already booked. */
+export async function saveCkpnSettingAction(input: CkpnSettingInput) {
+  return taxWrite(input.clientId, (clientId) => saveCkpnSetting(prisma, { ...input, clientId }));
+}
+export async function postCkpnAction(input: { clientId: string; entityId: string; year: number; month: number }) {
+  return taxWrite(input.clientId, (clientId, actorId) => postCkpn(prisma, { ...input, clientId, actorId }));
+}
+
+export async function postTaxAction(input: { clientId: string; entityId: string; year: number; month: number; kind: TaxPostingKind }) {
+  return taxWrite(input.clientId, (clientId, actorId) => postTax(prisma, { ...input, clientId, actorId }));
 }
 
 export async function postInstallmentAction(clientId: string, scheduleId: string, k: number): Promise<Result> {
@@ -310,7 +544,11 @@ export async function closeReviewAction(clientId: string, year: number, month: n
     return { ok: true, review: await reviewClose(prisma, client.firmId, client.id, year, month, provider) };
   } catch (e) {
     if (e instanceof AiBudgetError || e instanceof AiAnswerError) return { ok: false, error: e.message };
-    if (e instanceof Error && (e.name === "TimeoutError" || /^(AI \d|Model )/.test(e.message))) {
+    if (e instanceof Error && e.name === "TimeoutError") {
+      console.error(e);
+      return { ok: false, error: `AI tidak menjawab dalam ${Math.round(AI_LONG_TIMEOUT_MS / 60_000)} menit. Kontrol tetap berjalan; coba lagi nanti.` };
+    }
+    if (e instanceof Error && /^(AI \d|Model )/.test(e.message)) {
       console.error(e);
       return { ok: false, error: "AI tidak tersedia saat ini. Kontrol tetap berjalan; coba lagi nanti." };
     }
@@ -330,7 +568,11 @@ export async function explainControlAction(clientId: string, year: number, month
     return { ok: true, explanation };
   } catch (e) {
     if (e instanceof AiBudgetError || e instanceof AiAnswerError || e instanceof ExplainError) return { ok: false, error: e.message };
-    if (e instanceof Error && (e.name === "TimeoutError" || /^(AI \d|Model )/.test(e.message))) {
+    if (e instanceof Error && e.name === "TimeoutError") {
+      console.error(e);
+      return { ok: false, error: `AI tidak menjawab dalam ${Math.round(AI_LONG_TIMEOUT_MS / 60_000)} menit. Kontrol tetap berjalan; coba lagi nanti.` };
+    }
+    if (e instanceof Error && /^(AI \d|Model )/.test(e.message)) {
       console.error(e);
       return { ok: false, error: "AI tidak tersedia saat ini. Kontrol tetap berjalan; coba lagi nanti." };
     }
@@ -492,3 +734,22 @@ export async function prepareEvidenceImportAction(...args: Parameters<typeof evi
 export async function postEvidenceBankAction(...args: Parameters<typeof evidenceActions.postEvidenceBankAction>) { return evidenceActions.postEvidenceBankAction(...args); }
 export async function startGoogleAction(...args: Parameters<typeof googleActions.startGoogleAction>) { return googleActions.startGoogleAction(...args); }
 export async function disconnectGoogleAction(...args: Parameters<typeof googleActions.disconnectGoogleAction>) { return googleActions.disconnectGoogleAction(...args); }
+
+/** Admin only: removes a client and all its books after the typed-name confirmation (lib/clients/delete.ts). */
+export async function deleteClientAction(clientId: string, confirmName: string): Promise<Result> {
+  let member;
+  try {
+    member = await requireMember("ADMIN");
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Hanya admin kantor yang dapat menghapus klien." };
+  }
+  try {
+    const client = await getClientForFirm(clientId);
+    const r = await deleteClient(prisma, { firmId: client.firmId, clientId: client.id, confirmName });
+    console.info(`client deleted: firm=${client.firmId} client=${client.id} name="${r.name}" by member=${member.id} at ${new Date().toISOString()}`);
+    revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
