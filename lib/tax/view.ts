@@ -27,6 +27,7 @@ function toView(p: TaxPack) {
     settlement: p.settlement ? { credits: s(p.settlement.credits), balance: s(p.settlement.balance), nextInstalment: s(p.settlement.nextInstalment) } : null,
     deferred: p.deferred ? { temporaryDifference: s(p.deferred.temporaryDifference), amount: s(p.deferred.amount) } : null,
     proposals: { CURRENT: p.proposals.CURRENT.map((l) => ({ code: l.code, amount: s(l.amount) })), DEFERRED: p.proposals.DEFERRED.map((l) => ({ code: l.code, amount: s(l.amount) })) },
+    laterPosting: { CURRENT: p.laterPosting.CURRENT ? formatDate(p.laterPosting.CURRENT) : null, DEFERRED: p.laterPosting.DEFERRED ? formatDate(p.laterPosting.DEFERRED) : null },
   };
 }
 

@@ -40,6 +40,8 @@ export default async function TaxPage({ params, searchParams }: { params: Promis
       {header}
       {pack.suggestions.length && pack.regime === "NORMAL" ? (
         <NextStep>Periksa {pack.suggestions.length} usulan koreksi fiskal di bawah, lalu catat jurnal pajaknya.</NextStep>
+      ) : pending && pack.regime === "FINAL_UMKM" ? (
+        <NextStep>Skema final dipilih: balik jurnal pajak yang dicatat sebelumnya per {label}.</NextStep>
       ) : pending ? (
         <NextStep>Catat jurnal pajak per {label}: PPh badan terutang estimasi {formatMoney(pack.tax.due, cur)}.</NextStep>
       ) : pack.regime === "FINAL_UMKM" ? (

@@ -50,6 +50,8 @@ export type TaxPack = {
   deferred: { temporaryDifference: bigint; amount: bigint } | null;
   /** Signed lines (debit +, credit −) still to post to reach the computed position, per kind; empty = nothing to post. */
   proposals: Record<TaxPostingKind, ProposalLine[]>;
+  /** A posting of the kind dated after the chosen month: the position is booked there, so nothing is proposed here. */
+  laterPosting: Record<TaxPostingKind, Date | null>;
 };
 
 type Reader = Db | Tx;
@@ -116,19 +118,28 @@ export async function taxPack(db: Db, clientId: string, entityId: string, year: 
   // ---- pajak tangguhan (fixed-asset register only) ----
   const fiscalValue = assets.reduce((t, r) => t + (r.fiscalBookValue ?? 0n), 0n);
   const bookValue = assets.reduce((t, r) => t + r.bookValue, 0n);
-  // Under the final regime there is no fiscal profit, so no temporary difference to account for.
-  const deferred = assets.length && entity.functionalCurrency === "IDR" && !final ? { temporaryDifference: fiscalValue - bookValue, amount: deferredTax(fiscalValue - bookValue) } : null;
+  // Only postings dated by the chosen month count; one dated later means the position is booked there.
+  const postedCurrent = await postedLines(db, entityId, "CURRENT", year, false, through);
+  const postedDeferred = await postedLines(db, entityId, "DEFERRED", year, true, through);
+  const laterPosting: Record<TaxPostingKind, Date | null> = { CURRENT: await postingAfter(db, entityId, "CURRENT", year, through), DEFERRED: await postingAfter(db, entityId, "DEFERRED", year, through) };
+  // Under the final regime there is no fiscal profit, so no temporary difference; with no registered assets there is none either. Either
+  // way a deferred balance booked earlier is brought back to zero.
+  const deferredBooked = [ACCOUNT_CODES.DEFERRED_TAX_ASSET, ACCOUNT_CODES.DEFERRED_TAX_LIABILITY].some((c) => (postedDeferred.get(c) ?? 0n) !== 0n);
+  const deferred =
+    entity.functionalCurrency !== "IDR" ? null
+    : assets.length && !final ? { temporaryDifference: fiscalValue - bookValue, amount: deferredTax(fiscalValue - bookValue) }
+    : deferredBooked ? { temporaryDifference: 0n, amount: 0n }
+    : null;
 
   const applicable = packApplies(entity);
   const proposals: Record<TaxPostingKind, ProposalLine[]> = { CURRENT: [], DEFERRED: [] };
-  if (applicable && settled) {
-    const target = currentTarget(tax.due, credits, settled.balance);
-    proposals.CURRENT = diff(target, await postedLines(db, entityId, "CURRENT", year));
+  if (applicable && !laterPosting.CURRENT) {
+    // The final regime has no current-tax journal: a normal-regime posting made before the switch is reversed.
+    const target = settled ? currentTarget(tax.due, credits, settled.balance) : new Map<string, bigint>();
+    proposals.CURRENT = diff(target, postedCurrent);
   }
-  if (applicable && deferred) {
-    proposals.DEFERRED = deferredDiff(deferred.amount, await postedLines(db, entityId, "DEFERRED", year, true));
-  }
-  return { entity, year, month, through, applicable, regime, taxYearId: taxYear?.id ?? null, profitBeforeTax, turnover, corrections, suggestions, positive, negative, fiscalProfit, tax, credits, settlement: settled, deferred, proposals };
+  if (applicable && deferred && !laterPosting.DEFERRED) proposals.DEFERRED = deferredDiff(deferred.amount, postedDeferred);
+  return { entity, year, month, through, applicable, regime, taxYearId: taxYear?.id ?? null, profitBeforeTax, turnover, corrections, suggestions, positive, negative, fiscalProfit, tax, credits, settlement: settled, deferred, proposals, laterPosting };
 }
 
 /**
@@ -148,10 +159,13 @@ export function currentTarget(due: bigint, credits: { amount: bigint; accountCod
   return t;
 }
 
-/** Lines booked so far by the entity's tax postings of a kind: of that year, or — for deferred balances — of every year up to it. */
-export async function postedLines(db: Reader, entityId: string, kind: TaxPostingKind, year: number, cumulative = false): Promise<Map<string, bigint>> {
+/**
+ * Lines booked by the entity's tax postings of a kind dated by `through`: of that year, or — for deferred balances — of every year up to
+ * it.
+ */
+export async function postedLines(db: Reader, entityId: string, kind: TaxPostingKind, year: number, cumulative: boolean, through: Date): Promise<Map<string, bigint>> {
   const postings = await db.taxPosting.findMany({
-    where: { kind, taxYear: { entityId, ...(cumulative ? { year: { lte: year } } : { year }) } },
+    where: { kind, taxYear: { entityId, ...(cumulative ? { year: { lte: year } } : { year }) }, entry: { date: { lte: through } } },
     include: { taxYear: { select: { year: true } }, entry: { include: { lines: { include: { account: { select: { code: true } } } } } } },
   });
   const out = new Map<string, bigint>();
@@ -182,4 +196,14 @@ export function deferredDiff(amount: bigint, posted: Map<string, bigint>): Propo
     { code: ACCOUNT_CODES.DEFERRED_TAX, amount: -(dAsset + dLiability) },
   ];
   return lines.filter((l) => l.amount !== 0n);
+}
+
+/** The date of a posting of the kind after `through` (the same year for current tax; any later date for deferred balances), if any. */
+export async function postingAfter(db: Reader, entityId: string, kind: TaxPostingKind, year: number, through: Date): Promise<Date | null> {
+  const later = await db.taxPosting.findFirst({
+    where: { kind, taxYear: { entityId, ...(kind === "CURRENT" ? { year } : { year: { gte: year } }) }, entry: { date: { gt: through } } },
+    include: { entry: { select: { date: true } } },
+    orderBy: { entry: { date: "desc" } },
+  });
+  return later?.entry.date ?? null;
 }

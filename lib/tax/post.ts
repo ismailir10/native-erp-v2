@@ -2,8 +2,8 @@ import type { Db, Tx } from "@/lib/db";
 import type { TaxPostingKind } from "@/lib/generated/prisma/enums";
 import { LedgerError, postJournal, type PostLine } from "@/lib/ledger/post";
 import { COA_TEMPLATE } from "@/lib/coa/template";
-import { formatPeriod } from "@/lib/format";
-import { postedLines, taxPack } from "@/lib/tax/pack";
+import { formatDate, formatPeriod } from "@/lib/format";
+import { postedLines, postingAfter, taxPack } from "@/lib/tax/pack";
 
 /**
  * Tax journals from the pack (accounting-rules 5d), by the accountant's click: one ADJUSTMENT entry dated the period end that books only
@@ -15,15 +15,17 @@ export async function postTax(db: Db, input: { clientId: string; entityId: strin
   const pack = await taxPack(db, input.clientId, input.entityId, input.year, input.month);
   if (!pack) throw new LedgerError("Entitas tidak ditemukan.");
   if (!pack.applicable) throw new LedgerError("Paket PPh badan hanya untuk badan usaha dengan pembukuan Rupiah.");
+  const later = pack.laterPosting[input.kind];
+  if (later) throw new LedgerError(`Jurnal ${input.kind === "CURRENT" ? "pajak kini" : "pajak tangguhan"} sudah dicatat per ${formatDate(later)}. Catat perubahan di bulan itu atau sesudahnya.`);
   const lines = pack.proposals[input.kind];
   if (!lines.length) throw new LedgerError("Tidak ada selisih yang perlu dijurnal.");
   const cumulative = input.kind === "DEFERRED";
-  const seen = await postedLines(db, input.entityId, input.kind, input.year, cumulative);
+  const seen = await postedLines(db, input.entityId, input.kind, input.year, cumulative, pack.through);
 
   return db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`tax:${input.entityId}:${input.year}`}, 0))::text`;
-    const now = await postedLines(tx, input.entityId, input.kind, input.year, cumulative);
-    const same = now.size === seen.size && [...now].every(([k, v]) => seen.get(k) === v);
+    const now = await postedLines(tx, input.entityId, input.kind, input.year, cumulative, pack.through);
+    const same = now.size === seen.size && [...now].every(([k, v]) => seen.get(k) === v) && !(await postingAfter(tx, input.entityId, input.kind, input.year, pack.through));
     if (!same) throw new LedgerError("Jurnal pajak berubah sementara itu. Muat ulang halaman lalu coba lagi.");
     const ids = await accountIds(tx, input.clientId, lines.map((l) => l.code));
     const post: PostLine[] = lines.map((l) => (l.amount > 0n ? { accountId: ids.get(l.code)!, debit: l.amount } : { accountId: ids.get(l.code)!, credit: -l.amount }));
@@ -34,7 +36,7 @@ export async function postTax(db: Db, input: { clientId: string; entityId: strin
       entityId: input.entityId,
       date: pack.through,
       kind: "ADJUSTMENT",
-      memo: input.kind === "CURRENT" ? `PPh badan ${input.year} (estimasi s.d. ${label})` : `Pajak tangguhan ${input.year} (s.d. ${label})`,
+      memo: input.kind === "CURRENT" ? (pack.regime === "FINAL_UMKM" ? `Pembalikan PPh badan ${input.year}: skema final PP 55/2022` : `PPh badan ${input.year} (estimasi s.d. ${label})`) : `Pajak tangguhan ${input.year} (s.d. ${label})`,
       lines: post,
       actorId: input.actorId,
     });

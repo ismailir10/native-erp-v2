@@ -75,7 +75,9 @@ export function TaxPackPanel(props: { clientId: string; periodKey: string; perio
           <CardDescription>{hint}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
-          {lines.length === 0 ? (
+          {v.laterPosting[kind] ? (
+            <p className="text-muted-foreground">Jurnal ini sudah dicatat per {v.laterPosting[kind]}; posisinya dibukukan di sana. Buka bulan itu atau sesudahnya untuk mencatat perubahan.</p>
+          ) : lines.length === 0 ? (
             <p className="text-muted-foreground">Sudah sesuai estimasi; tidak ada yang perlu dijurnal.</p>
           ) : (
             <>
@@ -193,6 +195,7 @@ export function TaxPackPanel(props: { clientId: string; periodKey: string; perio
       )}
 
       {!final && proposal("CURRENT", "Jurnal pajak kini", "Membawa beban pajak, kredit pajak dan utang PPh 29 (atau lebih bayar) ke estimasi di atas. Hanya selisih dari jurnal pajak sebelumnya yang dicatat.")}
+      {final && v.proposals.CURRENT.length > 0 && proposal("CURRENT", "Pembalikan jurnal pajak kini", "Skema final tidak memakai jurnal pajak kini: jurnal PPh badan yang dicatat sebelum skema diganti dibalik.")}
       {v.deferred && proposal("DEFERRED", "Jurnal pajak tangguhan", "Membawa aset/liabilitas pajak tangguhan ke saldo di atas; perubahannya ke 8110.")}
 
       {v.postings.length > 0 && (

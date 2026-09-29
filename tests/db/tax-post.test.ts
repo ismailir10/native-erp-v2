@@ -5,7 +5,8 @@ import { createAsset } from "@/lib/assets/register";
 import { postInstallment } from "@/lib/adjust/schedules";
 import { taxPack } from "@/lib/tax/pack";
 import { postTax } from "@/lib/tax/post";
-import { addCorrection, addCredit } from "@/lib/tax/records";
+import { addCorrection, addCredit, setRegime } from "@/lib/tax/records";
+import { disposeAsset } from "@/lib/assets/dispose";
 import { runControls } from "@/lib/controls";
 import { dateOnly } from "@/lib/format";
 
@@ -86,5 +87,45 @@ describe("tax postings", () => {
     expect(await control()).toMatchObject({ status: "REVIEW", title: "PPh badan 2026 belum dijurnal" });
     await post(g, 12, "CURRENT");
     expect(await control()).toBeUndefined();
+  });
+
+  it("reverses an earlier current-tax journal when the year switches to the final regime", async () => {
+    const g = await makeGroup();
+    await books(g);
+    await post(g, 9, "CURRENT");
+    await setRegime(db, { clientId: g.client.id, entityId: g.pt.entity.id, year: 2026, regime: "FINAL_UMKM" });
+    expect((await pack(g, 9)).proposals.CURRENT.map((l) => [l.code, l.amount])).toEqual([["1180", 30_000_000n], ["2146", 36_000_000n], ["8100", -66_000_000n]]);
+    const back = await post(g, 9, "CURRENT");
+    expect(back.memo).toBe("Pembalikan PPh badan 2026: skema final PP 55/2022");
+    for (const code of ["8100", "2146"]) {
+      const s = await db.journalLine.aggregate({ where: { account: { clientId: g.client.id, code }, entry: { taxPosting: { isNot: null } } }, _sum: { debit: true, credit: true } });
+      expect((s._sum.debit ?? 0n) - (s._sum.credit ?? 0n), code).toBe(0n);
+    }
+    expect((await pack(g, 9)).proposals.CURRENT).toEqual([]);
+  });
+
+  it("counts only postings up to the chosen month and refuses to post before a later one", async () => {
+    const g = await makeGroup();
+    await books(g);
+    await post(g, 12, "CURRENT");
+    const sep = await pack(g, 9);
+    expect(sep.laterPosting.CURRENT?.toISOString().slice(0, 10)).toBe("2026-12-31");
+    expect(sep.proposals.CURRENT).toEqual([]);
+    await expect(post(g, 9, "CURRENT")).rejects.toThrow(/sudah dicatat per 31 Des 2026/);
+    expect((await pack(g, 12)).proposals.CURRENT).toEqual([]);
+  });
+
+  it("brings a deferred balance back to zero once the register is empty", async () => {
+    const g = await makeGroup();
+    const buy = await journal(g, dateOnly(2026, 8, 10), "1210", "2110", 48_000_000n);
+    const a = await createAsset(db, { clientId: g.client.id, entityId: g.pt.entity.id, name: "Laptop", taxGroup: "KELOMPOK_1", fiscalMethod: "GARIS_LURUS", acquiredOn: "2026-08-10", cost: "48000000", assetAccountCode: "1210", sourceEntryId: buy.id });
+    await postInstallment(db, { clientId: g.client.id, scheduleId: a.scheduleId!, k: 1 });
+    await post(g, 9, "DEFERRED");
+    await postInstallment(db, { clientId: g.client.id, scheduleId: a.scheduleId!, k: 2 });
+    await disposeAsset(db, { clientId: g.client.id, assetId: a.id, date: "2026-10-20", proceeds: "0", proceedsCode: "1140" });
+    // 2027: the register is empty, the 220 rb liability booked in 2026 goes.
+    const next = (await taxPack(db, g.client.id, g.pt.entity.id, 2027, 1))!;
+    expect(next.deferred).toEqual({ temporaryDifference: 0n, amount: 0n });
+    expect(next.proposals.DEFERRED.map((l) => [l.code, l.amount])).toEqual([["2320", 220_000n], ["8110", -220_000n]]);
   });
 });
