@@ -11,6 +11,7 @@ import { anomalyControls } from "@/lib/controls/anomaly";
 import { closeLock, dueProposals, schedulesDueBy } from "@/lib/adjust/schedules";
 import { registerVsLedger } from "@/lib/assets/register";
 import { subledgerVsLedger } from "@/lib/receivables/aging";
+import { packApplies, taxPack } from "@/lib/tax/pack";
 
 /**
  * Close controls (analog of belifi 16_CONTROLS). PASS / REVIEW / FAIL.
@@ -174,6 +175,24 @@ export async function runControls(db: Db, clientId: string, year: number, month:
         href: `${base}/receivables?period=${year}-${String(month).padStart(2, "0")}&entity=${e.id}&tab=${sales ? "piutang" : "utang"}`,
         ack: acks.get(key),
       });
+    }
+
+    // Tax pack (rule 5d): in December, a company's PPh badan for the year should be booked.
+    if (month === 12 && packApplies(e)) {
+      const pack = await taxPack(db, clientId, e.id, year, month);
+      const expense = pack?.proposals.CURRENT.find((l) => l.code === ACCOUNT_CODES.CURRENT_TAX)?.amount ?? 0n;
+      if (pack && pack.proposals.CURRENT.length) {
+        const tKey = `tax:${e.id}`;
+        controls.push({
+          key: tKey,
+          title: `PPh badan ${year} belum dijurnal`,
+          scope: e.shortName,
+          status: "REVIEW",
+          detail: `Estimasi PPh terutang ${fmt(pack.tax.due)}; jurnal pajak kini yang belum dicatat ${expense >= 0n ? "" : "mengurangi beban "}${fmt(expense < 0n ? -expense : expense)}`,
+          href: `${base}/tax?period=${year}-12&entity=${e.id}`,
+          ack: acks.get(tKey),
+        });
+      }
     }
   }
 
