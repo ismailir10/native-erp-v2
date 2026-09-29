@@ -1,3 +1,4 @@
+import { simpleGuess } from "@/lib/classify/fallback";
 import type { Db, Tx } from "@/lib/db";
 import type { TaxTag } from "@/lib/generated/prisma/enums";
 import { postBankTransaction } from "@/lib/ledger/bank";
@@ -77,15 +78,16 @@ export async function acceptSimilar(
   choice?: { accountCode: string; taxTag: TaxTag | null },
 ): Promise<string[]> {
   const t = await db.bankTransaction.findUniqueOrThrow({ where: { id: bankTxId } });
+  const entity = await db.entity.findUniqueOrThrow({ where: { id: t.entityId } });
   const peers = await db.bankTransaction.findMany({
     where: {
       ...(scope ? { entityId: { in: scope.entityIds }, date: { lte: scope.through } } : {}),
-      bankAccount: { entity: { clientId: (await db.entity.findUniqueOrThrow({ where: { id: t.entityId } })).clientId } },
+      bankAccount: { entity: { clientId: entity.clientId } },
       ...(isGenericKey(t.merchantKey) ? { id: t.id } : { merchantKey: t.merchantKey, direction: t.direction }),
       status: "NEEDS_REVIEW",
     },
   });
-  const accountCode = choice?.accountCode ?? t.suggestedCode ?? "6190";
+  const accountCode = choice?.accountCode ?? t.suggestedCode ?? simpleGuess(t.direction, entity.kind).accountCode;
   const taxTag = choice ? choice.taxTag : t.taxTag;
   for (const p of peers) {
     await reviewTransaction(db, { bankTxId: p.id, accountCode, taxTag, actorId });

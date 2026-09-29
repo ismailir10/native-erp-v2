@@ -6,6 +6,7 @@ import { checkContinuity, isGenericKey, merchantKey, rowHash } from "@/lib/impor
 import { AccountMismatchError, ParseError, type ParsedStatement } from "@/lib/import/types";
 import { matchRule, sortRules } from "@/lib/classify/rules";
 import { financingSuggestion } from "@/lib/classify/financing";
+import { simpleGuess } from "@/lib/classify/fallback";
 import { matchTransfers, type TransferCandidate } from "@/lib/classify/transfer";
 import { AUTO_POST_CONFIDENCE, type Classification } from "@/lib/classify/types";
 import { suggestWithAi } from "@/lib/ai/classify";
@@ -33,11 +34,6 @@ export type ImportSummary = {
   notes: string[];
   /** The months the statement covers ("Mei 2026"), first to last. */
   months: string[];
-};
-
-const HEURISTIC: Record<Direction, Classification> = {
-  IN: { method: "HEURISTIC", accountCode: "4100", taxTag: null, confidence: 0.3, reason: "Tebakan sederhana: uang masuk dianggap penjualan" },
-  OUT: { method: "HEURISTIC", accountCode: "6190", taxTag: null, confidence: 0.3, reason: "Tebakan sederhana: uang keluar dianggap beban umum" },
 };
 
 export async function importStatement(
@@ -172,7 +168,7 @@ export async function importStatement(
   });
   for (const it of items) {
     if (result.has(it.id)) continue;
-    result.set(it.id, ai.suggestions.get(`${it.merchantKey}|${it.direction}`) ?? HEURISTIC[it.direction]);
+    result.set(it.id, ai.suggestions.get(`${it.merchantKey}|${it.direction}`) ?? simpleGuess(it.direction, entity.kind));
   }
 
   // ---- write: import + transactions + journals, all-or-nothing ----
