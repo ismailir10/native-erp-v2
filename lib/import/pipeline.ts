@@ -69,12 +69,38 @@ export async function importStatement(
     throw new ParseError(`Periode ${formatPeriod(lockedHit.date.getUTCFullYear(), lockedHit.date.getUTCMonth() + 1)} sudah ditutup. Buka periode dulu atau pilih file lain.`);
   }
 
-  // Dedupe against what's already imported for this bank account.
+  // Dedupe against what's already imported for this bank account. First the same row again (same file: same hash); then the same bank
+  // line from another source of the same statement — a PDF and the accountant's Excel copy word descriptions differently, and a PDF may
+  // print the balance only once a day — matched one to one on date and amount (a line dropped wrongly or twice shows in the bank
+  // reconciliation either way).
   const hashes = st.rows.map(rowHash);
-  const existing = new Set(
-    (await db.bankTransaction.findMany({ where: { bankAccountId: bankAccount.id, hash: { in: hashes } }, select: { hash: true } })).map((t) => t.hash),
-  );
-  const fresh = st.rows.map((r, i) => ({ r, hash: hashes[i] })).filter((x) => !existing.has(x.hash));
+  const dates = st.rows.map((r) => +r.date);
+  const already = st.rows.length
+    ? await db.bankTransaction.findMany({
+        where: { bankAccountId: bankAccount.id, date: { gte: new Date(Math.min(...dates)), lte: new Date(Math.max(...dates)) } },
+        select: { id: true, hash: true, date: true, amount: true, balance: true },
+        orderBy: [{ date: "asc" }, { rowNumber: "asc" }],
+      })
+    : [];
+  const unmatched = new Set(already.map((t) => t.id));
+  const duplicate = hashes.map((h) => {
+    const same = already.find((t) => t.hash === h && unmatched.has(t.id));
+    if (same) unmatched.delete(same.id);
+    return !!same;
+  });
+  let fromOtherSource = 0;
+  st.rows.forEach((r, i) => {
+    if (duplicate[i]) return;
+    // The balance only picks among twins: when one source missed a line, every later balance of it is off, yet the lines are the same.
+    const twins = already.filter((t) => unmatched.has(t.id) && +t.date === +r.date && t.amount === r.amount);
+    const twin = twins.find((t) => t.balance !== null && t.balance === r.balance) ?? twins[0];
+    if (!twin) return;
+    unmatched.delete(twin.id);
+    duplicate[i] = true;
+    fromOtherSource++;
+  });
+  const fresh = st.rows.map((r, i) => ({ r, hash: hashes[i] })).filter((_, i) => !duplicate[i]);
+  const notes = [...(st.notes ?? []), ...(fromOtherSource ? [`${fromOtherSource} baris sama dengan mutasi yang sudah diimpor dari file lain (tanggal dan nominal sama, keterangan berbeda); dilewati.`] : [])];
 
   const items = fresh.map(({ r, hash }, i) => ({
     id: `new-${i}`,
@@ -168,7 +194,7 @@ export async function importStatement(
           duplicateCount: st.rows.length - fresh.length,
           continuityOk: continuity.ok,
           continuityNote: continuity.note,
-          parseNotes: st.notes ?? [],
+          parseNotes: notes,
           importedById: args.actorId ?? null,
         },
       });
@@ -241,7 +267,7 @@ export async function importStatement(
     continuityOk: continuity.ok,
     continuityNote: continuity.note,
     otherSections,
-    notes: st.notes ?? [],
+    notes,
     months: monthsOf(st.periodStart, st.periodEnd),
   };
 }
