@@ -257,3 +257,39 @@ export async function postCkpn(db: Db, input: { clientId: string; entityId: stri
     });
   });
 }
+
+/** Serialisable CKPN card (bigint as string, rates as percent text). */
+export type CkpnView = {
+  entityId: string;
+  entity: string;
+  currency: string;
+  setting: { method: CkpnMethod; historyMonths: number; forward: string; lastBucket: string; manual: [string, string, string, string]; saved: boolean };
+  rows: { bucket: Bucket; label: string; open: string; roll: string | null; samples: number; rate: string | null; amount: string | null }[];
+  snapshots: { first: string; last: string; count: number } | null;
+  blocker: string | null;
+  total: string | null;
+  balance: string;
+  difference: string | null;
+  later: string | null;
+};
+
+const bpText = (bp: number) => (bp / 100).toLocaleString("id-ID", { maximumFractionDigits: 2 });
+const ppmText = (ppm: bigint) => `${(Number(ppm) / 10_000).toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+
+export function ckpnView(c: Ckpn, entity: { shortName: string; functionalCurrency: string }): CkpnView {
+  const s = c.setting;
+  const month = (d: Date) => d.toLocaleDateString("id-ID", { month: "short", year: "numeric", timeZone: "UTC" });
+  return {
+    entityId: c.entityId,
+    entity: entity.shortName,
+    currency: entity.functionalCurrency,
+    setting: { method: s.method, historyMonths: s.historyMonths, forward: bpText(s.forwardBp), lastBucket: bpText(s.lastBucketBp), manual: [bpText(s.currentBp), bpText(s.d1to30Bp), bpText(s.d31to60Bp), bpText(s.d61to90Bp)], saved: s.saved },
+    rows: c.rows.map((r) => ({ bucket: r.bucket, label: BUCKET_LABEL[r.bucket], open: r.open.toString(), roll: r.roll === null ? null : ppmText(r.roll), samples: r.samples, rate: r.rate === null ? null : ppmText(r.rate), amount: r.amount === null ? null : r.amount.toString() })),
+    snapshots: c.snapshots.length ? { first: month(c.snapshots[0]), last: month(c.snapshots[c.snapshots.length - 1]), count: c.snapshots.length } : null,
+    blocker: c.blocker,
+    total: c.total === null ? null : c.total.toString(),
+    balance: c.balance.toString(),
+    difference: c.difference === null ? null : c.difference.toString(),
+    later: c.later ? formatDate(c.later) : null,
+  };
+}

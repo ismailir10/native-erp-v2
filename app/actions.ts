@@ -15,6 +15,7 @@ import { disposeAsset, type DisposalInput } from "@/lib/assets/dispose";
 import { createInvoice, type InvoiceInput } from "@/lib/receivables/invoices";
 import { settleWithReclass, unsettle } from "@/lib/receivables/settle";
 import { candidateViews, type CandidateView } from "@/lib/receivables/view";
+import { postCkpn, saveCkpnSetting, type CkpnSettingInput } from "@/lib/receivables/ckpn";
 import { taxPack } from "@/lib/tax/pack";
 import { postTax } from "@/lib/tax/post";
 import { acceptSuggestion, addCorrection, addCredit, deleteCorrection, deleteCredit, deleteLoss, dismissSuggestion, setCorrectionPercent, setLoss, setRegime, type CorrectionInput, type CreditInput } from "@/lib/tax/records";
@@ -330,6 +331,13 @@ export async function deleteCreditAction(clientId: string, creditId: string) {
   return taxWrite(clientId, (id) => deleteCredit(prisma, { clientId: id, creditId }));
 }
 /** The accountant's click: the tax journal of a kind, as the difference from what is already booked. */
+export async function saveCkpnSettingAction(input: CkpnSettingInput) {
+  return taxWrite(input.clientId, (clientId) => saveCkpnSetting(prisma, { ...input, clientId }));
+}
+export async function postCkpnAction(input: { clientId: string; entityId: string; year: number; month: number }) {
+  return taxWrite(input.clientId, (clientId, actorId) => postCkpn(prisma, { ...input, clientId, actorId }));
+}
+
 export async function postTaxAction(input: { clientId: string; entityId: string; year: number; month: number; kind: TaxPostingKind }) {
   return taxWrite(input.clientId, (clientId, actorId) => postTax(prisma, { ...input, clientId, actorId }));
 }
