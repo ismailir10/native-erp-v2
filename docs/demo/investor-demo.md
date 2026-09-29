@@ -58,7 +58,7 @@ Automated end to end by `e2e/investor-demo.spec.ts` — if you change this scrip
 > Talking point: *the close doesn't only check that the books add up — it reads the ledger like a reviewer would (swings
 > against the last 3 months, accounts that wake up, P&L running backwards, double entries) and asks for a one-line note.*
 
-- Tick the three accountant sign-offs → **Tutup buku Agustus 2026**. Period locked; imports into it are now rejected.
+- Tick the three accountant sign-offs → **Tutup buku Agustus 2026** → confirm in the dialog. Period locked; imports into it are now rejected.
 
 ### Close (15 s)
 > "Three clients, one morning. The same engine scales to a firm's hundred clients — that's the business."

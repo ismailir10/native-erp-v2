@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseStatement } from "@/lib/import/parsers";
-import { checkContinuity, merchantKey } from "@/lib/import/normalize";
+import { checkContinuity, isGenericKey, merchantKey } from "@/lib/import/normalize";
 import { matchRule, sortRules, FIRM_RULES } from "@/lib/classify/rules";
 import { matchTransfers } from "@/lib/classify/transfer";
 
@@ -58,6 +58,16 @@ describe("merchantKey", () => {
   it("strips channel noise, refs and amounts", () => {
     expect(merchantKey("TRSF E-BANKING DB 0108/FTSCY/WS95051 11100000.00 PT PAKAN JAYA")).toBe("PT PAKAN JAYA");
     expect(merchantKey("BI-FAST CR TRANSFER DARI CV SUMBER VAKSIN 20260801ABC123")).toBe("CV SUMBER VAKSIN");
+    expect(merchantKey("BI FAST CR TRANSFER DARI CV SUMBER VAKSIN")).toBe("CV SUMBER VAKSIN"); // SMBC/Jenius spell it with a space
+  });
+
+  it("knows a key that names no counterparty", () => {
+    for (const d of ["Db BI Fast Outgoing - BI Fast Outgoing", "Cr BI fast Incoming - BI Fast Incoming", "Pinjaman - Loan", "TRSF E-BANKING DB 0108/FTSCY/WS95051 15000000.00", "DEP0524DEP004097", "SETORAN TUNAI", "TARIKAN ATM 12/08"]) {
+      expect([d, isGenericKey(merchantKey(d))]).toEqual([d, true]);
+    }
+    for (const d of ["BI-FAST DB BIF TRANSFER KE 002 ALFI YANDRA KBB", "TRSF E-BANKING CR 0706/FTSCY/WS95271 70475000.00 bayar nota barang sale Belifi DINA PUSPITA", "BIAYA ADM 0998", "BIAYA - Fee Payment", "Bunga - Interest", "Bea Materai - Stamp Duty", "PT PAKAN JAYA"]) {
+      expect([d, isGenericKey(merchantKey(d))]).toEqual([d, false]);
+    }
   });
 });
 

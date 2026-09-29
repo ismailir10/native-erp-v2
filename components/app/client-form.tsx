@@ -123,7 +123,7 @@ export function ClientForm({ initial, evidenceIntakeId, onCreated }: { initial?:
             <div className="grid gap-4 sm:grid-cols-4">
               <Field>
                 <FieldLabel>Jenis</FieldLabel>
-                <Select value={e.kind} onValueChange={(v) => setEntity(i, { kind: v as Kind })}>
+                <Select value={e.kind} onValueChange={(v) => setEntity(i, v === "BADAN_USAHA_ASING" ? { kind: v as Kind, npwp: "" } : { kind: v as Kind })}>
                   <SelectTrigger className="w-full" aria-label="Jenis entitas"><SelectValue>{KIND_LABEL[e.kind]}</SelectValue></SelectTrigger>
                   <SelectContent>{(Object.keys(KIND_LABEL) as Kind[]).map((k) => <SelectItem key={k} value={k}>{KIND_LABEL[k]}</SelectItem>)}</SelectContent>
                 </Select>
@@ -158,11 +158,14 @@ export function ClientForm({ initial, evidenceIntakeId, onCreated }: { initial?:
                 </Select>
                 <FieldError>{err(`entities.${i}.currency`)}</FieldError>
               </Field>
-              <Field>
-                <FieldLabel htmlFor={`e-npwp-${i}`}>NPWP (opsional)</FieldLabel>
-                <Input id={`e-npwp-${i}`} value={e.npwp} aria-invalid={!!err(`entities.${i}.npwp`)} onChange={(ev) => setEntity(i, { npwp: ev.target.value })} placeholder="01.234.567.8-015.000" />
-                <FieldError>{err(`entities.${i}.npwp`)}</FieldError>
-              </Field>
+              {/* A foreign company has no Indonesian NPWP. */}
+              {e.kind !== "BADAN_USAHA_ASING" && (
+                <Field>
+                  <FieldLabel htmlFor={`e-npwp-${i}`}>NPWP (opsional)</FieldLabel>
+                  <Input id={`e-npwp-${i}`} value={e.npwp} aria-invalid={!!err(`entities.${i}.npwp`)} onChange={(ev) => setEntity(i, { npwp: ev.target.value })} placeholder="01.234.567.8-015.000" />
+                  <FieldError>{err(`entities.${i}.npwp`)}</FieldError>
+                </Field>
+              )}
             </div>
 
             <div className="space-y-2">

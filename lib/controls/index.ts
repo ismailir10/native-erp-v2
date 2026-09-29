@@ -67,6 +67,8 @@ export async function runControls(db: Db, clientId: string, year: number, month:
     });
 
     let statementMissing = false;
+    // Books start at the entity's Saldo Awal (else the account's first statement): a month ending before that needs no statement.
+    const opening = await db.journalEntry.findFirst({ where: { entityId: e.id, kind: "OPENING" }, orderBy: { date: "asc" }, select: { date: true } });
     for (const ba of e.bankAccounts) {
       const lastTx = await db.bankTransaction.findFirst({
         where: { bankAccountId: ba.id, date: { lte: end }, balance: { not: null } },
@@ -77,6 +79,13 @@ export async function runControls(db: Db, clientId: string, year: number, month:
       const gl = glRow?.net ?? 0n;
       const key = `bank:${ba.id}`;
       if (coverage.length === 0) {
+        const first = opening ? null : await db.statementImport.findFirst({ where: { bankAccountId: ba.id }, orderBy: { periodStart: "asc" }, select: { periodStart: true } });
+        const startsAfter = opening ? end.getTime() <= opening.date.getTime() : !!first && end.getTime() < first.periodStart.getTime();
+        if (startsAfter) {
+          const from = opening ? new Date(opening.date.getTime() + 86_400_000) : first!.periodStart;
+          controls.push({ key, title: `Rekonsiliasi ${ba.label}`, scope: e.shortName, status: "PASS", detail: `Pembukuan rekening ini mulai ${formatDate(from)}` });
+          continue;
+        }
         statementMissing = true;
         controls.push({ key, title: `Rekonsiliasi ${ba.label}`, scope: e.shortName, status: "REVIEW", detail: "Mutasi bulan ini belum diimpor", href: `${base}/import`, ack: acks.get(key) });
         continue;
@@ -100,6 +109,29 @@ export async function runControls(db: Db, clientId: string, year: number, month:
         status: broken.length ? "REVIEW" : "PASS",
         detail: broken.length ? broken.map((b) => `${b.fileName}: ${b.continuityNote}`).join("; ") : "Saldo berjalan nyambung dari awal ke akhir",
         ack: acks.get(ckey),
+      });
+    }
+
+    // Books posted before postJournal refused it may still use another entity's bank account (its reconciliation can't see them).
+    const foreignLines = await db.journalLine.groupBy({
+      by: ["accountId"],
+      where: { entityId: e.id, date: { lte: end }, account: { isBank: true, bankAccounts: { some: { entityId: { not: e.id } } } } },
+      _sum: { debit: true, credit: true },
+    });
+    const foreignBank = foreignLines.filter((l) => (l._sum.debit ?? 0n) !== (l._sum.credit ?? 0n));
+    if (foreignBank.length) {
+      const bkKey = `bank-entity:${e.id}`;
+      const accs = await db.account.findMany({ where: { id: { in: foreignBank.map((l) => l.accountId) } }, orderBy: { code: "asc" } });
+      const names = accs.map((a) => `${a.code} ${a.name}`).join(", ");
+      const held = foreignBank.reduce((s, l) => s + (l._sum.debit ?? 0n) - (l._sum.credit ?? 0n), 0n);
+      controls.push({
+        key: bkKey,
+        title: "Rekening bank entitas lain",
+        scope: e.shortName,
+        status: "REVIEW",
+        detail: `Buku ${e.shortName} menyimpan saldo ${fmt(held)} di ${names}. Kosongkan dengan Jurnal Penyesuaian di buku ini (Buku menerima jurnal yang mengembalikan saldonya ke nol), lalu catat lewat 1190 di buku masing-masing.`,
+        href: `${base}/ledger/${accs[0].code}?entity=${e.id}`,
+        ack: acks.get(bkKey),
       });
     }
 

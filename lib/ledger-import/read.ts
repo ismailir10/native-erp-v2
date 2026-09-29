@@ -6,6 +6,7 @@ import { ParseError } from "@/lib/import/types";
 import { asXlsx, sniffFile } from "@/lib/import/workbook";
 import type { AccountType } from "@/lib/generated/prisma/enums";
 import type { Columns, ColumnKey, LedgerRow, NeracaRow, NeracaTotal, RawCell, RawSheet, ReadResult, TableCandidate } from "@/lib/ledger-import/types";
+import { NO_CODE_PREFIX } from "@/lib/ledger-import/code";
 
 /**
  * Ledger / Neraca files (XLSX, legacy/HTML XLS, CSV/TSV) → rows with `sheet!row` references. No DB, no AI (accounting-rules §15a, §16):
@@ -302,7 +303,7 @@ export function readNeraca(sheet: RawSheet, t: TableCandidate): { date: Date | n
     rows.push({
       ref: `${sheet.name}!${r + 1}`,
       row: r + 1,
-      code: hasCode ? codeCell : `NC:${label}`,
+      code: hasCode ? codeCell : `${NO_CODE_PREFIX}${label}`,
       name: hasCode ? nameCell || codeCell : label,
       amount: debitPositive,
       typeHint: guessEquity(label, typeHint),

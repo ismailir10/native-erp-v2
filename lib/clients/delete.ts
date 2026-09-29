@@ -1,0 +1,68 @@
+import type { Db } from "@/lib/db";
+
+export class DeleteClientError extends Error {}
+
+/**
+ * Remove a client and everything that is its books (admin only, typed confirmation — the caller checks the role).
+ * This is not a ledger correction (rule 3 still holds for books that stay): it removes a client entered by mistake or a
+ * test copy, all or nothing in one transaction (leases, employee benefits included). Firm-level rules, exchange rates and the AI caches stay (they hold names
+ * and codes only, keyed per client). Order follows the foreign keys: leaves first.
+ */
+export async function deleteClient(db: Db, input: { firmId: string; clientId: string; confirmName: string }) {
+  const client = await db.client.findFirst({ where: { id: input.clientId, firmId: input.firmId }, select: { id: true, name: true } });
+  if (!client) throw new DeleteClientError("Klien tidak ditemukan.");
+  if (input.confirmName.trim() !== client.name) throw new DeleteClientError(`Ketik nama klien persis "${client.name}" untuk menghapusnya.`);
+
+  return db.$transaction(
+    async (tx) => {
+      const clientId = client.id;
+      const entityIds = (await tx.entity.findMany({ where: { clientId }, select: { id: true } })).map((e) => e.id);
+      const bankIds = (await tx.bankAccount.findMany({ where: { entityId: { in: entityIds } }, select: { id: true } })).map((b) => b.id);
+      const periodIds = (await tx.period.findMany({ where: { clientId }, select: { id: true } })).map((p) => p.id);
+      const taxYearIds = (await tx.taxYear.findMany({ where: { clientId }, select: { id: true } })).map((t) => t.id);
+      const intakeIds = (await tx.evidenceIntake.findMany({ where: { clientId }, select: { id: true } })).map((i) => i.id);
+      const byEntity = { entityId: { in: entityIds } };
+
+      await tx.controlAck.deleteMany({ where: { periodId: { in: periodIds } } });
+      await tx.closeSignoff.deleteMany({ where: { periodId: { in: periodIds } } });
+      await tx.proposedEntry.deleteMany({ where: { clientId } });
+      await tx.invoiceSettlement.deleteMany({ where: { invoice: { clientId } } });
+      await tx.invoice.deleteMany({ where: { clientId } });
+      await tx.contact.deleteMany({ where: { clientId } });
+      await tx.taxPosting.deleteMany({ where: { taxYearId: { in: taxYearIds } } });
+      await tx.taxCredit.deleteMany({ where: { taxYearId: { in: taxYearIds } } });
+      await tx.fiscalCorrection.deleteMany({ where: { taxYearId: { in: taxYearIds } } });
+      await tx.taxLossCarryforward.deleteMany({ where: { taxYearId: { in: taxYearIds } } });
+      await tx.taxYear.deleteMany({ where: { clientId } });
+      await tx.fixedAsset.deleteMany({ where: { clientId } });
+      await tx.leasePosting.deleteMany({ where: { lease: { clientId } } });
+      await tx.lease.deleteMany({ where: { clientId } });
+      await tx.benefitPosting.deleteMany({ where: byEntity });
+      await tx.employee.deleteMany({ where: byEntity });
+      await tx.benefitSetting.deleteMany({ where: byEntity });
+      // Schedules and entries point at each other (a schedule's source line; installments' scheduleId): release the source
+      // line on both columns at once (a CHECK keeps them paired), then entries, then schedules.
+      await tx.adjustmentSchedule.updateMany({ where: { clientId }, data: { sourceEntryId: null, sourceAccountId: null } });
+      await tx.journalEntry.deleteMany({ where: byEntity }); // lines cascade
+      await tx.adjustmentSchedule.deleteMany({ where: { clientId } });
+      await tx.ckpnSetting.deleteMany({ where: byEntity });
+      await tx.bankTransaction.deleteMany({ where: { bankAccountId: { in: bankIds } } });
+      await tx.statementImport.deleteMany({ where: { bankAccountId: { in: bankIds } } });
+      await tx.bankAccount.deleteMany({ where: { id: { in: bankIds } } });
+      await tx.sourceAccount.deleteMany({ where: { clientId } });
+      await tx.ledgerImport.deleteMany({ where: { clientId } }); // checks cascade
+      await tx.memory.deleteMany({ where: { clientId } });
+      await tx.rule.deleteMany({ where: { clientId } });
+      await tx.evidenceSelection.deleteMany({ where: { intakeId: { in: intakeIds } } });
+      await tx.evidenceUpload.deleteMany({ where: { intakeId: { in: intakeIds } } });
+      await tx.evidenceIntake.deleteMany({ where: { id: { in: intakeIds } } }); // documents, versions, passages, facts, conflicts, messages cascade
+      await tx.evidenceAiCache.deleteMany({ where: { firmId: input.firmId, scope: { startsWith: `close:${clientId}:` } } });
+      await tx.period.deleteMany({ where: { clientId } });
+      await tx.account.deleteMany({ where: { clientId } });
+      await tx.entity.deleteMany({ where: { clientId } });
+      await tx.client.delete({ where: { id: clientId } });
+      return { name: client.name, entities: entityIds.length };
+    },
+    { timeout: 120_000, maxWait: 10_000 },
+  );
+}

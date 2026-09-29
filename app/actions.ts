@@ -23,7 +23,7 @@ import { taxPack } from "@/lib/tax/pack";
 import { postTax } from "@/lib/tax/post";
 import { acceptSuggestion, addCorrection, addCredit, deleteCorrection, deleteCredit, deleteLoss, dismissSuggestion, setCorrectionPercent, setLoss, setRegime, type CorrectionInput, type CreditInput } from "@/lib/tax/records";
 import type { TaxPostingKind, TaxRegime } from "@/lib/generated/prisma/enums";
-import { ParseError, YearNeededError } from "@/lib/import/types";
+import { AccountMismatchError, ParseError, YearNeededError } from "@/lib/import/types";
 import { PdfPasswordError } from "@/lib/import/parsers/pdf";
 import { MoneyError } from "@/lib/money";
 import { dateOnly } from "@/lib/format";
@@ -38,9 +38,13 @@ import { explainControl, ExplainError, type ControlExplanation } from "@/lib/con
 import { dismissProposal, postProposal } from "@/lib/adjust/proposals";
 import { postSuspenseCorrection, SUSPENSE_NOT_DISMISSABLE, SUSPENSE_PREFIX } from "@/lib/adjust/suspense";
 import { AiBudgetError } from "@/lib/ai/budget";
-import { AiAnswerError } from "@/lib/ai/provider";
+import { AI_LONG_TIMEOUT_MS, AiAnswerError } from "@/lib/ai/provider";
+import { suggestAgainWithAi } from "@/lib/ai/retry";
 import { acceptCheck, LedgerImportError, postImport, stageImport } from "@/lib/ledger-import/post";
 import { acceptMappings, MappingError, suggestMappings } from "@/lib/ledger-import/mapping";
+import { infraErrorMessage } from "@/lib/db-errors";
+import { deleteClient, DeleteClientError } from "@/lib/clients/delete";
+import { requireMember } from "@/lib/auth/session";
 import type { FsLine } from "@/lib/coa/template";
 import type { MapMethod } from "@/lib/generated/prisma/enums";
 
@@ -48,19 +52,23 @@ import type { MapMethod } from "@/lib/generated/prisma/enums";
  * Server actions — the only write path from the UI. Each returns {ok, …} or {ok:false, error}
  * with a Bahasa message the UI shows verbatim. Domain errors are expected; others are bugs.
  */
-type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string; needsPassword?: boolean; needsYear?: boolean; yearGuess?: number | null; fields?: Record<string, string> };
+type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string; needsPassword?: boolean; needsYear?: boolean; yearGuess?: number | null; fields?: Record<string, string>; suggestBankAccountId?: string };
 
 function fail(e: unknown): { ok: false; error: string; needsPassword?: boolean; needsYear?: boolean; yearGuess?: number | null } {
   if (e instanceof PdfPasswordError) return { ok: false, error: e.message, needsPassword: true };
   if (e instanceof YearNeededError) return { ok: false, error: e.message, needsYear: true, yearGuess: e.guess };
+  if (e instanceof DeleteClientError) return { ok: false, error: e.message };
   if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError || e instanceof MoneyError || e instanceof RateError || e instanceof RevaluationError || e instanceof LedgerImportError || e instanceof MappingError) return { ok: false, error: e.message };
+  const infra = infraErrorMessage(e);
   console.error(e);
-  return { ok: false, error: "Terjadi kesalahan tak terduga. Coba lagi." };
+  return { ok: false, error: infra ?? "Terjadi kesalahan tak terduga. Coba lagi." };
 }
 
 const MAX_UPLOAD = 5 * 1024 * 1024;
 
 export async function importAction(formData: FormData): Promise<Result<{ summary: ImportSummary }>> {
+  let banks: { id: string; number: string }[] = [];
+  let selected = "";
   try {
     const clientId = String(formData.get("clientId"));
     const bankAccountId = String(formData.get("bankAccountId"));
@@ -70,6 +78,8 @@ export async function importAction(formData: FormData): Promise<Result<{ summary
     const year = yearText ? Number(yearText) : undefined;
     if (year !== undefined && !(Number.isInteger(year) && year >= 2000 && year <= 2100)) return { ok: false, error: "Tahun harus 4 angka, misalnya 2026.", needsYear: true };
     const client = await getClientForFirm(clientId);
+    banks = client.entities.flatMap((e) => e.bankAccounts);
+    selected = bankAccountId;
     if (!client.entities.some((e) => e.bankAccounts.some((b) => b.id === bankAccountId))) return { ok: false, error: "Pilih rekening bank dulu." };
     if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Pilih file rekening koran (PDF, CSV, XLS, atau XLSX)." };
     if (file.size > MAX_UPLOAD) return { ok: false, error: "File terlalu besar (maks. 5 MB)." };
@@ -77,6 +87,12 @@ export async function importAction(formData: FormData): Promise<Result<{ summary
     revalidatePath(`/clients/${clientId}`, "layout");
     return { ok: true, summary };
   } catch (e) {
+    // The file belongs to another account of this client: say which, so the form can switch to it in one click.
+    if (e instanceof AccountMismatchError) {
+      const digits = (s: string) => s.replace(/\D/g, "");
+      const match = banks.find((b) => b.id !== selected && e.fileNumbers.some((n) => digits(n) === digits(b.number)));
+      return { ...fail(e), suggestBankAccountId: match?.id };
+    }
     return fail(e);
   }
 }
@@ -112,7 +128,27 @@ export async function reviewAction(input: { bankTxId: string; accountCode: strin
   }
 }
 
-export async function acceptSimilarAction(bankTxId: string, scope: { entityIds: string[]; period: string }): Promise<Result<{ count: number }>> {
+/** *Minta saran AI* on Review for lines that only have the simple guess (lib/ai/retry.ts). Suggestions only; nothing posts. */
+export async function suggestAgainAction(clientId: string, scope: { entityIds: string[]; period: string }): Promise<Result<{ rows: number; updated: number; note?: string }>> {
+  try {
+    const client = await getClientForFirm(clientId);
+    if (!scope || !/^(19|20|21)\d{2}-(0[1-9]|1[0-2])$/.test(scope.period) || !scope.entityIds.length || scope.entityIds.some((id) => !client.entities.some((e) => e.id === id))) return { ok: false, error: "Cakupan review tidak valid. Muat ulang halaman." };
+    const provider = await resolveProvider(prisma);
+    if (!provider) return { ok: false, error: "AI belum diatur di Pengaturan, jadi belum ada saran AI. Pilih akunnya langsung." };
+    const through = new Date(Date.UTC(Number(scope.period.slice(0, 4)), Number(scope.period.slice(5)), 0));
+    const r = await suggestAgainWithAi(prisma, { clientId: client.id, entityIds: scope.entityIds, through, provider });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, rows: r.rows, updated: r.updated, note: r.note };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function acceptSimilarAction(
+  bankTxId: string,
+  scope: { entityIds: string[]; period: string },
+  choice?: { accountCode: string; taxTag: TaxTag | null },
+): Promise<Result<{ ids: string[] }>> {
   try {
     const clientId = await assertTxInFirm(bankTxId);
     const client = await getClientForFirm(clientId);
@@ -120,9 +156,10 @@ export async function acceptSimilarAction(bankTxId: string, scope: { entityIds: 
     if (!scope || !/^(19|20|21)\d{2}-(0[1-9]|1[0-2])$/.test(scope.period) || !scope.entityIds.length || scope.entityIds.some(id => !client.entities.some(e => e.id === id)) || !scope.entityIds.includes(source.entityId)) return { ok: false, error: "Cakupan review tidak valid. Muat ulang halaman." };
     const through = new Date(Date.UTC(Number(scope.period.slice(0, 4)), Number(scope.period.slice(5)), 0));
     if (source.date > through) return { ok: false, error: "Transaksi berada di luar periode review." };
-    const count = await acceptSimilar(prisma, bankTxId, { entityIds: scope.entityIds, through }, (await getCurrentMember()).id);
+    if (choice && !(await prisma.account.findFirst({ where: { clientId, code: choice.accountCode, isBank: false, isSuspense: false } }))) return { ok: false, error: `Akun ${choice.accountCode} tidak ada di bagan akun klien ini.` };
+    const ids = await acceptSimilar(prisma, bankTxId, { entityIds: scope.entityIds, through }, (await getCurrentMember()).id, choice);
     revalidatePath(`/clients/${clientId}`, "layout");
-    return { ok: true, count };
+    return { ok: true, ids };
   } catch (e) {
     return fail(e);
   }
@@ -507,7 +544,11 @@ export async function closeReviewAction(clientId: string, year: number, month: n
     return { ok: true, review: await reviewClose(prisma, client.firmId, client.id, year, month, provider) };
   } catch (e) {
     if (e instanceof AiBudgetError || e instanceof AiAnswerError) return { ok: false, error: e.message };
-    if (e instanceof Error && (e.name === "TimeoutError" || /^(AI \d|Model )/.test(e.message))) {
+    if (e instanceof Error && e.name === "TimeoutError") {
+      console.error(e);
+      return { ok: false, error: `AI tidak menjawab dalam ${Math.round(AI_LONG_TIMEOUT_MS / 60_000)} menit. Kontrol tetap berjalan; coba lagi nanti.` };
+    }
+    if (e instanceof Error && /^(AI \d|Model )/.test(e.message)) {
       console.error(e);
       return { ok: false, error: "AI tidak tersedia saat ini. Kontrol tetap berjalan; coba lagi nanti." };
     }
@@ -527,7 +568,11 @@ export async function explainControlAction(clientId: string, year: number, month
     return { ok: true, explanation };
   } catch (e) {
     if (e instanceof AiBudgetError || e instanceof AiAnswerError || e instanceof ExplainError) return { ok: false, error: e.message };
-    if (e instanceof Error && (e.name === "TimeoutError" || /^(AI \d|Model )/.test(e.message))) {
+    if (e instanceof Error && e.name === "TimeoutError") {
+      console.error(e);
+      return { ok: false, error: `AI tidak menjawab dalam ${Math.round(AI_LONG_TIMEOUT_MS / 60_000)} menit. Kontrol tetap berjalan; coba lagi nanti.` };
+    }
+    if (e instanceof Error && /^(AI \d|Model )/.test(e.message)) {
       console.error(e);
       return { ok: false, error: "AI tidak tersedia saat ini. Kontrol tetap berjalan; coba lagi nanti." };
     }
@@ -689,3 +734,22 @@ export async function prepareEvidenceImportAction(...args: Parameters<typeof evi
 export async function postEvidenceBankAction(...args: Parameters<typeof evidenceActions.postEvidenceBankAction>) { return evidenceActions.postEvidenceBankAction(...args); }
 export async function startGoogleAction(...args: Parameters<typeof googleActions.startGoogleAction>) { return googleActions.startGoogleAction(...args); }
 export async function disconnectGoogleAction(...args: Parameters<typeof googleActions.disconnectGoogleAction>) { return googleActions.disconnectGoogleAction(...args); }
+
+/** Admin only: removes a client and all its books after the typed-name confirmation (lib/clients/delete.ts). */
+export async function deleteClientAction(clientId: string, confirmName: string): Promise<Result> {
+  let member;
+  try {
+    member = await requireMember("ADMIN");
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Hanya admin kantor yang dapat menghapus klien." };
+  }
+  try {
+    const client = await getClientForFirm(clientId);
+    const r = await deleteClient(prisma, { firmId: client.firmId, clientId: client.id, confirmName });
+    console.info(`client deleted: firm=${client.firmId} client=${client.id} name="${r.name}" by member=${member.id} at ${new Date().toISOString()}`);
+    revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}

@@ -37,6 +37,8 @@ export function ClosePanel(props: {
   const [note, setNote] = useState("");
   const [explained, setExplained] = useState<Record<string, ControlExplanation>>({});
   const [explaining, setExplaining] = useState<string | null>(null);
+  // Locking and reopening change what every import and journal may do: both are confirmed first.
+  const [confirm, setConfirm] = useState<"lock" | "unlock" | null>(null);
   const explain = async (c: Control) => {
     setExplaining(c.key);
     const r = await explainControlAction(clientId, year, month, c.key);
@@ -152,17 +154,45 @@ export function ClosePanel(props: {
               </ul>
             )}
             {props.locked ? (
-              <Button variant="outline" className="w-full" disabled={pending} onClick={() => run(() => unlockAction(clientId, year, month), "Periode dibuka kembali")}>
+              <Button variant="outline" className="w-full" disabled={pending} onClick={() => setConfirm("unlock")}>
                 <LockOpen /> Buka kembali periode
               </Button>
             ) : (
-              <Button className="w-full" disabled={pending || props.blockers.length > 0} onClick={() => run(() => lockAction(clientId, year, month), `Buku ${props.periodLabel} ditutup`)} data-testid="lock">
+              <Button className="w-full" disabled={pending || props.blockers.length > 0} onClick={() => setConfirm("lock")} data-testid="lock">
                 {pending ? <Loader2 className="animate-spin" /> : <Lock />} Tutup buku {props.periodLabel}
               </Button>
             )}
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={confirm !== null} onOpenChange={(o) => !o && setConfirm(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{confirm === "lock" ? `Tutup buku ${props.periodLabel}?` : `Buka kembali ${props.periodLabel}?`}</DialogTitle>
+            <DialogDescription>
+              {confirm === "lock"
+                ? `Setelah ditutup, impor mutasi, reklasifikasi dan jurnal ke ${props.periodLabel} ditolak sampai periodenya dibuka kembali. Catatan kontrol dan daftar periksa ikut tersimpan.`
+                : `Periode ${props.periodLabel} bisa diubah lagi. Laporan yang sudah dikirim ke klien bisa berbeda setelah ada perubahan.`}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirm(null)}>Batal</Button>
+            <Button
+              disabled={pending}
+              data-testid="confirm-lock"
+              onClick={() => {
+                const which = confirm;
+                setConfirm(null);
+                if (which === "lock") run(() => lockAction(clientId, year, month), `Buku ${props.periodLabel} ditutup`);
+                else run(() => unlockAction(clientId, year, month), "Periode dibuka kembali");
+              }}
+            >
+              {confirm === "lock" ? `Tutup buku ${props.periodLabel}` : "Buka kembali"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={Boolean(ackFor)} onOpenChange={(o) => !o && setAckFor(null)}>
         <DialogContent>

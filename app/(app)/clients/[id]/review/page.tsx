@@ -2,12 +2,12 @@ import { prisma } from "@/lib/db";
 import { loadClientPage } from "@/lib/client-page";
 import type { SearchParams } from "@/lib/scope";
 import { formatDate } from "@/lib/format";
-import { FS_LINES } from "@/lib/coa/template";
+import { classifiableOptions } from "@/lib/coa/options";
 import { NextStep, PageHeader } from "@/components/app/page-header";
 import { ScopeBar } from "@/components/app/scope-bar";
 import { ReviewQueue } from "@/components/app/review-queue";
-
-const TYPE_LABEL: Record<string, string> = { ASET: "Aset", LIABILITAS: "Liabilitas", EKUITAS: "Ekuitas", PENDAPATAN: "Pendapatan", BEBAN: "Beban" };
+import { isGenericKey } from "@/lib/import/normalize";
+import { simpleGuessRows } from "@/lib/ai/retry";
 
 export default async function ReviewPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, base, scope, period, scopeLabel, entityOptions, periodOptions } = await loadClientPage(params, searchParams);
@@ -16,6 +16,7 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
     include: { bankAccount: { include: { entity: true } } },
     orderBy: [{ date: "asc" }, { rowNumber: "asc" }],
   });
+  const simpleGuesses = (await simpleGuessRows(prisma, { clientId: client.id, entityIds: scope.entityIds, through: period.end })).length;
   const accounts = await prisma.account.findMany({ where: { clientId: client.id, isBank: false, isSuspense: false }, orderBy: { code: "asc" } });
   const similarCount = new Map<string, number>();
   for (const t of txs) similarCount.set(`${t.merchantKey}|${t.direction}`, (similarCount.get(`${t.merchantKey}|${t.direction}`) ?? 0) + 1);
@@ -33,13 +34,14 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
     reason: t.reason,
     suggestedCode: t.suggestedCode,
     taxTag: t.taxTag,
-    similar: similarCount.get(`${t.merchantKey}|${t.direction}`) ?? 1,
+    // A key with no counterparty ("BI FAST OUTGOING") groups unrelated payments: never offered as *serupa*.
+    similar: isGenericKey(t.merchantKey) ? 1 : (similarCount.get(`${t.merchantKey}|${t.direction}`) ?? 1),
   }));
-  const options = accounts.map((a) => ({ code: a.code, name: a.name, group: `${TYPE_LABEL[a.type]} · ${FS_LINES[a.fsLine as keyof typeof FS_LINES]?.label ?? ""}`.replace(/ · $/, "") }));
+  const options = classifiableOptions(accounts);
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Review transaksi" description={`${scopeLabel} · ${txs.length} transaksi sampai ${formatDate(period.end)}, termasuk sisa periode sebelumnya`} actions={<ScopeBar entities={entityOptions} periods={periodOptions} entity={scope.value} period={period.key} />} />
+      <PageHeader title="Review transaksi" description={`${scopeLabel} · mutasi sampai ${formatDate(period.end)}, termasuk sisa periode sebelumnya`} actions={<ScopeBar entities={entityOptions} periods={periodOptions} entity={scope.value} period={period.key} />} />
       {txs.length > 0 ? (
         <NextStep>
           Cek usulan akun. Tekan <b>Enter</b> untuk menerima, atau ganti akunnya. Buku mengingat pilihan Anda untuk impor berikutnya.
@@ -47,7 +49,7 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
       ) : (
         <NextStep href={`${base}/close?entity=${scope.value}&period=${period.key}`} cta="Tutup buku" tone="done">Tidak ada transaksi menunggu review dalam cakupan ini.</NextStep>
       )}
-      <ReviewQueue items={items} accounts={options} scope={{ entityIds: scope.entityIds, period: period.key }} />
+      <ReviewQueue items={items} accounts={options} scope={{ entityIds: scope.entityIds, period: period.key }} clientId={client.id} simpleGuesses={simpleGuesses} />
     </div>
   );
 }

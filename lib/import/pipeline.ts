@@ -2,8 +2,8 @@ import type { Db, Tx } from "@/lib/db";
 import type { ClassifyMethod, Direction } from "@/lib/generated/prisma/enums";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { parseStatementSections } from "@/lib/import/parsers";
-import { checkContinuity, merchantKey, rowHash } from "@/lib/import/normalize";
-import { ParseError, type ParsedStatement } from "@/lib/import/types";
+import { checkContinuity, isGenericKey, merchantKey, rowHash } from "@/lib/import/normalize";
+import { AccountMismatchError, ParseError, type ParsedStatement } from "@/lib/import/types";
 import { matchRule, sortRules } from "@/lib/classify/rules";
 import { financingSuggestion } from "@/lib/classify/financing";
 import { matchTransfers, type TransferCandidate } from "@/lib/classify/transfer";
@@ -25,6 +25,10 @@ export type ImportSummary = {
   continuityNote: string | null;
   /** Combined statements: the other account sections in the file, not imported into this bank account. */
   otherSections: string[];
+  /** The same sections as data, so the form can offer "Impor juga ke …" for the client's matching accounts. */
+  otherAccounts: { number: string; label: string; currency: string }[];
+  /** Lines of this client still waiting in Review after the import (any month), for the result's next step. */
+  pendingReview: number;
   /** Choices the parser made (direction read from the balance, sheets joined): stored on the import and shown. */
   notes: string[];
   /** The months the statement covers ("Mei 2026"), first to last. */
@@ -52,15 +56,18 @@ export async function importStatement(
   const st = sections.length === 1 ? sections[0] : sections.find((s) => digits(s.accountNumber) === digits(bankAccount.number));
   if (!st) {
     const list = sections.map((s) => `${s.accountNumber}${s.section ? ` ${s.section.label} (${s.section.currency})` : ""}`).join(", ");
-    throw new ParseError(`File ini berisi ${sections.length} rekening (${list}), tapi tidak ada nomor ${bankAccount.number}. Pilih rekening yang sesuai atau tambahkan rekeningnya di klien.`);
+    throw new AccountMismatchError(`File ini berisi ${sections.length} rekening (${list}), tapi tidak ada nomor ${bankAccount.number}. Pilih rekening yang sesuai atau tambahkan rekeningnya di klien.`, sections.flatMap((s) => (s.accountNumber ? [s.accountNumber] : [])));
   }
   if (st.accountNumber && digits(st.accountNumber) !== digits(bankAccount.number)) {
-    throw new ParseError(`Nomor rekening di file (${st.accountNumber}) berbeda dengan rekening terpilih (${bankAccount.number}).`);
+    throw new AccountMismatchError(`Nomor rekening di file (${st.accountNumber}) berbeda dengan rekening terpilih (${bankAccount.number}).`, [st.accountNumber]);
   }
   if (st.section && st.section.currency !== "IDR") {
     throw new ParseError(`Rekening ${st.accountNumber} dalam ${st.section.currency}. Rekening koran valas belum didukung; impor lewat buku besar dengan kurs.`);
   }
-  const otherSections = sections.filter((s) => s !== st).map((s) => `${s.accountNumber} ${s.section?.label ?? ""} (${s.section?.currency ?? "IDR"}): tidak diimpor ke rekening ini`);
+  const others = sections.filter((s) => s !== st);
+  const otherSections = others.map((s) => `${s.accountNumber} ${s.section?.label ?? ""} (${s.section?.currency ?? "IDR"}): tidak diimpor ke rekening ini`);
+  const otherAccounts = others.flatMap((s) => (s.accountNumber ? [{ number: s.accountNumber, label: s.section?.label ?? "", currency: s.section?.currency ?? "IDR" }] : []));
+  const pendingReviewCount = () => db.bankTransaction.count({ where: { bankAccount: { entity: { clientId: client.id } }, status: "NEEDS_REVIEW" } });
   const continuity = checkContinuity(st);
 
   const locked = await db.period.findMany({ where: { clientId: client.id, status: "LOCKED" } });
@@ -74,6 +81,29 @@ export async function importStatement(
   const seen = await dedupe(db, bankAccount.id, st, hashes);
   const fresh = st.rows.map((r, i) => ({ r, hash: hashes[i] })).filter((_, i) => !seen.duplicate[i]);
   const notes = [...(st.notes ?? []), ...seen.notes];
+
+  // Nothing new and the statement is already on file: no second history row claiming an import that changed nothing.
+  if (fresh.length === 0 && !args.evidenceVersionId) {
+    const existing = await db.statementImport.findFirst({ where: { bankAccountId: bankAccount.id, periodStart: { lte: st.periodEnd }, periodEnd: { gte: st.periodStart } }, orderBy: { createdAt: "asc" }, select: { id: true } });
+    if (existing) {
+      return {
+        importId: existing.id,
+        rows: st.rows.length,
+        duplicates: st.rows.length,
+        posted: 0,
+        needsReview: 0,
+        byMethod: { TRANSFER: 0, RULE: 0, MEMORY: 0, AI: 0, HEURISTIC: 0, MANUAL: 0 },
+        ai: { calls: 0, cacheHits: 0 },
+        continuityOk: continuity.ok,
+        continuityNote: continuity.note,
+        otherSections,
+        otherAccounts,
+        pendingReview: await pendingReviewCount(),
+        notes,
+        months: monthsOf(st.periodStart, st.periodEnd),
+      };
+    }
+  }
 
   const items = fresh.map(({ r, hash }, i) => ({
     id: `new-${i}`,
@@ -105,7 +135,8 @@ export async function importStatement(
 
   const rules = sortRules(await db.rule.findMany({ where: { firmId: client.firmId, OR: [{ clientId: client.id }, { clientId: null }] } }));
   const memories = await db.memory.findMany({ where: { clientId: client.id } });
-  const memoryMap = new Map(memories.map((m) => [`${m.merchantKey}|${m.direction}`, m]));
+  // Generic keys (no counterparty) were never meant to be learned; older books may still hold some — ignore them.
+  const memoryMap = new Map(memories.filter((m) => !isGenericKey(m.merchantKey)).map((m) => [`${m.merchantKey}|${m.direction}`, m]));
 
   const accounts = await db.account.findMany({ where: { clientId: client.id }, orderBy: { code: "asc" } });
   const codes = new Set(accounts.map((a) => a.code));
@@ -244,6 +275,8 @@ export async function importStatement(
     continuityOk: continuity.ok,
     continuityNote: continuity.note,
     otherSections,
+    otherAccounts,
+    pendingReview: await pendingReviewCount(),
     notes,
     months: monthsOf(st.periodStart, st.periodEnd),
   };

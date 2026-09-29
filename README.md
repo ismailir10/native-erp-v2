@@ -31,7 +31,7 @@ Supported evidence formats include text PDFs, XLSX, XLS, CSV, Google Docs/Sheets
 
 **Available in this implementation:** invitation-only login with email + password (Supabase Auth; admin and akuntan roles), dashboard-level Tanya Buku, shared client/company and period selectors, prioritized work, document evidence and company-context review, financial reports, and controlled month-end close. Staging and main use the same authenticated application screens with separate databases, users, secrets, and provider settings.
 
-**Tanya Buku supports bounded read-only questions:** close readiness, posted profit/revenue, cash and account balances, document search, and company context. Its portfolio answers are calculated with deterministic tools; unsupported questions say so. Answers retain the scope and period at submission, with source links and session-only history. Document-specific AI tools remain available within their existing budget controls; an AI answer plan with harmless slips is normalised, one that names an entity outside the chosen scope is ignored with a note, and Pengaturan shows the 30-day plan-rejection rate. Cross-client views compare companies in their own currencies; they do not consolidate them. Always-on agents and live bank feeds are not implemented.
+**Tanya Buku supports bounded read-only questions:** close readiness, posted profit/revenue, cash and account balances, bank transfers to or from a named party in the month (count, totals, accounts they sit on), document search, and company context. Its portfolio answers are calculated with deterministic tools; unsupported questions say so. Answers retain the scope and period at submission, with source links and session-only history. Document-specific AI tools remain available within their existing budget controls; an AI answer plan with harmless slips is normalised, one that names an entity outside the chosen scope is ignored with a note, and Pengaturan shows the 30-day plan-rejection rate. Cross-client views compare companies in their own currencies; they do not consolidate them. Always-on agents and live bank feeds are not implemented.
 
 Review the [standalone, clickable HTML prototype](docs/prototypes/buku-workspace.html) and its [review guide](docs/prototypes/README.md). Download the HTML and open it in a browser, or serve this repository locally. All prototype data, answers, sign-in, and accounting actions are simulated; no production changes or API calls occur.
 
@@ -104,6 +104,7 @@ Next.js 16 (App Router, server actions) · TypeScript · Tailwind v4 · shadcn (
 | `AI_API_KEY` / `AI_MODEL` | Fallback when nothing is saved in **Pengaturan**. Empty = rules + memory only (fully functional) |
 | `SETTINGS_SECRET` | ≥ 32 chars. Encrypts the AI key saved in Pengaturan and the Drive token. Changing it means re-saving / reconnecting |
 | `AI_MAX_CALLS_PER_IMPORT` / `AI_MONTHLY_TOKEN_BUDGET` | Credit guards (defaults 3 / 200 000) |
+| `AI_TIMEOUT_MS` / `AI_LONG_TIMEOUT_MS` | Optional per-call timeouts (defaults 90 000 for classification/mapping, 180 000 for close review and *Jelaskan*) |
 
 ## Deploy (Vercel + Supabase)
 Supabase organisation **Rightjet**, two projects in `ap-southeast-1`: `native-erp-v2` (production) and `native-erp-v2-staging`.
@@ -145,7 +146,7 @@ Run these with `.env` pointing at the intended environment (its database URL, Su
 Supabase user and the firm member together and sends the invitation email; the link opens */atur-sandi* where the person sets a
 password and lands in the workspace. `revoke` disables the member (checked live on every request, so it takes effect at once) and bans
 the Supabase user; re-inviting lifts both and sends a fresh password link. An address cannot be moved to another firm implicitly.
-Roles: **ADMIN** may change the AI credentials and connect Google Drive; **AKUNTAN** does everything else. *Lupa kata sandi?* on the
+Roles: **ADMIN** may change the AI credentials, connect Google Drive and delete a client (client *Pengaturan* → *Hapus klien*, typed name, removes all its books — for clients entered by mistake or test copies); **AKUNTAN** does everything else. *Lupa kata sandi?* on the
 login page sends a reset link and never reveals whether the address is a member. *Keluar* ends the session on that device only.
 
 Missing Supabase configuration keeps the workspace closed and shows a setup message instead of a server error.

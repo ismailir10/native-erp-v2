@@ -10,6 +10,7 @@ import { ScopeBar } from "@/components/app/scope-bar";
 import { LedgerTable } from "@/components/app/ledger-table";
 import { Card, CardContent } from "@/components/ui/card";
 import { accountLedger, sourceLedgerBasis } from "@/lib/reports/account-ledger";
+import { sourceAccountLabel } from "@/lib/ledger-import/code";
 
 /** Ledger of one of the client's own accounts (from their ledger or Neraca file), every line down to its source row. */
 export default async function ClientAccountLedger({ params, searchParams }: { params: Promise<{ id: string; sourceAccountId: string }>; searchParams: SearchParams }) {
@@ -27,7 +28,7 @@ export default async function ClientAccountLedger({ params, searchParams }: { pa
         <ChevronLeft className="size-4" /> Buku Besar
       </Link>
       <PageHeader
-        title={`${src.code} ${src.name}`}
+        title={sourceAccountLabel(src)}
         description={`${src.entity.name} · akun klien · ${formatPeriod(period.year, period.month)} · klik baris untuk melihat sumbernya`}
         actions={<ScopeBar entities={[]} periods={periodOptions} period={period.key} />}
       />

@@ -74,7 +74,7 @@ export default async function OpeningPage({ params }: { params: Promise<{ id: st
                 entityId={c.entity.id}
                 currency={currencyOf(c.entity.id)}
                 suggestedDate={toIsoDate(c.suggestedDate)}
-                banks={c.banks.map((b) => ({ accountCode: b.accountCode, label: b.label, prefill: b.statementOpening === null ? "" : formatMoney(b.statementOpening, currencyOf(c.entity.id), { bare: true }), source: b.source }))}
+                banks={c.banks.map((b) => ({ accountCode: b.accountCode, label: b.label, isOverdraft: b.isOverdraft, prefill: b.statementOpening === null ? "" : formatMoney(b.statementOpening, currencyOf(c.entity.id), { bare: true }), source: b.source }))}
                 accounts={accounts.map((a) => ({ code: a.code, name: a.name }))}
               />
               </div>

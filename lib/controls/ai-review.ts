@@ -7,6 +7,7 @@ import { formatMonthShort, formatPeriod, periodBounds } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
 import { runBudgetedAi } from "@/lib/ai/budget";
 import { AiAnswerError, CLOSE_REVIEW_MAX_ROWS, CLOSE_REVIEW_MAX_TOKENS, CLOSE_REVIEW_PROMPT_VERSION, buildCloseReviewPrompt, parseCloseReview, type AiProvider, type CloseReviewControl, type CloseReviewInput, type CloseReviewItem, type CloseReviewRow } from "@/lib/ai/provider";
+import { sourceAccountLabel } from "@/lib/ledger-import/code";
 
 /**
  * AI close review (ADR 0009). Deterministic controls decide; AI only explains flagged ones and proposes an action,
@@ -99,8 +100,8 @@ export async function gather(db: Db, clientId: string, year: number, month: numb
         ...take(bySize(nets)).map((x) => {
           const src = sources.get(x.id)!;
           const id = `src:${x.id}`;
-          links.set(id, { id, label: `${src.code} ${src.name.slice(0, 40)}`, href: `${base}/trial-balance?view=source&entity=${e.id}&period=${pk}` });
-          return { id, date: "", text: `Akun sumber ${src.code} ${src.name}`.slice(0, DESCRIPTION), amount: formatMoney(x.amount, e.functionalCurrency), account: src.account?.code ?? "", how: `dipetakan ke ${src.account?.code ?? "-"}${src.typeHint ? `, jenis di file ${src.typeHint}` : ""}` };
+          links.set(id, { id, label: sourceAccountLabel({ code: src.code, name: src.name.slice(0, 40) }), href: `${base}/trial-balance?view=source&entity=${e.id}&period=${pk}` });
+          return { id, date: "", text: `Akun sumber ${sourceAccountLabel(src)}`.slice(0, DESCRIPTION), amount: formatMoney(x.amount, e.functionalCurrency), account: src.account?.code ?? "", how: `dipetakan ke ${src.account?.code ?? "-"}${src.typeHint ? `, jenis di file ${src.typeHint}` : ""}` };
         }),
       );
     } else if (e && (kind === "flux" || kind === "flip" || kind === "dormant" || kind === "dup")) {
