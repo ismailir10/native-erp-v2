@@ -26,4 +26,15 @@ test("text typed before the page is interactive is kept (client form, Tanya Buku
   // Beranda names its scope in the URL without reloading the page.
   await expect(page).toHaveURL(/[?&]scope=.+&period=\d{4}-\d{2}|[?&]period=\d{4}-\d{2}.*&scope=/);
   await expect(page.getByRole("button", { name: "Tanya Buku" })).toBeEnabled();
+
+  // Following a link shows the progress bar at once and clears it when the page is there.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await page.route("**/clients/new**", async (route) => {
+    await new Promise((r) => setTimeout(r, 800));
+    await route.continue();
+  });
+  await page.getByRole("link", { name: "Tambah klien" }).first().click();
+  await expect(page.getByTestId("navigation-progress")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Tambah klien" })).toBeVisible();
+  await expect(page.getByTestId("navigation-progress")).toHaveCount(0);
 });

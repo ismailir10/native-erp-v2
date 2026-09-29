@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { WorkspaceHistoryProvider } from "@/components/app/workspace-ask";
 import { requireWorkspaceSession, ROLE_LABEL } from "@/lib/auth/session";
 import { evidenceEnabled } from "@/lib/evidence/config";
+import { NavigationProgress } from "@/components/app/navigation-progress";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -13,6 +14,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const clients = await prisma.client.findMany({ where: { firmId: firm.id }, orderBy: { name: "asc" }, select: { id: true, name: true, entities: { select: { id: true } } } });
   return (
     <WorkspaceHistoryProvider key={firm.id + member.id}><SidebarProvider>
+      <NavigationProgress />
       <a href="#workspace-main" className="sr-only z-50 rounded-lg bg-card p-3 focus:not-sr-only focus:fixed focus:left-4 focus:top-4">Lewati navigasi</a>
       <AppSidebar firmName={firm.name} clients={clients} user={{ name: member.name, role: ROLE_LABEL[member.role] }} documents={evidenceEnabled()} />
       <SidebarInset className="min-w-0 bg-background">

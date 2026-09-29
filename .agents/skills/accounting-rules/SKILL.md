@@ -25,6 +25,8 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
    which posts a **RECLASS of the difference** on the classification side only; the bank side never changes.
 4. **Locked periods reject every write** — imports, reclasses, adjustments. Unlock is explicit (`unlockAction`).
 5. **Opening balances** are `OPENING` entries; the plug goes to 3200 Saldo Laba. Prior-year P&L folds into 3200 in the TB.
+   Saldo Awal prefills bank lines from the first statement and proposes (never posts) time deposits the statements list
+   (`StatementImport.deposits`, on 1260, changeable); loan rows in the statements prompt for the loan balance.
 5a. **Adjustment schedules** (`lib/adjust`): depreciation, amortisation and accruals are an `AdjustmentSchedule` (entity, debit / credit
     account, total in minor units, months, start). Installments are exact (⌊total/n⌋, remainder on the last); an accrual is one month
     and reverses on the 1st of the next. Each month's installment is **proposed at read time and posted only by the accountant's click**
@@ -147,7 +149,10 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     needs a textual hint (TRSF/PINDAH BUKU/own entity name) — equal amounts alone are never enough — and pairs within **2 business
     days** (Sat/Sun don't count). Financing text (the sanity control's words, `lib/classify/financing`) gets a balance-sheet
     suggestion (loan → 2210, interest → 7110, fees → 7100, capital → 3100, own-account move → 1199) without an AI call; it is a
-    HEURISTIC and goes to review.
+    HEURISTIC and goes to review. Bank interest, fees and stamp duty as banks print them (BUNGA/INTEREST out → 7110, TAX ON
+    INTEREST → 8200, BIAYA TXN / FEE PAYMENT / MATERAI / STAMP DUTY → 7100) are firm **rules** (they post); a new firm rule reaches
+    existing firms only through a data migration. The last-resort simple guess depends on the entity (`lib/classify/fallback.ts`):
+    company in → 4100 / out → 6190; PERORANGAN in → 4910 / out → 3300 Prive.
 14. **Only deterministic methods (TRANSFER/RULE/MEMORY, confidence ≥ 0.9) auto-post.** AI and heuristic results
     post to **1999** with `NEEDS_REVIEW` and a prefilled suggestion. Reviewer accept → reclass + Memory upsert.
     A merchant key that names no counterparty (only channel/transfer/loan/cash words, refs and digits — `isGenericKey`,
@@ -206,8 +211,10 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     (without one, before the account's first statement) passes with "Pembukuan rekening ini mulai …". Gaps after the start still flag.
 22a. **Sanity controls** (`lib/controls/sanity.ts`, ADR 0009) check that the books make sense, not only that they add up:
     negative total assets = **FAIL**; balance-sheet balances against their `normalBalance`, financing text (loan, PRK, deposit,
-    own-account transfer) classified to the P&L, a month without data between active months, and accepted guesses
-    (HEURISTIC, or AI < 0.6 unchanged) = REVIEW. Deterministic only — AI never decides a control.
+    own-account transfer) classified to the P&L, a month without data between active months, accepted guesses
+    (HEURISTIC, or AI < 0.6 unchanged), a company whose liabilities exceed its assets (*Defisiensi modal*, `going-concern:`; CALK
+    then adds a *Kelangsungan usaha* note), and revenue in the month with no HPP when the client's *Bidang usaha* reads as trading
+    (`no-cogs:`) = REVIEW. Deterministic only — AI never decides a control.
 22b. **Ledger anomaly scans** (`lib/controls/anomaly.ts`, ADR 0009 amendment) read journal lines, not bank rows, so ledger-fed
     clients get the same scrutiny. Movement excludes OPENING entries; baseline = the months with activity among the 3 before the
     period; materiality = 1 % of the baseline's average monthly P&L volume (all movement when the baseline has no P&L, e.g. a holding). **Flux** (P&L account differs from its baseline average by

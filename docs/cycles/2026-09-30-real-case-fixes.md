@@ -82,8 +82,10 @@ Who feels it: the accountant closing a real client's month, especially without A
 - **U6 as built (evidence changed the fix):** with the app's JavaScript delayed 1.5 s, text typed into the server HTML survives
       hydration even without any change (React 19 keeps it) — the e2e stays as a guard. Production timing showed the real cause:
       documents stream for 0,3–3,7 s (cold starts; the function already runs in sin1 next to Supabase), and until then the previous
-      page stays on screen, so input lands there. Fix: an `(app)/loading.tsx` skeleton shows at once on every in-app navigation, and
-      Beranda writes its canonical scope into the URL with `history.replaceState` instead of a second server render.
+      page stays on screen, so input lands there. Fix: a navigation progress bar shows at once on every in-app link, Beranda writes its
+      canonical scope into the URL with `history.replaceState` instead of a second server render, and the two upload forms pick up a
+      file chosen before hydration (React replays typed text, not a file input's change). A root `loading.tsx` was tried first and
+      dropped: it streams every page, which made existing flows race (files set before hydration, momentary duplicate content).
 
 **Non-goals:** per-entity close (Period is per client — schema/workflow change); importing a L/R as year-to-date journals; restricted-cash
 wording for customer funds; PRK opening input layout; AI key setup (user action in Pengaturan); fixing hydration time itself beyond U6.
@@ -109,7 +111,7 @@ new firm rules for existing firms. No new dependency, no AI credit, no invariant
 - [x] T8 Review & picker UX (U1–U4) — accept: e2e/unit where feasible; manual check in the browser.
 - [x] T9 Import polish (U5) — accept: unit test on the "impor juga" filter; client form check.
 - [x] T10 Input before hydration (U6) — accept: e2e types immediately after navigation on /clients/new and Beranda; value persists.
-- [ ] T11 Docs + end-of-cycle gates — accept: lint, typecheck, tests, build, `verify:books` ALL PASS, full e2e; README/real-data notes.
+- [x] T11 Docs + end-of-cycle gates — accept: lint, typecheck, tests, build, `verify:books` ALL PASS, full e2e; README/real-data notes.
 
 ## Implementation
 - Plan: T1–T11 sequential, inline (the tasks share pipeline, review and opening code; one driver keeps the accounting rules consistent).
@@ -123,6 +125,8 @@ new firm rules for existing firms. No new dependency, no AI credit, no invariant
 - T8: `app/actions.ts` (`reviewAction` returns `learned` = the key names a counterparty), `components/app/review-queue.tsx` (toast says "dipakai lagi" only when learned; active card tracked by id, moved to the next card on accept and to the next remaining one after *serupa*, scrolled into view; Enter on a focused button/checkbox/link does that control; banner without AI says so and links admins to Pengaturan), review page (`aiReady` from `resolveAiConfig`, `canSetUpAi` = ADMIN), `components/app/account-picker.tsx` (`autoHighlight`; controlled open + query; printable keys on the closed trigger open it with the key in the search), `e2e/review-safety.spec.ts` (correction typed on the closed picker + Enter).
 - T9: `lib/import/pipeline.ts` (`otherAccounts[].imported`: an account of the client already holds an import of that section's period), `components/app/import-form.tsx` (no *Impor juga ke* for those), `components/app/client-form.tsx` (*Tambah rekening* copies the previous row's bank); `tests/db/smbc-import.test.ts`.
 - T10: `app/(app)/loading.tsx` (skeleton with `role=status` on every in-app navigation), `components/app/workspace-scope.tsx` (canonical `scope`/`period` via `history.replaceState`, no `router.replace` → no second server render on Beranda), `e2e/early-input.spec.ts` (JS chunks delayed 1.5 s; typing into the server HTML on /clients/new and Beranda survives; Beranda URL names its scope). Tried and dropped: adopting pre-hydration DOM values in `Input`/textarea — the e2e passes without it (negative check), so it would be dead code.
+- T10 (end of cycle, replacing the \`loading.tsx\` above): \`components/app/navigation-progress.tsx\` (capture-phase click on a same-origin link → a 2 px bar with \`role=status\` until the URL changes, 15 s safety reset) mounted in \`app/(app)/layout.tsx\`; \`components/app/keep-early-file.ts\` used by \`import-form.tsx\` and \`ledger-import-form.tsx\`; \`e2e/early-input.spec.ts\` also checks the bar on a delayed navigation. The first full e2e run with \`loading.tsx\` failed 6 specs (4 × "Proses mutasi" disabled — file set before hydration; 2 × evidence races); without it and with the file pick-up all pass.
+- T11: \`.agents/skills/accounting-rules/SKILL.md\` (rule 5 deposits/loan hint, rule 13 bank-charge firm rules + entity-kind fallback, rule 22a going-concern and no-cogs), \`README.md\` (Tanya Buku client list, close checks), \`docs/real-data.md\` (Saldo Awal deposits/loans, L/R upload refused); \`e2e/opening-deposit.spec.ts\` (Tambah klien → SMBC giro import → Saldo Awal shows the deposit note and the 3.600.000.000 line; no page overflow at 390 px), screenshots at 1440 and 390 px checked by eye.
 
 ## Verification
 - T1 gate: lint ✓ typecheck ✓ `Test Files 92 passed (92) · Tests 624 passed (624)`.
@@ -135,5 +139,18 @@ new firm rules for existing firms. No new dependency, no AI credit, no invariant
 - T8 gate: lint ✓ typecheck ✓ `Test Files 94 passed (94) · Tests 632 passed (632)`; browser check in the end-of-cycle e2e.
 - T9 gate: lint ✓ typecheck ✓ `Test Files 94 passed (94) · Tests 632 passed (632)`.
 - T10 gate: lint ✓ typecheck ✓ `Test Files 94 passed (94) · Tests 632 passed (632)`; `npx playwright test e2e/early-input.spec.ts e2e/workspace.spec.ts` → 4 passed. Production timing (Chrome, /clients/new): responseEnd 3.765 / 1.439 / 325 ms on three loads; `x-vercel-id: hnd1::sin1`.
+- End of cycle: lint ✓ · typecheck ✓ · \`Test Files 94 passed (94) · Tests 632 passed (632)\` · \`npm run build\` ✓ · \`npx playwright test\` → \`23 passed (1.0m)\` (+ \`e2e/opening-deposit.spec.ts\` → 1 passed) · \`demo:reset\` + \`verify:books\` → \`ALL PASS — 1717 pemeriksaan saldo cocok dengan ground truth.\`
 
 ## Ship Notes
+- **Migrations:** \`20260930010000_bank_charge_rules\` — **data insert**: 8 firm seed rules (bank interest/fees/stamp duty) for every firm
+  that lacks them; idempotent. Lines already classified stay as they are. \`20260930020000_statement_deposits\` — additive column
+  \`StatementImport.deposits JSONB NOT NULL DEFAULT '[]'\`.
+- **Behaviour changes:** loan/overdraft interest charged by a bank now auto-posts to 7110 by rule (was a heuristic to review); a
+  PERORANGAN entity's simple guess is 4910 / 3300 (was 4100 / 6190); two new REVIEW controls (*Defisiensi modal*, *Penjualan tanpa
+  harga pokok*) can appear on existing clients (Goers, PT Belifi) and need a note before closing; CALK gets *Kelangsungan usaha* when
+  equity < 0 and prints the posted deferred tax.
+- **Env / dependency / AI:** none. **Demo:** unchanged (\`verify:books\` ALL PASS).
+- **Manual steps:** none. Existing Belifi imports predate the deposits column: re-importing the same SMBC file adds no history row
+  (dedupe), so the deposit is entered once by hand in Saldo Awal — or via a fresh client.
+- **Rollback:** revert the merge; the deposits column can stay (unused). To remove the rules:
+  \`DELETE FROM "Rule" WHERE "clientId" IS NULL AND "source" = 'SEED' AND "id" LIKE 'seed_%';\`

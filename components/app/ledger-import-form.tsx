@@ -1,5 +1,6 @@
 "use client";
 
+import { useKeepEarlyFile } from "@/components/app/keep-early-file";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -20,6 +21,8 @@ export function LedgerImportForm({ clientId, entities }: { clientId: string; ent
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFileState] = useState<File | null>(null);
+  // A file chosen before the form hydrated is picked up.
+  useKeepEarlyFile(inputRef, (f) => setFileState(f));
   const [entityId, setEntityId] = useState<string>(entities.length > 1 ? FROM_FILE : (entities[0]?.id ?? FROM_FILE));
   const [currencyMode, setCurrencyMode] = useState<"FUNCTIONAL" | "CONVERT">("FUNCTIONAL");
   const [date, setDate] = useState("");
