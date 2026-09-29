@@ -1,4 +1,5 @@
 import type { Db } from "@/lib/db";
+import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { dateOnly, formatDate, formatPeriod, periodBounds } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
 import { balanceSheet, incomeStatement, type FsItem, type Scope } from "@/lib/reports/ledger";
@@ -6,7 +7,7 @@ import { MixedScopeError, otherComprehensiveIncome } from "@/lib/reports/stateme
 import { isMixed, scopeEntities } from "@/lib/reports/fx";
 import { assetRegister } from "@/lib/assets/register";
 import { BUCKETS, BUCKET_LABEL, invoicesAt } from "@/lib/receivables/aging";
-import { ckpn } from "@/lib/receivables/ckpn";
+import { ckpn, settingAt } from "@/lib/receivables/ckpn";
 import { leaseSchedule, positionAt } from "@/lib/leases/schedule";
 import { terms } from "@/lib/leases/register";
 import { valuation } from "@/lib/benefits/valuation";
@@ -123,21 +124,51 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
     note.paragraphs.push(`Umur piutang usaha per ${formatDate(asOf)} dari daftar faktur.`);
     note.tables.push({ columns: ["Umur", "Jumlah"], rows: BUCKETS.map((b, i) => [BUCKET_LABEL[b], by[i]]), total: ["Jumlah", by.reduce((t, v) => t + v, 0n)] });
     for (const e of entities) {
-      if (!(await db.ckpnSetting.findUnique({ where: { entityId: e.id } }))) continue;
+      if (!(await settingAt(db, e.id, year, month))) continue;
       const c = await ckpn(db, scope.clientId, e.id, year, month);
       if (c.total === null) continue;
       note.paragraphs.push(`${entities.length > 1 ? `${e.shortName}: ` : ""}cadangan kerugian penurunan nilai piutang ${formatMoney(c.total, currency)} (matriks provisi, metode ${c.setting.method === "ROLL_RATE" ? "roll rate" : "tarif manual"}, faktor forward-looking ${pct(c.setting.forwardBp)}).`);
       note.tables.push({ columns: ["Umur", "Saldo", "Tarif kerugian", "CKPN"], rows: c.rows.map((r) => [BUCKET_LABEL[r.bucket], r.open, r.rate === null ? "–" : `${(Number(r.rate) / 10_000).toLocaleString("id-ID", { maximumFractionDigits: 2 })}%`, r.amount]), total: ["Jumlah", c.rows.reduce((t, r) => t + r.open, 0n), null, c.total] });
     }
   }
-  const leaseRows = await db.lease.findMany({ where: { clientId: scope.clientId, entityId: ids, cancelEntryId: null }, orderBy: { name: "asc" } });
-  const leasePos = leaseRows.map((l) => ({ l, p: positionAt(terms(l), leaseSchedule(terms(l)), year, month) })).filter((x) => x.p.started);
+  // Leases: each lease as journalled (months posted by the period end; the liability after the last posted month), then the ledger itself —
+  // so the note never shows schedule amounts the Neraca doesn't carry; any difference is named.
+  const leaseRows = await db.lease.findMany({ where: { clientId: scope.clientId, entityId: ids, cancelEntryId: null }, include: { postings: { select: { month: true } } }, orderBy: { name: "asc" } });
+  const leasePos = leaseRows
+    .map((l) => {
+      const s = leaseSchedule(terms(l));
+      const posted = s.months.filter((m) => l.postings.some((x) => x.month === m.k) && +m.date <= +asOf);
+      const last = posted.length ? posted[posted.length - 1] : null;
+      const inYear = posted.filter((m) => m.year === year);
+      return {
+        l,
+        started: positionAt(terms(l), s, year, month).started,
+        rou: s.rou,
+        accumulated: last?.accumulated ?? 0n,
+        current: last ? last.current : s.current,
+        nonCurrent: last ? last.nonCurrent : s.nonCurrent,
+        interest: inYear.reduce((t, m) => t + m.interest, 0n),
+        depreciation: inYear.reduce((t, m) => t + m.depreciation, 0n),
+      };
+    })
+    .filter((x) => x.started);
   if (leasePos.length) {
-    add("Sewa", [`Aset hak guna dan liabilitas sewa per ${formatDate(asOf)} dari daftar sewa. Beban bunga sewa tahun berjalan ${formatMoney(leasePos.reduce((t, x) => t + x.p.year.interest, 0n), currency)}; penyusutan aset hak guna ${formatMoney(leasePos.reduce((t, x) => t + x.p.year.depreciation, 0n), currency)}.`], [
+    const gl = async (codes: string[]) => {
+      const accounts = await db.account.findMany({ where: { clientId: scope.clientId, code: { in: codes } }, select: { id: true } });
+      const a = await db.journalLine.aggregate({ where: { entityId: ids, accountId: { in: accounts.map((x) => x.id) }, date: { lte: asOf } }, _sum: { debit: true, credit: true } });
+      return (a._sum.debit ?? 0n) - (a._sum.credit ?? 0n);
+    };
+    const ledger = { rou: await gl([ACCOUNT_CODES.ROU_ASSET]), accumulated: -(await gl([ACCOUNT_CODES.ROU_ACCUMULATED])), current: -(await gl([ACCOUNT_CODES.LEASE_CURRENT])), nonCurrent: -(await gl([ACCOUNT_CODES.LEASE_NON_CURRENT])) };
+    const sum = (k: "rou" | "accumulated" | "current" | "nonCurrent") => leasePos.reduce((t, x) => t + x[k], 0n);
+    const differs = (["rou", "accumulated", "current", "nonCurrent"] as const).some((k) => sum(k) !== ledger[k]);
+    add("Sewa", [
+      `Aset hak guna dan liabilitas sewa per ${formatDate(asOf)} dari jurnal sewa yang sudah dicatat. Beban bunga sewa tahun berjalan ${formatMoney(leasePos.reduce((t, x) => t + x.interest, 0n), currency)}; penyusutan aset hak guna ${formatMoney(leasePos.reduce((t, x) => t + x.depreciation, 0n), currency)}.`,
+      ...(differs ? ["Daftar sewa berbeda dengan buku besar: ada jurnal bulanan sewa yang belum dicatat atau pembayaran sewa yang belum diklasifikasikan ke 2170. Neraca memakai angka buku besar."] : []),
+    ], [
       {
         columns: ["Sewa", "Aset hak guna", "Akumulasi penyusutan", "Liabilitas jangka pendek", "Liabilitas jangka panjang"],
-        rows: leasePos.map(({ l, p }) => [`${l.name} · ${l.lessor}`, p.rou, p.accumulated, p.current, p.nonCurrent]),
-        total: ["Jumlah", ...(["rou", "accumulated", "current", "nonCurrent"] as const).map((k) => leasePos.reduce((t, x) => t + x.p[k], 0n))],
+        rows: [...leasePos.map((x): NoteCell[] => [`${x.l.name} · ${x.l.lessor}`, x.rou, x.accumulated, x.current, x.nonCurrent]), ["Jumlah daftar sewa", sum("rou"), sum("accumulated"), sum("current"), sum("nonCurrent")]],
+        total: ["Buku besar (1230, 1239, 2170, 2400)", ledger.rou, ledger.accumulated, ledger.current, ledger.nonCurrent],
       },
     ]);
   }

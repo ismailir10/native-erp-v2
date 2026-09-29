@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { db, makeGroup, resetDb } from "../helpers";
 import { templateAccounts } from "@/lib/coa/ensure";
-import { createClientAccount } from "@/lib/ledger-import/mapping";
+import { createClientAccount, deterministicSuggestion } from "@/lib/ledger-import/mapping";
 
 describe("template accounts added after a client was set up", () => {
   beforeEach(resetDb);
@@ -13,6 +13,9 @@ describe("template accounts added after a client was set up", () => {
     const codes = [];
     for (let i = 0; i < 6; i++) codes.push(await db.$transaction((tx) => createClientAccount(tx, g.client.id, "PIUTANG_USAHA", `Piutang ${i}`)));
     expect(codes).toEqual(["1131", "1132", "1133", "1134", "1136", "1137"]);
+    // An imported allowance is proposed to 1135 even before the client has it (never netted into 1130).
+    const chart = await db.account.findMany({ where: { clientId: g.client.id } });
+    expect(deterministicSuggestion({ code: "1-1300", name: "Cadangan Kerugian Piutang", typeHint: "ASET" }, { accounts: chart, priorByName: new Map() })?.accountCode).toBe("1135");
     // Missing and free → created from the template.
     const ids = await db.$transaction((tx) => templateAccounts(tx, g.client.id, ["1135"]));
     expect(await db.account.findUniqueOrThrow({ where: { id: ids.get("1135")! } })).toMatchObject({ name: "Cadangan Kerugian Penurunan Nilai Piutang", normalBalance: "CREDIT" });

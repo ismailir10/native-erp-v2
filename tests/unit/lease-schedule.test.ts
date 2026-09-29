@@ -15,21 +15,30 @@ describe("lease schedule (PSAK 116)", () => {
     expect(paymentTimes(quarterly)).toEqual([0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33]);
   });
 
-  it("amortises the liability to zero, the residue in the last payment's month", () => {
+  it("amortises the liability to zero from exact month-end values, rounded once each", () => {
     const s = leaseSchedule(monthly);
-    expect(s.months[0]).toMatchObject({ k: 1, year: 2026, month: 1, opening: 212_433_873n, payment: 10_000_000n, interest: 2_124_339n, closing: 204_558_212n });
-    expect(s.months[23]).toMatchObject({ k: 24, year: 2027, month: 12, interest: 99_009n, closing: 0n });
+    expect(s.months[0]).toMatchObject({ k: 1, year: 2026, month: 1, opening: 212_433_873n, payment: 10_000_000n, interest: 2_124_338n, closing: 204_558_211n });
+    expect(s.months[23]).toMatchObject({ k: 24, year: 2027, month: 12, interest: 99_010n, closing: 0n });
     expect(s.months.reduce((t, m) => t + m.interest, 0n)).toBe(240_000_000n - 212_433_873n);
     // Current portion at commencement = liability − liability after 12 months.
-    expect([s.current, s.nonCurrent]).toEqual([212_433_873n - 112_550_774n, 112_550_774n]);
-    expect(s.months[0]).toMatchObject({ nonCurrent: 103_676_282n, current: 204_558_212n - 103_676_282n });
+    expect([s.current, s.nonCurrent]).toEqual([212_433_873n - 112_550_775n, 112_550_775n]);
+    expect(s.months[0]).toMatchObject({ nonCurrent: 103_676_282n, current: 204_558_211n - 103_676_282n });
     expect(s.months[12]).toMatchObject({ nonCurrent: 0n });
 
     const q = leaseSchedule(quarterly);
     expect(q.months[0]).toMatchObject({ year: 2026, month: 3, payment: 30_000_000n, interest: 2_375_765n, closing: 287_467_615n });
-    expect(q.months[33]).toMatchObject({ payment: 30_000_000n, interest: 1n, closing: 0n }); // last payment, +1 residue
+    expect(q.months[33]).toMatchObject({ payment: 30_000_000n, interest: 0n, closing: 0n }); // last payment clears it exactly
     expect(q.months[35]).toMatchObject({ year: 2029, month: 2, interest: 0n, closing: 0n });
     expect(q.months.reduce((t, m) => t + m.interest, 0n)).toBe(360_000_000n - 315_091_850n);
+  });
+
+  it("clears the liability exactly even when rounding compounds (20 years, annual in advance, 100 %)", () => {
+    const t: LeaseTerms = { startYear: 2026, startMonth: 1, months: 240, payment: 10_000_000n, intervalMonths: 12, timing: "ADVANCE", rateBp: 10_000 };
+    const s = leaseSchedule(t);
+    expect(s.months[239].closing).toBe(0n);
+    expect(s.months.every((m) => m.closing >= 0n)).toBe(true);
+    expect(s.months.reduce((a, m) => a + m.interest, 0n)).toBe(200_000_000n - s.liability);
+    expect(s.months[228 + 1].interest).toBe(0n); // after the last payment nothing accrues
   });
 
   it("depreciates the ROU straight line and spreads fiscal rent over the term", () => {

@@ -51,5 +51,15 @@ describe("tax workpaper", () => {
     let posted = 0;
     wb.getWorksheet("Jurnal")!.eachRow((r) => { if (r.getCell(1).value === "Dicatat") posted++; });
     expect(posted).toBe(3);
+    let credit: ExcelJS.CellValue[] = [];
+    wb.getWorksheet("Kredit Pajak")!.eachRow((r) => { if (r.getCell(3).value === "BP-9") credit = [r.getCell(5).value, r.getCell(6).value]; });
+    expect(credit).toEqual(["Bukti potong (diisi akuntan)", 20_000_000]);
+
+    // June, after the September posting: the later journal isn't shown as posted; a row says where the position is booked.
+    const june = new ExcelJS.Workbook();
+    await june.xlsx.load((await taxWorkpaper(db, (await taxPack(db, g.client.id, g.pt.entity.id, 2026, 6))!, { firm: "KJA Uji", client: "Grup Uji", npwp: null })) as unknown as ArrayBuffer);
+    const statuses: string[] = [];
+    june.getWorksheet("Jurnal")!.eachRow((r, i) => { if (i > 6) statuses.push(String(r.getCell(1).value)); });
+    expect(statuses).toEqual(["Dicatat sesudah periode ini"]);
   });
 });

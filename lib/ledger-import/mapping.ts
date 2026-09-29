@@ -4,6 +4,7 @@ import type { AccountTerm, AccountType, MapMethod } from "@/lib/generated/prisma
 import { AI_BATCH_SIZE, ACCOUNT_MAPPING_PROMPT_VERSION, aiConfig, buildMapPrompt, maxTokensFor, type AiProvider, type MapItem } from "@/lib/ai/provider";
 import { AiBudgetError, runBudgetedAi } from "@/lib/ai/budget";
 import { ACCOUNT_CODES, COA_TEMPLATE, FS_LINES, type FsLine } from "@/lib/coa/template";
+import { templateAccounts } from "@/lib/coa/ensure";
 
 /**
  * Source account → client account mapping (accounting-rules §9a, §17).
@@ -102,7 +103,7 @@ export const newFsLineOf = (code: string | null | undefined): FsLine | null =>
   code?.startsWith(NEW_PREFIX) && (code.slice(NEW_PREFIX.length) as FsLine) in FS_LINES ? (code.slice(NEW_PREFIX.length) as FsLine) : null;
 const CATCH_ALL_NAME = /(lain ?lain|lainnya|\bother\b|others|misc|sundry|\bumum\b|general|serba ?serbi)/;
 
-const KEYWORDS: { re: RegExp; code: string; types?: AccountType[]; not?: RegExp; generic?: FsLine }[] = [
+const KEYWORDS: { re: RegExp; code: string; types?: AccountType[]; not?: RegExp; generic?: FsLine; template?: boolean }[] = [
   { re: /(akumulasi|accumulated|accumulation).*(penyusutan|depreciation|amortization|amortisasi)/, code: "1219" },
   { re: /(penyusutan|depreciation|amortisasi|amortization)/, code: "6180", types: ["BEBAN"] },
   { re: /(rounding|pembulatan)/, code: ACCOUNT_CODES.ROUNDING },
@@ -116,9 +117,9 @@ const KEYWORDS: { re: RegExp; code: string; types?: AccountType[]; not?: RegExp;
   { re: /(bank charge|admin(istrasi)? bank|biaya bank|bank administration|bank admin|provisi|biaya transfer)/, code: "7100", types: ["BEBAN"] },
   { re: /(petty cash|kas kecil|cash in transit|\bkas\b|cash on hand)/, code: "1110", types: ["ASET"], not: /bank/ },
   { re: /\b(bank|giro|tabungan|deposito|time deposits?|call a ?c|ocbc|bca|bri|bni|mandiri|cimb|dbs|uob|citibank|permata|doku|flip|xendit|midtrans)\b/, code: "1120", types: ["ASET"], not: /(non ?bank|payable|utang|hutang|loan|pinjaman)/ },
-  // The allowance goes to its contra account (1135) when the client has it, else nets into 1130.
-  { re: /(allowance|penyisihan|cadangan kerugian|\becl\b|ckpn)/, code: "1135", types: ["ASET"] },
-  { re: /(allowance|penyisihan|cadangan kerugian|\becl\b|ckpn)/, code: "1130", types: ["ASET"] },
+  // The allowance always goes to its contra account 1135 (created from the template on posting if the client predates it): netted into
+  // 1130 it would reduce receivables a second time once CKPN posts to 1135.
+  { re: /(allowance|penyisihan|cadangan kerugian|\becl\b|ckpn)/, code: "1135", types: ["ASET"], template: true },
   { re: /(bad debts?|doubtful|piutang tak tertagih|ckpn|\becl\b|(penyisihan|cadangan|penurunan nilai|impairment).*(piutang|receivable))/, code: "6185", types: ["BEBAN"] },
   { re: /(ppn masukan|vat[- ]?in\b|input vat)/, code: "1150", types: ["ASET"] },
   { re: /(prepaid.*(tax|pajak|\bpph\b|article|pasal)|pajak dibayar di ?muka|uang muka pajak|pph .*dibayar di ?muka|tax receivable)/, code: "1180", types: ["ASET"] },
@@ -205,7 +206,7 @@ function keywordSuggestion(
     if (!k.re.test(n)) continue;
     if (k.not?.test(n)) continue;
     if (k.types && type && !k.types.includes(type)) continue;
-    const acc = ctx.accounts.find((a) => a.code === k.code);
+    const acc = ctx.accounts.find((a) => a.code === k.code) ?? (k.template ? COA_TEMPLATE.find((a) => a.code === k.code) : undefined);
     if (!acc) continue;
     if (k.generic && !CATCH_ALL_NAME.test(n) && RANGES[k.generic]) {
       return { accountCode: `${NEW_PREFIX}${k.generic}`, method: "NEW", confidence: 0.7, reason: `Hanya kata umum "${n.match(k.re)?.[0]}" yang cocok; usulkan akun baru di ${FS_LINES[k.generic].label} dengan nama dari file` };
@@ -352,6 +353,8 @@ export async function acceptMappings(
           created++;
         }
       }
+      // A template account the client predates (e.g. 1135) is created on first use when its code is free.
+      if (code && COA_TEMPLATE.some((a) => a.code === code) && !(await tx.account.findFirst({ where: { clientId, code }, select: { id: true } }))) await templateAccounts(tx, clientId, [code]);
       const acc = code ? await tx.account.findFirst({ where: { clientId, code } }) : null;
       if (!acc || acc.isBank || acc.isSuspense || acc.isClearing) throw new MappingError(`Akun ${code ?? "(kosong)"} tidak bisa dipakai untuk pemetaan`);
       await tx.sourceAccount.update({ where: { id: it.sourceAccountId }, data: { accountId: acc.id, mappedBy: newAccount ? "NEW" : it.method, mappedById: actorId ?? null } });

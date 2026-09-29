@@ -28,20 +28,22 @@ describe("lease register (PSAK 116)", () => {
   it("recognises the lease, journals its months, and ties to the ledger once payments are classified", async () => {
     const g = await makeGroup();
     const lease = await office(g);
-    // PV of 24 × 10 jt at 1 % a month = 212 433 873; 112 550 774 is still owed after 12 months (non-current).
+    // PV of 24 × 10 jt at 1 % a month = 212 433 873; 112 550 775 is still owed after 12 months (non-current).
     const entry = await db.journalEntry.findUniqueOrThrow({ where: { id: lease.entryId! } });
     expect([entry.date.toISOString().slice(0, 10), entry.memo]).toEqual(["2026-06-01", "Pengakuan awal sewa Kantor Sudirman · PT Graha Properti (PSAK 116)"]);
-    expect(await lines(entry.id)).toEqual([["1230", 212_433_873n, 0n], ["2170", 0n, 99_883_099n], ["2400", 0n, 112_550_774n]]);
+    expect(await lines(entry.id)).toEqual([["1230", 212_433_873n, 0n], ["2170", 0n, 99_883_098n], ["2400", 0n, 112_550_775n]]);
     // The ROU asset belongs to the lease register, not the fixed-asset register.
     expect(await assetCandidates(db, g.client.id)).toEqual([]);
     expect(await scheduleCandidates(db, g.client.id, 2026, 6)).toEqual([]);
 
     expect((await leaseMonthsDue(db, g.client.id, g.pt.entity.id, 2026, 8)).map((d) => d.k)).toEqual([1, 2, 3]);
+    // Before the months are journalled the books carry no depreciation or interest, so only the fiscal rent is corrected (−30 jt).
+    expect((await taxPack(db, g.client.id, g.pt.entity.id, 2026, 8))!.corrections.find((c) => c.key === "auto:leases")).toMatchObject({ direction: "NEGATIVE", amount: 30_000_000n });
     expect(await postLeaseMonths(db, { clientId: g.client.id, entityId: g.pt.entity.id, year: 2026, month: 8 })).toBe(3);
     const june = await db.leasePosting.findFirstOrThrow({ where: { leaseId: lease.id, month: 1 }, include: { entry: true } });
     expect(june.entry).toMatchObject({ memo: "Sewa Kantor Sudirman (1/24): penyusutan hak guna, bunga, reklasifikasi" });
     expect(june.entry.date.toISOString().slice(0, 10)).toBe("2026-06-30");
-    expect(await lines(june.entryId)).toEqual([["6181", 8_851_411n, 0n], ["1239", 0n, 8_851_411n], ["7195", 2_124_339n, 0n], ["2170", 0n, 2_124_339n], ["2400", 8_874_492n, 0n], ["2170", 0n, 8_874_492n]]);
+    expect(await lines(june.entryId)).toEqual([["6181", 8_851_411n, 0n], ["1239", 0n, 8_851_411n], ["7195", 2_124_338n, 0n], ["2170", 0n, 2_124_338n], ["2400", 8_874_493n, 0n], ["2170", 0n, 8_874_493n]]);
     await expect(postLeaseMonths(db, { clientId: g.client.id, entityId: g.pt.entity.id, year: 2026, month: 8 })).rejects.toThrow(/Tidak ada jurnal sewa/);
 
     // No payment classified yet: the ledger owes 30 jt more than the register.
@@ -56,10 +58,10 @@ describe("lease register (PSAK 116)", () => {
     expect(after!.register).toMatchObject({ rou: 212_433_873n, accumulated: 8_851_411n * 3n });
     expect(await control()).toMatchObject({ status: "PASS" });
 
-    // Tax: depreciation 3 × 8 851 411 + interest 2 124 339 + 2 045 582 + 1 966 038 − rent 3 × 10 jt = 2 690 192, a timing difference.
+    // Tax: depreciation 3 × 8 851 411 + interest 2 124 338 + 2 045 582 + 1 966 038 − rent 3 × 10 jt = 2 690 191, a timing difference.
     const pack = (await taxPack(db, g.client.id, g.pt.entity.id, 2026, 8))!;
-    expect(pack.corrections.find((c) => c.key === "auto:leases")).toMatchObject({ direction: "POSITIVE", kind: "TEMPORARY", amount: 2_690_192n, source: { type: "LEASES" } });
-    expect(pack.deferred).toEqual({ assets: 0n, allowance: 0n, leases: 2_690_192n, employeeBenefits: 0n, temporaryDifference: 2_690_192n, amount: 591_842n, oci: 0n });
+    expect(pack.corrections.find((c) => c.key === "auto:leases")).toMatchObject({ direction: "POSITIVE", kind: "TEMPORARY", amount: 2_690_191n, source: { type: "LEASES" } });
+    expect(pack.deferred).toEqual({ assets: 0n, allowance: 0n, leases: 2_690_191n, employeeBenefits: 0n, temporaryDifference: 2_690_191n, amount: 591_842n, oci: 0n });
     // September is due next; July's control is unaffected by it.
     expect((await runControls(db, g.client.id, 2026, 9)).find((c) => c.key === `lease:${g.pt.entity.id}`)).toMatchObject({ status: "REVIEW", detail: expect.stringContaining("1 jurnal bulanan sewa belum dicatat") });
   });
@@ -78,7 +80,7 @@ describe("lease register (PSAK 116)", () => {
 
     const mistake = await office(g, { name: "Gudang salah input" });
     const cancelled = await cancelLease(db, { clientId: g.client.id, leaseId: mistake.id });
-    expect(await lines(cancelled.cancelEntryId!)).toEqual([["1230", 0n, 212_433_873n], ["2170", 99_883_099n, 0n], ["2400", 112_550_774n, 0n]]);
+    expect(await lines(cancelled.cancelEntryId!)).toEqual([["1230", 0n, 212_433_873n], ["2170", 99_883_098n, 0n], ["2400", 112_550_775n, 0n]]);
     await expect(cancelLease(db, { clientId: g.client.id, leaseId: mistake.id })).rejects.toThrow(/sudah dibatalkan/);
     // A cancelled lease no longer counts in the register or the due months.
     expect((await leaseMonthsDue(db, g.client.id, g.pt.entity.id, 2026, 6)).map((d) => d.lease.id)).toEqual([lease.id]);

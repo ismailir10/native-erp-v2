@@ -63,7 +63,7 @@ export default async function ReceivablesPage({ params, searchParams }: { params
         defaultDate={toIsoDate(period.end)}
       />
       {ckpnViews.map((c) => (
-        <CkpnCard key={c.entityId} clientId={client.id} year={period.year} month={period.month} periodKey={period.key} periodLabel={label} view={c} />
+        <CkpnCard key={`${c.entityId}:${period.key}`} clientId={client.id} year={period.year} month={period.month} periodKey={period.key} periodLabel={label} view={c} />
       ))}
     </div>
   );

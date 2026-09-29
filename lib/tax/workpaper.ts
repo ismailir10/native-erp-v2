@@ -91,7 +91,16 @@ export async function taxWorkpaper(db: Db, pack: TaxPack, meta: { firm: string; 
   // 5. Kredit Pajak.
   const cr = wb.addWorksheet("Kredit Pajak");
   header(cr, "Kredit pajak");
-  table(cr, ["Jenis", "Tanggal", "Keterangan / bukti potong", "Akun", "Jumlah (Rp)"], pack.credits.map((c) => [CREDIT[c.type], formatDate(c.date), c.label, c.accountCode, n(c.amount)]), [5], [10, 14, 50, 10, 18]);
+  // Each PPh 25 credit found in the statement names its source row (file and row), so a duplicate or generic description stays traceable.
+  const bankIds = pack.credits.flatMap((c) => (c.source.type === "BANK" ? [c.source.bankTransactionId] : []));
+  const bankRows = new Map((await db.bankTransaction.findMany({ where: { id: { in: bankIds } }, select: { id: true, rowNumber: true, sourceSheet: true, import: { select: { fileName: true } } } })).map((t) => [t.id, `${t.import.fileName}${t.sourceSheet ? ` · ${t.sourceSheet}` : ""} baris ${t.rowNumber}`]));
+  table(
+    cr,
+    ["Jenis", "Tanggal", "Keterangan / bukti potong", "Akun", "Sumber", "Jumlah (Rp)"],
+    pack.credits.map((c) => [CREDIT[c.type], formatDate(c.date), c.label, c.accountCode, c.source.type === "BANK" ? (bankRows.get(c.source.bankTransactionId) ?? "Rekening koran") : "Bukti potong (diisi akuntan)", n(c.amount)]),
+    [6],
+    [10, 14, 50, 10, 40, 18],
+  );
 
   // 6. Pajak Tangguhan.
   const dt = wb.addWorksheet("Pajak Tangguhan");
@@ -118,11 +127,16 @@ export async function taxWorkpaper(db: Db, pack: TaxPack, meta: { firm: string; 
   // 7. Jurnal — postings made and the difference still proposed.
   const j = wb.addWorksheet("Jurnal");
   header(j, "Jurnal pajak");
-  const postings = await db.taxPosting.findMany({ where: { taxYear: { entityId: pack.entity.id, year: pack.year } }, include: { entry: { include: { lines: { include: { account: true } } } } }, orderBy: { createdAt: "asc" } });
+  // As of the selected month: a posting dated later belongs to that later position (the pack proposes nothing for its kind here).
+  const postings = await db.taxPosting.findMany({ where: { taxYear: { entityId: pack.entity.id, year: pack.year }, entry: { date: { lte: pack.through } } }, include: { entry: { include: { lines: { include: { account: true } } } } }, orderBy: { createdAt: "asc" } });
   const names = new Map((await db.account.findMany({ where: { clientId: (await db.entity.findUniqueOrThrow({ where: { id: pack.entity.id } })).clientId } })).map((a) => [a.code, a.name]));
   const nameOf = (code: string) => names.get(code) ?? COA_TEMPLATE.find((a) => a.code === code)?.name ?? code;
   const rows: (string | number | null)[][] = [];
   for (const p of postings) for (const l of p.entry.lines) rows.push(["Dicatat", formatDate(p.entry.date), p.entry.memo, `${l.account.code} ${l.account.name}`, l.debit ? n(l.debit) : null, l.credit ? n(l.credit) : null]);
+  for (const kind of ["CURRENT", "DEFERRED"] as const) {
+    const later = pack.laterPosting[kind];
+    if (later) rows.push(["Dicatat sesudah periode ini", formatDate(later), `${kind === "CURRENT" ? "Pajak kini" : "Pajak tangguhan"}: posisinya dibukukan per tanggal itu`, null, null, null]);
+  }
   for (const kind of ["CURRENT", "DEFERRED"] as const) for (const l of pack.proposals[kind]) rows.push(["Usulan (belum dicatat)", formatDate(pack.through), kind === "CURRENT" ? "Pajak kini" : "Pajak tangguhan", `${l.code} ${nameOf(l.code)}`, l.amount > 0n ? n(l.amount) : null, l.amount < 0n ? n(-l.amount) : null]);
   table(j, ["Status", "Tanggal", "Keterangan", "Akun", "Debit", "Kredit"], rows, [5, 6], [22, 12, 44, 36, 16, 16]);
 

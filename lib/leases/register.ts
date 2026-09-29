@@ -144,7 +144,10 @@ export async function cancelLease(db: Db, input: { clientId: string; leaseId: st
   return db.$transaction(async (tx) => {
     await closeLock(tx, input.clientId);
     await lock(tx, lease.entityId);
-    if (await tx.leasePosting.count({ where: { leaseId: lease.id } })) throw new LedgerError("Jurnal bulanan sewa ini sudah dicatat; sewa tidak bisa dibatalkan.");
+    // Re-read under the lock: a concurrent cancel or monthly journal may have landed meanwhile.
+    const now = await tx.lease.findUniqueOrThrow({ where: { id: lease.id }, select: { cancelEntryId: true, _count: { select: { postings: true } } } });
+    if (now.cancelEntryId) throw new LedgerError("Sewa ini sudah dibatalkan.");
+    if (now._count.postings) throw new LedgerError("Jurnal bulanan sewa ini sudah dicatat; sewa tidak bisa dibatalkan.");
     const e = lease.entry!;
     const entry = await postJournal(tx, {
       entityId: lease.entityId,

@@ -11,7 +11,7 @@ import { anomalyControls } from "@/lib/controls/anomaly";
 import { closeLock, dueProposals, schedulesDueBy } from "@/lib/adjust/schedules";
 import { registerVsLedger } from "@/lib/assets/register";
 import { subledgerVsLedger } from "@/lib/receivables/aging";
-import { ckpn } from "@/lib/receivables/ckpn";
+import { ckpn, settingAt } from "@/lib/receivables/ckpn";
 import { leasesVsLedger } from "@/lib/leases/register";
 import { valuation } from "@/lib/benefits/valuation";
 import { packApplies, taxPack } from "@/lib/tax/pack";
@@ -181,7 +181,7 @@ export async function runControls(db: Db, clientId: string, year: number, month:
     }
 
     // CKPN (rule 5e): once the entity has a setting, the allowance (1135) should equal the matrix at the month-end.
-    if (await db.ckpnSetting.findUnique({ where: { entityId: e.id }, select: { id: true } })) {
+    if (await settingAt(db, e.id, year, month)) {
       const c = await ckpn(db, clientId, e.id, year, month);
       const cKey = `ckpn:${e.id}`;
       const d = c.difference;

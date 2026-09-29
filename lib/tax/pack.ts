@@ -92,9 +92,19 @@ export async function taxPack(db: Db, clientId: string, entityId: string, year: 
   if (depreciationDiff !== 0n) {
     corrections.push({ key: "auto:depreciation", label: "Selisih penyusutan komersial dan fiskal", direction: depreciationDiff > 0n ? "POSITIVE" : "NEGATIVE", kind: "TEMPORARY", amount: depreciationDiff < 0n ? -depreciationDiff : depreciationDiff, source: { type: "ASSETS" } });
   }
-  // Leases (rule 5f): PSAK 116 depreciation + interest out, rent straight line over the term in.
-  const leases = (await db.lease.findMany({ where: { clientId, entityId, cancelEntryId: null } })).map((l) => { const t = leaseTerms(l); return positionAt(t, leaseSchedule(t), year, month); }).filter((p) => p.started);
-  const leaseDiff = leases.reduce((t, p) => t + p.year.depreciation + p.year.interest - p.year.fiscalRent, 0n);
+  // Leases (rule 5f): the PSAK 116 depreciation + interest actually journalled (so an unposted month adds nothing the books don't carry)
+  // out, rent straight line over the term in.
+  const leases = (await db.lease.findMany({ where: { clientId, entityId, cancelEntryId: null }, include: { postings: { select: { month: true } } } }))
+    .map((l) => {
+      const t = leaseTerms(l);
+      const s = leaseSchedule(t);
+      const p = positionAt(t, s, year, month);
+      const posted = s.months.filter((m) => l.postings.some((x) => x.month === m.k) && +m.date <= +through);
+      const book = (ms: typeof posted) => ms.reduce((a, m) => a + m.depreciation + m.interest, 0n);
+      return { started: p.started, bookYear: book(posted.filter((m) => m.year === year)), bookToDate: book(posted), fiscalYear: p.year.fiscalRent, fiscalToDate: p.fiscalToDate };
+    })
+    .filter((p) => p.started);
+  const leaseDiff = leases.reduce((t, p) => t + p.bookYear - p.fiscalYear, 0n);
   if (leaseDiff !== 0n) {
     corrections.push({ key: "auto:leases", label: "Sewa (PSAK 116): penyusutan hak guna + bunga dikurangi sewa fiskal", direction: leaseDiff > 0n ? "POSITIVE" : "NEGATIVE", kind: "TEMPORARY", amount: leaseDiff < 0n ? -leaseDiff : leaseDiff, source: { type: "LEASES" } });
   }
@@ -113,17 +123,23 @@ export async function taxPack(db: Db, clientId: string, entityId: string, year: 
   for (const c of taxYear?.corrections ?? []) {
     // An accepted suggestion follows its account's year-to-date expense × its %; a typed correction keeps its amount.
     const live = c.suggestion && c.account ? (expenses.find((x) => x.code === c.account!.code)?.amount ?? 0n) : null;
-    // Kept at zero when the account has no expense this year, so the accountant still sees (and can remove) it.
-    const amount = live === null ? c.amount : live > 0n ? share(live, c.percent) : 0n;
-    corrections.push({ key: `manual:${c.id}`, label: c.description, direction: c.direction, kind: c.kind, amount, source: { type: "MANUAL", id: c.id, code: c.account?.code ?? null, percent: c.suggestion ? c.percent : null } });
+    // A timing difference reverses: when its account turns to income this year (a provision released), the correction turns negative, so
+    // what was added back before isn't taxed again. A permanent one is kept at zero, so the accountant still sees (and can remove) it.
+    const flip = live !== null && live < 0n && c.kind === "TEMPORARY";
+    const amount = live === null ? c.amount : live > 0n ? share(live, c.percent) : flip ? share(-live, c.percent) : 0n;
+    const direction = flip ? (c.direction === "POSITIVE" ? "NEGATIVE" : "POSITIVE") : c.direction;
+    corrections.push({ key: `manual:${c.id}`, label: c.description, direction, kind: c.kind, amount, source: { type: "MANUAL", id: c.id, code: c.account?.code ?? null, percent: c.suggestion ? c.percent : null } });
   }
   const accepted = new Set((taxYear?.corrections ?? []).flatMap((c) => (c.suggestion ? [c.suggestion] : [])));
   const dismissed = new Set(taxYear?.dismissedSuggestions ?? []);
   const suggestions: Suggestion[] = expenses.flatMap((x) => {
     const c = categoryOf(x.name);
     const key = `nd:${x.code}`;
-    if (!c || x.amount <= 0n || accepted.has(key) || dismissed.has(key)) return [];
-    return [{ key, code: x.code, name: x.name, amount: x.amount, category: c.key, label: c.label, percent: c.percent, direction: c.direction, kind: c.kind, corrected: share(x.amount, c.percent) }];
+    // A timing category with income this year (a release) is suggested the other way round.
+    const reversal = x.amount < 0n && c?.kind === "TEMPORARY";
+    if (!c || (x.amount <= 0n && !reversal) || accepted.has(key) || dismissed.has(key)) return [];
+    const amount = reversal ? -x.amount : x.amount;
+    return [{ key, code: x.code, name: x.name, amount, category: c.key, label: c.label, percent: c.percent, direction: reversal ? (c.direction === "POSITIVE" ? "NEGATIVE" : "POSITIVE") : c.direction, kind: c.kind, corrected: share(amount, c.percent) }];
   });
 
   const final = regime === "FINAL_UMKM";
@@ -155,7 +171,8 @@ export async function taxPack(db: Db, clientId: string, entityId: string, year: 
   // ---- pajak tangguhan (fixed-asset register and the receivable allowance) ----
   const held = await allowanceBalance(db, clientId, entityId, through);
   const allowance = held > 0n ? held : 0n;
-  const leaseTemporary = leases.reduce((t, p) => t + (p.paidToDate - p.fiscalToDate) - (p.rou - p.accumulated - p.liability), 0n);
+  // (payments − fiscal rent) − (ROU − accumulated − liability) = journalled depreciation + interest − fiscal rent, to date.
+  const leaseTemporary = leases.reduce((t, p) => t + p.bookToDate - p.fiscalToDate, 0n);
   const benefitHeld = -(await glBalance(db, clientId, entityId, ACCOUNT_CODES.BENEFIT_LIABILITY, through));
   const employeeBenefits = benefitHeld > 0n ? benefitHeld : 0n;
   const fiscalValue = assets.reduce((t, r) => t + (r.fiscalBookValue ?? 0n), 0n);

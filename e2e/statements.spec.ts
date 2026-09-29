@@ -23,6 +23,7 @@ test("financial statements: comparatives, equity, cash flow, notes, download", a
   await page.getByRole("tab", { name: "Arus Kas" }).click();
   await expect(page.getByText("Sama dengan kas di Neraca")).toBeVisible();
   await expect(page.getByTestId("cash-flow")).toContainText("Arus kas dari aktivitas operasi");
+  await expect(page.getByTestId("cash-flow").getByTestId("fs-account-link").first()).toHaveAttribute("href", /\/ledger\/\d+/);
   await page.getByRole("tab", { name: "CALK" }).click();
   await expect(page.getByTestId("note-1")).toContainText("Umum");
   await expect(page.getByTestId("note-2")).toContainText("SAK EP");
