@@ -5,6 +5,8 @@ import { importStatement } from "@/lib/import/pipeline";
 import { reviewTransaction } from "@/lib/review";
 import { runControls } from "@/lib/controls";
 import { taxPack } from "@/lib/tax/pack";
+import { assetCandidates } from "@/lib/assets/register";
+import { scheduleCandidates } from "@/lib/adjust/candidates";
 
 type G = Awaited<ReturnType<typeof makeGroup>>;
 const lines = async (entryId: string) => (await db.journalLine.findMany({ where: { entryId }, include: { account: true }, orderBy: { id: "asc" } })).map((l) => [l.account.code, l.debit, l.credit]);
@@ -30,6 +32,9 @@ describe("lease register (PSAK 116)", () => {
     const entry = await db.journalEntry.findUniqueOrThrow({ where: { id: lease.entryId! } });
     expect([entry.date.toISOString().slice(0, 10), entry.memo]).toEqual(["2026-06-01", "Pengakuan awal sewa Kantor Sudirman · PT Graha Properti (PSAK 116)"]);
     expect(await lines(entry.id)).toEqual([["1230", 212_433_873n, 0n], ["2170", 0n, 99_883_099n], ["2400", 0n, 112_550_774n]]);
+    // The ROU asset belongs to the lease register, not the fixed-asset register.
+    expect(await assetCandidates(db, g.client.id)).toEqual([]);
+    expect(await scheduleCandidates(db, g.client.id, 2026, 6)).toEqual([]);
 
     expect((await leaseMonthsDue(db, g.client.id, g.pt.entity.id, 2026, 8)).map((d) => d.k)).toEqual([1, 2, 3]);
     expect(await postLeaseMonths(db, { clientId: g.client.id, entityId: g.pt.entity.id, year: 2026, month: 8 })).toBe(3);
