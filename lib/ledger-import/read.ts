@@ -105,13 +105,18 @@ function cellCents(c: RawCell | undefined): bigint | string {
   }
 }
 
-function cellDate(c: RawCell | undefined): Date | null {
+export function cellDate(c: RawCell | undefined): Date | null {
   if (c instanceof Date) return Number.isFinite(c.getTime()) ? dateOnly(c.getUTCFullYear(), c.getUTCMonth() + 1, c.getUTCDate()) : null;
   const t = cellText(c).replace(/^'/, "");
+  // A calendar-impossible date (31/02/1990) is unreadable, never rolled into the next month.
+  const real = (y: number, mo: number, d: number) => {
+    const out = dateOnly(y, mo, d);
+    return out.getUTCFullYear() === y && out.getUTCMonth() + 1 === mo && out.getUTCDate() === d ? out : null;
+  };
   let m = t.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
-  if (m) return dateOnly(Number(m[3]), Number(m[2]), Number(m[1]));
+  if (m) return real(Number(m[3]), Number(m[2]), Number(m[1]));
   m = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (m) return dateOnly(Number(m[1]), Number(m[2]), Number(m[3]));
+  if (m) return real(Number(m[1]), Number(m[2]), Number(m[3]));
   return null;
 }
 

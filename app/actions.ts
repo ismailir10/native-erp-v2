@@ -12,6 +12,9 @@ import { postAdjustment } from "@/lib/ledger/adjustment";
 import { createSchedule, postAllDue, postInstallment, stopSchedule, type ScheduleInput } from "@/lib/adjust/schedules";
 import { createAsset, type AssetInput } from "@/lib/assets/register";
 import { disposeAsset, type DisposalInput } from "@/lib/assets/dispose";
+import { cancelLease, createLease, postLeaseMonths, type LeaseInput } from "@/lib/leases/register";
+import { deleteEmployee, importCensus, saveBenefitSetting, saveEmployee, uploadMortality, type BenefitSettingInput, type EmployeeInput } from "@/lib/benefits/census";
+import { postBenefits } from "@/lib/benefits/valuation";
 import { createInvoice, type InvoiceInput } from "@/lib/receivables/invoices";
 import { settleWithReclass, unsettle } from "@/lib/receivables/settle";
 import { candidateViews, type CandidateView } from "@/lib/receivables/view";
@@ -260,6 +263,57 @@ export async function createAssetAction(input: Omit<AssetInput, "actorId">): Pro
   } catch (e) {
     return fail(e);
   }
+}
+
+/** Lease register (rule 5f): registration posts the commencement entry; monthly journals and cancellation by click. */
+export async function createLeaseAction(input: Omit<LeaseInput, "actorId">) {
+  return taxWrite(input.clientId, (clientId, actorId) => createLease(prisma, { ...input, clientId, actorId }));
+}
+export async function postLeaseMonthsAction(input: { clientId: string; entityId: string; year: number; month: number }) {
+  return taxWrite(input.clientId, (clientId, actorId) => postLeaseMonths(prisma, { ...input, clientId, actorId }));
+}
+export async function cancelLeaseAction(clientId: string, leaseId: string) {
+  return taxWrite(clientId, (id, actorId) => cancelLease(prisma, { clientId: id, leaseId, actorId }));
+}
+
+/** Employee benefits (rule 5g): census, the firm's mortality table, assumptions, and the valuation journal by click. */
+async function uploaded(formData: FormData, what: string) {
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) throw new LedgerError(`Pilih file ${what} (XLSX, XLS, atau CSV).`);
+  if (file.size > MAX_UPLOAD) throw new LedgerError("File terlalu besar (maks. 5 MB).");
+  return { fileName: file.name, data: Buffer.from(await file.arrayBuffer()) };
+}
+export async function importCensusAction(formData: FormData): Promise<Result<{ added: number; updated: number }>> {
+  try {
+    const client = await getClientForFirm(String(formData.get("clientId")));
+    const r = await importCensus(prisma, { clientId: client.id, entityId: String(formData.get("entityId")), ...(await uploaded(formData, "sensus karyawan")) });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, ...r };
+  } catch (e) {
+    return fail(e);
+  }
+}
+export async function uploadMortalityAction(formData: FormData): Promise<Result<{ tableId: string }>> {
+  try {
+    const client = await getClientForFirm(String(formData.get("clientId")));
+    const t = await uploadMortality(prisma, { firmId: client.firmId, name: String(formData.get("name") ?? ""), ...(await uploaded(formData, "tabel mortalita")) });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, tableId: t.id };
+  } catch (e) {
+    return fail(e);
+  }
+}
+export async function saveEmployeeAction(input: EmployeeInput) {
+  return taxWrite(input.clientId, (clientId) => saveEmployee(prisma, { ...input, clientId }));
+}
+export async function deleteEmployeeAction(clientId: string, employeeId: string) {
+  return taxWrite(clientId, (id) => deleteEmployee(prisma, { clientId: id, employeeId }));
+}
+export async function saveBenefitSettingAction(input: BenefitSettingInput) {
+  return taxWrite(input.clientId, (clientId) => saveBenefitSetting(prisma, { ...input, clientId }));
+}
+export async function postBenefitsAction(input: { clientId: string; entityId: string; year: number; month: number }) {
+  return taxWrite(input.clientId, (clientId, actorId) => postBenefits(prisma, { ...input, clientId, actorId }));
 }
 
 /** The accountant's click: one disposal entry (rule 5b). */

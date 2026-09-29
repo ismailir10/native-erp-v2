@@ -158,6 +158,7 @@ model Client {
   contacts      Contact[]
   invoices      Invoice[]
   taxYears      TaxYear[]
+  leases        Lease[]
   coaVersion    Int                  @default(1)
 
   @@index([firmId])
@@ -182,7 +183,11 @@ model Entity {
   fixedAssets        FixedAsset[]
   invoices           Invoice[]
   taxYears           TaxYear[]
-  ckpnSetting        CkpnSetting?
+  ckpnSettings       CkpnSetting[]
+  leases             Lease[]
+  employees          Employee[]
+  benefitSetting     BenefitSetting?
+  benefitPostings    BenefitPosting[]
 
   @@index([clientId])
 }
@@ -353,6 +358,12 @@ model JournalEntry {
   invoice           Invoice?             @relation("InvoiceEntry")
   /// The tax pack posting this entry is (accounting-rules 5d).
   taxPosting        TaxPosting?
+  /// The lease this entry commences, cancels, or books a month of (accounting-rules 5f).
+  leaseCommenced    Lease?               @relation("LeaseCommencement")
+  leaseCancelled    Lease?               @relation("LeaseCancel")
+  leasePosting      LeasePosting?
+  /// The employee-benefit valuation journal this entry is (accounting-rules 5g).
+  benefitPosting    BenefitPosting?
   /// The proposal this entry was posted from (close copilot, 1999 correction).
   proposal          ProposedEntry?
   /// Member who posted it; null for seeds and system postings ("Sistem").
@@ -815,6 +826,7 @@ model FirmMember {
   schedules        AdjustmentSchedule[]  @relation("ScheduleCreatedBy")
   fixedAssets      FixedAsset[]          @relation("AssetCreatedBy")
   invoicesCreated  Invoice[]             @relation("InvoiceCreatedBy")
+  leasesCreated    Lease[]               @relation("LeaseCreatedBy")
   settlements      InvoiceSettlement[]   @relation("SettlementCreatedBy")
   taxCorrections   FiscalCorrection[]
   taxCredits       TaxCredit[]
@@ -1196,18 +1208,149 @@ enum CkpnMethod {
 
 /// CKPN piutang usaha (PSAK 109 simplified approach, accounting-rules 5e) of one entity. Rates are basis points (10000 = 100 %).
 model CkpnSetting {
-  id            String     @id @default(cuid())
-  firmId        String
-  entityId      String     @unique
-  entity        Entity     @relation(fields: [entityId], references: [id])
-  method        CkpnMethod @default(ROLL_RATE)
-  historyMonths Int        @default(12)
+  id             String     @id @default(cuid())
+  firmId         String
+  entityId       String
+  entity         Entity     @relation(fields: [entityId], references: [id])
+  method         CkpnMethod @default(ROLL_RATE)
+  historyMonths  Int        @default(12)
   /// Manual loss rates per bucket: belum jatuh tempo, 1–30, 31–60, 61–90 (the last bucket is lastBucketBp).
-  currentBp     Int        @default(0)
-  d1to30Bp      Int        @default(0)
-  d31to60Bp     Int        @default(0)
-  d61to90Bp     Int        @default(0)
-  lastBucketBp  Int        @default(10000)
-  forwardBp     Int        @default(10000)
-  updatedAt     DateTime   @updatedAt
+  currentBp      Int        @default(0)
+  d1to30Bp       Int        @default(0)
+  d31to60Bp      Int        @default(0)
+  d61to90Bp      Int        @default(0)
+  lastBucketBp   Int        @default(10000)
+  forwardBp      Int        @default(10000)
+  /// The first month the setting applies to; a later version takes over from its own month, so closed months keep theirs.
+  effectiveYear  Int        @default(2000)
+  effectiveMonth Int        @default(1)
+  updatedAt      DateTime   @updatedAt
+
+  @@unique([entityId, effectiveYear, effectiveMonth])
+}
+
+enum LeaseTiming {
+  /// Each payment at the start of its interval.
+  ADVANCE
+  /// Each payment at the end of its interval.
+  ARREARS
+}
+
+/// A lease of an entity as lessee (PSAK 116, accounting-rules 5f): the contract only; the schedule is computed from it.
+model Lease {
+  id             String         @id @default(cuid())
+  firmId         String
+  clientId       String
+  client         Client         @relation(fields: [clientId], references: [id])
+  entityId       String
+  entity         Entity         @relation(fields: [entityId], references: [id])
+  name           String
+  lessor         String
+  /// Month 1 of the term (the start month counts in full).
+  startYear      Int
+  startMonth     Int
+  months         Int
+  /// Each payment, in minor units of the entity's currency.
+  payment        BigInt
+  intervalMonths Int
+  timing         LeaseTiming
+  /// Annual discount rate (incremental borrowing rate), basis points; monthly rate = annual ÷ 12.
+  rateBp         Int
+  /// The commencement entry (Dr 1230 / Cr 2170 + 2400).
+  entryId        String?        @unique
+  entry          JournalEntry?  @relation("LeaseCommencement", fields: [entryId], references: [id], onDelete: Restrict)
+  /// Its reversal when the lease was cancelled as a mistake.
+  cancelEntryId  String?        @unique
+  cancelEntry    JournalEntry?  @relation("LeaseCancel", fields: [cancelEntryId], references: [id], onDelete: Restrict)
+  createdById    String?
+  createdBy      FirmMember?    @relation("LeaseCreatedBy", fields: [createdById], references: [id])
+  createdAt      DateTime       @default(now())
+  postings       LeasePosting[]
+
+  @@index([clientId])
+  @@index([entityId])
+}
+
+/// The monthly journal of a lease for month k of its term (depreciation, interest, reclass); unique so a double click posts once.
+model LeasePosting {
+  id      String       @id @default(cuid())
+  firmId  String
+  leaseId String
+  lease   Lease        @relation(fields: [leaseId], references: [id])
+  month   Int
+  entryId String       @unique
+  entry   JournalEntry @relation(fields: [entryId], references: [id], onDelete: Restrict)
+
+  @@unique([leaseId, month])
+}
+
+enum Sex {
+  MALE
+  FEMALE
+}
+
+/// A mortality table uploaded by the firm (e.g. TMI IV 2019): qx × 10⁹ by age from 0, per sex (accounting-rules 5g).
+model MortalityTable {
+  id        String           @id @default(cuid())
+  firmId    String
+  name      String
+  male      Int[]
+  female    Int[]
+  createdAt DateTime         @default(now())
+  settings  BenefitSetting[]
+
+  @@unique([firmId, name])
+}
+
+/// An employee of an entity for the PSAK 24 census: monthly wage (upah) in minor units; leftOn when they left.
+model Employee {
+  id         String    @id @default(cuid())
+  firmId     String
+  clientId   String
+  entityId   String
+  entity     Entity    @relation(fields: [entityId], references: [id])
+  name       String
+  employeeNo String?
+  sex        Sex
+  birthDate  DateTime  @db.Date
+  hireDate   DateTime  @db.Date
+  wage       BigInt
+  leftOn     DateTime? @db.Date
+  createdAt  DateTime  @default(now())
+
+  @@unique([entityId, employeeNo])
+  @@index([clientId])
+}
+
+/// PSAK 24 assumptions of an entity. Rates in basis points a year; resignation falls linearly from resignFlatUntil to 0 at resignZeroAge.
+model BenefitSetting {
+  id               String          @id @default(cuid())
+  firmId           String
+  entityId         String          @unique
+  entity           Entity          @relation(fields: [entityId], references: [id])
+  mortalityTableId String?
+  mortalityTable   MortalityTable? @relation(fields: [mortalityTableId], references: [id])
+  discountBp       Int
+  salaryBp         Int
+  retirementAge    Int             @default(56)
+  disabilityBp     Int             @default(1000)
+  resignBp         Int             @default(500)
+  resignFlatUntil  Int             @default(30)
+  resignZeroAge    Int             @default(55)
+  updatedAt        DateTime        @updatedAt
+}
+
+/// A PSAK 24 valuation journal of an entity (the first one decides whether the opening obligation goes to Saldo Laba).
+model BenefitPosting {
+  id        String       @id @default(cuid())
+  firmId    String
+  entityId  String
+  entity    Entity       @relation(fields: [entityId], references: [id])
+  year      Int
+  month     Int
+  entryId   String       @unique
+  entry     JournalEntry @relation(fields: [entryId], references: [id], onDelete: Restrict)
+  createdAt DateTime     @default(now())
+
+  @@index([entityId])
 }

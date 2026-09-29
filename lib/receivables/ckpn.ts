@@ -4,7 +4,7 @@ import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { templateAccounts } from "@/lib/coa/ensure";
 import { closeLock } from "@/lib/adjust/schedules";
 import { LedgerError, postJournal } from "@/lib/ledger/post";
-import { formatDate, periodBounds } from "@/lib/format";
+import { formatDate, formatPeriod, percentToBp, periodBounds } from "@/lib/format";
 import { BUCKETS, BUCKET_LABEL, bucketOf, type Bucket } from "@/lib/receivables/aging";
 
 /**
@@ -123,7 +123,7 @@ export type CkpnRow = { bucket: Bucket; open: bigint; roll: bigint | null; sampl
 export type Ckpn = {
   entityId: string;
   through: Date;
-  setting: CkpnSettingValues & { saved: boolean };
+  setting: CkpnSettingValues & { saved: boolean; effective: { year: number; month: number } | null };
   rows: CkpnRow[];
   /** Month-ends the roll rates used (those with sales invoices issued by then). */
   snapshots: Date[];
@@ -153,9 +153,17 @@ export async function allowanceAfter(db: Db | Tx, clientId: string, entityId: st
   return l?.date ?? null;
 }
 
+/** The entity's CKPN setting in force for year-month: the latest version effective by then (null before the first). */
+export function settingAt(db: Db | Tx, entityId: string, year: number, month: number) {
+  return db.ckpnSetting.findFirst({
+    where: { entityId, OR: [{ effectiveYear: { lt: year } }, { effectiveYear: year, effectiveMonth: { lte: month } }] },
+    orderBy: [{ effectiveYear: "desc" }, { effectiveMonth: "desc" }],
+  });
+}
+
 /** The matrix, the allowance and the journal difference for an entity at a month-end. */
 export async function ckpn(db: Db | Tx, clientId: string, entityId: string, year: number, month: number): Promise<Ckpn> {
-  const saved = await db.ckpnSetting.findUnique({ where: { entityId } });
+  const saved = await settingAt(db, entityId, year, month);
   const setting: CkpnSettingValues = saved ?? DEFAULT_SETTING;
   const through = periodBounds(year, month).end;
   const rows = await db.invoice.findMany({
@@ -187,7 +195,7 @@ export async function ckpn(db: Db | Tx, clientId: string, entityId: string, year
   return {
     entityId,
     through,
-    setting: { ...setting, saved: !!saved },
+    setting: { ...setting, saved: !!saved, effective: saved ? { year: saved.effectiveYear, month: saved.effectiveMonth } : null },
     rows: BUCKETS.map((bucket, i) => ({ bucket, open: open[bucket], roll: i < rolls.length ? rolls[i].ppm : null, samples: i < rolls.length ? rolls[i].samples : 0, rate: rates[i], amount: blocker ? null : amounts[i] })),
     snapshots: setting.method === "ROLL_RATE" ? snapshots : [],
     blocker,
@@ -198,14 +206,8 @@ export async function ckpn(db: Db | Tx, clientId: string, entityId: string, year
   };
 }
 
-/** "2,5" / "2.5" / "100" (percent, up to two decimals) → basis points; null when not a percent. */
-export function percentToBp(text: string): number | null {
-  const m = text.trim().replace(/\s*%$/, "").match(/^(\d{1,3})(?:[.,](\d{1,2}))?$/);
-  if (!m) return null;
-  return Number(m[1]) * 100 + Number((m[2] ?? "").padEnd(2, "0"));
-}
-
-export type CkpnSettingInput = { clientId: string; entityId: string; method: CkpnMethod; historyMonths: number; forward: string; lastBucket: string; manual: [string, string, string, string] };
+/** `year`/`month`: the first month the saved setting applies to (the page's month); earlier months keep the version they had. */
+export type CkpnSettingInput = { clientId: string; entityId: string; year: number; month: number; method: CkpnMethod; historyMonths: number; forward: string; lastBucket: string; manual: [string, string, string, string] };
 
 export async function saveCkpnSetting(db: Db, input: CkpnSettingInput) {
   const entity = await db.entity.findFirst({ where: { id: input.entityId, clientId: input.clientId } });
@@ -222,7 +224,19 @@ export async function saveCkpnSetting(db: Db, input: CkpnSettingInput) {
   const [currentBp, d1to30Bp, d31to60Bp, d61to90Bp] =
     input.method === "MANUAL" ? input.manual.map((m, i) => rate(m, `Tarif kerugian ${BUCKET_LABEL[BUCKETS[i]].toLowerCase()}`)) : [0, 0, 0, 0];
   const data = { method: input.method, historyMonths: input.historyMonths, forwardBp, lastBucketBp, currentBp, d1to30Bp, d31to60Bp, d61to90Bp };
-  return db.ckpnSetting.upsert({ where: { entityId: entity.id }, update: data, create: { ...data, firmId: entity.firmId, entityId: entity.id } });
+  if (!(Number.isInteger(input.year) && input.year >= 2000 && input.year <= 2100 && Number.isInteger(input.month) && input.month >= 1 && input.month <= 12)) throw new LedgerError("Periode berlaku tidak valid.");
+  const key = { entityId: entity.id, effectiveYear: input.year, effectiveMonth: input.month };
+  // A new version governs its month and every later one until the next version: none of those may be closed. Serialised with the close.
+  return db.$transaction(async (tx) => {
+    await closeLock(tx, input.clientId);
+    const next = await tx.ckpnSetting.findFirst({ where: { entityId: entity.id, OR: [{ effectiveYear: { gt: input.year } }, { effectiveYear: input.year, effectiveMonth: { gt: input.month } }] }, orderBy: [{ effectiveYear: "asc" }, { effectiveMonth: "asc" }] });
+    const idx = (y: number, m: number) => y * 12 + m;
+    const locked = (await tx.period.findMany({ where: { clientId: input.clientId, status: "LOCKED" }, select: { year: true, month: true } }))
+      .filter((p) => idx(p.year, p.month) >= idx(input.year, input.month) && (!next || idx(p.year, p.month) < idx(next.effectiveYear, next.effectiveMonth)))
+      .sort((a, b) => idx(a.year, a.month) - idx(b.year, b.month))[0];
+    if (locked) throw new LedgerError(`${formatPeriod(locked.year, locked.month)} sudah dikunci dan memakai pengaturan CKPN ini. Simpan perubahan untuk bulan sesudah bulan terkunci terakhir, atau buka kuncinya dulu.`);
+    return tx.ckpnSetting.upsert({ where: { entityId_effectiveYear_effectiveMonth: key }, update: data, create: { ...data, ...key, firmId: entity.firmId } });
+  });
 }
 
 /**
@@ -264,6 +278,8 @@ export type CkpnView = {
   entity: string;
   currency: string;
   setting: { method: CkpnMethod; historyMonths: number; forward: string; lastBucket: string; manual: [string, string, string, string]; saved: boolean };
+  /** "Januari 2026" when the setting in force was saved for another month than the one shown. */
+  effectiveFrom: string | null;
   rows: { bucket: Bucket; label: string; open: string; roll: string | null; samples: number; rate: string | null; amount: string | null }[];
   snapshots: { first: string; last: string; count: number } | null;
   blocker: string | null;
@@ -284,6 +300,7 @@ export function ckpnView(c: Ckpn, entity: { shortName: string; functionalCurrenc
     entity: entity.shortName,
     currency: entity.functionalCurrency,
     setting: { method: s.method, historyMonths: s.historyMonths, forward: bpText(s.forwardBp), lastBucket: bpText(s.lastBucketBp), manual: [bpText(s.currentBp), bpText(s.d1to30Bp), bpText(s.d31to60Bp), bpText(s.d61to90Bp)], saved: s.saved },
+    effectiveFrom: s.effective && !(s.effective.year === c.through.getUTCFullYear() && s.effective.month === c.through.getUTCMonth() + 1) ? (s.effective.year === 2000 && s.effective.month === 1 ? "awal" : formatPeriod(s.effective.year, s.effective.month)) : null,
     rows: c.rows.map((r) => ({ bucket: r.bucket, label: BUCKET_LABEL[r.bucket], open: r.open.toString(), roll: r.roll === null ? null : ppmText(r.roll), samples: r.samples, rate: r.rate === null ? null : ppmText(r.rate), amount: r.amount === null ? null : r.amount.toString() })),
     snapshots: c.snapshots.length ? { first: month(c.snapshots[0]), last: month(c.snapshots[c.snapshots.length - 1]), count: c.snapshots.length } : null,
     blocker: c.blocker,

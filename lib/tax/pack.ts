@@ -5,6 +5,8 @@ import { assetRegister } from "@/lib/assets/register";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { dateOnly, periodBounds } from "@/lib/format";
 import { allowanceBalance } from "@/lib/receivables/ckpn";
+import { terms as leaseTerms } from "@/lib/leases/register";
+import { leaseSchedule, positionAt } from "@/lib/leases/schedule";
 import { corporateTax, deferredTax, roundDownThousands, settlement, type CorporateTax, type Settlement } from "@/lib/tax/compute";
 import { categoryOf, compensate, share, type LossRow } from "@/lib/tax/categories";
 
@@ -23,8 +25,8 @@ export type Correction = {
   direction: CorrectionDirection;
   kind: CorrectionKind;
   amount: bigint;
-  /** Where it comes from: the asset register, an account's ledger, or the accountant's own row. */
-  source: { type: "ASSETS" } | { type: "ACCOUNT"; code: string; name: string } | { type: "MANUAL"; id: string; code: string | null; percent: number | null };
+  /** Where it comes from: the asset register, the lease register, an account's ledger, or the accountant's own row. */
+  source: { type: "ASSETS" } | { type: "LEASES" } | { type: "ACCOUNT"; code: string; name: string } | { type: "MANUAL"; id: string; code: string | null; percent: number | null };
 };
 /** A correction category matched by an expense account's name (lib/tax/categories.ts); `amount` is the account, `corrected` its share. */
 export type Suggestion = { key: string; code: string; name: string; amount: bigint; category: string; label: string; percent: number; direction: CorrectionDirection; kind: CorrectionKind; corrected: bigint };
@@ -56,8 +58,10 @@ export type TaxPack = {
   tax: CorporateTax;
   credits: Credit[];
   settlement: Settlement | null;
-  /** Temporary differences: fixed assets (fiscal − book value) and the receivable allowance (1135, deductible when written off). */
-  deferred: { assets: bigint; allowance: bigint; temporaryDifference: bigint; amount: bigint } | null;
+  /** Temporary differences: fixed assets (fiscal − book value), the receivable allowance (1135, deductible when written off) and leases
+   *  (prepaid − accrued fiscal rent, less ROU net of the liability) and the employee-benefit liability (2310, deductible when paid). `oci` is the
+   *  part of the deferred tax that belongs to the remeasurement in 3920 (booked there, not to 8110). */
+  deferred: { assets: bigint; allowance: bigint; leases: bigint; employeeBenefits: bigint; temporaryDifference: bigint; amount: bigint; oci: bigint } | null;
   /** Signed lines (debit +, credit −) still to post to reach the computed position, per kind; empty = nothing to post. */
   proposals: Record<TaxPostingKind, ProposalLine[]>;
   /** A posting of the kind dated after the chosen month: the position is booked there, so nothing is proposed here. */
@@ -88,6 +92,22 @@ export async function taxPack(db: Db, clientId: string, entityId: string, year: 
   if (depreciationDiff !== 0n) {
     corrections.push({ key: "auto:depreciation", label: "Selisih penyusutan komersial dan fiskal", direction: depreciationDiff > 0n ? "POSITIVE" : "NEGATIVE", kind: "TEMPORARY", amount: depreciationDiff < 0n ? -depreciationDiff : depreciationDiff, source: { type: "ASSETS" } });
   }
+  // Leases (rule 5f): the PSAK 116 depreciation + interest actually journalled (so an unposted month adds nothing the books don't carry)
+  // out, rent straight line over the term in.
+  const leases = (await db.lease.findMany({ where: { clientId, entityId, cancelEntryId: null }, include: { postings: { select: { month: true } } } }))
+    .map((l) => {
+      const t = leaseTerms(l);
+      const s = leaseSchedule(t);
+      const p = positionAt(t, s, year, month);
+      const posted = s.months.filter((m) => l.postings.some((x) => x.month === m.k) && +m.date <= +through);
+      const book = (ms: typeof posted) => ms.reduce((a, m) => a + m.depreciation + m.interest, 0n);
+      return { started: p.started, bookYear: book(posted.filter((m) => m.year === year)), bookToDate: book(posted), fiscalYear: p.year.fiscalRent, fiscalToDate: p.fiscalToDate };
+    })
+    .filter((p) => p.started);
+  const leaseDiff = leases.reduce((t, p) => t + p.bookYear - p.fiscalYear, 0n);
+  if (leaseDiff !== 0n) {
+    corrections.push({ key: "auto:leases", label: "Sewa (PSAK 116): penyusutan hak guna + bunga dikurangi sewa fiskal", direction: leaseDiff > 0n ? "POSITIVE" : "NEGATIVE", kind: "TEMPORARY", amount: leaseDiff < 0n ? -leaseDiff : leaseDiff, source: { type: "LEASES" } });
+  }
   // P&L accounts with their year-to-date amount as income (+) or expense (+): the statement negates other expenses (BEBAN_LAIN).
   const income = [...is.revenue, ...is.other.filter((i) => i.fsLine === "PENDAPATAN_LAIN")].flatMap((i) => i.accounts.map((a) => ({ ...a, fsLine: i.fsLine })));
   const expenses = [...is.cogs, ...is.opex, ...is.other.filter((i) => i.fsLine === "BEBAN_LAIN").map((i) => ({ ...i, accounts: i.accounts.map((a) => ({ ...a, amount: -a.amount })) }))].flatMap((i) => i.accounts);
@@ -103,17 +123,23 @@ export async function taxPack(db: Db, clientId: string, entityId: string, year: 
   for (const c of taxYear?.corrections ?? []) {
     // An accepted suggestion follows its account's year-to-date expense × its %; a typed correction keeps its amount.
     const live = c.suggestion && c.account ? (expenses.find((x) => x.code === c.account!.code)?.amount ?? 0n) : null;
-    // Kept at zero when the account has no expense this year, so the accountant still sees (and can remove) it.
-    const amount = live === null ? c.amount : live > 0n ? share(live, c.percent) : 0n;
-    corrections.push({ key: `manual:${c.id}`, label: c.description, direction: c.direction, kind: c.kind, amount, source: { type: "MANUAL", id: c.id, code: c.account?.code ?? null, percent: c.suggestion ? c.percent : null } });
+    // A timing difference reverses: when its account turns to income this year (a provision released), the correction turns negative, so
+    // what was added back before isn't taxed again. A permanent one is kept at zero, so the accountant still sees (and can remove) it.
+    const flip = live !== null && live < 0n && c.kind === "TEMPORARY";
+    const amount = live === null ? c.amount : live > 0n ? share(live, c.percent) : flip ? share(-live, c.percent) : 0n;
+    const direction = flip ? (c.direction === "POSITIVE" ? "NEGATIVE" : "POSITIVE") : c.direction;
+    corrections.push({ key: `manual:${c.id}`, label: c.description, direction, kind: c.kind, amount, source: { type: "MANUAL", id: c.id, code: c.account?.code ?? null, percent: c.suggestion ? c.percent : null } });
   }
   const accepted = new Set((taxYear?.corrections ?? []).flatMap((c) => (c.suggestion ? [c.suggestion] : [])));
   const dismissed = new Set(taxYear?.dismissedSuggestions ?? []);
   const suggestions: Suggestion[] = expenses.flatMap((x) => {
     const c = categoryOf(x.name);
     const key = `nd:${x.code}`;
-    if (!c || x.amount <= 0n || accepted.has(key) || dismissed.has(key)) return [];
-    return [{ key, code: x.code, name: x.name, amount: x.amount, category: c.key, label: c.label, percent: c.percent, direction: c.direction, kind: c.kind, corrected: share(x.amount, c.percent) }];
+    // A timing category with income this year (a release) is suggested the other way round.
+    const reversal = x.amount < 0n && c?.kind === "TEMPORARY";
+    if (!c || (x.amount <= 0n && !reversal) || accepted.has(key) || dismissed.has(key)) return [];
+    const amount = reversal ? -x.amount : x.amount;
+    return [{ key, code: x.code, name: x.name, amount, category: c.key, label: c.label, percent: c.percent, direction: reversal ? (c.direction === "POSITIVE" ? "NEGATIVE" : "POSITIVE") : c.direction, kind: c.kind, corrected: share(amount, c.percent) }];
   });
 
   const final = regime === "FINAL_UMKM";
@@ -145,19 +171,25 @@ export async function taxPack(db: Db, clientId: string, entityId: string, year: 
   // ---- pajak tangguhan (fixed-asset register and the receivable allowance) ----
   const held = await allowanceBalance(db, clientId, entityId, through);
   const allowance = held > 0n ? held : 0n;
+  // (payments − fiscal rent) − (ROU − accumulated − liability) = journalled depreciation + interest − fiscal rent, to date.
+  const leaseTemporary = leases.reduce((t, p) => t + p.bookToDate - p.fiscalToDate, 0n);
+  const benefitHeld = -(await glBalance(db, clientId, entityId, ACCOUNT_CODES.BENEFIT_LIABILITY, through));
+  const employeeBenefits = benefitHeld > 0n ? benefitHeld : 0n;
   const fiscalValue = assets.reduce((t, r) => t + (r.fiscalBookValue ?? 0n), 0n);
   const bookValue = assets.reduce((t, r) => t + r.bookValue, 0n);
   // Only postings dated by the chosen month count; one dated later means the position is booked there.
   const postedCurrent = await postedLines(db, entityId, "CURRENT", year, false, through);
   const postedDeferred = await postedLines(db, entityId, "DEFERRED", year, true, through);
+  // The remeasurement in 3920 other than the tax postings' own lines (a loss is a debit).
+  const remeasurement = (await glBalance(db, clientId, entityId, ACCOUNT_CODES.BENEFIT_REMEASUREMENT, through)) - (postedDeferred.get(ACCOUNT_CODES.BENEFIT_REMEASUREMENT) ?? 0n);
   const laterPosting: Record<TaxPostingKind, Date | null> = { CURRENT: await postingAfter(db, entityId, "CURRENT", year, through), DEFERRED: await postingAfter(db, entityId, "DEFERRED", year, through) };
   // Under the final regime there is no fiscal profit, so no temporary difference; with no registered assets and no allowance there is none
   // either. Either way a deferred balance booked earlier is brought back to zero.
   const deferredBooked = [ACCOUNT_CODES.DEFERRED_TAX_ASSET, ACCOUNT_CODES.DEFERRED_TAX_LIABILITY].some((c) => (postedDeferred.get(c) ?? 0n) !== 0n);
   const deferred =
     entity.functionalCurrency !== "IDR" ? null
-    : (assets.length || allowance > 0n) && !final ? { assets: fiscalValue - bookValue, allowance, temporaryDifference: fiscalValue - bookValue + allowance, amount: deferredTax(fiscalValue - bookValue + allowance) }
-    : deferredBooked ? { assets: 0n, allowance: 0n, temporaryDifference: 0n, amount: 0n }
+    : (assets.length || allowance > 0n || leases.length || employeeBenefits > 0n) && !final ? temporary(fiscalValue - bookValue, allowance, leaseTemporary, employeeBenefits, remeasurement)
+    : deferredBooked ? { assets: 0n, allowance: 0n, leases: 0n, employeeBenefits: 0n, temporaryDifference: 0n, amount: 0n, oci: 0n }
     : null;
 
   const applicable = packApplies(entity);
@@ -167,7 +199,7 @@ export async function taxPack(db: Db, clientId: string, entityId: string, year: 
     const target = settled ? currentTarget(tax.due, credits, settled.balance) : new Map<string, bigint>();
     proposals.CURRENT = diff(target, postedCurrent);
   }
-  if (applicable && deferred && !laterPosting.DEFERRED) proposals.DEFERRED = deferredDiff(deferred.amount, postedDeferred);
+  if (applicable && deferred && !laterPosting.DEFERRED) proposals.DEFERRED = deferredDiff(deferred.amount, postedDeferred, deferred.oci);
   return { entity, year, month, through, applicable, regime, taxYearId: taxYear?.id ?? null, profitBeforeTax, turnover, profitAndLoss, corrections, suggestions, positive, negative, fiscalProfit, losses: carried.rows, compensation: carried.used, lossSuggestion, tax, credits, settlement: settled, deferred, proposals, laterPosting };
 }
 
@@ -214,15 +246,18 @@ export function diff(target: Map<string, bigint>, posted: Map<string, bigint>): 
 }
 
 /** Deferred tax: move 1270 / 2320 to the computed balance; the change goes to 8110. */
-export function deferredDiff(amount: bigint, posted: Map<string, bigint>): ProposalLine[] {
+export function deferredDiff(amount: bigint, posted: Map<string, bigint>, oci = 0n): ProposalLine[] {
   const asset = posted.get(ACCOUNT_CODES.DEFERRED_TAX_ASSET) ?? 0n;
   const liability = posted.get(ACCOUNT_CODES.DEFERRED_TAX_LIABILITY) ?? 0n;
   const dAsset = (amount > 0n ? amount : 0n) - asset;
   const dLiability = (amount < 0n ? amount : 0n) - liability;
+  // The remeasurement's tax effect sits in 3920 (a DTA on a loss is credited there).
+  const dOci = -oci - (posted.get(ACCOUNT_CODES.BENEFIT_REMEASUREMENT) ?? 0n);
   const lines: ProposalLine[] = [
     { code: ACCOUNT_CODES.DEFERRED_TAX_ASSET, amount: dAsset },
     { code: ACCOUNT_CODES.DEFERRED_TAX_LIABILITY, amount: dLiability },
-    { code: ACCOUNT_CODES.DEFERRED_TAX, amount: -(dAsset + dLiability) },
+    { code: ACCOUNT_CODES.BENEFIT_REMEASUREMENT, amount: dOci },
+    { code: ACCOUNT_CODES.DEFERRED_TAX, amount: -(dAsset + dLiability + dOci) },
   ];
   return lines.filter((l) => l.amount !== 0n);
 }
@@ -235,4 +270,17 @@ export async function postingAfter(db: Reader, entityId: string, kind: TaxPostin
     orderBy: { entry: { date: "desc" } },
   });
   return later?.entry.date ?? null;
+}
+
+function temporary(assets: bigint, allowance: bigint, leases: bigint, employeeBenefits: bigint, remeasurement: bigint) {
+  const temporaryDifference = assets + allowance + leases + employeeBenefits;
+  return { assets, allowance, leases, employeeBenefits, temporaryDifference, amount: deferredTax(temporaryDifference), oci: deferredTax(remeasurement) };
+}
+
+/** Debit balance of an account of the entity at a date (0 when the client has no such account). */
+async function glBalance(db: Reader, clientId: string, entityId: string, code: string, asOf: Date) {
+  const acc = await db.account.findFirst({ where: { clientId, code }, select: { id: true } });
+  if (!acc) return 0n;
+  const s = await db.journalLine.aggregate({ where: { entityId, accountId: acc.id, date: { lte: asOf } }, _sum: { debit: true, credit: true } });
+  return (s._sum.debit ?? 0n) - (s._sum.credit ?? 0n);
 }

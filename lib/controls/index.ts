@@ -11,7 +11,9 @@ import { anomalyControls } from "@/lib/controls/anomaly";
 import { closeLock, dueProposals, schedulesDueBy } from "@/lib/adjust/schedules";
 import { registerVsLedger } from "@/lib/assets/register";
 import { subledgerVsLedger } from "@/lib/receivables/aging";
-import { ckpn } from "@/lib/receivables/ckpn";
+import { ckpn, settingAt } from "@/lib/receivables/ckpn";
+import { leasesVsLedger } from "@/lib/leases/register";
+import { valuation } from "@/lib/benefits/valuation";
 import { packApplies, taxPack } from "@/lib/tax/pack";
 
 /**
@@ -211,7 +213,7 @@ export async function runControls(db: Db, clientId: string, year: number, month:
     }
 
     // CKPN (rule 5e): once the entity has a setting, the allowance (1135) should equal the matrix at the month-end.
-    if (await db.ckpnSetting.findUnique({ where: { entityId: e.id }, select: { id: true } })) {
+    if (await settingAt(db, e.id, year, month)) {
       const c = await ckpn(db, clientId, e.id, year, month);
       const cKey = `ckpn:${e.id}`;
       const d = c.difference;
@@ -226,6 +228,44 @@ export async function runControls(db: Db, clientId: string, year: number, month:
             : `Matriks ${fmt(c.total!)} vs cadangan di buku besar ${fmt(c.balance)}: ${d! > 0n ? "tambah" : "pulihkan"} ${fmt(d! > 0n ? d! : -d!)}${c.later ? ` (sudah dijurnal per ${formatDate(c.later)})` : ""}`),
         href: `${base}/receivables?period=${year}-${String(month).padStart(2, "0")}&entity=${e.id}&tab=piutang`,
         ack: acks.get(cKey),
+      });
+    }
+
+    // Lease register (rule 5f): monthly journals posted, and 1230 / 1239 / 2170 + 2400 equal to the register.
+    const lease = await leasesVsLedger(db, clientId, e.id, year, month);
+    if (lease) {
+      const lKey = `lease:${e.id}`;
+      const r = lease.register;
+      const l = lease.ledger;
+      const diff = [
+        lease.due ? `${lease.due} jurnal bulanan sewa belum dicatat` : "",
+        r.rou !== l.rou ? `Aset hak guna: daftar ${fmt(r.rou)} vs buku besar ${fmt(l.rou)} (1230)` : "",
+        r.accumulated !== l.accumulated ? `Akumulasi: daftar ${fmt(r.accumulated)} vs buku besar ${fmt(l.accumulated)} (1239)` : "",
+        r.liability !== l.liability ? `Liabilitas sewa: daftar ${fmt(r.liability)} vs buku besar ${fmt(l.liability)} (2170 + 2400); pembayaran sewa di rekening koran diklasifikasikan ke 2170?` : "",
+      ].filter(Boolean);
+      controls.push({
+        key: lKey,
+        title: "Sewa (PSAK 116) = daftar sewa",
+        scope: e.shortName,
+        status: lease.equal ? "PASS" : "REVIEW",
+        detail: lease.equal ? `Aset hak guna ${fmt(r.rou - r.accumulated)} (neto), liabilitas sewa ${fmt(r.liability)}` : diff.join("; "),
+        href: `${base}/leases?period=${year}-${String(month).padStart(2, "0")}&entity=${e.id}`,
+        ack: acks.get(lKey),
+      });
+    }
+
+    // Employee benefits (rule 5g): in December, once the entity has assumptions, 2310 should equal the PSAK 24 obligation.
+    if (month === 12 && (await db.benefitSetting.findUnique({ where: { entityId: e.id }, select: { id: true } }))) {
+      const v = await valuation(db, clientId, e.id, year, month);
+      const ebKey = `eb:${e.id}`;
+      controls.push({
+        key: ebKey,
+        title: "Imbalan kerja (PSAK 24) = valuasi",
+        scope: e.shortName,
+        status: !v.blocker && !v.lines.length ? "PASS" : "REVIEW",
+        detail: v.blocker ?? (v.lines.length ? `Liabilitas imbalan kerja ${fmt(v.dbo)} vs buku besar ${fmt(v.ledger.liability)} (2310); jurnal valuasi belum dicatat${v.later ? ` (sudah dijurnal per ${formatDate(v.later)})` : ""}` : `Liabilitas imbalan kerja ${fmt(v.dbo)} sesuai valuasi (${v.employees.length} karyawan)`),
+        href: `${base}/benefits?period=${year}-12&entity=${e.id}`,
+        ack: acks.get(ebKey),
       });
     }
 

@@ -6,6 +6,9 @@ import { settleWithReclass } from "@/lib/receivables/settle";
 import { ckpn, postCkpn, saveCkpnSetting, type CkpnSettingInput } from "@/lib/receivables/ckpn";
 import { runControls } from "@/lib/controls";
 import { taxPack } from "@/lib/tax/pack";
+import { acceptSuggestion } from "@/lib/tax/records";
+import { postJournal } from "@/lib/ledger/post";
+import { dateOnly } from "@/lib/format";
 
 type G = Awaited<ReturnType<typeof makeGroup>>;
 
@@ -29,7 +32,7 @@ async function books(g: G) {
   await settleWithReclass(db, { clientId: g.client.id, invoiceId: b.id, bankTransactionId: (await tx("TOKO JAYA")).id });
 }
 const setting = (g: G, over: Partial<CkpnSettingInput> = {}) =>
-  saveCkpnSetting(db, { clientId: g.client.id, entityId: g.pt.entity.id, method: "ROLL_RATE", historyMonths: 3, forward: "100", lastBucket: "100", manual: ["0", "0", "0", "0"], ...over });
+  saveCkpnSetting(db, { clientId: g.client.id, entityId: g.pt.entity.id, year: 2026, month: 1, method: "ROLL_RATE", historyMonths: 3, forward: "100", lastBucket: "100", manual: ["0", "0", "0", "0"], ...over });
 const lines = async (entryId: string) => (await db.journalLine.findMany({ where: { entryId }, include: { account: true }, orderBy: { id: "asc" } })).map((l) => [l.account.code, l.debit, l.credit]);
 
 describe("CKPN piutang (PSAK 109)", () => {
@@ -74,8 +77,16 @@ describe("CKPN piutang (PSAK 109)", () => {
 
     // The allowance is a deductible temporary difference: DTA 22 % of 8 050 000.
     const pack = await taxPack(db, g.client.id, g.pt.entity.id, 2026, 8);
-    expect(pack!.deferred).toEqual({ assets: 0n, allowance: 8_050_000n, temporaryDifference: 8_050_000n, amount: 1_771_000n });
+    expect(pack!.deferred).toEqual({ assets: 0n, allowance: 8_050_000n, leases: 0n, employeeBenefits: 0n, temporaryDifference: 8_050_000n, amount: 1_771_000n, oci: 0n });
     expect(pack!.suggestions.find((s) => s.code === "6185")).toMatchObject({ category: "PROVISION", amount: 8_050_000n });
+
+    // 2027: part of the allowance is released (6185 credited). The provision added back in 2026 comes back as a negative timing difference.
+    const acc = async (code: string) => (await db.account.findFirstOrThrow({ where: { clientId: g.client.id, code } })).id;
+    await db.$transaction(async (tx) => postJournal(tx, { entityId: g.pt.entity.id, date: dateOnly(2027, 3, 31), kind: "ADJUSTMENT", memo: "Pemulihan CKPN", lines: [{ accountId: await acc("1135"), debit: 3_000_000n }, { accountId: await acc("6185"), credit: 3_000_000n }] }));
+    const next = (await taxPack(db, g.client.id, g.pt.entity.id, 2027, 3))!;
+    expect(next.suggestions.find((s) => s.code === "6185")).toMatchObject({ direction: "NEGATIVE", kind: "TEMPORARY", amount: 3_000_000n });
+    await acceptSuggestion(db, { clientId: g.client.id, entityId: g.pt.entity.id, year: 2027, accountCode: "6185", amount: 3_000_000n });
+    expect((await taxPack(db, g.client.id, g.pt.entity.id, 2027, 3))!.corrections.find((c) => c.source.type === "MANUAL")).toMatchObject({ direction: "NEGATIVE", amount: 3_000_000n });
   });
 
   it("forward-looking factor, missing history and validation", async () => {
@@ -92,6 +103,16 @@ describe("CKPN piutang (PSAK 109)", () => {
     const may = await ckpn(db, g.client.id, g.pt.entity.id, 2026, 5);
     expect(may.blocker).toMatch(/minimal dua akhir bulan/);
     await expect(postCkpn(db, { clientId: g.client.id, entityId: g.pt.entity.id, year: 2026, month: 5 })).rejects.toThrow(/minimal dua akhir bulan/);
+    // A change saved for September applies from September; August keeps the version it had.
+    await setting(g);
+    await setting(g, { year: 2026, month: 9, forward: "150" });
+    expect((await ckpn(db, g.client.id, g.pt.entity.id, 2026, 8)).total).toBe(13_000_000n);
+    expect((await ckpn(db, g.client.id, g.pt.entity.id, 2026, 9)).setting).toMatchObject({ forwardBp: 15_000, effective: { year: 2026, month: 9 } });
+    // A closed month keeps its setting: saving a version that would govern it is refused.
+    await db.period.upsert({ where: { clientId_year_month: { clientId: g.client.id, year: 2026, month: 10 } }, update: { status: "LOCKED" }, create: { firmId: g.firm.id, clientId: g.client.id, year: 2026, month: 10, status: "LOCKED" } });
+    await expect(setting(g, { year: 2026, month: 10, forward: "120" })).rejects.toThrow(/Oktober 2026 sudah dikunci/);
+    await expect(setting(g, { year: 2026, month: 9, forward: "120" })).rejects.toThrow(/Oktober 2026 sudah dikunci/); // September's version also governs October
+    await db.period.update({ where: { clientId_year_month: { clientId: g.client.id, year: 2026, month: 10 } }, data: { status: "OPEN" } });
     await expect(setting(g, { forward: "301" })).rejects.toThrow(/forward-looking/);
     await expect(setting(g, { method: "MANUAL", manual: ["1", "abc", "0", "0"] })).rejects.toThrow(/1–30 hari/);
     await expect(setting(g, { historyMonths: 1 })).rejects.toThrow(/2–36/);

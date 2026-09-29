@@ -125,7 +125,7 @@ describe("tax postings", () => {
     await disposeAsset(db, { clientId: g.client.id, assetId: a.id, date: "2026-10-20", proceeds: "0", proceedsCode: "1140" });
     // 2027: the register is empty, the 220 rb liability booked in 2026 goes.
     const next = (await taxPack(db, g.client.id, g.pt.entity.id, 2027, 1))!;
-    expect(next.deferred).toEqual({ assets: 0n, allowance: 0n, temporaryDifference: 0n, amount: 0n });
+    expect(next.deferred).toEqual({ assets: 0n, allowance: 0n, leases: 0n, employeeBenefits: 0n, temporaryDifference: 0n, amount: 0n, oci: 0n });
     expect(next.proposals.DEFERRED.map((l) => [l.code, l.amount])).toEqual([["2320", 220_000n], ["8110", -220_000n]]);
   });
 });

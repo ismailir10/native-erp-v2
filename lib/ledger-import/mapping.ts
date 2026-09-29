@@ -3,7 +3,8 @@ import type { Db, Tx } from "@/lib/db";
 import type { AccountTerm, AccountType, MapMethod } from "@/lib/generated/prisma/enums";
 import { AI_BATCH_SIZE, ACCOUNT_MAPPING_PROMPT_VERSION, aiConfig, buildMapPrompt, maxTokensFor, type AiProvider, type MapItem } from "@/lib/ai/provider";
 import { AiBudgetError, runBudgetedAi } from "@/lib/ai/budget";
-import { ACCOUNT_CODES, FS_LINES, type FsLine } from "@/lib/coa/template";
+import { ACCOUNT_CODES, COA_TEMPLATE, FS_LINES, type FsLine } from "@/lib/coa/template";
+import { templateAccounts } from "@/lib/coa/ensure";
 
 /**
  * Source account → client account mapping (accounting-rules §9a, §17).
@@ -102,7 +103,7 @@ export const newFsLineOf = (code: string | null | undefined): FsLine | null =>
   code?.startsWith(NEW_PREFIX) && (code.slice(NEW_PREFIX.length) as FsLine) in FS_LINES ? (code.slice(NEW_PREFIX.length) as FsLine) : null;
 const CATCH_ALL_NAME = /(lain ?lain|lainnya|\bother\b|others|misc|sundry|\bumum\b|general|serba ?serbi)/;
 
-const KEYWORDS: { re: RegExp; code: string; types?: AccountType[]; not?: RegExp; generic?: FsLine }[] = [
+const KEYWORDS: { re: RegExp; code: string; types?: AccountType[]; not?: RegExp; generic?: FsLine; template?: boolean }[] = [
   { re: /(akumulasi|accumulated|accumulation).*(penyusutan|depreciation|amortization|amortisasi)/, code: "1219" },
   { re: /(penyusutan|depreciation|amortisasi|amortization)/, code: "6180", types: ["BEBAN"] },
   { re: /(rounding|pembulatan)/, code: ACCOUNT_CODES.ROUNDING },
@@ -116,9 +117,9 @@ const KEYWORDS: { re: RegExp; code: string; types?: AccountType[]; not?: RegExp;
   { re: /(bank charge|admin(istrasi)? bank|biaya bank|bank administration|bank admin|provisi|biaya transfer)/, code: "7100", types: ["BEBAN"] },
   { re: /(petty cash|kas kecil|cash in transit|\bkas\b|cash on hand)/, code: "1110", types: ["ASET"], not: /bank/ },
   { re: /\b(bank|giro|tabungan|deposito|time deposits?|call a ?c|ocbc|bca|bri|bni|mandiri|cimb|dbs|uob|citibank|permata|doku|flip|xendit|midtrans)\b/, code: "1120", types: ["ASET"], not: /(non ?bank|payable|utang|hutang|loan|pinjaman)/ },
-  // The allowance goes to its contra account (1135) when the client has it, else nets into 1130.
-  { re: /(allowance|penyisihan|cadangan kerugian|\becl\b|ckpn)/, code: "1135", types: ["ASET"] },
-  { re: /(allowance|penyisihan|cadangan kerugian|\becl\b|ckpn)/, code: "1130", types: ["ASET"] },
+  // The allowance always goes to its contra account 1135 (created from the template on posting if the client predates it): netted into
+  // 1130 it would reduce receivables a second time once CKPN posts to 1135.
+  { re: /(allowance|penyisihan|cadangan kerugian|\becl\b|ckpn)/, code: "1135", types: ["ASET"], template: true },
   { re: /(bad debts?|doubtful|piutang tak tertagih|ckpn|\becl\b|(penyisihan|cadangan|penurunan nilai|impairment).*(piutang|receivable))/, code: "6185", types: ["BEBAN"] },
   { re: /(ppn masukan|vat[- ]?in\b|input vat)/, code: "1150", types: ["ASET"] },
   { re: /(prepaid.*(tax|pajak|\bpph\b|article|pasal)|pajak dibayar di ?muka|uang muka pajak|pph .*dibayar di ?muka|tax receivable)/, code: "1180", types: ["ASET"] },
@@ -205,7 +206,7 @@ function keywordSuggestion(
     if (!k.re.test(n)) continue;
     if (k.not?.test(n)) continue;
     if (k.types && type && !k.types.includes(type)) continue;
-    const acc = ctx.accounts.find((a) => a.code === k.code);
+    const acc = ctx.accounts.find((a) => a.code === k.code) ?? (k.template ? COA_TEMPLATE.find((a) => a.code === k.code) : undefined);
     if (!acc) continue;
     if (k.generic && !CATCH_ALL_NAME.test(n) && RANGES[k.generic]) {
       return { accountCode: `${NEW_PREFIX}${k.generic}`, method: "NEW", confidence: 0.7, reason: `Hanya kata umum "${n.match(k.re)?.[0]}" yang cocok; usulkan akun baru di ${FS_LINES[k.generic].label} dengan nama dari file` };
@@ -344,6 +345,17 @@ export async function acceptMappings(
       const byName = new Map<string, string>();
       for (const a of chart) if (!a.isBank && !a.isSuspense && !a.isClearing) byName.set(normName(a.name), a.code);
 
+      // A template account the client predates (e.g. 1135) is created on first use when its code is free.
+      const templateCodes = [...new Set(items.flatMap((it) => (!it.newAccount && it.accountCode && !byCode.has(it.accountCode) && COA_TEMPLATE.some((a) => a.code === it.accountCode) ? [it.accountCode] : [])))];
+      if (templateCodes.length) {
+        await templateAccounts(tx, clientId, templateCodes);
+        for (const a of await tx.account.findMany({ where: { clientId, code: { in: templateCodes } }, select: { id: true, code: true, name: true, isBank: true, isSuspense: true, isClearing: true } })) {
+          byCode.set(a.code, a);
+          used.add(a.code);
+          if (!a.isBank && !a.isSuspense && !a.isClearing) byName.set(normName(a.name), a.code);
+        }
+      }
+
       const toCreate: { code: string; name: string; fsLine: FsLine }[] = [];
       const plan: { sourceAccountId: string; code: string; mappedBy: MapMethod }[] = [];
       for (const it of items) {
@@ -420,7 +432,8 @@ const RANGES: Partial<Record<FsLine, [number, number]>> = {
 /** FS lines under which "Buat akun baru" can create a client account, in template order. */
 export const NEW_ACCOUNT_FS_LINES = (Object.keys(FS_LINES) as FsLine[]).filter((k) => RANGES[k]).map((k) => ({ key: k, label: FS_LINES[k].label }));
 
-const SPECIAL = new Set(["1190", "1199", "1999", "3200", "3900", "7190", "7200", ...Array.from({ length: 9 }, (_, i) => `110${i + 1}`), ...Array.from({ length: 9 }, (_, i) => `220${i + 1}`)]);
+// Template codes are skipped too: accounts added to the template later (1135, 1181, 2146 …) are created on first use and must stay free.
+const SPECIAL = new Set(["1190", "1199", "1999", "3200", "3900", "7190", "7200", ...Array.from({ length: 9 }, (_, i) => `110${i + 1}`), ...Array.from({ length: 9 }, (_, i) => `220${i + 1}`), ...COA_TEMPLATE.map((a) => a.code)]);
 const SECTION_TYPE: Record<string, AccountType> = { ASET_LANCAR: "ASET", ASET_TIDAK_LANCAR: "ASET", LIABILITAS_JANGKA_PENDEK: "LIABILITAS", LIABILITAS_JANGKA_PANJANG: "LIABILITAS", EKUITAS: "EKUITAS" };
 
 /** Next free code under an FS line's range, then under its anchor (1140 → 114001 … 114099, 1140100 … 1140999; sorts right after 1140). */
@@ -434,6 +447,16 @@ export function allocateAccountCode(fsLine: FsLine, used: Set<string>): string {
     if (!used.has(c)) code = c;
   }
   if (!code) throw new MappingError(`Rentang kode untuk ${FS_LINES[fsLine].label} sudah penuh`);
+  return code;
+}
+
+/** One new client account under an FS line (the batched path is acceptMappings). */
+export async function createClientAccount(tx: Tx, clientId: string, fsLine: FsLine, name: string): Promise<string> {
+  const client = await tx.client.findUniqueOrThrow({ where: { id: clientId }, select: { firmId: true } });
+  const code = allocateAccountCode(fsLine, new Set((await tx.account.findMany({ where: { clientId }, select: { code: true } })).map((a) => a.code)));
+  await tx.account.create({ data: { firmId: client.firmId, clientId, ...newAccountData(fsLine, name), code } });
+  // The chart changed, so cached AI answers keyed on the old chart no longer apply.
+  await tx.client.update({ where: { id: clientId }, data: { coaVersion: { increment: 1 } } });
   return code;
 }
 
