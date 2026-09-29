@@ -6,7 +6,7 @@ import { MixedScopeError, otherComprehensiveIncome } from "@/lib/reports/stateme
 import { isMixed, scopeEntities } from "@/lib/reports/fx";
 import { assetRegister } from "@/lib/assets/register";
 import { BUCKETS, BUCKET_LABEL, invoicesAt } from "@/lib/receivables/aging";
-import { ckpn } from "@/lib/receivables/ckpn";
+import { ckpn, settingAt } from "@/lib/receivables/ckpn";
 import { leaseSchedule, positionAt } from "@/lib/leases/schedule";
 import { terms } from "@/lib/leases/register";
 import { valuation } from "@/lib/benefits/valuation";
@@ -123,7 +123,7 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
     note.paragraphs.push(`Umur piutang usaha per ${formatDate(asOf)} dari daftar faktur.`);
     note.tables.push({ columns: ["Umur", "Jumlah"], rows: BUCKETS.map((b, i) => [BUCKET_LABEL[b], by[i]]), total: ["Jumlah", by.reduce((t, v) => t + v, 0n)] });
     for (const e of entities) {
-      if (!(await db.ckpnSetting.findUnique({ where: { entityId: e.id } }))) continue;
+      if (!(await settingAt(db, e.id, year, month))) continue;
       const c = await ckpn(db, scope.clientId, e.id, year, month);
       if (c.total === null) continue;
       note.paragraphs.push(`${entities.length > 1 ? `${e.shortName}: ` : ""}cadangan kerugian penurunan nilai piutang ${formatMoney(c.total, currency)} (matriks provisi, metode ${c.setting.method === "ROLL_RATE" ? "roll rate" : "tarif manual"}, faktor forward-looking ${pct(c.setting.forwardBp)}).`);
