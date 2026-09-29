@@ -19,13 +19,14 @@ Each finding was checked; all were real and are fixed here in one follow-up (sam
 - [x] Employee census: the same name + birth date twice without a number is refused; employees created in an import count for later rows.
 - [x] Dates: `31/02/1990`-style text dates are unreadable (ledger and census imports), never rolled into the next month.
 - [x] Imbalan Kerja page: an entity reached by switching scope starts from its saved assumptions (no crash).
+- [x] CALK (#58, merged meanwhile) reads the CKPN setting in force for the month.
 - Already done in #56: the stricter template-account check (side and name) that #55's review asked for.
 
 **Gate-reopener (flagged):** migration `20260929070000_ckpn_setting_versions` (CkpnSetting gains effectiveYear/effectiveMonth; the
 per-entity unique becomes per entity-month; existing rows apply from January 2000).
 
 ## Verification
-- lint ✓ · typecheck ✓ · `Test Files 85 passed (85) · Tests 596 passed (596)` · build ✓ · `npx playwright test` → `17 passed (1.5m)` · `demo:reset` + `verify:books` → `ALL PASS — 1717 pemeriksaan saldo cocok dengan ground truth.`
+- After merging staging (with #58): lint ✓ · typecheck ✓ · `Test Files 86 passed (86) · Tests 600 passed (600)` · build ✓ · `npx playwright test` → `18 passed (1.6m)` · `demo:reset` + `verify:books` → `ALL PASS — 1717 pemeriksaan saldo cocok dengan ground truth.`
 - Lease figures changed by at most Rp 1 per line (e.g. June interest 2 124 338, was 2 124 339); tests updated from an independent exact
   Fraction computation.
 
