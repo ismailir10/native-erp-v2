@@ -4,15 +4,15 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Download, Plus } from "lucide-react";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SimpleSelect } from "@/components/app/simple-select";
 import { Money } from "@/components/app/money";
-import { acceptSuggestionAction, addCorrectionAction, addCreditAction, deleteCorrectionAction, deleteCreditAction, dismissSuggestionAction, postTaxAction, setRegimeAction } from "@/app/actions";
+import { acceptSuggestionAction, addCorrectionAction, addCreditAction, deleteCorrectionAction, deleteCreditAction, deleteLossAction, dismissSuggestionAction, postTaxAction, setCorrectionPercentAction, setLossAction, setRegimeAction } from "@/app/actions";
 import { formatMoney } from "@/lib/money";
 import type { TaxPackView } from "@/lib/tax/view";
 
@@ -30,6 +30,8 @@ export function TaxPackPanel(props: { clientId: string; periodKey: string; perio
   const base = `/clients/${props.clientId}`;
   const scope = { clientId: props.clientId, entityId: v.entity.id, year: v.year };
   const [busy, setBusy] = useState(false);
+  const [percents, setPercents] = useState<Record<string, string>>({});
+  const [loss, setLoss] = useState<{ originYear: string; amount: string } | null>(null);
   const [correction, setCorrection] = useState<{ description: string; direction: "POSITIVE" | "NEGATIVE"; kind: "PERMANENT" | "TEMPORARY"; amount: string; accountCode: string } | null>(null);
   const [credit, setCredit] = useState<{ type: "PPH_22" | "PPH_23" | "PPH_24" | "OTHER"; reference: string; date: string; amount: string; accountCode: string } | null>(null);
   const final = v.regime === "FINAL_UMKM";
@@ -58,6 +60,23 @@ export function TaxPackPanel(props: { clientId: string; periodKey: string; perio
           {c.source.type === "ASSETS" && <Link href={`${base}/assets?period=${props.periodKey}&entity=${v.entity.id}`} className="ml-2 text-xs text-primary underline-offset-2 hover:underline">Aset Tetap</Link>}
           {c.source.type === "ACCOUNT" && <Link href={ledger(c.source.code)} className="ml-2 text-xs text-primary underline-offset-2 hover:underline">{c.source.code}</Link>}
           {c.source.type === "MANUAL" && c.source.code && <Link href={ledger(c.source.code)} className="ml-2 text-xs text-primary underline-offset-2 hover:underline">{c.source.code}</Link>}
+          {c.source.type === "MANUAL" && c.source.percent !== null && (
+            <span className="ml-2 inline-flex items-center gap-1 text-xs text-muted-foreground">
+              ×
+              <Input
+                aria-label={`Persentase ${c.label}`}
+                inputMode="numeric"
+                className="h-6 w-12 px-1 text-right text-xs"
+                defaultValue={String(c.source.percent)}
+                onBlur={(e) => {
+                  const pct = Number(e.target.value);
+                  const src = c.source as { id: string; percent: number };
+                  if (pct !== src.percent) run(() => setCorrectionPercentAction(props.clientId, src.id, pct), "Persentase koreksi diubah");
+                }}
+              />
+              %
+            </span>
+          )}
           {c.source.type === "MANUAL" && (
             <Button variant="ghost" size="sm" className="ml-1 h-6 px-2 text-xs" disabled={busy} onClick={() => run(() => deleteCorrectionAction(props.clientId, (c.source as { id: string }).id), "Koreksi dihapus")}>Hapus</Button>
           )}
@@ -106,27 +125,38 @@ export function TaxPackPanel(props: { clientId: string; periodKey: string; perio
           <FieldLabel>Skema PPh badan {v.year}</FieldLabel>
           <SimpleSelect label="Skema PPh badan" value={v.regime} disabled={busy} onChange={(r) => run(() => setRegimeAction({ ...scope, regime: r as "NORMAL" | "FINAL_UMKM" }), "Skema diganti")} options={[{ value: "NORMAL", label: "Normal (Pasal 17 & 31E)" }, { value: "FINAL_UMKM", label: "PP 55/2022 final 0,5%" }]} />
         </Field>
-        {!final && (
-          <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2">
+          <a href={`${base}/tax/export?entity=${v.entity.id}&period=${props.periodKey}`} className={buttonVariants({ variant: "outline", size: "sm" })} download data-testid="tax-download"><Download /> Unduh kertas kerja</a>
+          {!final && (
+            <>
             <Button variant="outline" size="sm" onClick={() => setCorrection({ description: "", direction: "POSITIVE", kind: "PERMANENT", amount: "", accountCode: "" })}><Plus /> Koreksi fiskal</Button>
             <Button variant="outline" size="sm" onClick={() => setCredit({ type: "PPH_23", reference: "", date: `${v.year}-${props.periodKey.slice(5)}-01`, amount: "", accountCode: props.accounts.credit.some((a) => a.code === "1180") ? "1180" : (props.accounts.credit[0]?.code ?? "") })}><Plus /> Kredit pajak</Button>
-          </div>
-        )}
+            </>
+          )}
+        </div>
       </div>
 
       {v.suggestions.length > 0 && !final && (
         <Card data-testid="tax-suggestions">
           <CardHeader>
             <CardTitle>Usulan koreksi fiskal</CardTitle>
-            <CardDescription>Beban yang namanya menunjukkan tidak dapat dikurangkan (Pasal 9 UU PPh). Terima untuk menambahkannya sebagai koreksi positif yang mengikuti saldo akunnya, atau abaikan.</CardDescription>
+            <CardDescription>Akun yang namanya menunjukkan koreksi fiskal (Pasal 9 UU PPh, beda waktu). Terima dengan persentasenya untuk menambahkannya sebagai koreksi yang mengikuti saldo akun, atau abaikan.</CardDescription>
           </CardHeader>
           <CardContent className="divide-y px-0">
             {v.suggestions.map((sg) => (
               <div key={sg.key} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-6 py-2.5">
-                <div className="min-w-0 flex-1 basis-56 text-sm"><Link href={ledger(sg.code)} className="hover:text-primary">{sg.code} {sg.name}</Link></div>
+                <div className="min-w-0 flex-1 basis-56 text-sm">
+                  <Link href={ledger(sg.code)} className="hover:text-primary">{sg.code} {sg.name}</Link>
+                  <div className="text-xs text-muted-foreground">{sg.label} · {sg.direction === "POSITIVE" ? "positif" : "negatif"} · {KIND[sg.kind]}</div>
+                </div>
                 <Money className="text-sm" value={BigInt(sg.amount)} currency={cur} />
+                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                  ×
+                  <Input aria-label={`Persentase ${sg.name}`} inputMode="numeric" className="h-7 w-14 px-1 text-right text-xs" value={percents[sg.key] ?? String(sg.percent)} onChange={(e) => setPercents({ ...percents, [sg.key]: e.target.value.replace(/\D/g, "") })} />
+                  %
+                </span>
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm" disabled={busy} onClick={() => run(() => acceptSuggestionAction({ ...scope, month: v.month, accountCode: sg.code }), "Koreksi ditambahkan")}>Terima</Button>
+                  <Button variant="outline" size="sm" disabled={busy} onClick={() => run(() => acceptSuggestionAction({ ...scope, month: v.month, accountCode: sg.code, percent: Number(percents[sg.key] ?? sg.percent) }), "Koreksi ditambahkan")}>Terima</Button>
                   <Button variant="ghost" size="sm" disabled={busy} onClick={() => run(() => dismissSuggestionAction({ ...scope, key: sg.key }), "Usulan diabaikan")}>Abaikan</Button>
                 </div>
               </div>
@@ -157,6 +187,29 @@ export function TaxPackPanel(props: { clientId: string; periodKey: string; perio
               {correctionRows("NEGATIVE")}
               {v.corrections.every((c) => c.direction !== "NEGATIVE") && <div className="py-1 pl-4 text-muted-foreground">Tidak ada</div>}
               {row("Laba (rugi) fiskal", v.fiscalProfit, { strong: true })}
+              <div className="flex items-baseline justify-between gap-4 py-1 text-muted-foreground">
+                <span>Kompensasi kerugian</span>
+                <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setLoss({ originYear: String(v.year - 1), amount: "" })}><Plus /> Rugi fiskal</Button>
+              </div>
+              {v.losses.length === 0 && <div className="py-1 pl-4 text-muted-foreground">Belum ada sisa rugi fiskal tahun lalu</div>}
+              {v.losses.map((l) => (
+                <div key={l.originYear} className="flex items-baseline justify-between gap-4 py-1 pl-4" data-testid={`loss-${l.originYear}`}>
+                  <div className="min-w-0">
+                    Rugi {l.originYear} <span className="text-xs text-muted-foreground">· sisa awal {formatMoney(BigInt(l.opening), cur)} · {l.expired ? `kedaluwarsa (berlaku s.d. ${l.expiresAfter})` : `berlaku s.d. ${l.expiresAfter}, sisa akhir ${formatMoney(BigInt(l.remaining), cur)}`}</span>
+                    {l.id && <Button variant="ghost" size="sm" className="ml-1 h-6 px-2 text-xs" disabled={busy} onClick={() => run(() => deleteLossAction(props.clientId, l.id!), "Rugi fiskal dihapus")}>Hapus</Button>}
+                  </div>
+                  <Money className="shrink-0" value={-BigInt(l.used)} currency={cur} />
+                </div>
+              ))}
+              {v.lossSuggestion && (
+                <div className="my-1 flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed px-3 py-2 text-xs" data-testid="loss-suggestion">
+                  <span>Buku mencatat rugi fiskal {v.lossSuggestion.originYear} sebesar {formatMoney(BigInt(v.lossSuggestion.amount), cur)}. Catat sebagai sisa rugi bila belum dikompensasikan.</span>
+                  <span className="flex gap-2">
+                    <Button variant="outline" size="sm" disabled={busy} onClick={() => run(() => setLossAction({ ...scope, originYear: v.lossSuggestion!.originYear, amount: formatMoney(BigInt(v.lossSuggestion!.amount), cur, { bare: true }) }), "Rugi fiskal dicatat")}>Catat</Button>
+                    <Button variant="ghost" size="sm" disabled={busy} onClick={() => run(() => dismissSuggestionAction({ ...scope, key: `loss:${v.lossSuggestion!.originYear}` }), "Usulan diabaikan")}>Abaikan</Button>
+                  </span>
+                </div>
+              )}
               {row("Penghasilan kena pajak (dibulatkan ke bawah ribuan)", v.tax.pkp, { testid: "tax-pkp" })}
               {BigInt(v.fiscalProfit) < 0n && <p className="pb-1 text-xs text-muted-foreground">Rugi fiskal: PKP nol. Kompensasi kerugian tahun lalu belum dihitung di sini.</p>}
               {row("Peredaran bruto (pendapatan usaha)", v.turnover, { muted: true })}
@@ -245,6 +298,31 @@ export function TaxPackPanel(props: { clientId: string; periodKey: string; perio
           <DialogFooter>
             <Button variant="outline" onClick={() => setCorrection(null)}>Batal</Button>
             <Button disabled={busy || !correction?.description.trim() || !correction?.amount} onClick={() => correction && run(() => addCorrectionAction({ ...scope, ...correction, accountCode: correction.accountCode || null }), "Koreksi ditambahkan", () => setCorrection(null))}>Simpan koreksi</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={loss !== null} onOpenChange={(o) => !o && setLoss(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Sisa rugi fiskal</DialogTitle>
+            <DialogDescription>Rugi fiskal yang belum dikompensasikan per 1 Januari {v.year}, sesuai lampiran SPT tahun lalu. Dikompensasikan paling lama lima tahun, yang tertua lebih dulu.</DialogDescription>
+          </DialogHeader>
+          {loss && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field>
+                <FieldLabel>Tahun asal rugi</FieldLabel>
+                <SimpleSelect label="Tahun asal rugi" value={loss.originYear} onChange={(y) => setLoss({ ...loss, originYear: y })} options={[1, 2, 3, 4, 5].map((k) => ({ value: String(v.year - k), label: String(v.year - k) }))} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="loss-amount">Sisa rugi</FieldLabel>
+                <Input id="loss-amount" inputMode="decimal" className="num text-right" value={loss.amount} onChange={(e) => setLoss({ ...loss, amount: e.target.value })} />
+              </Field>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLoss(null)}>Batal</Button>
+            <Button disabled={busy || !loss?.amount} onClick={() => loss && run(() => setLossAction({ ...scope, originYear: Number(loss.originYear), amount: loss.amount }), "Rugi fiskal dicatat", () => setLoss(null))}>Simpan rugi</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -3,7 +3,8 @@ import type { CorrectionDirection, CorrectionKind, TaxCreditType, TaxRegime } fr
 import { LedgerError } from "@/lib/ledger/post";
 import { dateOnly } from "@/lib/format";
 import { parseMoney } from "@/lib/money";
-import { NON_DEDUCTIBLE, packApplies } from "@/lib/tax/pack";
+import { packApplies } from "@/lib/tax/pack";
+import { categoryOf } from "@/lib/tax/categories";
 
 /**
  * What the accountant records for an entity's fiscal year (accounting-rules 5d): the regime, manual koreksi fiskal, accepted or
@@ -55,26 +56,62 @@ export async function deleteCorrection(db: Db, input: { clientId: string; correc
 }
 
 /**
- * Accept a non-deductible-expense suggestion: a positive, permanent correction that follows the account's year-to-date balance (the
- * pack reads it live; the stored amount is the balance when accepted).
+ * Accept a correction suggestion: the account's category (direction, kind, default %) or another %, following the account's
+ * year-to-date balance × % (the pack reads it live; the stored amount is the share when accepted).
  */
-export async function acceptSuggestion(db: Db, input: { clientId: string; entityId: string; year: number; accountCode: string; amount: bigint; actorId?: string | null }) {
+export async function acceptSuggestion(db: Db, input: { clientId: string; entityId: string; year: number; accountCode: string; amount: bigint; percent?: number; actorId?: string | null }) {
   const { entity, taxYear } = await yearFor(db, input.clientId, input.entityId, input.year);
   const account = await db.account.findFirst({ where: { clientId: input.clientId, code: input.accountCode } });
-  if (!account || account.type !== "BEBAN" || !NON_DEDUCTIBLE.test(account.name)) throw new LedgerError("Usulan koreksi tidak berlaku untuk akun ini.");
+  const category = account && account.type === "BEBAN" ? categoryOf(account.name) : null;
+  if (!account || !category) throw new LedgerError("Usulan koreksi tidak berlaku untuk akun ini.");
+  const percent = input.percent ?? category.percent;
+  if (!(Number.isInteger(percent) && percent >= 1 && percent <= 100)) throw new LedgerError("Persentase koreksi 1–100.");
   const key = `nd:${account.code}`;
   if (await db.fiscalCorrection.findFirst({ where: { taxYearId: taxYear.id, suggestion: key } })) throw new LedgerError("Usulan ini sudah diterima.");
   if (input.amount <= 0n) throw new LedgerError("Akun ini tidak punya beban tahun ini.");
   return db.fiscalCorrection.create({
-    data: { firmId: entity.firmId, taxYearId: taxYear.id, description: `Beban yang tidak dapat dikurangkan: ${account.name}`, direction: "POSITIVE", kind: "PERMANENT", amount: input.amount, accountId: account.id, suggestion: key, createdById: input.actorId ?? null },
+    data: { firmId: entity.firmId, taxYearId: taxYear.id, description: `${category.label}: ${account.name}`, direction: category.direction, kind: category.kind, amount: (input.amount * BigInt(percent) * 2n + 100n) / 200n, accountId: account.id, suggestion: key, category: category.key, percent, createdById: input.actorId ?? null },
   });
 }
 
+/** Change the % of an accepted suggestion (it follows its account × %). */
+export async function setCorrectionPercent(db: Db, input: { clientId: string; correctionId: string; percent: number }) {
+  const c = await db.fiscalCorrection.findFirst({ where: { id: input.correctionId, taxYear: { clientId: input.clientId } } });
+  if (!c) throw new LedgerError("Koreksi tidak ditemukan.");
+  if (!c.suggestion) throw new LedgerError("Persentase hanya untuk koreksi yang mengikuti saldo akun.");
+  if (!(Number.isInteger(input.percent) && input.percent >= 1 && input.percent <= 100)) throw new LedgerError("Persentase koreksi 1–100.");
+  await yearOf(db, input.clientId, c.taxYearId);
+  return db.fiscalCorrection.update({ where: { id: c.id }, data: { percent: input.percent } });
+}
+
 export async function dismissSuggestion(db: Db, input: { clientId: string; entityId: string; year: number; key: string }) {
-  if (!/^nd:[\w.-]+$/.test(input.key)) throw new LedgerError("Usulan tidak dikenal.");
+  if (!/^(nd:[\w.-]+|loss:\d{4})$/.test(input.key)) throw new LedgerError("Usulan tidak dikenal.");
   const { taxYear } = await yearFor(db, input.clientId, input.entityId, input.year);
   if (taxYear.dismissedSuggestions.includes(input.key)) return taxYear;
   return db.taxYear.update({ where: { id: taxYear.id }, data: { dismissedSuggestions: { push: input.key } } });
+}
+
+/**
+ * Kompensasi kerugian: the loss of an origin year still unused at 1 January of the tax year (as on the prior SPT). At most five origin
+ * years back; recording an origin year again replaces its amount.
+ */
+export async function setLoss(db: Db, input: { clientId: string; entityId: string; year: number; originYear: number; amount: string; actorId?: string | null }) {
+  const { entity, taxYear } = await yearFor(db, input.clientId, input.entityId, input.year);
+  if (!(Number.isInteger(input.originYear) && input.originYear < input.year && input.originYear >= input.year - 5)) throw new LedgerError(`Tahun asal rugi harus ${input.year - 5}–${input.year - 1} (kompensasi lima tahun).`);
+  const amount = parseMoney(input.amount, entity.functionalCurrency);
+  if (amount <= 0n) throw new LedgerError("Sisa rugi harus lebih dari nol.");
+  return db.taxLossCarryforward.upsert({
+    where: { taxYearId_originYear: { taxYearId: taxYear.id, originYear: input.originYear } },
+    update: { amount },
+    create: { firmId: entity.firmId, taxYearId: taxYear.id, originYear: input.originYear, amount, createdById: input.actorId ?? null },
+  });
+}
+
+export async function deleteLoss(db: Db, input: { clientId: string; lossId: string }) {
+  const l = await db.taxLossCarryforward.findFirst({ where: { id: input.lossId, taxYear: { clientId: input.clientId } } });
+  if (!l) throw new LedgerError("Rugi fiskal tidak ditemukan.");
+  await yearOf(db, input.clientId, l.taxYearId);
+  await db.taxLossCarryforward.delete({ where: { id: l.id } });
 }
 
 export type CreditInput = { clientId: string; entityId: string; year: number; type: TaxCreditType; reference: string; date: string; amount: string; accountCode: string; actorId?: string | null };

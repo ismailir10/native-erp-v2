@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { db, makeGroup, resetDb } from "../helpers";
 import { postJournal } from "@/lib/ledger/post";
 import { taxPack } from "@/lib/tax/pack";
-import { acceptSuggestion, addCorrection, addCredit, deleteCorrection, deleteCredit, dismissSuggestion, setRegime } from "@/lib/tax/records";
+import { acceptSuggestion, addCorrection, addCredit, deleteCorrection, deleteCredit, deleteLoss, dismissSuggestion, setCorrectionPercent, setLoss, setRegime } from "@/lib/tax/records";
 import { dateOnly } from "@/lib/format";
 
 type G = Awaited<ReturnType<typeof makeGroup>>;
@@ -64,5 +64,39 @@ describe("tax pack records", () => {
     await expect(addCredit(db, { ...base, type: "PPH_23", reference: "BP-1", date: "2026-05-05", amount: "1", accountCode: "1101" })).rejects.toThrow(/1180/);
     await db.period.create({ data: { firmId: g.firm.id, clientId: g.client.id, year: 2026, month: 12, status: "LOCKED" } });
     await expect(setRegime(db, { ...base, regime: "FINAL_UMKM" })).rejects.toThrow(/Desember 2026 sudah dikunci/);
+  });
+
+  it("takes a category's share and lets the accountant change the %", async () => {
+    const g = await makeGroup();
+    await db.account.create({ data: { firmId: g.firm.id, clientId: g.client.id, code: "6197", name: "Beban Pulsa Telepon Seluler", type: "BEBAN", normalBalance: "DEBIT", fsLine: "BEBAN_UMUM_ADM" } });
+    await journal(g, dateOnly(2026, 3, 31), "6197", "1110", 8_000_000n);
+    const base = { clientId: g.client.id, entityId: g.pt.entity.id, year: 2026 };
+    expect((await at(g)).suggestions).toMatchObject([{ code: "6197", category: "PHONE_VEHICLE", percent: 50, corrected: 4_000_000n }]);
+    const c = await acceptSuggestion(db, { ...base, accountCode: "6197", amount: 8_000_000n });
+    expect(c).toMatchObject({ category: "PHONE_VEHICLE", percent: 50, amount: 4_000_000n });
+    expect((await at(g)).positive).toBe(4_000_000n);
+    await setCorrectionPercent(db, { clientId: g.client.id, correctionId: c.id, percent: 100 });
+    expect((await at(g)).positive).toBe(8_000_000n);
+    await expect(setCorrectionPercent(db, { clientId: g.client.id, correctionId: c.id, percent: 0 })).rejects.toThrow(/1–100/);
+  });
+
+  it("compensates losses oldest first and suggests last year's loss from the books", async () => {
+    const g = await makeGroup();
+    // 2025: a loss of 40 jt in Buku. 2026: profit 100 jt.
+    await journal(g, dateOnly(2025, 6, 30), "6100", "1110", 40_000_000n);
+    await journal(g, dateOnly(2026, 3, 31), "1130", "4100", 100_000_000n);
+    const base = { clientId: g.client.id, entityId: g.pt.entity.id, year: 2026 };
+    let p = await at(g, 12);
+    expect(p.lossSuggestion).toEqual({ originYear: 2025, amount: 40_000_000n });
+    await setLoss(db, { ...base, originYear: 2025, amount: "40.000.000" });
+    await setLoss(db, { ...base, originYear: 2022, amount: "70.000.000" });
+    await expect(setLoss(db, { ...base, originYear: 2020, amount: "1" })).rejects.toThrow(/2021–2025/);
+    p = await at(g, 12);
+    expect(p.lossSuggestion).toBeNull();
+    // 2022 first (70 jt), then 30 of 2025's 40 jt; PKP 0.
+    expect(p.losses.map((l) => [l.originYear, l.used, l.remaining])).toEqual([[2022, 70_000_000n, 0n], [2025, 30_000_000n, 10_000_000n]]);
+    expect(p).toMatchObject({ fiscalProfit: 100_000_000n, compensation: 100_000_000n, tax: { pkp: 0n, due: 0n } });
+    await deleteLoss(db, { clientId: g.client.id, lossId: p.losses[0].id! });
+    expect((await at(g, 12)).tax.pkp).toBe(60_000_000n);
   });
 });

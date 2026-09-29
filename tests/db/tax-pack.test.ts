@@ -38,7 +38,7 @@ describe("tax pack", () => {
     const p = (await taxPack(db, g.client.id, g.pt.entity.id, 2026, 9))!;
     expect(p).toMatchObject({ applicable: true, regime: "NORMAL", profitBeforeTax: 605_000_000n, turnover: 1_000_000_000n, positive: 0n, negative: 10_000_000n, fiscalProfit: 595_000_000n });
     expect(p.corrections.map((c) => [c.key, c.direction, c.kind, c.amount])).toEqual([["auto:final:4900", "NEGATIVE", "PERMANENT", 10_000_000n]]);
-    expect(p.suggestions).toEqual([{ key: "nd:6195", code: "6195", name: "Beban Sumbangan", amount: 5_000_000n }]);
+    expect(p.suggestions).toMatchObject([{ key: "nd:6195", code: "6195", name: "Beban Sumbangan", amount: 5_000_000n, category: "DONATION", percent: 100, corrected: 5_000_000n }]);
     // Turnover ≤ 4,8 M: all PKP at 11 %.
     expect(p.tax).toMatchObject({ pkp: 595_000_000n, facilityPkp: 595_000_000n, due: 65_450_000n });
     expect(p.credits.map((c) => [c.type, c.amount, c.accountCode])).toEqual([["PPH_25", 30_000_000n, "1180"], ["PPH_23", 2_000_000n, "1180"]]);
