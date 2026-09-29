@@ -226,7 +226,17 @@ export async function saveCkpnSetting(db: Db, input: CkpnSettingInput) {
   const data = { method: input.method, historyMonths: input.historyMonths, forwardBp, lastBucketBp, currentBp, d1to30Bp, d31to60Bp, d61to90Bp };
   if (!(Number.isInteger(input.year) && input.year >= 2000 && input.year <= 2100 && Number.isInteger(input.month) && input.month >= 1 && input.month <= 12)) throw new LedgerError("Periode berlaku tidak valid.");
   const key = { entityId: entity.id, effectiveYear: input.year, effectiveMonth: input.month };
-  return db.ckpnSetting.upsert({ where: { entityId_effectiveYear_effectiveMonth: key }, update: data, create: { ...data, ...key, firmId: entity.firmId } });
+  // A new version governs its month and every later one until the next version: none of those may be closed. Serialised with the close.
+  return db.$transaction(async (tx) => {
+    await closeLock(tx, input.clientId);
+    const next = await tx.ckpnSetting.findFirst({ where: { entityId: entity.id, OR: [{ effectiveYear: { gt: input.year } }, { effectiveYear: input.year, effectiveMonth: { gt: input.month } }] }, orderBy: [{ effectiveYear: "asc" }, { effectiveMonth: "asc" }] });
+    const idx = (y: number, m: number) => y * 12 + m;
+    const locked = (await tx.period.findMany({ where: { clientId: input.clientId, status: "LOCKED" }, select: { year: true, month: true } }))
+      .filter((p) => idx(p.year, p.month) >= idx(input.year, input.month) && (!next || idx(p.year, p.month) < idx(next.effectiveYear, next.effectiveMonth)))
+      .sort((a, b) => idx(a.year, a.month) - idx(b.year, b.month))[0];
+    if (locked) throw new LedgerError(`${formatPeriod(locked.year, locked.month)} sudah dikunci dan memakai pengaturan CKPN ini. Simpan perubahan untuk bulan sesudah bulan terkunci terakhir, atau buka kuncinya dulu.`);
+    return tx.ckpnSetting.upsert({ where: { entityId_effectiveYear_effectiveMonth: key }, update: data, create: { ...data, ...key, firmId: entity.firmId } });
+  });
 }
 
 /**

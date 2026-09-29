@@ -190,7 +190,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
               <CardDescription>1 Januari – akhir {formatPeriod(period.year, period.month)}</CardDescription>
             </CardHeader>
             <CardContent className="px-0">
-              {equity ? <EquityTable data={equity} currency={currency} /> : <p className="px-6 text-sm text-muted-foreground">Laporan ini hanya untuk cakupan satu mata uang.</p>}
+              {equity ? <EquityTable data={equity} currency={currency} accountHref={href} /> : <p className="px-6 text-sm text-muted-foreground">Laporan ini hanya untuk cakupan satu mata uang.</p>}
             </CardContent>
           </Card>
         </TabsContent>
@@ -205,7 +205,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
               <CardDescription>Metode tidak langsung, dari perubahan pos neraca · 1 Januari – akhir {formatPeriod(period.year, period.month)}</CardDescription>
             </CardHeader>
             <CardContent className="px-0">
-              {cash ? <CashFlowTable data={cash} currency={currency} /> : <p className="px-6 text-sm text-muted-foreground">Laporan ini hanya untuk cakupan satu mata uang.</p>}
+              {cash ? <CashFlowTable data={cash} currency={currency} accountHref={href} /> : <p className="px-6 text-sm text-muted-foreground">Laporan ini hanya untuk cakupan satu mata uang.</p>}
             </CardContent>
           </Card>
         </TabsContent>
@@ -217,7 +217,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
               <CardDescription>Draf dari angka laporan dan daftar-daftar di Buku, per akhir {formatPeriod(period.year, period.month)} dengan pembanding. Sunting di file unduhan.</CardDescription>
             </CardHeader>
             <CardContent className="px-0">
-              {mixed ? <p className="px-6 text-sm text-muted-foreground">CALK hanya untuk cakupan satu mata uang.</p> : notes && <NotesView data={notes} currency={currency} />}
+              {mixed ? <p className="px-6 text-sm text-muted-foreground">CALK hanya untuk cakupan satu mata uang.</p> : notes && <NotesView data={notes} currency={currency} accountHref={href} />}
             </CardContent>
           </Card>
         </TabsContent>

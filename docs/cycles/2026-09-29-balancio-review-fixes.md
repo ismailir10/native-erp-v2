@@ -20,13 +20,20 @@ Each finding was checked; all were real and are fixed here in one follow-up (sam
 - [x] Dates: `31/02/1990`-style text dates are unreadable (ledger and census imports), never rolled into the next month.
 - [x] Imbalan Kerja page: an entity reached by switching scope starts from its saved assumptions (no crash).
 - [x] CALK (#58, merged meanwhile) reads the CKPN setting in force for the month.
+- [x] CKPN setting saves are refused when the version would govern a locked month (serialised with the close); the CKPN card remounts per
+      period so a form never carries another month's version.
+- [x] Cash flow (#58 review): a non-cash entry that crosses sections (asset bought on credit, dividend declared, first-year benefit
+      obligation) no longer shows as investing / financing — its part there moves to one operating *non-kas* line; lease interest accrued
+      is added back in operating so the whole rent paid is financing.
+- [x] CALK lease note from journalled months, with the ledger row as its total and the difference named.
+- [x] Drill-down: equity column headers, cash-flow lines and CALK account rows link to the account ledgers.
 - Already done in #56: the stricter template-account check (side and name) that #55's review asked for.
 
 **Gate-reopener (flagged):** migration `20260929070000_ckpn_setting_versions` (CkpnSetting gains effectiveYear/effectiveMonth; the
 per-entity unique becomes per entity-month; existing rows apply from January 2000).
 
 ## Verification
-- After merging staging (with #58): lint ✓ · typecheck ✓ · `Test Files 86 passed (86) · Tests 600 passed (600)` · build ✓ · `npx playwright test` → `18 passed (1.6m)` · `demo:reset` + `verify:books` → `ALL PASS — 1717 pemeriksaan saldo cocok dengan ground truth.`
+- After merging staging (with #58) and the second round: lint ✓ · typecheck ✓ · `Test Files 86 passed (86) · Tests 602 passed (602)` · build ✓ · `npx playwright test` → `18 passed (1.1m)`; every demo single-currency scope Mar/Jun/Aug: `checked 21, mismatches 0` · `demo:reset` + `verify:books` → `ALL PASS — 1717 pemeriksaan saldo cocok dengan ground truth.`
 - Lease figures changed by at most Rp 1 per line (e.g. June interest 2 124 338, was 2 124 339); tests updated from an independent exact
   Fraction computation.
 

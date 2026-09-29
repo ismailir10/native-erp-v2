@@ -91,7 +91,8 @@ export type EquityChanges = {
   to: Date;
   /** The date of the opening balance: the year's Saldo Awal when the books start inside the year, else 31 December. */
   openedAt: Date;
-  columns: { fsLine: FsLine; label: string }[];
+  /** Each column's accounts (for drill-down to their ledgers). */
+  columns: { fsLine: FsLine; label: string; codes: string[] }[];
   /** values[row][column], credit positive; the last column of each row is not included — `totals[row]` is the row total. */
   values: Record<EquityRow, bigint[]>;
   totals: Record<EquityRow, bigint>;
@@ -125,7 +126,8 @@ export async function equityChanges(db: Db, scope: Scope, to: Date): Promise<Equ
   const pick = (xs: bigint[]) => used.map(({ i }) => xs[i]);
   const picked = Object.fromEntries(EQUITY_ROWS.map((r) => [r, pick(values[r])])) as Record<EquityRow, bigint[]>;
   const totals = Object.fromEntries(EQUITY_ROWS.map((r) => [r, picked[r].reduce((t, v) => t + v, 0n)])) as Record<EquityRow, bigint>;
-  return { from, to, openedAt: start.openedOn ?? before, columns: used.map(({ fs }) => ({ fsLine: fs, label: FS_LINES[fs].label })), values: picked, totals, balanceSheetEquity: bs.totals.equity };
+  const codesOf = (fs: FsLine) => [...new Set([...opening, ...moved].filter((m) => m.account.fsLine === fs && m.net !== 0n).map((m) => m.account.code))].sort();
+  return { from, to, openedAt: start.openedOn ?? before, columns: used.map(({ fs }) => ({ fsLine: fs, label: FS_LINES[fs].label, codes: codesOf(fs) })), values: picked, totals, balanceSheetEquity: bs.totals.equity };
 }
 
 // ─── Laporan Arus Kas (tidak langsung) ────────────────────────────────────────
@@ -203,6 +205,37 @@ export async function cashFlow(db: Db, scope: Scope, to: Date): Promise<CashFlow
     g.codes.push(m.account.code);
     groups.set(line.key, g);
   }
+  const add = (key: string, label: string, section: CashSection, amount: bigint, code?: string) => {
+    const g = groups.get(key) ?? { key, label, amount: 0n, codes: [], section };
+    g.amount += amount;
+    if (code && !g.codes.includes(code)) g.codes.push(code);
+    groups.set(key, g);
+  };
+
+  // Non-cash transactions (no cash line) that cross sections — an asset bought on credit, a dividend declared, a first-year benefit
+  // obligation to Saldo laba — must not show as investing or financing flows: their investing/financing part is moved into operating as
+  // one "non-kas" line, where it offsets the other side (the payable, the obligation). Non-cash entries within one section stay as they are.
+  const lines = await db.journalLine.findMany({
+    where: { entityId: { in: scope.entityIds }, date: { gte: from, lte: to }, entry: { kind: { not: "OPENING" } } },
+    select: { entryId: true, debit: true, credit: true, account: { select: { code: true, type: true, fsLine: true, isIntercompany: true } } },
+  });
+  const byEntry = new Map<string, typeof lines>();
+  for (const l of lines) byEntry.set(l.entryId, [...(byEntry.get(l.entryId) ?? []), l]);
+  const sectionOf = (a: (typeof lines)[number]["account"]) => (a.type === "PENDAPATAN" || a.type === "BEBAN" ? "OPERATING" : (cashLine(a)?.section ?? "CASH"));
+  for (const entry of byEntry.values()) {
+    const sections = new Set(entry.map((l) => sectionOf(l.account)));
+    if (sections.has("CASH") || sections.size < 2) continue;
+    for (const l of entry) {
+      const line = cashLine(l.account);
+      if (!line || line.section === "OPERATING" || l.account.type === "PENDAPATAN" || l.account.type === "BEBAN") continue;
+      const net = l.debit - l.credit;
+      add(line.key, line.label, line.section, net); // undo its investing/financing effect …
+      // … and show it in operating. Interest accrued on a lease liability is part of the rent, which is paid (and shown) in financing.
+      if (LEASE_CODES.has(l.account.code)) add("LEASE_INTEREST", "Bunga dan reklasifikasi liabilitas sewa (dibayar di pendanaan)", "OPERATING", -net, l.account.code);
+      else add("NONCASH", "Transaksi non-kas (dilawankan dengan pos investasi/pendanaan)", "OPERATING", -net, l.account.code);
+    }
+  }
+
   const of = (s: CashSection) => [...groups.values()].filter((g) => g.section === s && g.amount !== 0n).map(({ key, label, amount, codes }) => ({ key, label, amount, codes }));
   const operating = of("OPERATING");
   const investing = of("INVESTING");

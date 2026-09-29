@@ -7,6 +7,7 @@ import { financialNotes } from "@/lib/reports/notes";
 import { financialStatementsWorkbook } from "@/lib/reports/workbook";
 import ExcelJS from "exceljs";
 import { postOpening } from "@/lib/opening";
+import { createLease, postLeaseMonths } from "@/lib/leases/register";
 import { dateOnly } from "@/lib/format";
 
 type G = Awaited<ReturnType<typeof makeGroup>>;
@@ -126,5 +127,41 @@ describe("equity changes, cash flow, other comprehensive income", () => {
     expect(eq.values.opening).toEqual([250n * J, 190n * J]);
     expect(eq.totals).toMatchObject({ capital: 0n, retained: 0n, profit: 0n, closing: 440n * J });
     expect(eq.balanceSheetEquity).toBe(440n * J);
+  });
+
+  it("keeps non-cash transactions out of investing and financing, and shows lease interest in financing", async () => {
+    const g = await makeGroup();
+    const id = async (code: string) => (await db.account.findFirstOrThrow({ where: { clientId: g.client.id, code } })).id;
+    const post = async (m: number, memo: string, lines: [string, bigint][]) =>
+      db.$transaction(async (tx) => postJournal(tx, { entityId: g.pt.entity.id, date: dateOnly(2026, m, 15), kind: "ADJUSTMENT", memo, lines: await Promise.all(lines.map(async ([code, v]) => (v > 0n ? { accountId: await id(code), debit: v } : { accountId: await id(code), credit: -v }))) }));
+    await post(1, "Setoran modal", [["1120", 500n * J], ["3100", -500n * J]]);
+    await post(2, "Mesin dibeli kredit", [["1210", 80n * J], ["2110", -80n * J]]);
+    await post(3, "Bayar sebagian mesin", [["2110", 30n * J], ["1120", -30n * J]]);
+    await post(4, "Sewa: bunga", [["7195", 2n * J], ["2170", -2n * J]]);
+    await post(4, "Sewa: bayar", [["2170", 12n * J], ["1120", -12n * J]]);
+    const cf = await cashFlow(db, { clientId: g.client.id, entityIds: [g.pt.entity.id] }, dateOnly(2026, 12, 31));
+    // Only the 30 jt actually paid for the machine is operating (through the payable); nothing invested on paper.
+    expect(cf.investing).toEqual([]);
+    expect(cf.operating.map((i) => [i.key, i.amount])).toEqual([["UTANG_USAHA", 50n * J], ["NONCASH", -80n * J], ["LEASE_INTEREST", 2n * J]]);
+    expect(cf.totals).toEqual({ OPERATING: -30n * J, INVESTING: 0n, FINANCING: 488n * J });
+    expect(cf.financing.find((i) => i.key === "LEASES")!.amount).toBe(-12n * J); // the whole rent paid, interest included
+    expect([cf.net, cf.closingCash]).toEqual([458n * J, 458n * J]);
+  });
+
+  it("shows leases in the notes as journalled and names a difference with the ledger", async () => {
+    const g = await makeGroup();
+    const scope = { clientId: g.client.id, entityIds: [g.pt.entity.id] };
+    await createLease(db, { clientId: g.client.id, entityId: g.pt.entity.id, name: "Kantor", lessor: "PT Graha", start: "2026-06", months: 24, payment: "10.000.000", intervalMonths: 1, timing: "ARREARS", rate: "12" });
+    const note = async () => (await financialNotes(db, scope, 2026, 8)).notes.find((n) => n.title === "Sewa")!;
+    // No month journalled yet: nothing depreciated, the liability as recognised — equal to the ledger.
+    let n = await note();
+    expect(n.tables[0].rows[0]).toEqual(["Kantor · PT Graha", 212_433_873n, 0n, 99_883_098n, 112_550_775n]);
+    expect(n.tables[0].total).toEqual(["Buku besar (1230, 1239, 2170, 2400)", 212_433_873n, 0n, 99_883_098n, 112_550_775n]);
+    expect(n.paragraphs.join(" ")).not.toMatch(/berbeda/);
+    // Three months journalled, rent not yet classified: the note says so instead of showing paid-down schedule figures as the ledger.
+    await postLeaseMonths(db, { clientId: g.client.id, entityId: g.pt.entity.id, year: 2026, month: 8 });
+    n = await note();
+    expect(n.tables[0].rows[0][2]).toBe(3n * 8_851_411n);
+    expect(n.paragraphs.join(" ")).toMatch(/berbeda dengan buku besar/);
   });
 });

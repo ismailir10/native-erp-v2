@@ -1,4 +1,5 @@
 import { Fragment } from "react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Money } from "@/components/app/money";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -6,8 +7,22 @@ import { EQUITY_ROWS, EQUITY_ROW_LABEL, type CashFlow, type EquityChanges } from
 import { formatDate } from "@/lib/format";
 import type { NoteCell, Notes } from "@/lib/reports/notes";
 
+/** Account codes as links to their ledgers (every figure drills to its accounts, then to its source rows). */
+function Codes({ codes, accountHref }: { codes: string[]; accountHref: (code: string) => string }) {
+  return (
+    <>
+      {codes.map((c, i) => (
+        <Fragment key={c}>
+          {i > 0 && ", "}
+          <Link href={accountHref(c)} className="num underline decoration-border underline-offset-4 hover:text-primary hover:decoration-primary" data-testid="fs-account-link">{c}</Link>
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
 /** Laporan Perubahan Ekuitas: one column per equity line, a total column; rows from the opening balance to the closing one. */
-export function EquityTable({ data, currency }: { data: EquityChanges; currency: string }) {
+export function EquityTable({ data, currency, accountHref }: { data: EquityChanges; currency: string; accountHref: (code: string) => string }) {
   const rows = EQUITY_ROWS.filter((r) => r === "opening" || r === "closing" || data.totals[r] !== 0n || data.values[r].some((v) => v !== 0n));
   return (
     <div className="overflow-x-auto">
@@ -15,7 +30,12 @@ export function EquityTable({ data, currency }: { data: EquityChanges; currency:
         <TableHeader>
           <TableRow>
             <TableHead className="py-2 pl-6" />
-            {data.columns.map((c) => <TableHead key={c.fsLine} className="py-2 pr-4 text-right font-medium whitespace-normal">{c.label}</TableHead>)}
+            {data.columns.map((c) => (
+              <TableHead key={c.fsLine} className="py-2 pr-4 text-right font-medium whitespace-normal">
+                {c.label}
+                {c.codes.length > 0 && <div className="text-xs font-normal normal-case"><Codes codes={c.codes} accountHref={accountHref} /></div>}
+              </TableHead>
+            ))}
             <TableHead className="py-2 pr-6 text-right font-medium">Jumlah</TableHead>
           </TableRow>
         </TableHeader>
@@ -41,7 +61,7 @@ export function EquityTable({ data, currency }: { data: EquityChanges; currency:
 }
 
 /** Laporan Arus Kas (indirect): operating from net profit, investing, financing, then the change and the cash balances. */
-export function CashFlowTable({ data, currency }: { data: CashFlow; currency: string }) {
+export function CashFlowTable({ data, currency, accountHref }: { data: CashFlow; currency: string; accountHref: (code: string) => string }) {
   const section = (title: string, items: CashFlow["operating"], total: bigint, totalLabel: string, lead?: { label: string; amount: bigint }) => (
     <Fragment>
       <TableRow className="border-b-0 hover:bg-transparent">
@@ -55,7 +75,7 @@ export function CashFlowTable({ data, currency }: { data: CashFlow; currency: st
       )}
       {items.map((i) => (
         <TableRow key={i.key} className="border-b-0 text-muted-foreground">
-          <TableCell className="py-1 pl-10 whitespace-normal">{i.label} <span className="num text-xs">({i.codes.join(", ")})</span></TableCell>
+          <TableCell className="py-1 pl-10 whitespace-normal">{i.label} <span className="text-xs">(<Codes codes={i.codes} accountHref={accountHref} />)</span></TableCell>
           <TableCell className="py-1 pr-6 text-right"><Money value={i.amount} currency={currency} /></TableCell>
         </TableRow>
       ))}
@@ -89,8 +109,14 @@ export function CashFlowTable({ data, currency }: { data: CashFlow; currency: st
 }
 
 /** CALK draft: numbered notes with their text and tables, then the directors' statement. */
-export function NotesView({ data, currency }: { data: Notes; currency: string }) {
-  const cell = (c: NoteCell, i: number, strong = false) => (typeof c === "bigint" ? <Money value={c} strong={strong} currency={currency} /> : <span className={cn(i === 0 && "whitespace-normal")}>{c ?? ""}</span>);
+export function NotesView({ data, currency, accountHref }: { data: Notes; currency: string; accountHref: (code: string) => string }) {
+  const cell = (c: NoteCell, i: number, strong = false) => {
+    if (typeof c === "bigint") return <Money value={c} strong={strong} currency={currency} />;
+    // An account row ("1130 Piutang Usaha") opens that account's ledger.
+    const account = i === 0 && typeof c === "string" ? c.match(/^(\d[\w.-]*) (.+)$/) : null;
+    if (account) return <span className="whitespace-normal"><Codes codes={[account[1]]} accountHref={accountHref} /> {account[2]}</span>;
+    return <span className={cn(i === 0 && "whitespace-normal")}>{c ?? ""}</span>;
+  };
   return (
     <div className="space-y-8 px-6" data-testid="notes">
       {data.notes.map((n) => (

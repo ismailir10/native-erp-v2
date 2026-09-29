@@ -108,6 +108,11 @@ describe("CKPN piutang (PSAK 109)", () => {
     await setting(g, { year: 2026, month: 9, forward: "150" });
     expect((await ckpn(db, g.client.id, g.pt.entity.id, 2026, 8)).total).toBe(13_000_000n);
     expect((await ckpn(db, g.client.id, g.pt.entity.id, 2026, 9)).setting).toMatchObject({ forwardBp: 15_000, effective: { year: 2026, month: 9 } });
+    // A closed month keeps its setting: saving a version that would govern it is refused.
+    await db.period.upsert({ where: { clientId_year_month: { clientId: g.client.id, year: 2026, month: 10 } }, update: { status: "LOCKED" }, create: { firmId: g.firm.id, clientId: g.client.id, year: 2026, month: 10, status: "LOCKED" } });
+    await expect(setting(g, { year: 2026, month: 10, forward: "120" })).rejects.toThrow(/Oktober 2026 sudah dikunci/);
+    await expect(setting(g, { year: 2026, month: 9, forward: "120" })).rejects.toThrow(/Oktober 2026 sudah dikunci/); // September's version also governs October
+    await db.period.update({ where: { clientId_year_month: { clientId: g.client.id, year: 2026, month: 10 } }, data: { status: "OPEN" } });
     await expect(setting(g, { forward: "301" })).rejects.toThrow(/forward-looking/);
     await expect(setting(g, { method: "MANUAL", manual: ["1", "abc", "0", "0"] })).rejects.toThrow(/1–30 hari/);
     await expect(setting(g, { historyMonths: 1 })).rejects.toThrow(/2–36/);
