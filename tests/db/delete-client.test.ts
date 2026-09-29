@@ -7,6 +7,7 @@ import { postAdjustment } from "@/lib/ledger/adjustment";
 import { createClient } from "@/lib/setup";
 import { deleteClient, DeleteClientError } from "@/lib/clients/delete";
 import { dateOnly } from "@/lib/format";
+import { postJournal } from "@/lib/ledger/post";
 
 beforeEach(resetDb);
 
@@ -44,4 +45,15 @@ it("deletes one client's books completely and nothing of another client", async 
   expect(await db.account.count({ where: { clientId: g.client.id } })).toBe(0);
   expect(await db.account.count({ where: { clientId: other.client.id } })).toBe(otherAccounts);
   expect(await db.client.count({ where: { id: other.client.id } })).toBe(1);
+});
+
+it("deletes a schedule made from a journal line and its posted installments (they point at each other)", async () => {
+  const g = await makeGroup();
+  const id = async (code: string) => (await db.account.findFirstOrThrow({ where: { clientId: g.client.id, code } })).id;
+  const [prepaid, bank, expense] = [await id("1170"), await id("1101"), await id("6120")];
+  const source = await db.$transaction((tx) => postJournal(tx, { entityId: g.pt.entity.id, date: dateOnly(2026, 7, 1), kind: "ADJUSTMENT", memo: "Sewa dibayar di muka", lines: [{ accountId: prepaid, debit: 12_000n }, { accountId: bank, credit: 12_000n }] }));
+  const schedule = await db.adjustmentSchedule.create({ data: { firmId: g.firm.id, clientId: g.client.id, entityId: g.pt.entity.id, kind: "AMORTIZATION", memo: "Amortisasi sewa", debitAccountId: expense, creditAccountId: prepaid, amount: 12_000n, months: 12, startYear: 2026, startMonth: 7, sourceEntryId: source.id, sourceAccountId: prepaid } });
+  await db.$transaction((tx) => postJournal(tx, { entityId: g.pt.entity.id, date: dateOnly(2026, 7, 31), kind: "ADJUSTMENT", memo: "Amortisasi sewa 1/12", scheduleId: schedule.id, installment: 1, lines: [{ accountId: expense, debit: 1_000n }, { accountId: prepaid, credit: 1_000n }] }));
+  await deleteClient(db, { firmId: g.firm.id, clientId: g.client.id, confirmName: "Grup Uji" });
+  expect([await db.adjustmentSchedule.count(), await db.journalEntry.count(), await db.client.count()]).toEqual([0, 0, 0]);
 });
