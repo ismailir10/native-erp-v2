@@ -95,8 +95,22 @@ export async function taxWorkpaper(db: Db, pack: TaxPack, meta: { firm: string; 
 
   // 6. Pajak Tangguhan.
   const dt = wb.addWorksheet("Pajak Tangguhan");
-  header(dt, "Pajak tangguhan (SAK EP) dari daftar aset tetap");
-  table(dt, ["Uraian", "Jumlah (Rp)"], pack.deferred ? [["Beda temporer (nilai fiskal − nilai buku)", n(pack.deferred.temporaryDifference)], [pack.deferred.amount >= 0n ? "Aset pajak tangguhan (22%)" : "Liabilitas pajak tangguhan (22%)", n(pack.deferred.amount < 0n ? -pack.deferred.amount : pack.deferred.amount)]] : [["Tidak ada beda temporer dari daftar aset", null]], [2], [50, 18]);
+  header(dt, "Pajak tangguhan (SAK EP): daftar aset tetap dan cadangan kerugian piutang");
+  const d = pack.deferred;
+  table(
+    dt,
+    ["Uraian", "Jumlah (Rp)", "Sumber"],
+    d
+      ? [
+          ["Aset tetap (nilai fiskal − nilai buku)", n(d.assets), "Aset Tetap"],
+          ["Cadangan kerugian penurunan nilai piutang", n(d.allowance), "Buku besar 1135"],
+          ["Beda temporer", n(d.temporaryDifference), null],
+          [d.amount >= 0n ? "Aset pajak tangguhan (22%)" : "Liabilitas pajak tangguhan (22%)", n(d.amount < 0n ? -d.amount : d.amount), null],
+        ]
+      : [["Tidak ada beda temporer", null, null]],
+    [2],
+    [50, 18, 20],
+  );
 
   // 7. Jurnal — postings made and the difference still proposed.
   const j = wb.addWorksheet("Jurnal");

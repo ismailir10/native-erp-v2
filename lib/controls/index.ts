@@ -1,7 +1,7 @@
 import type { Db } from "@/lib/db";
 import { sourceSuspenseNet } from "@/lib/controls/suspense-net";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
-import { periodBounds } from "@/lib/format";
+import { formatDate, periodBounds } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
 import { FxMissingError } from "@/lib/reports/fx";
 import { revaluationProposals } from "@/lib/fx/revalue";
@@ -11,6 +11,7 @@ import { anomalyControls } from "@/lib/controls/anomaly";
 import { closeLock, dueProposals, schedulesDueBy } from "@/lib/adjust/schedules";
 import { registerVsLedger } from "@/lib/assets/register";
 import { subledgerVsLedger } from "@/lib/receivables/aging";
+import { ckpn } from "@/lib/receivables/ckpn";
 import { packApplies, taxPack } from "@/lib/tax/pack";
 
 /**
@@ -174,6 +175,25 @@ export async function runControls(db: Db, clientId: string, year: number, month:
           : `${what} terbuka: daftar ${fmt(sub.subledger)} vs buku besar ${fmt(sub.ledger)} (${sub.accounts.join(", ")})${sub.unsettledLines ? `; ${sub.unsettledLines} mutasi bank di akun itu belum dicocokkan ke faktur` : ""}`,
         href: `${base}/receivables?period=${year}-${String(month).padStart(2, "0")}&entity=${e.id}&tab=${sales ? "piutang" : "utang"}`,
         ack: acks.get(key),
+      });
+    }
+
+    // CKPN (rule 5e): once the entity has a setting, the allowance (1135) should equal the matrix at the month-end.
+    if (await db.ckpnSetting.findUnique({ where: { entityId: e.id }, select: { id: true } })) {
+      const c = await ckpn(db, clientId, e.id, year, month);
+      const cKey = `ckpn:${e.id}`;
+      const d = c.difference;
+      controls.push({
+        key: cKey,
+        title: "CKPN piutang = matriks provisi",
+        scope: e.shortName,
+        status: d === 0n ? "PASS" : "REVIEW",
+        detail:
+          c.blocker ?? (d === 0n
+            ? `Cadangan kerugian ${fmt(c.balance)} sesuai matriks`
+            : `Matriks ${fmt(c.total!)} vs cadangan di buku besar ${fmt(c.balance)}: ${d! > 0n ? "tambah" : "pulihkan"} ${fmt(d! > 0n ? d! : -d!)}${c.later ? ` (sudah dijurnal per ${formatDate(c.later)})` : ""}`),
+        href: `${base}/receivables?period=${year}-${String(month).padStart(2, "0")}&entity=${e.id}&tab=piutang`,
+        ack: acks.get(cKey),
       });
     }
 
