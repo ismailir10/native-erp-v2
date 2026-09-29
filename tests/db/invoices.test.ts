@@ -3,6 +3,8 @@ import { db, makeGroup, resetDb } from "../helpers";
 import { createInvoice, ppnFor } from "@/lib/receivables/invoices";
 import { postOpening } from "@/lib/opening";
 import { dateOnly } from "@/lib/format";
+import { invoicesAt } from "@/lib/receivables/aging";
+import { ckpn } from "@/lib/receivables/ckpn";
 
 type G = Awaited<ReturnType<typeof makeGroup>>;
 const lines = async (entryId: string) =>
@@ -49,6 +51,20 @@ describe("invoices", () => {
     const inv = await sale(g, { opening: true, issueDate: "2026-06-20" });
     expect(inv).toMatchObject({ opening: true, entryId: null });
     expect(await db.journalEntry.count({ where: { kind: "INVOICE" } })).toBe(0);
+  });
+
+  it("brings a Saldo Awal invoice into the subledger at the opening date, not its issue date", async () => {
+    const g = await makeGroup();
+    await postOpening(db, { clientId: g.client.id, entityId: g.pt.entity.id, date: dateOnly(2026, 6, 30), lines: [{ accountCode: "1130", debit: "11100000", credit: "0" }] });
+    await sale(g, { opening: true, issueDate: "2026-05-20", dueDate: "2026-06-19" });
+    // Before the opening no journal holds it, so aging, the subledger control and CKPN leave it out.
+    expect(await invoicesAt(db, g.client.id, "SALES", dateOnly(2026, 5, 31))).toEqual([]);
+    expect(await invoicesAt(db, g.client.id, "SALES", dateOnly(2026, 6, 29))).toEqual([]);
+    expect((await ckpn(db, g.client.id, g.pt.entity.id, 2026, 5)).rows.every((r) => r.open === 0n)).toBe(true);
+    // From the opening it ages from its own due date.
+    const [item] = await invoicesAt(db, g.client.id, "SALES", dateOnly(2026, 6, 30));
+    expect(item).toMatchObject({ open: 11_100_000n, daysPastDue: 11, bucket: "D1_30", issueDate: dateOnly(2026, 5, 20) });
+    expect((await ckpn(db, g.client.id, g.pt.entity.id, 2026, 6)).rows.find((r) => r.bucket === "D1_30")?.open).toBe(11_100_000n);
   });
 
   it("refuses what a subledger can't hold", async () => {
