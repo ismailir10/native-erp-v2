@@ -76,6 +76,17 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     (`ADJUSTMENT`, period end): 1135 (contra receivable, credit) to the allowance against 6185, the difference from 1135's GL balance, under
     the close lock and a per-entity lock; refused when 1135 already moved after the period end. 1135 is never an invoice's receivable
     account. Control `ckpn:` is REVIEW while there is a difference. Write-offs (hapus buku) are manual journals.
+5f. **Lease register — PSAK 116 lessee** (`lib/leases`): the contract is stored (`Lease`: start month, term > 12 months, payment,
+    interval 1/3/6/12 months dividing the term, advance or arrears, annual discount rate in bp); the **schedule is computed**: liability =
+    exact present value at annual ÷ 12 (rational bigint, rounded once), interest half up per month, the residue in the last payment's month
+    so the liability ends at 0; ROU = the initial liability, straight line; current portion = liability − liability 12 months later.
+    Journals by click only (`ADJUSTMENT`): the commencement on registration (Dr 1230 / Cr 2170 current + 2400 non-current, dated the start
+    month's 1st), one entry per lease-month (`LeasePosting`, unique) — Dr 6181 / Cr 1239, Dr 7195 / Cr 2170, the non-current decrease
+    2400 → 2170 — posted all-or-nothing up to the chosen month; a mistake is cancelled by reversing the commencement (never deleted), only
+    before any monthly journal. Payments are bank lines classified to 2170. Control `lease:` REVIEW while a month is unposted or 1230 /
+    1239 / 2170 + 2400 differ from the register. Tax: correction (depreciation + interest − rent straight line over the term) and deferred
+    tax on (payments − fiscal rent) − (ROU net − liability). Lease entries are never asset or schedule candidates. Template accounts added
+    later are created on first use only when the code is free or holds the same side and name; imported new accounts never take a template code.
 6. `bigint` **minor units of the entity's functional currency** everywhere in the domain (ADR 0006). IDR has exponent 0,
    so for IDR entities that is whole Rupiah, as before. Parse with `parseRupiah()` / `parseMinor()` (handles `1.234.567,00`,
    `1,234,567.00`, `(2.500)`), format with `formatRupiah()` / `formatMoney(value, currency)`. Convert to `Number` only for chart
