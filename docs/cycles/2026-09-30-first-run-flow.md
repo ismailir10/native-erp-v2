@@ -83,7 +83,7 @@ to an existing client (new action, larger); (c) telling *Dokumen* apart from *Im
    sidebar click on the collapsed group is updated to the renamed group (only for Jurnal Penyesuaian).
 
 ## Tasks
-- [ ] T1 `lib/setup-progress.ts` + db test — accept: states brand-new → import; +statement → opening; +opening → review (when rows) → close; ledger import posted → opening done; locked → close done.
+- [x] T1 `lib/setup-progress.ts` + db test — accept: states brand-new → import; +statement → opening; +opening → review (when rows) → close; ledger import posted → opening done; locked → close done.
 - [ ] T2 Ringkasan strip + NextStep from T1 (`components/app/setup-steps.tsx`, `clients/[id]/page.tsx`) — accept: chain deleted, strip renders 4 steps. Depends T1.
 - [ ] T3 New client → Impor; copy; update the six e2e specs — accept: `npm run test:e2e` specs pass. Depends T1.
 - [ ] T4 Impor page strip + NextStep + result CTA + tab labels + ledger-posted CTA — accept: result CTA order pending-opening → review → close. Depends T1, T2.
@@ -94,5 +94,9 @@ to an existing client (new action, larger); (c) telling *Dokumen* apart from *Im
 - [ ] T9 `real-client` e2e follows CTAs; `ui-rules` rule 14; README onboarding row — accept: full gate green.
 
 ## Implementation
+- Plan: tasks T1–T9 sequential, done inline (each builds on the T1 helper and touches shared pages; an independent audit already ran during /spec).
+- T1: `lib/setup-progress.ts`, `tests/db/setup-progress.test.ts` — one derived journey (import → opening → review → close) and its single next action; bank-less entities never need Saldo Awal; a missing statement of a later month points back to the upload after Saldo Awal.
+
 ## Verification
+- T1 gate: `npm run lint && npm run typecheck && npm test` → Test Files 109 passed (109), Tests 820 passed (820). (Sandbox note: `xlsx` is served from cdn.sheetjs.com, blocked by the session's network policy; a local-only `xlsx@0.18.5` stand-in from npm was installed for node_modules and is not committed.)
 ## Ship Notes
