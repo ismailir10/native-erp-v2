@@ -161,4 +161,16 @@ describe("withholding on invoices", () => {
     });
   });
 
+
+  it("the tax of a settled line can't be moved to another kind with the same amount", async () => {
+    const g = await makeGroup();
+    const tx = await setup(g);
+    const inv = await sale(g);
+    const receipt = await tx("MITRA JASA");
+    await settleWithReclass(db, { clientId: g.client.id, invoiceId: inv.id, bankTransactionId: receipt.id });
+    await expect(reviewTransaction(db, { bankTxId: receipt.id, accountCode: "1130", taxTag: null, withholding: { kind: "PPH_4_2", amount: 200_000n } })).rejects.toThrow(/pencocokan faktur/);
+    expect(await db.bankTransaction.findUniqueOrThrow({ where: { id: receipt.id } })).toMatchObject({ whtKind: "PPH_23", whtAmount: 200_000n });
+    expect(await gl(g, "1180")).toBe(200_000n);
+    expect(await gl(g, "8200")).toBe(0n);
+  });
 });

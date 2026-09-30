@@ -50,7 +50,7 @@ export async function reviewTransactionTx(tx: Tx, args: ReviewArgs) {
   }
   // Withholding that comes from settlements is changed by (un)settling, not by hand: the invoice's amounts would no longer add up.
   const settledWht = t.settlements.reduce((sum, x) => sum + x.withheld, 0n);
-  if (settledWht > 0n && args.withholding !== undefined && (args.withholding?.amount ?? 0n) !== t.whtAmount) {
+  if (settledWht > 0n && args.withholding !== undefined && ((args.withholding?.amount ?? 0n) !== t.whtAmount || (args.withholding?.kind ?? null) !== t.whtKind)) {
     throw new LedgerError("Pemotongan pajak pada mutasi ini berasal dari pencocokan faktur. Ubah lewat pencocokan (hapus, lalu cocokkan lagi).");
   }
   // The withholding stays with the line through a change of account (the tax was withheld whichever account it files to), except in Review.
