@@ -22,6 +22,7 @@ import { candidateViews, type CandidateView } from "@/lib/receivables/view";
 import { postCkpn, saveCkpnSetting, type CkpnSettingInput } from "@/lib/receivables/ckpn";
 import { taxPack } from "@/lib/tax/pack";
 import { postTax } from "@/lib/tax/post";
+import { recordInventoryCount } from "@/lib/inventory";
 import { acceptSuggestion, addCorrection, addCredit, deleteCorrection, deleteCredit, deleteLoss, dismissSuggestion, setCorrectionPercent, setLoss, setRegime, setTaxMonth, type CorrectionInput, type CreditInput } from "@/lib/tax/records";
 import type { TaxPostingKind, TaxRegime } from "@/lib/generated/prisma/enums";
 import { AccountMismatchError, ParseError, YearNeededError } from "@/lib/import/types";
@@ -444,6 +445,17 @@ export async function saveCkpnSettingAction(input: CkpnSettingInput) {
 }
 export async function postCkpnAction(input: { clientId: string; entityId: string; year: number; month: number }) {
   return taxWrite(input.clientId, (clientId, actorId) => postCkpn(prisma, { ...input, clientId, actorId }));
+}
+
+/** Month-end stock count (rule 5i): the typed value is read in the entity's currency; the journal is the difference from the books. */
+export async function recordInventoryCountAction(input: { clientId: string; entityId: string; year: number; month: number; amount: string; note?: string }) {
+  return taxWrite(input.clientId, async (clientId, actorId) => {
+    const entity = await prisma.entity.findFirst({ where: { id: input.entityId, clientId } });
+    if (!entity) throw new LedgerError("Pilih entitas.");
+    if (!input.amount.trim()) throw new LedgerError("Isi nilai persediaan hasil stock opname (0 bila habis).");
+    const amount = parseMoney(input.amount, entity.functionalCurrency);
+    return recordInventoryCount(prisma, { clientId, entityId: entity.id, year: input.year, month: input.month, amount, note: input.note, actorId });
+  });
 }
 
 export async function postTaxAction(input: { clientId: string; entityId: string; year: number; month: number; kind: TaxPostingKind }) {

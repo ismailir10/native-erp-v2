@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { BookOpen, Building2, ChartColumn, HandCoins, KeyRound, ReceiptText, Warehouse, ChevronDown, ClipboardCheck, Coins, FileSpreadsheet, FolderOpen, Home, Inbox, Landmark, ListFilter, LogOut, NotebookPen, Plus, Scale, Settings2, SlidersHorizontal, Upload, Users } from "lucide-react";
+import { BookOpen, Boxes, Building2, ChartColumn, HandCoins, KeyRound, ReceiptText, Warehouse, ChevronDown, ClipboardCheck, Coins, FileSpreadsheet, FolderOpen, Home, Inbox, Landmark, ListFilter, LogOut, NotebookPen, Plus, Scale, Settings2, SlidersHorizontal, Upload, Users } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { BrandMark } from "@/components/app/brand-mark";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
@@ -24,14 +24,15 @@ const ACCOUNTING = [
   { href: "/trial-balance", label: "Neraca Saldo", icon: Scale },
   { href: "/reports", label: "Laporan Keuangan", icon: FileSpreadsheet },
   { href: "/receivables", label: "Piutang & Utang", icon: HandCoins },
+  { href: "/inventory", label: "Persediaan", icon: Boxes },
   { href: "/assets", label: "Aset Tetap", icon: Warehouse },
   { href: "/leases", label: "Sewa (PSAK 116)", icon: KeyRound },
   { href: "/benefits", label: "Imbalan Kerja", icon: Users },
   { href: "/tax", label: "Pajak Badan", icon: ReceiptText },
+  { href: "/journals/new", label: "Jurnal Penyesuaian", icon: NotebookPen },
   { href: "/close", label: "Tutup Buku", icon: ClipboardCheck },
 ];
 const SETUP = [
-  { href: "/journals/new", label: "Jurnal Penyesuaian", icon: NotebookPen },
   { href: "/rates", label: "Kurs", icon: Coins },
   { href: "/settings", label: "Aturan klasifikasi", icon: ListFilter },
 ];

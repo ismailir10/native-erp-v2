@@ -26,7 +26,7 @@ Their findings, confirmed against the code, that this cycle fixes:
    *Pengaturan klien*; its locked-month banner is green. Saldo Awal plugs any difference into 3200 without showing it.
 
 ## Spec
-- [ ] **S1 Persediaan & HPP (stock opname), periodic method.** New page *Persediaan* per client (menu, month-end group): per entity with
+- [x] **S1 Persediaan & HPP (stock opname), periodic method.** New page *Persediaan* per client (menu, month-end group): per entity with
       inventory (a 1160 balance, HPP movement, or *Bidang usaha* reading as trading), the book balance of Persediaan at the month end, the
       counted value typed by the accountant (`parseMinor`), the difference, and *Catat persediaan akhir* → one `ADJUSTMENT` via
       `postJournal()` dated the month end: increase Dr 1160 / Cr **5190 Perubahan Persediaan** (HPP line, template account created on first
@@ -93,8 +93,8 @@ print styles; a fuller CALK (akta, pihak berelasi); PPh 23 at accrual instead of
 
 ## Tasks
 - [x] T1 S2 close notes + reopen — accept: DB test: note lapses on changed detail, legacy note holds, unlock clears sign-offs.
-- [ ] T2 S1 domain: `InventoryCount`, `lib/inventory`, control, CALK note, client delete — accept: DB test for increase/decrease/equal/locked/recount.
-- [ ] T3 S1 UI: *Persediaan* page + menu — accept: record a count in the browser, Laba Rugi shows 5190, control passes.
+- [x] T2 S1 domain: `InventoryCount`, `lib/inventory`, control, CALK note, client delete — accept: DB test for increase/decrease/equal/locked/recount.
+- [x] T3 S1 UI: *Persediaan* page + menu — accept: record a count in the browser, Laba Rugi shows 5190, control passes.
 - [ ] T4 S4 tax rules + migration + tax-payment suggestion + rule specificity — accept: unit + DB tests.
 - [ ] T5 S5 PP 55 journal + text — accept: DB test posts 0,5 % difference once.
 - [ ] T6 S3 review: tax labels, withholding with gross-up, guess safety, search/filter/bulk — accept: unit test for gross-up, DB test for no-learn, e2e filter.
@@ -112,5 +112,15 @@ print styles; a fuller CALK (akta, pihak berelasi); PPh 23 at accrual instead of
   collection and turns a note whose stored detail differs into `staleAck`; `unlockPeriod` deletes the month's sign-offs in its transaction),
   `app/actions.ts` (`ackControlAction` stores the detail it answered), `lib/demo/seed.ts`, `components/app/close-panel.tsx` (stale note shown
   "Catatan lama … kondisinya berubah" with *Perbarui catatan*; groups with problems first; the note field has a label), `tests/db/period-lock.test.ts`.
+- T2: `prisma/schema.prisma` + `20260930060100_inventory_count` (`InventoryCount`), `lib/coa/template.ts` (5190 *Perubahan Persediaan*, HPP),
+  `lib/inventory/index.ts` (`inventoryBalance`, `inventoryRows`, `recordInventoryCount` under the close lock + a per-entity lock,
+  `cogsBreakdown`), `lib/controls/index.ts` (`inv:` control), `lib/reports/notes.ts` (persediaan policy + the *Beban pokok* table),
+  `lib/clients/delete.ts`, accounting-rules 5i, `tests/db/inventory.test.ts`.
+- T3: `app/(app)/clients/[id]/inventory/page.tsx`, `components/app/inventory-card.tsx` (book value, purchases this month, the typed count
+  with the live difference and its journal direction, note, *Catat persediaan akhir* / *Catat ulang*), `recordInventoryCountAction`,
+  sidebar (*Persediaan* after Piutang & Utang; *Jurnal Penyesuaian* moved from Pengaturan klien to before Tutup Buku), `e2e/inventory.spec.ts`.
+  Driven in the browser on CV Sinar Retail August: count Rp 112.500.000 against a book Rp 95.000.000 → Laba Rugi *5190 (17.500.000)*, HPP
+  909.050.000 = awal 95.000.000 + pembelian 926.550.000 − akhir 112.500.000 in the CALK.
 ## Verification
+- After T2: `npm test` → `Test Files 113 passed (113)`, `Tests 840 passed (840)`.
 ## Ship Notes
