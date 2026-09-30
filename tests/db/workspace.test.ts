@@ -158,6 +158,6 @@ it("a client still in setup gets one task naming the step: upload first, then Sa
   await db.statementImport.create({ data: { firmId: g.firm.id, bankAccountId: bank.id, fileName: "bca.csv", format: "BCA", periodStart: dateOnly(2026, 8, 1), periodEnd: dateOnly(2026, 8, 31), openingBalance: 100n, closingBalance: 100n, rowCount: 0, continuityOk: true } });
   tasks = await setupTasks();
   expect(tasks).toHaveLength(1);
-  expect(tasks[0].title).toBe("Isi saldo awal PT Uji dan Andi");
+  expect(tasks[0].title).toBe("Isi saldo awal PT Uji");
   expect(new URL(tasks[0].href, "https://buku.example").pathname).toBe(`/clients/${g.client.id}/opening`);
 });

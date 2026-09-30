@@ -27,11 +27,16 @@ describe("setupProgress", () => {
     expect(p.needsOpening).toEqual([]);
   });
 
-  it("after the upload it asks for Saldo Awal, PT before the owner, then moves on", async () => {
+  it("after the upload it asks for Saldo Awal only for entities whose statement is in, PT before the owner, then moves on", async () => {
     const g = await makeGroup();
     await statement(g, "NEEDS_REVIEW");
     let p = await setupProgress(db, g.client.id);
     expect(p.current).toBe("opening");
+    // The owner's statement isn't uploaded yet: nothing to prefill, so not asked (the bank control names the gap).
+    expect(p.needsOpening.map((e) => e.shortName)).toEqual(["PT Uji"]);
+    const ownerBank = await db.bankAccount.findFirstOrThrow({ where: { entityId: g.owner.entity.id } });
+    await db.statementImport.create({ data: { firmId: g.firm.id, bankAccountId: ownerBank.id, fileName: "bri.csv", format: "BRI", periodStart: dateOnly(2026, 8, 1), periodEnd: dateOnly(2026, 8, 31), openingBalance: 1n, closingBalance: 1n, rowCount: 0, continuityOk: true } });
+    p = await setupProgress(db, g.client.id);
     expect(p.needsOpening.map((e) => e.shortName)).toEqual(["PT Uji", "Andi"]);
     expect(p.next).toMatchObject({ href: `/clients/${g.client.id}/opening`, cta: "Isi saldo awal" });
     await opening(g, g.pt.entity);
@@ -46,7 +51,6 @@ describe("setupProgress", () => {
     const g = await makeGroup();
     await statement(g);
     await opening(g, g.pt.entity);
-    await opening(g, g.owner.entity);
     let p = await setupProgress(db, g.client.id, { period: { year: 2026, month: 8 } });
     expect(keys(p)).toBe("import:done opening:done review:done close:current");
     expect(p.next).toMatchObject({ cta: "Tutup buku" });
@@ -60,7 +64,6 @@ describe("setupProgress", () => {
     const g = await makeGroup();
     await statement(g);
     await opening(g, g.pt.entity);
-    await opening(g, g.owner.entity);
     const p = await setupProgress(db, g.client.id, { period: { year: 2026, month: 9 }, missingStatements: ["Rekonsiliasi Mandiri Giro"] });
     expect(p.current).toBe("import");
     expect(p.next?.text).toBe("Mutasi Mandiri Giro untuk September 2026 belum diimpor.");

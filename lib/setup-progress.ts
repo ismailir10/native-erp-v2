@@ -16,7 +16,7 @@ export type SetupProgress = {
   /** First step that isn't done; null once the period is closed. */
   current: StepKey | null;
   next: SetupNext | null;
-  /** Companies/owners with a bank account whose Saldo Awal is still missing (empty until something is imported). */
+  /** Companies/owners whose statement is imported but whose Saldo Awal is still missing (empty until something is imported). */
   needsOpening: { id: string; name: string; shortName: string }[];
   hasBanks: boolean;
   hasData: boolean;
@@ -30,22 +30,24 @@ export async function setupProgress(
   opts: { period?: { year: number; month: number }; /** Titles of "Mutasi … belum diimpor" close controls for that period. */ missingStatements?: string[]; params?: Record<string, string | undefined> } = {},
 ): Promise<SetupProgress> {
   const base = `/clients/${clientId}`;
-  const entities = await db.entity.findMany({ where: { clientId }, select: { id: true, name: true, shortName: true, kind: true, _count: { select: { bankAccounts: true } } } });
+  const entities = await db.entity.findMany({ where: { clientId }, select: { id: true, name: true, shortName: true, kind: true, bankAccounts: { select: { id: true } } } });
   const entityIds = entities.map((e) => e.id);
-  const [statements, postedLedger, draft, withBooks, toReview, period] = await Promise.all([
-    db.statementImport.count({ where: { bankAccount: { entityId: { in: entityIds } } } }),
+  const [uploaded, postedLedger, draft, withBooks, toReview, period] = await Promise.all([
+    db.statementImport.findMany({ where: { bankAccount: { entityId: { in: entityIds } } }, select: { bankAccountId: true }, distinct: ["bankAccountId"] }),
     db.ledgerImport.count({ where: { clientId, status: "POSTED" } }),
     db.ledgerImport.findFirst({ where: { clientId, status: "DRAFT" }, orderBy: { createdAt: "desc" }, select: { id: true, fileName: true } }),
     db.journalEntry.findMany({ where: { entityId: { in: entityIds }, kind: { in: ["OPENING", "IMPORTED"] } }, select: { entityId: true }, distinct: ["entityId"] }),
     db.bankTransaction.count({ where: { entityId: { in: entityIds }, status: "NEEDS_REVIEW" } }),
     opts.period ? db.period.findUnique({ where: { clientId_year_month: { clientId, year: opts.period.year, month: opts.period.month } } }) : null,
   ]);
-  const hasBanks = entities.some((e) => e._count.bankAccounts > 0);
-  const hasData = statements > 0 || postedLedger > 0;
+  const hasBanks = entities.some((e) => e.bankAccounts.length > 0);
+  const hasData = uploaded.length > 0 || postedLedger > 0;
   const booked = new Set(withBooks.map((j) => j.entityId));
-  // An entity with no bank account has nothing to prefill: it needs a Saldo Awal only through a ledger import.
+  const uploadedBanks = new Set(uploaded.map((u) => u.bankAccountId));
+  // Saldo Awal is asked once an entity's statement is in (its bank lines are prefilled from it). An entity with no bank account
+  // has nothing to prefill, and one whose statement isn't uploaded yet is waiting for the upload (the bank control names the gap).
   const needsOpening = hasData
-    ? entities.filter((e) => e._count.bankAccounts > 0 && !booked.has(e.id)).sort((a, b) => Number(a.kind === "PERORANGAN") - Number(b.kind === "PERORANGAN")).map(({ id, name, shortName }) => ({ id, name, shortName }))
+    ? entities.filter((e) => e.bankAccounts.some((b) => uploadedBanks.has(b.id)) && !booked.has(e.id)).sort((a, b) => Number(a.kind === "PERORANGAN") - Number(b.kind === "PERORANGAN")).map(({ id, name, shortName }) => ({ id, name, shortName }))
     : [];
   const missing = opts.missingStatements ?? [];
   const openingDone = hasData && needsOpening.length === 0;
