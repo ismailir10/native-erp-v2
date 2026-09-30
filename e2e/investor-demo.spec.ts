@@ -127,6 +127,13 @@ test("statement in → reviewed → traceable reports → combined → closed", 
   await page.getByTestId("unlock-reason").fill("Cek ulang sebelum laporan dikirim ke klien");
   await page.getByTestId("confirm-lock").click();
   await expect(page.getByTestId("unlock-history")).toContainText("Cek ulang sebelum laporan dikirim ke klien");
+  // A reopened month is reviewed again: its sign-offs were cleared, the control notes stay.
+  await expect(page.getByTestId("lock")).toBeDisabled();
+  for (let i = 0; i < (await boxes.count()); i++) {
+    await expect(boxes.nth(i)).not.toBeChecked();
+    await boxes.nth(i).click();
+    await expect(boxes.nth(i)).toBeChecked();
+  }
   await page.getByTestId("lock").click();
   await page.getByTestId("confirm-lock").click();
   await expect(page.getByText("Buku Agustus 2026 sudah ditutup")).toBeVisible();

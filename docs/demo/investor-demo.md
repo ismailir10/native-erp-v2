@@ -62,6 +62,7 @@ Automated end to end by `e2e/investor-demo.spec.ts` — if you change this scrip
 > against the last 3 months, accounts that wake up, P&L running backwards, double entries) and asks for a one-line note.*
 
 - Tick the three accountant sign-offs → **Tutup buku Agustus 2026** → confirm in the dialog. Period locked; imports into it are now rejected.
+  Reopening (admin, with a reason) clears the sign-offs: the month is reviewed again before it closes again.
 
 ### Close (15 s)
 > "Three clients, one morning. The same engine scales to a firm's hundred clients — that's the business."
