@@ -19,7 +19,8 @@ const HEADERS: Record<ColumnKey, RegExp> = {
   name: /^(nama akun|nama perkiraan|perkiraan|account name|account|akun|nama)$/i,
   debit: /^(debit|debet|dr|mutasi debit|mutasi debet)(\s*\(.*\))?$/i,
   credit: /^(kredit|credit|cr|mutasi kredit)(\s*\(.*\))?$/i,
-  amount: /^(saldo|saldo akhir|jumlah|nilai|balance|amount|closing balance|ending balance)$/i,
+  amount: /^(saldo|saldo akhir|jumlah|nilai|value|balance|amount|closing balance|ending balance)$/i,
+  level: /^(level|lvl|tingkat)$/i,
   desc: /^(keterangan|deskripsi|description|uraian|memo|narration|reconstruction logic \/ description)$/i,
   voucher: /^(no\.? bukti|nomor bukti|voucher|no\.? voucher|no\.? jurnal|nomor jurnal|journal no\.?|journal number|transaction no\.?|no\.? transaksi)$/i,
   entity: /^(entitas|entity|perusahaan|company)$/i,
@@ -29,7 +30,7 @@ const HEADERS: Record<ColumnKey, RegExp> = {
 };
 const DATE_HEADER = /^\d{1,2}[/.-]\d{1,2}[/.-]\d{4}$/;
 /** Account codes contain a digit: "1-1000", "11001", "7-PF-BANK TRANSFER BCA", "SKP-UNM-01" — never a heading like "Long-term Liability". */
-const CODE = /^(?=[^ ]*\d)[0-9A-Za-z][0-9A-Za-z.\-_/]*$|^\d+-[0-9A-Za-z\-_. ]+$/;
+const CODE = /^(?=[^ ]*\d)[0-9A-Za-z][0-9A-Za-z.\-_/]*$|^\d+-[0-9A-Za-z\-_. ]+$|^\d+(?: \d+)+$/;
 const EXCEL_ERROR = /^#(VALUE!|REF!|NAME\?|DIV\/0!|N\/A|NULL!|NUM!|ERROR!|SPILL!|CALC!)$/i;
 
 // ─── Workbook → raw sheets ────────────────────────────────────────────────────
@@ -138,9 +139,48 @@ function headerColumns(row: RawCell[]): Columns {
   return cols;
 }
 
+/**
+ * A Neraca printed as two panels side by side (Aset | Kewajiban + Ekuitas) repeats its whole column set on one header row.
+ * Split only when every part is a complete Neraca table on its own (account + amount, no date), so a header that merely repeats one
+ * word ("Date" … "Transaction Date") stays one table.
+ */
+function headerPanels(row: RawCell[]): Columns[] {
+  const parts: Columns[] = [{}];
+  row.forEach((c, i) => {
+    const t = cellText(c).replace(/\s+/g, " ");
+    if (!t) return;
+    const key = (Object.keys(HEADERS) as ColumnKey[]).find((k) => HEADERS[k].test(t));
+    if (!key) return;
+    let cur = parts[parts.length - 1];
+    if (cur[key] !== undefined) {
+      cur = {};
+      parts.push(cur);
+    }
+    cur[key] = i;
+  });
+  const whole = (p: Columns) => p.date === undefined && (p.code !== undefined || p.name !== undefined) && p.amount !== undefined;
+  return parts.length > 1 && parts.every(whole) ? parts : [];
+}
+
+const SPACED_CODE = /^\d+(?: \d+)+$/;
+
+/** ERP exports name the code column "Account" and the words "Description": read them as code and name when the "name" column holds codes. */
+function codesInNameColumn(rows: RawCell[][], headerRow: number, cols: Columns): Columns {
+  if (cols.code !== undefined || cols.name === undefined || cols.desc === undefined) return cols;
+  const cells = rows.slice(headerRow + 1, headerRow + 41).map((r) => cellText(r?.[cols.name!])).filter(Boolean);
+  if (cells.length < 3 || cells.filter((t) => CODE.test(t) || SPACED_CODE.test(t)).length < cells.length * 0.6) return cols;
+  const { desc, ...rest } = cols;
+  return { ...rest, code: cols.name, name: desc };
+}
+
 const REPORT_TITLES: [RegExp, "LABA_RUGI" | "ARUS_KAS"][] = [
   [/^(laporan )?(laba rugi|laba\/rugi|profit (&|and) loss|profit and loss statement|income statement|statement of profit or loss)$/i, "LABA_RUGI"],
   [/^(laporan )?(arus kas|cash ?flows?|statement of cash flows?)$/i, "ARUS_KAS"],
+];
+/** ERP exports prefix or suffix the title ("PnL Profit Loss Report", "All Branch Profit Loss Report"): a short row with at most three cells. */
+const LOOSE_TITLES: [RegExp, "LABA_RUGI" | "ARUS_KAS"][] = [
+  [/\b(laba rugi|profit\s*(&|and)?\s*loss|income statement)\b/i, "LABA_RUGI"],
+  [/\b(arus kas|cash ?flows?)\b/i, "ARUS_KAS"],
 ];
 
 /** A sheet whose title rows (the first 8, as accounting systems print them) name a Laba Rugi or Arus Kas report — never a Neraca to post. */
@@ -149,6 +189,9 @@ export function reportKind(sheet: RawSheet): "LABA_RUGI" | "ARUS_KAS" | null {
     const text = cellText((row ?? []).find((c) => !isBlank(c)) ?? null);
     const hit = REPORT_TITLES.find(([re]) => re.test(text));
     if (hit) return hit[1];
+    const short = text.length <= 60 && (row ?? []).filter((c) => !isBlank(c)).length <= 3 && !/\b(balance|neraca|posisi keuangan)\b/i.test(text);
+    const loose = short ? LOOSE_TITLES.find(([re]) => re.test(text)) : undefined;
+    if (loose) return loose[1];
   }
   return null;
 }
@@ -169,7 +212,9 @@ export function detectTables(sheets: RawSheet[]): TableCandidate[] {
         out.push({ sheet: sheet.name, headerRow: r, mode: "LEDGER", columns: cols, dataRows });
         found = true;
       } else if (cols.date === undefined && hasAccount && (cols.amount !== undefined || hasDrCr) && dataRows > 0) {
-        out.push({ sheet: sheet.name, headerRow: r, mode: "NERACA", columns: cols, dataRows });
+        const panels = headerPanels(sheet.rows[r] ?? []).map((p) => codesInNameColumn(sheet.rows, r, p));
+        if (panels.length > 1) out.push({ sheet: sheet.name, headerRow: r, mode: "NERACA", columns: panels[0], panels, dataRows });
+        else out.push({ sheet: sheet.name, headerRow: r, mode: "NERACA", columns: codesInNameColumn(sheet.rows, r, cols), dataRows });
         found = true;
       }
     }
@@ -264,69 +309,119 @@ const SECTION_LIAB_EQUITY = /(liabilit.*(equity|ekuitas)|kewajiban.*(ekuitas|mod
 const TERM_NON_CURRENT = /(long.?term|jangka panjang|non.?current|tidak lancar|(fixed|other|intangible|tangible)\s+assets?|aset tetap|aktiva tetap|tak berwujud|tidak berwujud|aset lain|depreciation|penyusutan|amorti)/i;
 const TERM_CURRENT = /(\bcurrent\b|\blancar\b|jangka pendek|short.?term)/i;
 
-export function readNeraca(sheet: RawSheet, t: TableCandidate): { date: Date | null; rows: NeracaRow[]; totals: NeracaTotal[] } {
-  const c = t.columns;
+const PERIOD_LABEL = /^(period|periode|per|as of|as at|tanggal|date|posisi)\b/i;
+
+/** The Neraca date: the amount header when it is a date, else a date beside a "Periode/Period/Per" label, else the first date above the table. */
+function neracaDate(sheet: RawSheet, t: TableCandidate): Date | null {
   const header = sheet.rows[t.headerRow] ?? [];
-  let date = c.amount !== undefined ? cellDate(header[c.amount]) : null;
-  if (!date) {
-    for (const row of sheet.rows.slice(0, t.headerRow)) {
-      for (const cell of row ?? []) date = date ?? cellDate(cell);
+  const fromHeader = t.columns.amount !== undefined ? cellDate(header[t.columns.amount]) : null;
+  if (fromHeader) return fromHeader;
+  const above = sheet.rows.slice(0, t.headerRow);
+  for (const row of above) {
+    const cells = row ?? [];
+    if (!PERIOD_LABEL.test(cellText(cells[0]))) continue;
+    for (const cell of cells.slice(1)) {
+      const d = cellDate(cell);
+      if (d) return d;
     }
   }
-  let section: AccountType | null = null;
-  let term: NeracaRow["termHint"] = null;
+  for (const row of above) for (const cell of row ?? []) {
+    const d = cellDate(cell);
+    if (d) return d;
+  }
+  return null;
+}
+
+/** Excel column letters of a 0-based index (0 → A, 26 → AA). */
+function columnLetter(i: number): string {
+  let n = i + 1;
+  let out = "";
+  while (n > 0) {
+    out = String.fromCharCode(65 + ((n - 1) % 26)) + out;
+    n = Math.floor((n - 1) / 26);
+  }
+  return out;
+}
+
+export function readNeraca(sheet: RawSheet, t: TableCandidate): { date: Date | null; rows: NeracaRow[]; totals: NeracaTotal[] } {
+  const date = neracaDate(sheet, t);
+  const panels = t.panels?.length ? t.panels : [t.columns];
   const rows: NeracaRow[] = [];
   const totals: NeracaTotal[] = [];
-  for (let r = t.headerRow + 1; r < sheet.rows.length; r++) {
-    const row = sheet.rows[r] ?? [];
-    if (row.every(isBlank)) continue;
-    const codeCell = c.code !== undefined ? cellText(row[c.code]) : "";
-    const nameCell = c.name !== undefined ? cellText(row[c.name]) : "";
-    const label = codeCell && !CODE.test(codeCell) ? codeCell : nameCell;
-    const hasCode = !!codeCell && CODE.test(codeCell);
-    const amountCell = c.amount !== undefined ? row[c.amount] : undefined;
-    const raw = c.amount !== undefined ? cellCents(amountCell) : (() => {
-      const d = cellCents(row[c.debit!]);
-      const k = cellCents(row[c.credit!]);
-      return typeof d === "string" ? d : typeof k === "string" ? k : d - k;
-    })();
+  for (const c of panels) {
+    // A side-by-side file keeps each panel's column in the ref so two rows on the same sheet row stay distinguishable.
+    const at = (r: number) => `${sheet.name}!${panels.length > 1 ? columnLetter(c.code ?? c.name ?? 0) : ""}${r + 1}`;
+    let section: AccountType | null = null;
+    let term: NeracaRow["termHint"] = null;
+    const body = sheet.rows.slice(t.headerRow + 1);
+    const levelOf = (row: RawCell[] | undefined) => {
+      const n = c.level !== undefined ? Number(cellText(row?.[c.level])) : NaN;
+      return Number.isFinite(n) ? n : null;
+    };
+    for (let r = t.headerRow + 1; r < sheet.rows.length; r++) {
+      const row = sheet.rows[r] ?? [];
+      if (row.every(isBlank)) continue;
+      const codeCell = c.code !== undefined ? cellText(row[c.code]) : "";
+      const nameCell = c.name !== undefined ? cellText(row[c.name]) : "";
+      // A panel that ends before the other one leaves its cells blank on the remaining rows.
+      if (panels.length > 1 && !codeCell && !nameCell && isBlank(c.amount !== undefined ? row[c.amount] : undefined)) continue;
+      const label = codeCell && !CODE.test(codeCell) ? codeCell : nameCell;
+      const hasCode = !!codeCell && CODE.test(codeCell);
+      const amountCell = c.amount !== undefined ? row[c.amount] : undefined;
+      const raw = c.amount !== undefined ? cellCents(amountCell) : (() => {
+        const d = cellCents(row[c.debit!]);
+        const k = cellCents(row[c.credit!]);
+        return typeof d === "string" ? d : typeof k === "string" ? k : d - k;
+      })();
 
-    if (!hasCode && isBlank(amountCell) && (c.amount !== undefined || (isBlank(row[c.debit!]) && isBlank(row[c.credit!])))) {
-      // Section heading. A new main section resets the term; a sub-heading ("Fixed Assets") sets it.
-      const before: AccountType | null = section;
-      const headingTerm = TERM_NON_CURRENT.test(label) ? "NON_CURRENT" : TERM_CURRENT.test(label) ? "CURRENT" : null;
-      if (SECTION_LIAB_EQUITY.test(label) || SECTION_LIAB.test(label)) section = "LIABILITAS";
-      else if (SECTION_EQUITY.test(label)) section = "EKUITAS";
-      else if (SECTION_ASSET.test(label) || SECTION_ASSET_SUB.test(label)) section = "ASET";
-      if (section !== before) term = headingTerm;
-      else if (headingTerm) term = headingTerm;
-      continue;
-    }
-    if (/^(total|jumlah)\b/i.test(label) && !hasCode) {
-      if (typeof raw === "bigint") {
-        const kind = SECTION_LIAB_EQUITY.test(label) ? "LIAB_EQUITY" : /^(total|jumlah)\s+(assets?|aset|aktiva)$/i.test(label) ? "ASSETS" : "OTHER";
-        totals.push({ ref: `${sheet.name}!${r + 1}`, label, amount: raw, kind });
+      // A coded group row of a hierarchical chart (zero value, next row one level deeper) is a heading, not an account.
+      const level = levelOf(row);
+      const isGroup = hasCode && level !== null && raw === 0n && (() => {
+        for (const next of body.slice(r - t.headerRow)) {
+          if (!next || (c.code !== undefined && !CODE.test(cellText(next[c.code])))) continue;
+          const nl = levelOf(next);
+          return nl !== null && nl > level;
+        }
+        return false;
+      })();
+
+      if (isGroup || (!hasCode && isBlank(amountCell) && (c.amount !== undefined || (isBlank(row[c.debit!]) && isBlank(row[c.credit!]))))) {
+        // Section heading. A new main section resets the term; a sub-heading ("Fixed Assets") sets it.
+        const before: AccountType | null = section;
+        const headingTerm = TERM_NON_CURRENT.test(label) ? "NON_CURRENT" : TERM_CURRENT.test(label) ? "CURRENT" : null;
+        if (SECTION_LIAB_EQUITY.test(label) || SECTION_LIAB.test(label)) section = "LIABILITAS";
+        else if (SECTION_EQUITY.test(label)) section = "EKUITAS";
+        else if (SECTION_ASSET.test(label) || SECTION_ASSET_SUB.test(label)) section = "ASET";
+        if (section !== before) term = headingTerm;
+        else if (headingTerm) term = headingTerm;
+        continue;
       }
-      continue;
+      if (/^(total|jumlah)\b/i.test(label) && !hasCode) {
+        if (typeof raw === "bigint") {
+          const kind = SECTION_LIAB_EQUITY.test(label) ? "LIAB_EQUITY" : /^(total|jumlah)\s+(assets?|aset|aktiva)$/i.test(label) ? "ASSETS" : "OTHER";
+          totals.push({ ref: at(r), label, amount: raw, kind });
+        }
+        continue;
+      }
+      if (typeof raw === "bigint" && raw === 0n && !hasCode) continue;
+      const errors: string[] = [];
+      if (typeof raw === "string") errors.push(`saldo bukan angka: ${raw}`);
+      const cents = typeof raw === "bigint" ? raw : 0n;
+      // Presentation sign → debit-positive: assets as shown; liabilities & equity flipped.
+      const debitPositive = c.amount === undefined ? cents : section === "LIABILITAS" || section === "EKUITAS" ? -cents : cents;
+      const typeHint: AccountType | null = section === "LIABILITAS" && SECTION_EQUITY.test(nameCell) ? "EKUITAS" : section;
+      rows.push({
+        ref: at(r),
+        row: r + 1,
+        code: hasCode ? codeCell : `${NO_CODE_PREFIX}${label}`,
+        name: hasCode ? nameCell || codeCell : label,
+        amount: debitPositive,
+        typeHint: guessEquity(label, typeHint),
+        termHint: guessEquity(label, typeHint) === "EKUITAS" ? null : term,
+        coded: hasCode,
+        errors,
+      });
     }
-    if (typeof raw === "bigint" && raw === 0n && !hasCode) continue;
-    const errors: string[] = [];
-    if (typeof raw === "string") errors.push(`saldo bukan angka: ${raw}`);
-    const cents = typeof raw === "bigint" ? raw : 0n;
-    // Presentation sign → debit-positive: assets as shown; liabilities & equity flipped.
-    const debitPositive = c.amount === undefined ? cents : section === "LIABILITAS" || section === "EKUITAS" ? -cents : cents;
-    const typeHint: AccountType | null = section === "LIABILITAS" && SECTION_EQUITY.test(nameCell) ? "EKUITAS" : section;
-    rows.push({
-      ref: `${sheet.name}!${r + 1}`,
-      row: r + 1,
-      code: hasCode ? codeCell : `${NO_CODE_PREFIX}${label}`,
-      name: hasCode ? nameCell || codeCell : label,
-      amount: debitPositive,
-      typeHint: guessEquity(label, typeHint),
-      termHint: guessEquity(label, typeHint) === "EKUITAS" ? null : term,
-      coded: hasCode,
-      errors,
-    });
   }
   return { date, rows, totals };
 }

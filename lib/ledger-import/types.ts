@@ -6,10 +6,14 @@ export type RawSheet = { name: string; rows: RawCell[][] };
 
 export type LedgerMode = "LEDGER" | "NERACA";
 
-export type ColumnKey = "date" | "code" | "name" | "debit" | "credit" | "amount" | "desc" | "voucher" | "entity" | "currency" | "rate" | "notes";
+export type ColumnKey = "date" | "level" | "code" | "name" | "debit" | "credit" | "amount" | "desc" | "voucher" | "entity" | "currency" | "rate" | "notes";
 export type Columns = Partial<Record<ColumnKey, number>>;
 
-export type TableCandidate = { sheet: string; headerRow: number; mode: LedgerMode; columns: Columns; dataRows: number };
+/**
+ * `columns` is the (first) table. A Neraca printed as two panels side by side (Aset | Kewajiban + Ekuitas) lists every panel in `panels`
+ * (`columns` is `panels[0]`); rows of such a file carry the panel's column in their ref ("BS!F12").
+ */
+export type TableCandidate = { sheet: string; headerRow: number; mode: LedgerMode; columns: Columns; dataRows: number; panels?: Columns[] };
 
 /** One ledger line as read from the file. Amounts are signed sen (debit − credit side kept separately). */
 export type LedgerRow = {

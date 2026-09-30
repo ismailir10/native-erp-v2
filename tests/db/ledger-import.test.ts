@@ -152,6 +152,39 @@ describe("ledger import: stage → map → post", () => {
     await expect(stageImport(db, { firmId: g.firm.id, clientId: g.client.id, fileName: "balance_sheet-2.xlsx", data: other, entityId: g.pt.entity.id })).rejects.toThrow(/Saldo awal entitas ini sudah ada/);
   });
 
+  it("imports an ERP Neraca printed as two panels (Aset | Kewajiban + Ekuitas) and skips its P&L sheet", async () => {
+    const g = await makeGroup();
+    const wb = new ExcelJS.Workbook();
+    const bs = wb.addWorksheet("BS");
+    const rows: unknown[][] = [
+      ["BS Balance Sheet Report"], ["PT Uji Kopi"], ["Period", "31-12-2024"], [],
+      ["Account", "Level", "Description", "Value", null, "Account", "Level", "Description", "Value"],
+      ["1 0 00 00", 1, "Aset", "0.00", null, "2 0 00 00", 1, "Kewajiban", "0.00"],
+      ["1 1 01 00", 3, "Kas", "0.00", null, "2 1 03 00", 3, "Hutang Pajak", "0.00"],
+      ["1 1 01 01", 4, "Kas Kecil", "1,000,000.00", null, "2 1 03 03", 4, "Pph 21", "-200,000.00"],
+      ["1 1 01 02", 4, "BCA 1234", "9,000,000.00", null, "2 1 03 04", 4, "Ppn Keluaran", "500,000.00"],
+      [null, null, "Total Aset", "10,000,000.00", null, "3 0 00 00", 1, "Ekuitas", "0.00"],
+      [null, null, null, null, null, "3 1 01 01", 4, "Modal Disetor", "9,700,000.00"],
+      [null, null, null, null, null, null, null, "Total Pasiva", "10,000,000.00"],
+    ];
+    for (const r of rows) bs.addRow(r);
+    const pnl = wb.addWorksheet("PnL");
+    for (const r of [["PnL Profit Loss Report", null, null, "PT Uji Kopi"], ["Account", "Description", "December"], ["4 1 01 01", "Penjualan", "1,000.00"]]) pnl.addRow(r);
+    const file = Buffer.from(await wb.xlsx.writeBuffer());
+
+    const staged = await stageImport(db, { firmId: g.firm.id, clientId: g.client.id, fileName: "bs-erp.xlsx", data: file, entityId: g.pt.entity.id });
+    if (staged.status !== "STAGED") throw new Error("not staged");
+    expect(staged.checks.filter((c) => c.code === "TOTAL_OK")).toHaveLength(2);
+    expect(staged.checks.filter((c) => c.severity === "BLOCK")).toHaveLength(0);
+    await mapAllBySuggestion(g.client.id, staged.importId);
+    await postImport(db, g.client.id, staged.importId);
+    const opening = await db.journalEntry.findFirstOrThrow({ where: { entityId: g.pt.entity.id, kind: "OPENING" }, include: { lines: true } });
+    expect(opening.date.toISOString().slice(0, 10)).toBe("2024-12-31");
+    expect(opening.lines.reduce((sum, l) => sum + l.debit - l.credit, 0n)).toBe(0n);
+    // Each line keeps the file cell it came from, panel column included.
+    expect(opening.lines.map((l) => l.sourceRef).filter(Boolean).sort()).toEqual(["BS!A8", "BS!A9", "BS!F11", "BS!F8", "BS!F9"]);
+  });
+
   it("file rates fill empty Kurs dates only and flag a differing rate for review", async () => {
     const g = await makeGroup();
     await db.entity.update({ where: { id: g.pt.entity.id }, data: { functionalCurrency: "SGD" } });
