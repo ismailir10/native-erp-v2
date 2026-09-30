@@ -78,7 +78,7 @@ to numbers of existing bank lines or entries; no new dependency.
 - [x] T3 Withholding on invoices and settlements (schema, create, settle, unsettle, free amounts) — accept: scenario (a), `ar:`/`ap:` PASS
 - [x] T4 UI for withholding (invoice form, settle dialog, review) — accept: typecheck, lint, screenshot of the settle dialog
 - [x] T5 PPh 25 masa pajak (schema, default at classification, pack query, edit in the pack) — accept: 12-instalment test
-- [ ] T6 Cash flow: disposal proceeds and capex on payable in investing — accept: 120/90/40 test, Neraca reconciliation holds
+- [x] T6 Cash flow: disposal proceeds and capex on payable in investing — accept: 120/90/40 test, Neraca reconciliation holds
 - [ ] T7 Docs (accounting-rules, README) and end-of-cycle gates — accept: gates pasted below
 
 ## Implementation
@@ -105,5 +105,9 @@ to numbers of existing bank lines or entries; no new dependency.
   (stored when a line is classified as PPh 25; cleared when it isn't), `lib/tax/pack.ts` (instalments by `taxMonth`, a line without one by bank date; `Credit.masa`),
   `lib/tax/records.ts` (`setTaxMonth`: not after the payment month, refuses when December of the year it leaves or joins is locked), `app/actions.ts`, `lib/tax/view.ts`,
   `components/app/tax-pack.tsx` (month input on each PPh 25 credit). Test `tests/db/tax-month.test.ts` (12 instalments, December paid 14 January).
+- T6: `lib/reports/statements.ts` (`cashFlow`: a disposal entry of the register moves the collected proceeds to investing "Hasil pelepasan aset tetap" and the rest to a non-cash
+  operating line; proceeds still on the receivable at the period end are not investing yet; a purchase bill's paid part (settlements dated in the period, also for an earlier
+  year's bill) moves from operating to investing; both are zero-sum reclassifications, so the total is still the Neraca cash change). Test `tests/db/cashflow-investing.test.ts`
+  (120/90/40, partial collection, early period, capex paid in the year and the year after; each checks the reconciliation with the Neraca).
 ## Verification
 ## Ship Notes

@@ -218,13 +218,47 @@ export async function cashFlow(db: Db, scope: Scope, to: Date): Promise<CashFlow
   const lines = await db.journalLine.findMany({
     where: { entityId: { in: scope.entityIds }, date: { gte: from, lte: to }, entry: { kind: { not: "OPENING" } } },
     select: { entryId: true, debit: true, credit: true, entry: { select: { bankTransactionId: true } }, account: { select: { code: true, type: true, fsLine: true, isIntercompany: true } } },
+    orderBy: [{ date: "asc" }, { id: "asc" }],
   });
   const byEntry = new Map<string, typeof lines>();
   for (const l of lines) byEntry.set(l.entryId, [...(byEntry.get(l.entryId) ?? []), l]);
+  const NONCASH = "Transaksi non-kas (dilawankan dengan pos investasi/pendanaan)";
+  // A disposal entry (the register's `disposalEntryId`) has no bank row: its proceeds sit on a receivable until the bank receipt is classified to
+  // the same account. The proceeds collected by the period end are the investing inflow; the rest of the entry (cost off, accumulated depreciation off,
+  // the gain or loss) is non-cash, so the sections still add up to the change in cash.
+  const disposals = new Set((await db.fixedAsset.findMany({ where: { entityId: { in: scope.entityIds }, disposalEntryId: { in: [...byEntry.keys()] } }, select: { disposalEntryId: true } })).map((d) => d.disposalEntryId!));
+  const uncollected = new Map<string, bigint>(); // proceeds account → its net debit movement in the period (what is still receivable)
+  for (const m of moved) if (m.net > 0n) uncollected.set(m.account.code, m.net);
   const sectionOf = (a: (typeof lines)[number]["account"]) => (a.type === "PENDAPATAN" || a.type === "BEBAN" ? "OPERATING" : (cashLine(a)?.section ?? "CASH"));
   for (const entry of byEntry.values()) {
     // A bank-derived entry is cash even without a cash line: a statement row is posted to 1999 first and moved by a RECLASS entry.
     if (entry[0].entry.bankTransactionId) continue;
+    if (disposals.has(entry[0].entryId)) {
+      const assetLines = entry.filter((l) => l.account.fsLine === "ASET_TETAP");
+      const cost = -assetLines.reduce((t, l) => t + l.debit - l.credit, 0n);
+      if (cost > 0n) {
+        for (const l of assetLines) {
+          const line = cashLine(l.account)!;
+          add(line.key, line.label, line.section, l.debit - l.credit); // undo the cost's investing effect …
+        }
+        let proceeds = 0n;
+        let receivable = 0n;
+        for (const l of entry) {
+          if (l.account.fsLine === "ASET_TETAP" || l.account.fsLine === "AKUM_PENYUSUTAN" || l.account.type === "PENDAPATAN" || l.account.type === "BEBAN") continue;
+          const net = l.debit - l.credit;
+          if (net <= 0n) continue;
+          proceeds += net;
+          const room = uncollected.get(l.account.code) ?? 0n;
+          const owing = net < room ? net : room;
+          uncollected.set(l.account.code, room - owing);
+          receivable += owing;
+        }
+        const collected = proceeds - receivable;
+        add("DISPOSAL", "Hasil pelepasan aset tetap", "INVESTING", collected);
+        add("DISPOSAL_NONCASH", "Pelepasan aset tetap (non-kas): nilai buku dan laba/rugi", "OPERATING", cost - collected); // … and what wasn't cash is operating
+        continue;
+      }
+    }
     const sections = new Set(entry.map((l) => sectionOf(l.account)));
     if (sections.has("CASH") || sections.size < 2) continue;
     for (const l of entry) {
@@ -234,7 +268,27 @@ export async function cashFlow(db: Db, scope: Scope, to: Date): Promise<CashFlow
       add(line.key, line.label, line.section, net); // undo its investing/financing effect …
       // … and show it in operating. Interest accrued on a lease liability is part of the rent, which is paid (and shown) in financing.
       if (LEASE_CODES.has(l.account.code)) add("LEASE_INTEREST", "Bunga dan reklasifikasi liabilitas sewa (dibayar di pendanaan)", "OPERATING", -net, l.account.code);
-      else add("NONCASH", "Transaksi non-kas (dilawankan dengan pos investasi/pendanaan)", "OPERATING", -net, l.account.code);
+      else add("NONCASH", NONCASH, "OPERATING", -net, l.account.code);
+    }
+  }
+
+  // Equipment bought on a payable: the bill's journal is non-cash (above), the payment only moves the payable. What the settled bank lines paid
+  // (in the period, by the bill's settlements) of the bill's investing debits is an investing outflow — also for a bill of an earlier year.
+  const bills = await db.invoice.findMany({
+    where: { entityId: { in: scope.entityIds }, direction: "PURCHASE", entryId: { not: null }, settlements: { some: { bankTransaction: { date: { gte: from, lte: to } } } } },
+    select: { total: true, entryId: true, settlements: { select: { amount: true, bankTransaction: { select: { date: true } } } } },
+  });
+  if (bills.length) {
+    const debits = await db.journalLine.findMany({ where: { entryId: { in: bills.map((b) => b.entryId!) }, debit: { gt: 0n } }, select: { entryId: true, debit: true, account: { select: { code: true, type: true, fsLine: true, isIntercompany: true } } } });
+    for (const bill of bills) {
+      const paid = bill.settlements.filter((x) => +x.bankTransaction.date >= +from && +x.bankTransaction.date <= +to).reduce((t, x) => t + x.amount, 0n);
+      for (const l of debits.filter((d) => d.entryId === bill.entryId)) {
+        const line = cashLine(l.account);
+        if (!line || line.section !== "INVESTING" || bill.total <= 0n) continue;
+        const part = (paid * l.debit) / bill.total;
+        add(line.key, line.label, "INVESTING", -part);
+        add("NONCASH", NONCASH, "OPERATING", part, l.account.code);
+      }
     }
   }
 
