@@ -26,7 +26,7 @@ test("Saldo Awal proposes the deposit a statement lists, with its source", async
   await page.getByRole("button", { name: "Proses mutasi" }).click();
   await expect(page.getByTestId("import-result")).toContainText("Nyambung");
 
-  await page.getByRole("link", { name: "Saldo Awal" }).click();
+  await page.getByRole("link", { name: "Isi saldo awal" }).first().click();
   await expect(page.getByText(/Rekening koran mencantumkan Deposito Berjangka 0524DEP004097 di smbc-mei-2026\.pdf \(jatuh tempo 26 Agu 2026, bunga 5%\)/)).toBeVisible();
   await expect(page.getByLabel("Debit").first()).toHaveValue("3.600.000.000");
   await page.screenshot({ path: testInfo.outputPath("opening-deposit-1440.png"), fullPage: true });

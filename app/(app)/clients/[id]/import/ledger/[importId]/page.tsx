@@ -8,6 +8,7 @@ import { formatDate } from "@/lib/format";
 import { FS_LINES, type FsLine } from "@/lib/coa/template";
 import { importSourceAccounts } from "@/lib/ledger-import/post";
 import { NEW_ACCOUNT_FS_LINES } from "@/lib/ledger-import/mapping";
+import { setupProgress } from "@/lib/setup-progress";
 import { resolveAiConfig } from "@/lib/settings/ai";
 import { NextStep, PageHeader, Stat } from "@/components/app/page-header";
 import { StatusPill } from "@/components/app/status";
@@ -30,6 +31,8 @@ export default async function LedgerImportPage({ params, searchParams }: { param
     resolveAiConfig(prisma),
   ]);
   const posted = imp.status === "POSTED";
+  // After posting, the banner points at the next first-run step instead of ending on links to the Neraca Saldo.
+  const setup = posted ? await setupProgress(prisma, client.id) : null;
   const rank = { BLOCK: 0, REVIEW: 1, INFO: 2 } as const;
   const checks = [...imp.checks].sort((a, b) => rank[a.severity] - rank[b.severity]);
   const openBlock = checks.filter((c) => c.severity === "BLOCK" && !c.accepted);
@@ -53,7 +56,7 @@ export default async function LedgerImportPage({ params, searchParams }: { param
       />
 
       {posted ? (
-        <NextStep tone="done">
+        <NextStep tone="done" href={setup?.next?.href} cta={setup?.next?.cta}>
           {imp._count.entries} jurnal dicatat {imp.postedAt ? `pada ${formatDate(imp.postedAt)}` : ""}. Cek Neraca Saldo per akun sumber:{" "}
           {entities.map((e, i) => (
             <span key={e.id}>

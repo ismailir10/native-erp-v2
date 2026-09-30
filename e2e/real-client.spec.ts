@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { makePdf, table } from "../tests/pdf-fixture";
 
 /**
- * First real client, end to end: Tambah klien → Saldo Awal → password-protected PDF e-statement → bank reconciles.
+ * First real client, end to end: Tambah klien → password-protected PDF e-statement → Saldo Awal (prefilled) → bank reconciles.
  * Runs after the investor walk (files run alphabetically, one worker). The PDF is synthetic.
  */
 const pdf = makePdf(
@@ -44,7 +44,7 @@ test("add a client, set opening balance, import a locked PDF, bank reconciles", 
   const result = page.getByTestId("import-result");
   await expect(result).toContainText("Nyambung");
 
-  await page.getByRole("link", { name: "Saldo Awal" }).click();
+  await page.getByRole("link", { name: "Isi saldo awal" }).first().click();
   await expect(page.getByLabel(/^Saldo Mandiri Giro/)).toHaveValue("80.000.000");
   await page.getByRole("button", { name: "Simpan saldo awal" }).click();
   await expect(page.getByText("Saldo awal semua entitas sudah dicatat.")).toBeVisible();
