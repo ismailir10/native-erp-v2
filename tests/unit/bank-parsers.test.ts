@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseStatement } from "@/lib/import/parsers";
 import { checkContinuity } from "@/lib/import/normalize";
-import { BAL, TX, bniDirectCsv, briInternetBankingCsv, mandiriLivinXlsx, serialDateXlsx, cimbOctoCsv, expectAugust, p2, permataCsv, titleWithCommasSemicolonCsv, utf16TabCsv } from "../bank-fixture";
+import { BAL, TX, bniDirectCsv, briInternetBankingCsv, cimbPdf, idn, mandiriLivinPdf, mandiriLivinXlsx, serialDateXlsx, cimbOctoCsv, expectAugust, p2, permataCsv, titleWithCommasSemicolonCsv, utf16TabCsv } from "../bank-fixture";
 
 describe("routing: bank CSVs that borrow BCA's words", () => {
   it("reads a BRI internet-banking CSV titled 'Mutasi Rekening' with a 'Tanggal Transaksi' header", async () => {
@@ -106,5 +106,34 @@ describe("dates written with month names and Excel serials", () => {
     expect(st.rows.map((r) => r.date.toISOString().slice(0, 10))).toEqual(["2026-08-01", "2026-08-02"]);
     expect(st.rows.map((r) => r.amount)).toEqual([100n, -50n]);
     expect(checkContinuity(st).ok).toBe(true);
+  });
+});
+
+describe("PDF statements: month-name dates, signed / Rp amounts", () => {
+  it("reads CIMB's dd-Mmm-yyyy dates", async () => {
+    expectAugust(await parseStatement("cimb.pdf", cimbPdf()));
+  });
+
+  it("reads 'dd Mmm yyyy' with Indonesian month names", async () => {
+    expectAugust(await parseStatement("cimb.pdf", cimbPdf((d) => `${p2(d)} Agu 2026`)));
+  });
+
+  it("reads two-digit years and a header with 'Post Date / Transaction Desc / Debit (IDR)'", async () => {
+    expectAugust(await parseStatement("cimb.pdf", cimbPdf((d) => `${p2(d)}-Aug-26`, ["Post Date", "Transaction Desc", "Debit (IDR)", "Credit (IDR)", "Balance (IDR)"])));
+  });
+
+  it("reads Livin's '+1.000.000' Nominal (a leading plus is a credit, never 0)", async () => {
+    const st = await parseStatement("livin.pdf", mandiriLivinPdf());
+    expectAugust(st);
+    expect(st.format).toBe("MANDIRI");
+  });
+
+  it("reads an 'Rp' prefix before the amount", async () => {
+    expectAugust(await parseStatement("livin.pdf", mandiriLivinPdf((a) => `${a > 0 ? "+" : "-"}Rp ${idn(a)}`)));
+  });
+
+  it("refuses an amount it can't read instead of posting the row as 0", async () => {
+    const broken = mandiriLivinPdf((a) => (a === 45_678 ? "45.6x8,00" : (a > 0 ? "+" : "-") + idn(a)));
+    await expect(parseStatement("livin.pdf", broken)).rejects.toThrow(/45\.6x8,00.*tidak bisa dibaca/);
   });
 });

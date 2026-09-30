@@ -168,8 +168,8 @@ export const serialDateXlsx = () =>
 const PDF_HEAD = (lines: string[]): PdfText[] => table(800, lines.map((l) => [[40, l]] as [number, string][]));
 
 /** CIMB e-statement: dd-Mmm-yyyy (or "dd Mmm yyyy") dates, Debit / Kredit columns. */
-export function cimbPdf(date: (d: number) => string = (d) => `${p2(d)}-Aug-2026`) {
-  const head: [number, string][] = [[40, "Tanggal"], [110, "Deskripsi"], [360, "Debit"], [440, "Kredit"], [520, "Saldo"]];
+export function cimbPdf(date: (d: number) => string = (d) => `${p2(d)}-Aug-2026`, labels = ["Tanggal", "Deskripsi", "Debit", "Kredit", "Saldo"]) {
+  const head: [number, string][] = [[40, labels[0]], [110, labels[1]], [360, labels[2]], [440, labels[3]], [520, labels[4]]];
   return makePdf([
     [
       ...PDF_HEAD(["PT Bank CIMB Niaga Tbk", "Nomor Rekening : 800123456789", "Periode : 01/08/2026 - 31/08/2026"]),

@@ -3,7 +3,7 @@ import type { BankCode } from "@/lib/generated/prisma/enums";
 import { dateOnly } from "@/lib/format";
 import { parseRupiah } from "@/lib/money";
 import { ParseError, type DepositProduct, type ParsedRow, type ParsedStatement } from "@/lib/import/types";
-import { closingFromRows, monthBoundsOf, periodFromText } from "@/lib/import/parsers/common";
+import { closingFromRows, dateParts, MONTHS, monthBoundsOf, periodFromText } from "@/lib/import/parsers/common";
 
 /**
  * Text PDF e-statements (BCA / Mandiri / BRI and similar layouts). No AI: text + positions → table rows,
@@ -35,20 +35,15 @@ const HEADER: Record<ColKind, RegExp> = {
   balance: /^(saldo|balance|saldo akhir)$/i,
   flag: /^(db\/cr|d\/k|dk|cr\/db)$/i,
 };
-const NUMBER = /^\(?-?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?\)?(?:\s*(DB|CR|DR|D|K|C))?$/i;
-const DATE = /^(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2,4}))?$/;
-const DATE_LONG = /^(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{4})$/;
+/** An amount: optional sign and "Rp"/"IDR" before it ("+1.000.000", "-Rp 2.500", "(2.500)"), a DB/CR marker after. */
+const NUMBER = /^[+-]?\s*(?:(?:Rp\.?|IDR)\s*)?\(?[+-]?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?\)?(?:\s*(DB|CR|DR|D|K|C))?$/i;
+/** Digits with amount punctuation (a separator, sign, brackets or "Rp") and no word: what a damaged amount looks like. A bare "0998" is a code. */
+const looksLikeAmount = (t: string) => /\d/.test(t) && /[.,+()-]|^(?:Rp|IDR)/i.test(t) && !/[A-Za-z]{3,}/.test(t.replace(/^(?:Rp\.?|IDR)/i, ""));
 /** "Aktivitas Rekening / Account Activities – <name> (<CCY>) <number>" — any separator after the last title word. */
 const SECTION = /.*(?:account activities|aktivitas rekening)[^\p{L}\p{N}]+(.+?)\s*\(([A-Za-z]{3})\)\s*([0-9A-Za-z]{6,})\s*$/iu;
 const OPENING = /saldo\s*awal|opening\s*balance|beginning\s*balance|saldo\s*sebelumnya/i;
 const CLOSING = /saldo\s*akhir|closing\s*balance|ending\s*balance/i;
 const FOOTER = /^(saldo\s*awal|saldo\s*akhir|mutasi\s*(cr|db|kredit|debet)|total|jumlah|bersambung|halaman|page|opening|closing|ending)\b/i;
-const MONTHS: Record<string, number> = {
-  jan: 1, januari: 1, january: 1, feb: 2, februari: 2, february: 2, mar: 3, maret: 3, march: 3, apr: 4, april: 4,
-  mei: 5, may: 5, jun: 6, juni: 6, june: 6, jul: 7, juli: 7, july: 7, agu: 8, agt: 8, agus: 8, agustus: 8, aug: 8, august: 8,
-  sep: 9, sept: 9, september: 9, okt: 10, oktober: 10, oct: 10, october: 10, nov: 11, nopember: 11, november: 11,
-  des: 12, desember: 12, dec: 12, december: 12,
-};
 
 export async function parsePdf(data: Buffer, opts: { password?: string } = {}): Promise<ParsedStatement> {
   return (await parsePdfSections(data, opts))[0];
@@ -254,22 +249,16 @@ export function periodOf(text: string): { start: Date; end: Date } | null {
 }
 
 function parseDate(text: string, period: { start: Date; end: Date } | null): Date | null {
-  let m = text.match(DATE);
-  if (m) {
-    const d = Number(m[1]);
-    const mo = Number(m[2]);
-    if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
-    let y = m[3] ? Number(m[3].length === 2 ? `20${m[3]}` : m[3]) : null;
-    if (y === null) {
-      if (!period) return null;
-      y = period.start.getUTCFullYear();
-      if (mo < period.start.getUTCMonth() + 1 && period.end.getUTCFullYear() > y) y++; // Dec → Jan statements
-    }
-    return dateOnly(y, mo, d);
+  const p = dateParts(text);
+  if (!p) return null;
+  let y = p.y;
+  if (y === null) {
+    if (!period) return null;
+    y = period.start.getUTCFullYear();
+    if (p.m < period.start.getUTCMonth() + 1 && period.end.getUTCFullYear() > y) y++; // Dec → Jan statements
   }
-  m = text.match(DATE_LONG);
-  const mo = m && MONTHS[m[2].toLowerCase()];
-  return m && mo ? dateOnly(Number(m[3]), mo, Number(m[1])) : null;
+  const date = dateOnly(y, p.m, p.d);
+  return date.getUTCMonth() + 1 === p.m ? date : null; // 31 Feb is no date
 }
 
 /** Points between a lead-in description line and the amount line below it (SMBC prints ~3 pt; rows are ≥ 9 pt apart). */
@@ -305,7 +294,7 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
       .find(Boolean)
       ?.replace(/-/g, "") ?? null;
 
-  type Draft = ParsedRow & { flag: "DB" | "CR" | null; parts: string[]; page: number; lastY: number };
+  type Draft = ParsedRow & { flag: "DB" | "CR" | null; parts: string[]; page: number; lastY: number; moneySeen: boolean; unreadable: string | null };
   const drafts: Draft[] = [];
   let cols: Column[] | null = null;
   let current: Draft | null = null;
@@ -356,6 +345,8 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
     const descParts: string[] = [];
     const nums: { kind: ColKind; value: bigint; flag: "DB" | "CR" | null }[] = [];
     let flag: "DB" | "CR" | null = null;
+    // A figure under an amount column that isn't a readable number ("45.6x8,00"): remembered so its row can't become a silent 0.
+    let unreadable: string | null = null;
     for (const c of cells) {
       if (NUMBER.test(c.text) && c.x0 > descCol.x0) {
         const col = nearest(cols, c, moneyKinds);
@@ -368,6 +359,7 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
         flag = /^(DB|DR|D)$/i.test(c.text) ? "DB" : "CR";
         continue;
       }
+      if (c.x0 > descCol.x0 && looksLikeAmount(c.text) && nearest(cols, c, moneyKinds)) unreadable ??= c.text;
       if (c.x0 >= dateCol.x1 - 1 || date) descParts.push(c.text);
     }
 
@@ -397,6 +389,8 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
         parts: [desc],
         page: line.page,
         lastY: line.y,
+        moneySeen: nums.some((n) => n.kind !== "balance"),
+        unreadable,
       };
       if (!amt && dr === 0n && cr === 0n) current.amount = 0n;
       drafts.push(current);
@@ -421,6 +415,7 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
       current.lastY = line.y;
       if (current.amount === 0n && nums.length) {
         const amt = nums.find((n) => n.kind === "amount" || n.kind === "credit" || n.kind === "debit");
+        if (amt) current.moneySeen = true;
         if (amt) current.amount = amt.kind === "debit" ? -amt.value : amt.value;
         if (amt?.flag) current.flag = amt.flag;
         current.balance ??= nums.find((n) => n.kind === "balance")?.value ?? null;
@@ -428,6 +423,11 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
     } else current = null;
   }
 
+  for (const d of drafts) {
+    if (!d.moneySeen && d.unreadable) {
+      throw new ParseError(`Nominal "${d.unreadable}" di halaman ${d.page} tidak bisa dibaca (baris: ${d.description.slice(0, 60) || "tanpa keterangan"}). Ekspor CSV/Excel dari internet banking, atau kirim contoh barisnya.`);
+    }
+  }
   if (drafts.length === 0 && !(ctx.allowEmpty && opening !== null)) throw new ParseError("Tidak ada baris transaksi yang terbaca dari PDF ini.");
 
   // Single amount column: sign from the DB/CR marker, else from the balance movement.
