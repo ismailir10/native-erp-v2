@@ -34,6 +34,7 @@ export async function deleteClient(db: Db, input: { firmId: string; clientId: st
       await tx.fiscalCorrection.deleteMany({ where: { taxYearId: { in: taxYearIds } } });
       await tx.taxLossCarryforward.deleteMany({ where: { taxYearId: { in: taxYearIds } } });
       await tx.taxYear.deleteMany({ where: { clientId } });
+      await tx.inventoryCount.deleteMany({ where: { clientId } });
       await tx.fixedAsset.deleteMany({ where: { clientId } });
       await tx.leasePosting.deleteMany({ where: { lease: { clientId } } });
       await tx.lease.deleteMany({ where: { clientId } });

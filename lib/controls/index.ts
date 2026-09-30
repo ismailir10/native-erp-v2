@@ -14,6 +14,7 @@ import { subledgerVsLedger } from "@/lib/receivables/aging";
 import { ckpn, settingAt } from "@/lib/receivables/ckpn";
 import { leasesVsLedger } from "@/lib/leases/register";
 import { valuation } from "@/lib/benefits/valuation";
+import { inventoryRows } from "@/lib/inventory";
 import { packApplies, taxPack } from "@/lib/tax/pack";
 
 /**
@@ -191,6 +192,27 @@ async function collectControls(db: Db, clientId: string, year: number, month: nu
         detail: `${due.length} angsuran: ${list.join("; ")}${due.length > 3 ? `; +${due.length - 3} lainnya` : ""}`,
         href: `${base}/journals/new?period=${year}-${String(month).padStart(2, "0")}`,
         ack: acks.get(sKey),
+      });
+    }
+
+    // Persediaan (rule 5i): an entity with inventory needs the month-end count, and the books must still equal it.
+    const [inv] = await inventoryRows(db, clientId, year, month, [e.id]);
+    if (inv?.applies) {
+      const iKey = `inv:${e.id}`;
+      const counted = inv.count;
+      const status = counted && counted.amount === inv.book ? "PASS" : "REVIEW";
+      controls.push({
+        key: iKey,
+        title: "Persediaan akhir (stock opname)",
+        scope: e.shortName,
+        status,
+        detail: !counted
+          ? `Persediaan akhir ${formatPeriod(year, month)} belum dicatat; saldo buku ${fmt(inv.book)}${inv.previous ? `, terakhir dihitung ${formatPeriod(inv.previous.year, inv.previous.month)}` : ""}`
+          : counted.amount === inv.book
+            ? `Saldo buku = hasil hitung ${fmt(counted.amount)}`
+            : `Saldo buku ${fmt(inv.book)} berbeda dari hasil hitung ${fmt(counted.amount)}; catat ulang hitungannya`,
+        href: `${base}/inventory?period=${year}-${String(month).padStart(2, "0")}`,
+        ack: status === "REVIEW" ? acks.get(iKey) : undefined,
       });
     }
 

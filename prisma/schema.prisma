@@ -158,27 +158,28 @@ model Firm {
 }
 
 model Client {
-  id            String               @id @default(cuid())
-  firmId        String
-  firm          Firm                 @relation(fields: [firmId], references: [id])
-  name          String
-  industry      String?
-  createdAt     DateTime             @default(now())
-  entities      Entity[]
-  accounts      Account[]
-  periods       Period[]
-  rules         Rule[]
-  memories      Memory[]
-  ledgerImports LedgerImport[]
-  schedules     AdjustmentSchedule[]
-  proposals     ProposedEntry[]
-  fixedAssets   FixedAsset[]
-  contacts      Contact[]
-  invoices      Invoice[]
-  taxYears      TaxYear[]
-  leases        Lease[]
-  periodUnlocks PeriodUnlockLog[]
-  coaVersion    Int                  @default(1)
+  id              String               @id @default(cuid())
+  firmId          String
+  firm            Firm                 @relation(fields: [firmId], references: [id])
+  name            String
+  industry        String?
+  createdAt       DateTime             @default(now())
+  entities        Entity[]
+  accounts        Account[]
+  periods         Period[]
+  rules           Rule[]
+  memories        Memory[]
+  ledgerImports   LedgerImport[]
+  schedules       AdjustmentSchedule[]
+  proposals       ProposedEntry[]
+  fixedAssets     FixedAsset[]
+  inventoryCounts InventoryCount[]
+  contacts        Contact[]
+  invoices        Invoice[]
+  taxYears        TaxYear[]
+  leases          Lease[]
+  periodUnlocks   PeriodUnlockLog[]
+  coaVersion      Int                  @default(1)
 
   @@index([firmId])
 }
@@ -204,6 +205,7 @@ model Entity {
   invoices           Invoice[]
   taxYears           TaxYear[]
   ckpnSettings       CkpnSetting[]
+  inventoryCounts    InventoryCount[]
   leases             Lease[]
   employees          Employee[]
   benefitSetting     BenefitSetting?
@@ -397,6 +399,7 @@ model JournalEntry {
   schedulesFrom     AdjustmentSchedule[] @relation("ScheduleSource")
   /// Fixed assets registered from this entry (its purchase line), and the asset this entry disposed of.
   assetsFrom        FixedAsset[]         @relation("AssetSource")
+  inventoryCounts   InventoryCount[]     @relation("InventoryCountEntry")
   assetDisposal     FixedAsset?          @relation("AssetDisposal")
   /// The invoice this entry records (kind INVOICE).
   invoice           Invoice?             @relation("InvoiceEntry")
@@ -872,6 +875,7 @@ model FirmMember {
   mappings         SourceAccount[]       @relation("MappingAcceptedBy")
   schedules        AdjustmentSchedule[]  @relation("ScheduleCreatedBy")
   fixedAssets      FixedAsset[]          @relation("AssetCreatedBy")
+  inventoryCounts  InventoryCount[]      @relation("InventoryCountedBy")
   invoicesCreated  Invoice[]             @relation("InvoiceCreatedBy")
   leasesCreated    Lease[]               @relation("LeaseCreatedBy")
   settlements      InvoiceSettlement[]   @relation("SettlementCreatedBy")
@@ -1406,4 +1410,31 @@ model BenefitPosting {
   createdAt DateTime     @default(now())
 
   @@index([entityId])
+}
+
+/// Month-end stock count (stock opname) of an entity, periodic method (accounting-rules 5i): the counted value of Persediaan; the journal
+/// that brought the GL to it (Dr/Cr 1160 against 5190 Perubahan Persediaan) is `entryId`, null when the count equalled the books.
+model InventoryCount {
+  id          String        @id @default(cuid())
+  firmId      String
+  clientId    String
+  client      Client        @relation(fields: [clientId], references: [id])
+  entityId    String
+  entity      Entity        @relation(fields: [entityId], references: [id])
+  year        Int
+  month       Int
+  /// Counted value in minor units of the entity's functional currency.
+  amount      BigInt
+  /// Persediaan in the books at the month end just before this count was recorded.
+  bookBefore  BigInt
+  note        String?
+  entryId     String?
+  entry       JournalEntry? @relation("InventoryCountEntry", fields: [entryId], references: [id], onDelete: Restrict)
+  countedById String?
+  countedBy   FirmMember?   @relation("InventoryCountedBy", fields: [countedById], references: [id])
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@unique([entityId, year, month])
+  @@index([clientId])
 }

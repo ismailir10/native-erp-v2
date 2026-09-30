@@ -12,6 +12,7 @@ import { leaseSchedule, positionAt } from "@/lib/leases/schedule";
 import { terms } from "@/lib/leases/register";
 import { valuation } from "@/lib/benefits/valuation";
 import { glBalance, packApplies, taxPack } from "@/lib/tax/pack";
+import { cogsBreakdown } from "@/lib/inventory";
 import { scopeFramework, signatoryOf, standardOf, type Framework, type Signatory } from "@/lib/reports/framework";
 
 /**
@@ -87,6 +88,7 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
     has(db.lease.count({ where: { entityId: ids, cancelEntryId: null } })),
     has(db.benefitSetting.count({ where: { entityId: ids } })),
   ]);
+  const stock = bs.currentAssets.some((i) => i.fsLine === "PERSEDIAAN" && i.amount !== 0n) || (await db.inventoryCount.count({ where: { entityId: ids } })) > 0;
   const basis = `Laporan keuangan disusun berdasarkan ${standardOf(framework).named} dengan dasar akrual dan konsep biaya historis, dalam ${currency === "IDR" ? "Rupiah" : currency}.`;
   add("Ikhtisar kebijakan akuntansi", [
     emkm
@@ -94,6 +96,7 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
       : `Dasar penyusunan. ${basis} Laporan arus kas disusun dengan metode tidak langsung.`,
     "Kas dan setara kas meliputi kas dan rekening bank yang dapat digunakan tanpa pembatasan.",
     `Piutang usaha dicatat sebesar nilai tagihan${ckpnSet ? (emkm ? "; penyisihan piutang tidak tertagih diakui sebesar estimasi jumlah yang tidak dapat ditagih berdasarkan umur piutang" : "; cadangan kerugian penurunan nilai diukur dengan pendekatan sederhana (kerugian kredit ekspektasian sepanjang umur) memakai matriks provisi dari umur piutang (PSAK 109)") : ""}.`,
+    stock ? "Persediaan dinyatakan sebesar nilai terendah antara biaya perolehan dan nilai realisasi neto. Entitas memakai metode periodik: pembelian dibebankan ke beban pokok penjualan dan persediaan akhir ditetapkan dari perhitungan fisik (stock opname) akhir periode." : "",
     assets ? "Aset tetap dicatat sebesar biaya perolehan dikurangi akumulasi penyusutan, disusutkan dengan metode garis lurus selama umur manfaatnya; tanah tidak disusutkan." : "",
     leases && !emkm ? "Sewa. Sebagai penyewa, entitas mengakui aset hak guna dan liabilitas sewa sebesar nilai kini pembayaran sewa yang didiskonto dengan suku bunga pinjaman inkremental; aset hak guna disusutkan garis lurus selama masa sewa, bunga dibebankan dengan metode suku bunga efektif. Sewa jangka pendek (≤ 12 bulan) dibebankan langsung." : "",
     benefits ? `Imbalan kerja. Liabilitas imbalan pascakerja sesuai PP 35/2021 dihitung dengan metode Projected Unit Credit; biaya jasa dan bunga diakui di laba rugi, pengukuran kembali ${emkm ? "dicatat langsung di ekuitas" : "di penghasilan komprehensif lain"}.` : "",
@@ -124,6 +127,25 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
   const plKeys = (pick: (i: typeof is) => FsItem[]) => [...new Set([...pick(is), ...pick(isPrior)].map((i) => i.fsLine))].map((k) => ({ k, cur: pick(is).find((i) => i.fsLine === k), old: pick(isPrior).find((i) => i.fsLine === k) }));
   for (const { k, cur: c, old } of [...plKeys((i) => i.revenue), ...plKeys((i) => i.cogs), ...plKeys((i) => i.opex), ...plKeys((i) => i.other), ...plKeys((i) => i.tax)]) {
     lineByKey.set(`PL:${k}`, lineNote((c ?? old)!.label.replace(/^./, (x) => x.toUpperCase()), c, old, plCols));
+  }
+
+  // Cost of sales the periodic way (rule 5i): awal + pembelian − akhir, from the same GL lines as the Laba Rugi line it explains.
+  const cogsLine = is.cogs.find((i) => i.fsLine === "HPP");
+  if (stock && cogsLine) {
+    const c = await cogsBreakdown(db, scope.clientId, scope.entityIds, dateOnly(year, 1, 1), asOf);
+    const note = lineByKey.get("PL:HPP")!;
+    note.paragraphs.push(`Perhitungan beban pokok penjualan 1 Januari – ${formatDate(asOf)} (metode periodik).`);
+    note.tables.push({
+      columns: ["Uraian", "Jumlah"],
+      rows: [
+        ["Persediaan awal", c.opening],
+        ["Pembelian", c.purchases],
+        ...(c.direct !== 0n ? [["Pembelian dan penyesuaian yang dicatat langsung ke persediaan", c.direct] as NoteCell[]] : []),
+        ["Barang tersedia untuk dijual", c.opening + c.purchases + c.direct],
+        ["Persediaan akhir", -c.closing],
+      ],
+      total: ["Beban pokok penjualan", c.total],
+    });
   }
 
   // Detail from the registers, attached to their line.

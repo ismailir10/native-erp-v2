@@ -124,6 +124,15 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     opening obligation not in 2310 → 3200; the rest → 3920 (equity, OCI). All against GL balances, so paid benefits and re-posting are
     respected. Control `eb:` in December. Tax: 2310 is a deductible temporary difference; the deferred tax on the remeasurement goes to 3920.
     Everything is labelled an estimate, not a licensed actuary's report.
+5i. **Persediaan & HPP — periodic method** (`lib/inventory`): purchases go to cost of sales (5100) as classified; the month-end stock count is
+    typed by the accountant (`InventoryCount`: entity, month, counted amount, the book value before, note, who) and **one `ADJUSTMENT` by
+    click**, dated the month end, brings every PERSEDIAAN account's total to it on 1160 against **5190 Perubahan Persediaan** (HPP line;
+    template accounts created on first use): an increase Dr 1160 / Cr 5190, a decrease the reverse, nothing when equal. The book value is
+    read from the GL, never stored as truth; counting a month again books only the new difference; refused in a locked month and once a later
+    month is counted; negative counts refused. Control `inv:<entity>` (REVIEW, never FAIL) for an entity with inventory (a PERSEDIAAN balance,
+    an earlier count, or a trading *Bidang usaha* with HPP this year): no count this month, or books that moved after it. The CALK *Beban
+    pokok* note computes persediaan awal (31 December + the year's OPENING entries) + pembelian (HPP accounts other than 5190) + what was
+    put on Persediaan directly − persediaan akhir, which equals the Laba Rugi line by construction.
 6. `bigint` **minor units of the entity's functional currency** everywhere in the domain (ADR 0006). IDR has exponent 0,
    so for IDR entities that is whole Rupiah, as before. Parse with `parseRupiah()` / `parseMinor()` (handles `1.234.567,00`,
    `1,234,567.00`, `(2.500)`), format with `formatRupiah()` / `formatMoney(value, currency)`. Convert to `Number` only for chart
@@ -252,6 +261,6 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
 24. Every row has `firmId`. Server actions resolve the client through `getClientForFirm()` before any write.
 25. **Deleting a client** (`lib/clients/delete.ts`) is not a ledger correction: an admin removes a client entered by mistake or a test
     copy after typing its exact name. Everything that is its books (entities, accounts, periods, journals, bank and ledger imports,
-    memories, client rules, proposals, invoices, assets, schedules, leases, employee benefits, tax records, evidence) goes in one
+    memories, client rules, proposals, invoices, assets, schedules, leases, employee benefits, tax records, stock counts, evidence) goes in one
     transaction; firm rules, rates, mortality tables and
     AI caches stay. A new table that references a client or entity must be added to that function.
