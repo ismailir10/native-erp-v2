@@ -15,10 +15,11 @@ export const FRAMEWORK_OPTIONS: { value: Framework; label: string; help: string 
 
 export const isFramework = (v: unknown): v is Framework => FRAMEWORK_OPTIONS.some((o) => o.value === v);
 
-const STANDARD: Record<Framework, { short: string; full: string }> = {
-  SAK_EMKM: { short: "SAK EMKM", full: "Standar Akuntansi Keuangan Entitas Mikro, Kecil, dan Menengah (SAK EMKM)" },
-  SAK_EP: { short: "SAK EP", full: "Standar Akuntansi Keuangan Entitas Privat" },
-  SAK_UMUM: { short: "SAK Umum", full: "Standar Akuntansi Keuangan yang berlaku umum di Indonesia (PSAK)" },
+/** `full` is the standard's name as the statement of responsibility quotes it; `named` adds the abbreviation where the notes introduce it. */
+const STANDARD: Record<Framework, { short: string; full: string; named: string }> = {
+  SAK_EMKM: { short: "SAK EMKM", full: "Standar Akuntansi Keuangan Entitas Mikro, Kecil, dan Menengah (SAK EMKM)", named: "Standar Akuntansi Keuangan Entitas Mikro, Kecil, dan Menengah (SAK EMKM)" },
+  SAK_EP: { short: "SAK EP", full: "Standar Akuntansi Keuangan Entitas Privat", named: "Standar Akuntansi Keuangan Entitas Privat (SAK EP)" },
+  SAK_UMUM: { short: "SAK Umum", full: "Standar Akuntansi Keuangan yang berlaku umum di Indonesia (PSAK)", named: "Standar Akuntansi Keuangan yang berlaku umum di Indonesia (PSAK)" },
 };
 export const standardOf = (f: Framework) => STANDARD[f];
 

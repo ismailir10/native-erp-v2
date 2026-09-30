@@ -7,6 +7,7 @@ import { cashFlow, equityChanges, otherComprehensiveIncome } from "@/lib/reports
 import { CashFlowTable, EquityTable, NotesView } from "@/components/app/statements";
 import { financialNotes } from "@/lib/reports/notes";
 import { formatPeriod, monthName } from "@/lib/format";
+import { scopeFramework, statementNames } from "@/lib/reports/framework";
 import { NextStep, PageHeader } from "@/components/app/page-header";
 import { ScopeBar } from "@/components/app/scope-bar";
 import { FsTable, type FsParts } from "@/components/app/fs-table";
@@ -30,6 +31,10 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
   const priorFrom = new Date(Date.UTC(period.year - 1, 0, 1));
   const priorTo = new Date(Date.UTC(period.year - 1, period.month, 0));
   const multi = client.entities.length > 1;
+  // Wording follows the entities' reporting framework (framework.ts): SAK EMKM has no other comprehensive income and no required cash flow.
+  const framework = scopeFramework(client.entities.filter((e) => scope.entityIds.includes(e.id)));
+  const names = statementNames(framework);
+  const emkm = framework === "SAK_EMKM";
   const href = (code: string) => withParams(`${base}/ledger/${code}`, { period: period.key, entity: scope.value });
   const tab = typeof sp.tab === "string" ? sp.tab : "pl";
   const combinedNote = `Gabungan adalah pandangan manajemen, bukan konsolidasi menurut SAK (yang berlaku untuk induk–anak). Saldo antar entitas (1190) saling meniadakan bila kedua sisinya sudah tercatat; saldo 1190 yang masih tampil belum ada pasangannya di entitas lain.${
@@ -99,7 +104,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
   const isPrior = prior instanceof FxMissingError ? null : prior;
   const plCols = <T,>(month: T, ytd: T, old: T | undefined): T[] => (isPrior ? [month, ytd, old as T] : [month, ytd]);
   const [ociMonth, ociYtd, ociPrior] = mixed ? [null, null, null] : await Promise.all([otherComprehensiveIncome(prisma, s, period.start, period.end), otherComprehensiveIncome(prisma, s, yearStart, period.end), otherComprehensiveIncome(prisma, s, priorFrom, priorTo)]);
-  const hasOci = !!ociMonth && [ociMonth, ociYtd, ociPrior].some((o) => o && o.items.length);
+  const hasOci = !emkm && !!ociMonth && [ociMonth, ociYtd, ociPrior].some((o) => o && o.items.length);
   const [equity, cash, notes] = mixed ? [null, null, null] : await Promise.all([equityChanges(prisma, s, period.end), cashFlow(prisma, s, period.end), financialNotes(prisma, s, period.year, period.month)]);
   const wsCurrency = ws?.translated ? "IDR" : (client.entities[0]?.functionalCurrency ?? "IDR");
 
@@ -126,7 +131,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
         <TabsContent value="pl">
           <Card>
             <CardHeader>
-              <CardTitle>Laporan Laba Rugi</CardTitle>
+              <CardTitle>{emkm ? names.income : "Laporan Laba Rugi"}</CardTitle>
               <CardDescription>{monthName(period.month)} {period.year} dan 1 Januari – akhir {formatPeriod(period.year, period.month)}{isPrior ? `, dibandingkan periode yang sama tahun ${period.year - 1}` : ""}</CardDescription>
             </CardHeader>
             <CardContent className="px-0">
@@ -185,7 +190,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                Laporan Perubahan Ekuitas
+                {names.equity}
                 {equity && <StatusPill status={equity.totals.closing === equity.balanceSheetEquity ? "PASS" : "FAIL"} label={equity.totals.closing === equity.balanceSheetEquity ? "Sama dengan Neraca" : "Beda dengan Neraca"} />}
               </CardTitle>
               <CardDescription>1 Januari – akhir {formatPeriod(period.year, period.month)}</CardDescription>
@@ -200,7 +205,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                Laporan Arus Kas
+                {emkm ? "Laporan Arus Kas (informasi tambahan)" : "Laporan Arus Kas"}
                 {cash && <StatusPill status={cash.openingCash + cash.net === cash.closingCash ? "PASS" : "FAIL"} label={cash.openingCash + cash.net === cash.closingCash ? "Sama dengan kas di Neraca" : "Beda dengan kas di Neraca"} />}
               </CardTitle>
               <CardDescription>Metode tidak langsung, dari perubahan pos neraca · 1 Januari – akhir {formatPeriod(period.year, period.month)}</CardDescription>
