@@ -22,7 +22,9 @@ test("statement in → reviewed → traceable reports → combined → closed", 
   // 1. Beranda points at the client that needs work
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Tanya Buku", exact: true })).toBeVisible();
-  await page.getByRole("link", { name: "Pekerjaan", exact: true }).click();
+  // The full task list is on Beranda ("Semua pekerjaan"); the old /work address lands there too.
+  await page.goto("/work");
+  await expect(page).toHaveURL(/\/\?.*tugas=semua/);
   await page.getByRole("link", { name: /Lengkapi 1 rekening koran · Grup Ayam Nusantara/ }).click();
 
   // 2. Live upload of the held-back BRI statement

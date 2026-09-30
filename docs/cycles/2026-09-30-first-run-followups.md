@@ -27,7 +27,7 @@ cycle is spec'd for the record and built straight through, with the design decis
       account's first statement (existing behaviour).
 - [x] **F3 Dokumen vs Impor Mutasi copy.** One sentence on each page saying what the other is for, linking to it (Impor: "Dokumen
       dipakai untuk bertanya pada berkas, bukan untuk membuat jurnal"; Dokumen: "Untuk membukukan rekening koran, pakai Impor Mutasi").
-- [ ] **F4 One page for the task list.** Beranda is the page. It shows every task when `?tugas=semua` (else the first 3 with a
+- [x] **F4 One page for the task list.** Beranda is the page. It shows every task when `?tugas=semua` (else the first 3 with a
       "Lihat semua (N)" link); `/work` redirects to `/?tugas=semua` keeping scope and period; the "Pekerjaan" menu item is removed.
 - [ ] **F5 Docs + tests.** DB tests for F1 and F2 (incl. tenant and limits), workspace/e2e updates for F4 (investor demo and workspace
       specs), README rows, `ui-rules` unchanged.
@@ -47,7 +47,7 @@ Saldo Awal posts; no import of statements *before* an opening (refused, not re-b
 - [x] T2 F2 domain: `addEntity`, `addBankAccount` in `lib/onboarding.ts` + `tests/db/onboarding-add.test.ts` — accept: codes 1101…/2201…, limits, duplicates, foreign client refused.
 - [x] T3 F2 UI: server actions + `components/app/entities-card.tsx` on client settings — accept: add a bank and an owner from the page; bank shows in Impor's account list.
 - [x] T4 F3 copy on Impor and Dokumen — accept: both sentences render with a link.
-- [ ] T5 F4 Beranda tasks page: `?tugas=semua`, `/work` redirect, sidebar item removed, e2e updated — accept: `/work?scope=…` lands on `/?tugas=semua&scope=…`.
+- [x] T5 F4 Beranda tasks page: `?tugas=semua`, `/work` redirect, sidebar item removed, e2e updated — accept: `/work?scope=…` lands on `/?tugas=semua&scope=…`.
 - [ ] T6 F5 docs (README rows, cycle doc), full gate.
 
 ## Implementation
@@ -55,6 +55,7 @@ Saldo Awal posts; no import of statements *before* an opening (refused, not re-b
 - T1: `lib/import/pipeline.ts`, `tests/db/import-opening-guard.test.ts`, `accounting-rules` §5 — `importStatement` refuses a file whose not-yet-imported rows are dated on/before the entity's OPENING date (whole file, nothing written), message names the entity, the opening date, the row count and the earliest row, and what to do. Re-importing an already-imported statement is unaffected; an entity with no opening is unguarded.- T2: `lib/setup.ts` (createEntity / createBankAccount / freeGlCodes extracted from createClient; new clients allocate exactly as before), `lib/onboarding.ts` (cleanBank / cleanEntity shared by the new-client form; new `addBankAccount`, `addEntity`), `tests/db/onboarding-add.test.ts` — next free code 1101–1109 (PRK 2201–2209), max 9, a number already on the client is refused, another firm's client/entity is refused; no schema change.
 - T3: `app/actions.ts` (`addBankAccountAction`, `addEntityAction`: tenant via `getClientForFirm`, domain errors as `{ok:false, error, fields}`), `components/app/entities-card.tsx` on the client settings page (entities with their accounts and GL codes, inline *Tambah rekening*, *Tambah perusahaan atau pemilik* with an optional first account), a pointer under the account picker on Impor (\"Tambahkan di Aturan klasifikasi\"), `e2e/add-entity.spec.ts`. The 9-account limit shows as a field message.
 - T4: `components/app/evidence-workspace.tsx` (Dokumen: \"tidak otomatis menjadi jurnal; rekening koran bank dibukukan lewat Impor Mutasi di klien\"), `app/(app)/clients/[id]/import/page.tsx` (when Dokumen is enabled: a line saying what Dokumen is for, with a link, and that Impor becomes journals), `e2e/add-entity.spec.ts` asserts it.
+- T5: `components/app/workspace-overview.tsx` (`WorkspaceTasks` gets `expanded`: \"Semua pekerjaan (N)\" ↔ \"Tampilkan 3 teratas\"), `app/(app)/page.tsx` (`?tugas=semua`), `app/(app)/work/page.tsx` (redirect keeping scope and period), sidebar without \"Pekerjaan\", `e2e/investor-demo.spec.ts` + `docs/demo/investor-demo.md`, `tests/unit/work-redirect.test.ts`.
 
 ## Verification
 ## Ship Notes

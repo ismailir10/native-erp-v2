@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { BookOpen, Building2, ChartColumn, HandCoins, KeyRound, ReceiptText, Warehouse, ChevronDown, ClipboardCheck, Coins, FileSpreadsheet, FolderOpen, Home, Inbox, Landmark, ListChecks, ListFilter, LogOut, NotebookPen, Plus, Scale, Settings2, SlidersHorizontal, Upload, Users } from "lucide-react";
+import { BookOpen, Building2, ChartColumn, HandCoins, KeyRound, ReceiptText, Warehouse, ChevronDown, ClipboardCheck, Coins, FileSpreadsheet, FolderOpen, Home, Inbox, Landmark, ListFilter, LogOut, NotebookPen, Plus, Scale, Settings2, SlidersHorizontal, Upload, Users } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { BrandMark } from "@/components/app/brand-mark";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
@@ -12,7 +12,6 @@ import { signOutAction } from "@/app/login/actions";
 type Client = { id: string; name: string; entities: { id: string }[] };
 const DESTINATIONS = [
   { href: "/", label: "Beranda", icon: Home },
-  { href: "/work", label: "Pekerjaan", icon: ListChecks },
   { href: "/documents", label: "Dokumen", icon: FolderOpen },
   { href: "/reports", label: "Laporan", icon: ChartColumn },
 ];
