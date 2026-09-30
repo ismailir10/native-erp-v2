@@ -10,7 +10,8 @@ import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { openingAction } from "@/app/actions";
 import { formatMoney, moneyExample, parseMoney } from "@/lib/money";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 
 type Line = { accountCode: string; debit: string; credit: string };
 type BankLine = { accountCode: string; label: string; prefill: string; source: string | null; isOverdraft?: boolean };
@@ -38,6 +39,7 @@ export function OpeningForm({
   accounts,
   deposits = [],
   loanRows = 0,
+  company = true,
 }: {
   clientId: string;
   entityId: string;
@@ -49,6 +51,8 @@ export function OpeningForm({
   deposits?: { accountCode: string; amount: string; note: string }[];
   /** Imported rows suggested as loan principal: a loan balance at the opening date may be missing. */
   loanRows?: number;
+  /** A company (PT/CV): its equity has paid-in capital to fill; an individual's hasn't. */
+  company?: boolean;
 }) {
   const router = useRouter();
   const [date, setDate] = useState(suggestedDate);
@@ -71,6 +75,7 @@ export function OpeningForm({
   const dr = bankParsed.reduce((s, p) => s + (p.value > 0n ? p.value : 0n), 0n) + otherParsed.reduce((s, p) => s + p.debit.value, 0n);
   const cr = bankParsed.reduce((s, p) => s + (p.value < 0n ? -p.value : 0n), 0n) + otherParsed.reduce((s, p) => s + p.credit.value, 0n);
   const plug = dr - cr;
+  const hasCapital = !company || others.some((l) => l.accountCode.startsWith("31"));
   const setOther = (i: number, patch: Partial<Line>) => setOthers((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
 
   async function submit() {
@@ -160,8 +165,23 @@ export function OpeningForm({
               <TableCell />
             </TableRow>
           </TableBody>
+          <TableFooter>
+            <TableRow>
+              <TableCell className="p-2 pl-3 font-semibold">Jumlah</TableCell>
+              <TableCell className="num p-2 pr-5 text-right font-semibold" data-testid="opening-total-debit">{formatMoney(plug < 0n ? dr - plug : dr, currency, { bare: true })}</TableCell>
+              <TableCell className="num p-2 pr-5 text-right font-semibold">{formatMoney(plug > 0n ? cr + plug : cr, currency, { bare: true })}</TableCell>
+              <TableCell />
+            </TableRow>
+          </TableFooter>
         </Table>
       </div>
+
+      {plug !== 0n && (
+        <p className={cn("rounded-md border px-3 py-2 text-sm", !hasCapital ? "border-review/40 bg-review-subtle" : "text-muted-foreground")} data-testid="opening-plug">
+          Selisih {formatMoney(plug < 0n ? -plug : plug, currency)} dicatat ke 3200 Saldo Laba di sisi {plug > 0n ? "kredit" : "debit"}.
+          {!hasCapital && " Modal disetor (3100) belum diisi: bila klien punya modal disetor, isi barisnya agar modal tidak ikut tercatat sebagai saldo laba."}
+        </p>
+      )}
 
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       <div className="flex flex-wrap items-center gap-2">

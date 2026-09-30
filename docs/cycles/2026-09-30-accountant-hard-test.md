@@ -71,7 +71,7 @@ Their findings, confirmed against the code, that this cycle fixes:
 - [x] **S9 Reverse a manual journal.** The entry dialog of a manual `ADJUSTMENT` (no schedule, register or pack behind it) offers *Balik
       jurnal*: a new `ADJUSTMENT` with every line mirrored, dated by the accountant (default the 1st of the next month), memo "Pembalik: …",
       refused in a locked month and when already reversed (stored `reversesId`).
-- [ ] **S10 Saldo Awal shows its plug.** Totals of debit and credit and the difference that goes to 3200 Saldo Laba, live, before saving.
+- [x] **S10 Saldo Awal shows its plug.** Totals of debit and credit and the difference that goes to 3200 Saldo Laba, live, before saving.
 - [ ] **S11 Docs + tests.** DB tests for S1, S2, S4, S5, S7, S9; unit tests for the gross-up, rule order and hints; e2e for the Persediaan page
       and review filters; accounting-rules, README and ui-rules rows; full gate incl. `verify:books`.
 
@@ -102,7 +102,7 @@ print styles; a fuller CALK (akta, pihak berelasi); PPh 23 at accrual instead of
 - [x] T8 S7 import guard + TRF — accept: DB test refuses the wrong-year file; unit test pairs TRF.
 - [x] T9 S8 Beranda, menu, locked journal form — accept: unit/DB test for ordering; screenshot.
 - [x] T10 S9 reverse manual journal — accept: DB test (mirror, once, locked refused).
-- [ ] T11 S10 Saldo Awal totals — accept: screenshot.
+- [x] T11 S10 Saldo Awal totals — accept: screenshot.
 - [ ] T12 S11 docs + full gate.
 
 ## Implementation
@@ -163,6 +163,9 @@ print styles; a fuller CALK (akta, pihak berelasi); PPh 23 at accrual instead of
   under a per-entry lock), `reverseEntryAction` (tenant via the entry's client), `lib/reports/account-ledger.ts` + `components/app/ledger-table.tsx`
   (drawer section *Balik jurnal* with the date, default the 1st of the next month, or the reason it doesn't apply), `lib/clients/delete.ts`
   (clears the self-reference first), accounting-rules 3a, `tests/db/reverse-entry.test.ts`, `e2e/reverse-journal.spec.ts`.
+- T11: `components/app/opening-form.tsx` (a *Jumlah* footer with the plug included, and a note naming the difference that goes to 3200 —
+  highlighted for a company with no 31xx capital line, "modal tidak ikut tercatat sebagai saldo laba"), opening page passes `company`.
+  Checked in the browser: bank lines + Piutang 350 jt → *Selisih Rp 1.429.000.000 dicatat ke 3200 … di sisi kredit* with the capital hint.
 ## Verification
 - After T2: `npm test` → `Test Files 113 passed (113)`, `Tests 840 passed (840)`.
 ## Ship Notes

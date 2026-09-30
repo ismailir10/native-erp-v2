@@ -85,6 +85,7 @@ export default async function OpeningPage({ params }: { params: Promise<{ id: st
                 accounts={accounts.map((a) => ({ code: a.code, name: a.name }))}
                 deposits={c.deposits.map((d) => ({ accountCode: ACCOUNT_CODES.DEPOSIT, amount: formatMoney(d.amount, currencyOf(c.entity.id), { bare: true }), note: d.note }))}
                 loanRows={c.loanRows}
+                company={client.entities.find((e) => e.id === c.entity.id)?.kind !== "PERORANGAN"}
               />
               </div>
             )}
