@@ -182,6 +182,9 @@ print styles; a fuller CALK (akta, pihak berelasi); PPh 23 at accrual instead of
   sorted by the database, whose collation orders "411125-100" after "411125100" (now sorted in JS); and on the slower runner the line-2
   account picker opened while line 1's list was still closing, so an option matched twice (the three journal-line specs now wait for the
   list to close). CI then passed on `f0da0d8`.
+- Code review (Codex) on `d82b2e6`, three findings, all fixed: an adjustment posted from a close proposal and an earlier stock-count
+  journal after a recount were offered *Balik jurnal* (now refused: `proposal` is an owner, and any line on 5190 is the count's); the draft
+  bar summed 1999 across currencies in a mixed scope (now listed per entity in its own currency). `npm test` → `Tests 857 passed (857)`.
 - How e2e ran here: Supabase Auth is blocked from this sandbox, so a local stand-in for the GoTrue endpoints the app uses (password token,
   `/user`, admin users) served `NEXT_PUBLIC_SUPABASE_URL`; everything else is the real app on `next start`. `xlsx@0.18.5` stands in for the
   CDN tarball (untracked). CI runs the real local Supabase stack.

@@ -22,8 +22,8 @@ describe("report status: final or draft, and why", () => {
     const draft = await reportStatus(db, g.client.id, pt, 2026, 7);
     expect(draft.locked).toBeNull();
     // Two PT bank accounts without a July statement, money on 1999, the stock not counted.
-    expect(draft.reasons.map((r) => reasonText(r, (v) => v.toString()))).toEqual([
-      "Belum Terklasifikasi (1999) 7000",
+    expect(draft.reasons.map(reasonText)).toEqual([
+      "Belum Terklasifikasi (1999) Rp 7.000",
       "rekening koran belum lengkap: BCA Giro, Mandiri Giro",
       "persediaan akhir belum dicatat: PT Uji",
     ]);
@@ -37,5 +37,18 @@ describe("report status: final or draft, and why", () => {
     for (const c of (await runControls(db, g.client.id, 2026, 7)).filter((c) => c.status === "REVIEW")) await db.controlAck.create({ data: { periodId: period.id, controlKey: c.key, note: "Rekening mulai Agustus", detail: c.detail } });
     await lockPeriod(db, g.client.id, 2026, 7, "uji");
     expect((await reportStatus(db, g.client.id, pt, 2026, 7)).locked).toMatchObject({ at: expect.any(Date) });
+  });
+
+  it("lists 1999 per entity in its own currency in a mixed-currency scope, never a sum of different minor units", async () => {
+    const g = await makeGroup();
+    await db.entity.update({ where: { id: g.owner.entity.id }, data: { functionalCurrency: "USD" } });
+    await post(g, dateOnly(2026, 7, 5), "ADJUSTMENT", "1999", "4100", 7_000n);
+    await db.$transaction(async (tx) => postJournal(tx, { entityId: g.owner.entity.id, date: dateOnly(2026, 7, 5), kind: "ADJUSTMENT", memo: "uji", lines: [{ accountId: await acc(g, "1999"), debit: 12_345n }, { accountId: await acc(g, "4910"), credit: 12_345n }] }));
+    const status = await reportStatus(db, g.client.id, [g.pt.entity.id, g.owner.entity.id], 2026, 7);
+    const text = status.reasons.filter((r) => r.kind === "suspense").map(reasonText);
+    expect(text).toHaveLength(1);
+    expect(text[0]).toContain("PT Uji Rp 7.000");
+    expect(text[0]).toContain("Andi");
+    expect(text[0]).toMatch(/123,45/);
   });
 });

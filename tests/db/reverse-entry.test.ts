@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { db, makeGroup, resetDb } from "../helpers";
 import { postAdjustment } from "@/lib/ledger/adjustment";
-import { reverseEntry } from "@/lib/ledger/reverse";
+import { reversalBlocker, reverseEntry } from "@/lib/ledger/reverse";
 import { dateOnly } from "@/lib/format";
 import { recordInventoryCount } from "@/lib/inventory";
 import { postJournal } from "@/lib/ledger/post";
@@ -42,5 +42,15 @@ describe("Balik jurnal", () => {
     await db.$transaction(async (tx) => postJournal(tx, { entityId: g.pt.entity.id, date: dateOnly(2026, 7, 31), kind: "OPENING", memo: "Saldo awal", lines: [{ accountId: await acc("1160"), debit: 10n }, { accountId: await acc("3100"), credit: 10n }] }));
     const count = await recordInventoryCount(db, { clientId: g.client.id, entityId: g.pt.entity.id, year: 2026, month: 8, amount: 15n });
     await expect(reverseEntry(db, { clientId: g.client.id, entryId: count.entryId!, date: dateOnly(2026, 8, 31) })).rejects.toThrow("Jurnal persediaan: catat ulang hitungan di halaman Persediaan.");
+    // A recount keeps only the newest journal on the count row; the earlier one is still the count's.
+    const recount = await recordInventoryCount(db, { clientId: g.client.id, entityId: g.pt.entity.id, year: 2026, month: 8, amount: 12n });
+    expect(recount.entryId).not.toBe(count.entryId);
+    await expect(reverseEntry(db, { clientId: g.client.id, entryId: count.entryId!, date: dateOnly(2026, 8, 31) })).rejects.toThrow("Jurnal persediaan");
+  });
+
+  it("an adjustment posted from a close proposal is changed there, not reversed", () => {
+    const owned = { kind: "ADJUSTMENT", scheduleId: null, reversesId: null, reversedBy: null, taxPosting: null, leasePosting: null, leaseCommenced: null, leaseCancelled: null, benefitPosting: null, inventoryCounts: [], assetDisposal: null, assetsFrom: [], schedulesFrom: [], lines: [{ currency: null, account: { code: "6190" } }] };
+    expect(reversalBlocker({ ...owned, proposal: null })).toBeNull();
+    expect(reversalBlocker({ ...owned, proposal: { id: "p" } })).toMatch(/usulan koreksi Tutup Buku/);
   });
 });

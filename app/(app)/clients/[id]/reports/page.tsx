@@ -130,7 +130,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
   return (
     <div className="space-y-6">
       {header}
-      <ReportStatusBar status={status} base={base} q={q} currency={currency} />
+      <ReportStatusBar status={status} base={base} q={q} />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <NextStep>Pilih nama akun untuk menelusuri buku besar sampai baris sumbernya.</NextStep>
         <a href={withParams(`${base}/reports/export`, { period: period.key, entity: scope.value })} className={buttonVariants({ variant: "outline", size: "sm" })} download data-testid="fs-download">

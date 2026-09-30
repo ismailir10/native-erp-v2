@@ -4,7 +4,6 @@ import { parsePeriod, resolveEntityScope } from "@/lib/scope";
 import { financialStatementsWorkbook, statementsFileName } from "@/lib/reports/workbook";
 import { FxMissingError } from "@/lib/reports/fx";
 import { reasonText, reportStatus } from "@/lib/reports/status";
-import { formatMoney } from "@/lib/money";
 
 /** GET ?entity=<id|combined>&period=YYYY-MM — the financial statements as one Excel workbook (accounting-rules 12). */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -19,8 +18,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const firm = await getCurrentFirm();
   try {
     const status = await reportStatus(prisma, client.id, scope.entityIds, period.year, period.month);
-    const currency = client.entities.find((e) => scope.entityIds.includes(e.id))?.functionalCurrency ?? "IDR";
-    const draft = status.locked ? undefined : status.reasons.length ? `belum final: ${status.reasons.map((r) => reasonText(r, (v) => formatMoney(v, currency))).join("; ")}; bulan belum ditutup.` : "bulan belum ditutup.";
+    const draft = status.locked ? undefined : status.reasons.length ? `belum final: ${status.reasons.map(reasonText).join("; ")}; bulan belum ditutup.` : "bulan belum ditutup.";
     const body = await financialStatementsWorkbook(prisma, { clientId: client.id, entityIds: scope.entityIds }, period.year, period.month, { firm: firm.name, title, draft });
     return new Response(new Uint8Array(body), {
       headers: {

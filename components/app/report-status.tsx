@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { CircleCheck, FilePenLine } from "lucide-react";
 import { formatDateTime } from "@/lib/format";
-import { formatMoney } from "@/lib/money";
 import { withParams } from "@/lib/scope";
 import { reasonText, type ReportReason, type ReportStatus } from "@/lib/reports/status";
 
@@ -9,7 +8,7 @@ import { reasonText, type ReportReason, type ReportStatus } from "@/lib/reports/
  * Final or draft, above the statements: a closed month says who closed it; an open one says what still makes it a draft, each reason linking
  * to the page that fixes it. The green balance pills below only say the statements add up, not that the books are done.
  */
-export function ReportStatusBar({ status, base, q, currency }: { status: ReportStatus; base: string; q: { period: string; entity: string }; currency: string }) {
+export function ReportStatusBar({ status, base, q }: { status: ReportStatus; base: string; q: { period: string; entity: string } }) {
   if (status.locked) {
     return (
       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-pass/20 bg-pass-subtle px-4 py-2.5 text-sm text-pass" data-testid="report-status" data-state="final">
@@ -35,7 +34,7 @@ export function ReportStatusBar({ status, base, q, currency }: { status: ReportS
           <span>belum final:</span>
           {status.reasons.map((r, i) => (
             <span key={r.kind}>
-              <Link href={href(r)} className="font-medium underline decoration-review/50 underline-offset-4 hover:text-primary">{reasonText(r, (v) => formatMoney(v, currency))}</Link>
+              <Link href={href(r)} className="font-medium underline decoration-review/50 underline-offset-4 hover:text-primary">{reasonText(r)}</Link>
               {i < status.reasons.length - 1 ? ";" : ""}
             </span>
           ))}

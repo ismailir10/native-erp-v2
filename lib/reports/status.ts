@@ -1,6 +1,7 @@
 import type { Db } from "@/lib/db";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { periodBounds } from "@/lib/format";
+import { formatMoney } from "@/lib/money";
 import { dueProposals } from "@/lib/adjust/schedules";
 import { inventoryRows } from "@/lib/inventory";
 import { openingDate, statementCoverage } from "@/lib/controls/coverage";
@@ -12,7 +13,8 @@ import { openingDate, statementCoverage } from "@/lib/controls/coverage";
  */
 export type ReportReason =
   | { kind: "review"; count: number }
-  | { kind: "suspense"; amount: bigint }
+  /** Per entity in its own currency: a mixed-currency scope never adds minor units of different currencies (rule 6). */
+  | { kind: "suspense"; items: { entity: string; amount: bigint; currency: string }[] }
   | { kind: "statements"; accounts: string[] }
   | { kind: "schedules"; count: number }
   | { kind: "inventory"; entities: string[] };
@@ -28,9 +30,11 @@ export async function reportStatus(db: Db, clientId: string, entityIds: string[]
 
   const review = await db.bankTransaction.count({ where: { entityId: { in: entityIds }, status: "NEEDS_REVIEW", date: { lte: end } } });
   if (review) reasons.push({ kind: "review", count: review });
-  const suspense = await db.journalLine.aggregate({ where: { entityId: { in: entityIds }, account: { clientId, code: ACCOUNT_CODES.SUSPENSE }, date: { lte: end } }, _sum: { debit: true, credit: true } });
-  const held = (suspense._sum.debit ?? 0n) - (suspense._sum.credit ?? 0n);
-  if (held !== 0n) reasons.push({ kind: "suspense", amount: held });
+  const suspense = await db.journalLine.groupBy({ by: ["entityId"], where: { entityId: { in: entityIds }, account: { clientId, code: ACCOUNT_CODES.SUSPENSE }, date: { lte: end } }, _sum: { debit: true, credit: true } });
+  const held = suspense
+    .map((g) => { const e = entities.find((x) => x.id === g.entityId)!; return { entity: e.shortName, currency: e.functionalCurrency, amount: (g._sum.debit ?? 0n) - (g._sum.credit ?? 0n) }; })
+    .filter((x) => x.amount !== 0n);
+  if (held.length) reasons.push({ kind: "suspense", items: held });
 
   const missing: string[] = [];
   for (const e of entities) {
@@ -48,11 +52,11 @@ export async function reportStatus(db: Db, clientId: string, entityIds: string[]
   return { locked, reasons };
 }
 
-/** One line per reason, in Bahasa (the page renders links; the Excel prints this). */
-export function reasonText(r: ReportReason, money: (v: bigint) => string): string {
+/** One line per reason, in Bahasa, each amount in its entity's currency (the page renders links; the Excel prints this). */
+export function reasonText(r: ReportReason): string {
   switch (r.kind) {
     case "review": return `${r.count} transaksi masih di Review`;
-    case "suspense": return `Belum Terklasifikasi (1999) ${money(r.amount)}`;
+    case "suspense": return `Belum Terklasifikasi (1999) ${r.items.map((i) => (r.items.length > 1 ? `${i.entity} ` : "") + formatMoney(i.amount, i.currency)).join(", ")}`;
     case "statements": return `rekening koran belum lengkap: ${r.accounts.join(", ")}`;
     case "schedules": return `${r.count} jurnal terjadwal belum dicatat`;
     case "inventory": return `persediaan akhir belum dicatat: ${r.entities.join(", ")}`;
