@@ -29,6 +29,18 @@ describe("Tambah klien", () => {
     expect(await db.account.count({ where: { clientId: client.id, code: { in: ["1190", "1199", "1999", "3200"] } } })).toBe(4);
   });
 
+  it("stores each entity's reporting framework, SAK EP when none is chosen, and rejects an unknown one", async () => {
+    const firm = await db.$transaction((tx) => createFirm(tx, "KJA Uji"));
+    const withFramework = input();
+    withFramework.entities[0].reportingFramework = "SAK_EMKM";
+    const client = await addClient(db, firm.id, withFramework);
+    const rows = await db.entity.findMany({ where: { clientId: client.id }, orderBy: { name: "asc" } });
+    expect(rows.map((e) => [e.shortName, e.reportingFramework])).toEqual([["Budi", "SAK_EMKM"], ["PT Maju Bersama", "SAK_EP"]]);
+    const bad = input();
+    (bad.entities[1] as { reportingFramework?: string }).reportingFramework = "IFRS";
+    expect(() => validateNewClient(bad)).toThrow("Pilih kerangka pelaporan.");
+  });
+
   it("reports every problem at once, keyed by field", () => {
     const bad = input();
     bad.name = " ";

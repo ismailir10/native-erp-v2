@@ -15,6 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { isGenericKey } from "@/lib/import/normalize";
 import { requireWorkspaceSession } from "@/lib/auth/session";
 import { DeleteClientCard } from "@/components/app/delete-client";
+import { FrameworkCard } from "@/components/app/framework-card";
 
 export default async function SettingsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client } = await loadClientPage(params, searchParams);
@@ -45,6 +46,7 @@ export default async function SettingsPage({ params, searchParams }: { params: P
         <Stat label="Panggilan AI (total)" value={usage._sum.calls ?? 0} hint={`${((usage._sum.promptTokens ?? 0) + (usage._sum.completionTokens ?? 0)).toLocaleString("id-ID")} token`} />
         <Stat label="Jawaban AI tersimpan" value={cacheSize} hint="Penerima atau pengirim yang sama tidak ditanyakan lagi" />
       </div>
+      <FrameworkCard clientId={client.id} entities={client.entities.map((e) => ({ id: e.id, name: e.name, framework: e.reportingFramework }))} />
       <Card>
         <CardHeader>
           <CardTitle>Batas pemakaian</CardTitle>

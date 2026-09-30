@@ -1,12 +1,12 @@
 import type { Tx } from "@/lib/db";
-import type { BankCode, EntityKind } from "@/lib/generated/prisma/enums";
+import type { BankCode, EntityKind, ReportingFramework } from "@/lib/generated/prisma/enums";
 import { bankAccountCode, COA_TEMPLATE, overdraftAccountCode } from "@/lib/coa/template";
 import { FIRM_RULES, type RuleLike } from "@/lib/classify/rules";
 
 export type ClientSpec = {
   name: string;
   industry: string;
-  entities: { name: string; shortName: string; kind: EntityKind; npwp?: string; functionalCurrency?: string; banks: { bank: BankCode; number: string; label: string; isOverdraft?: boolean }[] }[];
+  entities: { name: string; shortName: string; kind: EntityKind; npwp?: string; functionalCurrency?: string; reportingFramework?: ReportingFramework; banks: { bank: BankCode; number: string; label: string; isOverdraft?: boolean }[] }[];
   rules?: Omit<RuleLike, "clientId">[];
 };
 
@@ -24,7 +24,7 @@ export async function createClient(tx: Tx, firmId: string, spec: ClientSpec) {
   let overdraftIndex = 0;
   const entities = [];
   for (const e of spec.entities) {
-    const entity = await tx.entity.create({ data: { firmId, clientId: client.id, name: e.name, shortName: e.shortName, kind: e.kind, npwp: e.npwp, functionalCurrency: e.functionalCurrency ?? "IDR" } });
+    const entity = await tx.entity.create({ data: { firmId, clientId: client.id, name: e.name, shortName: e.shortName, kind: e.kind, npwp: e.npwp, functionalCurrency: e.functionalCurrency ?? "IDR", reportingFramework: e.reportingFramework } });
     const banks = [];
     for (const b of e.banks) {
       // PRK (overdraft) accounts are liabilities in 2201–2209; their statement balance is negative.

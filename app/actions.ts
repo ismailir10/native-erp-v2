@@ -30,6 +30,7 @@ import { MoneyError } from "@/lib/money";
 import { dateOnly } from "@/lib/format";
 import { liveUploadFile } from "@/lib/demo/seed";
 import { addClient, OnboardingError, type NewClientInput } from "@/lib/onboarding";
+import { EntitySettingsError, setReportingFramework } from "@/lib/entity-settings";
 import { OpeningError, postOpening, type OpeningLineInput } from "@/lib/opening";
 import type { TaxTag } from "@/lib/generated/prisma/enums";
 import { RateError, upsertRate, validateRateInput } from "@/lib/fx/rates";
@@ -59,7 +60,7 @@ function fail(e: unknown): { ok: false; error: string; needsPassword?: boolean; 
   if (e instanceof PdfPasswordError) return { ok: false, error: e.message, needsPassword: true };
   if (e instanceof YearNeededError) return { ok: false, error: e.message, needsYear: true, yearGuess: e.guess };
   if (e instanceof DeleteClientError) return { ok: false, error: e.message };
-  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError || e instanceof MoneyError || e instanceof RateError || e instanceof RevaluationError || e instanceof LedgerImportError || e instanceof MappingError) return { ok: false, error: e.message };
+  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError || e instanceof MoneyError || e instanceof RateError || e instanceof RevaluationError || e instanceof LedgerImportError || e instanceof MappingError || e instanceof EntitySettingsError) return { ok: false, error: e.message };
   const infra = infraErrorMessage(e);
   console.error(e);
   return { ok: false, error: infra ?? "Terjadi kesalahan tak terduga. Coba lagi." };
@@ -477,6 +478,18 @@ export async function addClientAction(input: NewClientInput): Promise<Result<{ c
     return { ok: true, clientId: client.id };
   } catch (e) {
     if (e instanceof OnboardingError) return { ok: false, error: e.message, fields: e.fields };
+    return fail(e);
+  }
+}
+
+/** Which standard an entity's CALK and statements name (wording only, lib/reports/framework.ts). */
+export async function saveReportingFrameworkAction(clientId: string, entityId: string, framework: string): Promise<Result> {
+  try {
+    const client = await getClientForFirm(clientId);
+    await setReportingFramework(prisma, { clientId: client.id, entityId, framework });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
+  } catch (e) {
     return fail(e);
   }
 }

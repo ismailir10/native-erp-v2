@@ -44,7 +44,7 @@ every reopen is admin-only, reasoned and logged.
 ## Tasks
 - [x] T1 Schema + migration + `lib/reports/framework.ts` (labels, help, scope resolution, signatory) — accept: unit tests for framework x kind helper pass; migration applies to a DB with existing entities and they read `SAK_EP`.
 - [x] T2 Notes, directors' statement, workbook and report titles follow the framework — accept: DB tests for 3 frameworks x kinds; default entity output identical to before (existing statement tests unchanged).
-- [ ] T3 Tambah klien selector + settings-page card + `saveReportingFrameworkAction` — accept: onboarding test creates entities with framework; action test updates it and rejects an unknown value.
+- [x] T3 Tambah klien selector + settings-page card + `saveReportingFrameworkAction` — accept: onboarding test creates entities with framework; action test updates it and rejects an unknown value.
 - [ ] T4 Lock ordering + admin-only reasoned unlock + `PeriodUnlockLog` (migration, delete-client) — accept: DB tests for order both ways, role, reason, audit row.
 - [ ] T5 Close UI: reason field + last unlocks — accept: manual screenshot; e2e lock flow unchanged and green.
 - [ ] T6 Docs (README, accounting-rules) + end-of-cycle gates — accept: gates recorded below.
@@ -53,6 +53,7 @@ every reopen is admin-only, reasoned and logged.
 - Plan: tasks T1–T6 sequential, done inline (small, tightly coupled slices, one driver).
 - T1: `prisma/schema.prisma`, `prisma/migrations/20260930030000_reporting_framework`, `lib/reports/framework.ts`, `tests/unit/framework.test.ts` — enum + NOT NULL DEFAULT 'SAK_EP' column; helpers for standard / statement names / group framework / signatory.
 - T2: `lib/reports/notes.ts`, `lib/reports/workbook.ts`, `lib/reports/framework.ts`, `app/(app)/clients/[id]/reports/page.tsx`, `tests/db/framework-notes.test.ts`, `tests/unit/directors-statement.test.ts` — basis paragraph, policies, receivable/lease/OCI notes, deferred-tax estimate row and signatory follow the framework; workbook names/sheet follow it; the report page titles and OCI section follow it. The one row dropped for EMKM ("Estimasi pajak tangguhan belum dicatat") is an estimate on no statement; every statement figure is unchanged (tested).
+- T3: `lib/onboarding.ts`, `lib/setup.ts`, `lib/entity-settings.ts`, `app/actions.ts` (`saveReportingFrameworkAction`), `components/app/client-form.tsx`, `components/app/framework-card.tsx`, `app/(app)/clients/[id]/settings/page.tsx`, tests `onboarding`, `entity-framework` — selector on Tambah klien (default SAK EP, validated) and a Kerangka pelaporan card per entity on the client settings page.
 
 ## Verification
 - T1: `npm run lint` clean; `npm run typecheck` clean; `npm test` → `Test Files  95 passed (95)  Tests  639 passed (639)`.
