@@ -64,7 +64,7 @@ export async function parsePdfSections(data: Buffer, opts: { password?: string }
   const starts = lines.map((l, i) => ({ i, m: lineText(l).match(SECTION) })).filter((x) => x.m);
   if (starts.length === 0) return [withDeposits(parseLines(lines))];
   const docText = lines.map(lineText).join("\n");
-  const format = detectFormat(docText);
+  const format = detectFormat(lines.slice(0, starts[0].i).map(lineText).join("\n"));
   const period = periodOf(docText);
   const out: ParsedStatement[] = [];
   starts.forEach(({ i, m }, k) => {
@@ -220,14 +220,19 @@ function nearest(cols: Column[], cell: Cell, kinds: ColKind[]): Column | null {
   return best && kinds.includes(best.kind) ? best : null;
 }
 
-function detectFormat(headerText: string): BankCode {
+/**
+ * The bank a statement's heading names. Read only from the preamble (the lines above the first table), never from transactions,
+ * and by the bank's own names — "Bank Mandiri", "Livin'", "BRImo", "BCA" in capitals — because account holders are often called
+ * "… Mandiri …" or "… Bri …" too. Anything else (CIMB, BNI, Permata …) has no code: GENERIC.
+ */
+export function detectFormat(headerText: string): BankCode {
   // BCA e-statements print their notes letter-spaced ("B C A b e r h a k …"), which loses the word breaks: collapsed, the
   // capitals "BCA" still stand apart from the lowercase text around them.
   const collapsed = headerText.replace(/(\p{L}) (?=\p{L}(?: |$))/gmu, "$1");
   if (/\bSMBC\b|bank smbc indonesia|jenius|\bBTPN\b/i.test(headerText)) return "SMBC";
-  if (/mandiri/i.test(headerText)) return "MANDIRI";
-  if (/\bBRI\b|bank rakyat/i.test(headerText)) return "BRI";
-  if (/\bBCA\b|bank central asia|klikbca/i.test(headerText) || /(?<![A-Z])BCA(?![A-Z])/.test(collapsed)) return "BCA";
+  if (/bank\s+mandiri|livin|kopra|mandiri\s+(online|cash|cms|direct)|\bMCM\b/i.test(headerText)) return "MANDIRI";
+  if (/\bBRI\b/.test(headerText) || /bank rakyat|brimo/i.test(headerText)) return "BRI";
+  if (/(?<![A-Z])BCA(?![A-Z])/.test(headerText) || /bank central asia|klikbca/i.test(headerText) || /(?<![A-Z])BCA(?![A-Z])/.test(collapsed)) return "BCA";
   return "GENERIC";
 }
 

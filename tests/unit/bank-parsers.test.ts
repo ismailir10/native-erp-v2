@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { parseStatement } from "@/lib/import/parsers";
+import { parseStatement, parseStatementSections } from "@/lib/import/parsers";
+import { makePdf, table } from "../pdf-fixture";
 import { checkContinuity } from "@/lib/import/normalize";
 import { BAL, TX, bniDirectCsv, bniDirectXlsx, bniMobileXlsx, xlsxBuffer, briInternetBankingCsv, cimbPdf, idn, mandiriLivinPdf, mandiriLivinXlsx, serialDateXlsx, cimbOctoCsv, expectAugust, p2, permataCsv, titleWithCommasSemicolonCsv, utf16TabCsv } from "../bank-fixture";
 
@@ -215,5 +216,49 @@ describe("sen are never rounded silently; a BRI file without balances still read
     const st = await parseStatement("bri.csv", Buffer.from(bri));
     expect(st.openingBalance).toBe(10_000n);
     expect(checkContinuity(st).ok).toBe(true);
+  });
+});
+
+describe("the bank is tagged from the statement's own words, not its transactions or names", () => {
+  const csv = (...preamble: string[]) => Buffer.from([...preamble, "Tanggal,Keterangan,Debet,Kredit,Saldo", "01/08/2026,A,0,100,1100", "02/08/2026,B,50,0,1050"].join("\n"));
+
+  it.each([
+    [["Bank Mandiri - Livin' by Mandiri", "Rekening: 0000000123456"], "MANDIRI"],
+    [["Mandiri Online - Mutasi Rekening"], "MANDIRI"],
+    [["Bank Rakyat Indonesia", "Laporan Mutasi Rekening"], "BRI"],
+    [["BRImo - Mutasi Rekening"], "BRI"],
+    [["Informasi Rekening BCA"], "BCA"],
+    [["PT Bank SMBC Indonesia Tbk"], "SMBC"],
+    [["Laporan Mutasi Rekening", "Nama : PT SINAR MANDIRI ABADI"], "GENERIC"],
+    [["CIMB Niaga - Rekening Koran"], "GENERIC"],
+  ] as const)("CSV preamble %j → %s", async (preamble, format) => {
+    expect((await parseStatement("x.csv", csv(...preamble))).format).toBe(format);
+  });
+
+  it("tags a workbook the same way", async () => {
+    const buf = await xlsxBuffer("S", [["Bank Mandiri"], ["Tanggal", "Keterangan", "Debet", "Kredit", "Saldo"], ["01/08/2026", "TRSF KE BCA", 0, 100, 1100], ["02/08/2026", "B", 50, 0, 1050]]);
+    expect((await parseStatement("x.xlsx", buf)).format).toBe("MANDIRI");
+  });
+
+  it("does not take a transaction's words for the bank: rows mentioning another bank stay GENERIC", async () => {
+    const rows = [["Tanggal", "Keterangan", "Debet", "Kredit", "Saldo"], ["01/08/2026", "TRSF KE BANK MANDIRI", 0, 100, 1100], ["02/08/2026", "B", 50, 0, 1050]];
+    expect((await parseStatement("x.xlsx", await xlsxBuffer("S", rows))).format).toBe("GENERIC");
+  });
+
+  it("detects a multi-account PDF's bank from its preamble, not from a transaction that names another bank", async () => {
+    const head: [number, string][] = [[40, "Tanggal"], [110, "Keterangan"], [360, "Debit"], [440, "Kredit"], [520, "Saldo"]];
+    const pdf = makePdf([
+      [
+        ...table(800, [[[40, "PT Bank Mandiri (Persero) Tbk"]], [[40, "Periode : 01/08/2026 - 31/08/2026"]]]),
+        ...table(740, [
+          [[25, "Aktivitas Rekening / Account Activities - Giro Utama (IDR) 1370098765432"]],
+          head,
+          [[40, "01/08/2026"], [110, "Saldo Awal"], [520, "1.000,00"]],
+          [[40, "02/08/2026"], [110, "TRSF KE JENIUS BANK SMBC"], [440, "500,00"], [520, "1.500,00"]],
+        ]),
+      ],
+    ]);
+    const [st] = await parseStatementSections("x.pdf", pdf);
+    expect(st.format).toBe("MANDIRI");
   });
 });

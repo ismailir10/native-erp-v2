@@ -4,7 +4,7 @@ import { dateOnly } from "@/lib/format";
 import type { BankCode } from "@/lib/generated/prisma/enums";
 import { ParseError, YearNeededError, type ParsedRow, type ParsedStatement } from "@/lib/import/types";
 import { closingFromRows, dateParts as baseDateParts, periodFromText, SenWatch, type DateParts } from "@/lib/import/parsers/common";
-import { periodOf } from "@/lib/import/parsers/pdf";
+import { detectFormat, periodOf } from "@/lib/import/parsers/pdf";
 
 /**
  * Mandiri (MCM/Livin' export, XLSX) and a generic column-detecting reader for any CSV/XLSX/XLS with recognisable headers
@@ -60,10 +60,6 @@ export async function xlsxToSheets(buf: Buffer): Promise<Sheet[]> {
     for (let i = 0; i < rows.length; i++) rows[i] ??= [];
     return { name: ws.name, rows };
   });
-}
-
-export function isMandiriRows(rows: string[][]) {
-  return rows.slice(0, 8).some((r) => /mandiri/i.test(r.join(" ")));
 }
 
 /** A sheet without a transaction header: skipped in a workbook (a cover or summary sheet), an error on its own. */
@@ -313,7 +309,8 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
     end: new Date(Date.UTC(last.getUTCFullYear(), last.getUTCMonth() + 1, 0)),
   };
   return {
-    format,
+    // A file that names no bank stays GENERIC (only the lines above the table count: a transaction may name another bank).
+    format: format === "GENERIC" ? detectFormat(rows.slice(0, headerIdx + 1).map((r) => r.join(" ")).join("\n")) : format,
     accountNumber,
     periodStart: bounds.start,
     periodEnd: bounds.end,
@@ -339,7 +336,7 @@ export function parseWorkbook(sheets: Sheet[], ctx: { year?: number; fileName?: 
   let firstError: ParseError | null = null;
   for (const s of sheets) {
     try {
-      const st = parseTabular(s.rows, isMandiriRows(s.rows) ? "MANDIRI" : "GENERIC", { sheet: s.name, year: ctx.year, fileName: ctx.fileName, cursor });
+      const st = parseTabular(s.rows, "GENERIC", { sheet: s.name, year: ctx.year, fileName: ctx.fileName, cursor });
       read.push({ sheet: s, cursorIn: cursor, st });
       cursor = st.cursor;
     } catch (e) {
