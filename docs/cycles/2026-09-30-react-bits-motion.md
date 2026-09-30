@@ -69,3 +69,6 @@ stopping. (2) Porting React Bits source into the product is within its licence (
   retrying assertions only (checked: no one-shot `innerText` on them).
 
 ## Ship Notes
+- Branch `task/react-bits-motion`, draft PR to `main`; the user asked for it to be merged once CI is green.
+- No dependency, migration, env var, route or number change. Rollback = revert the PR.
+- Worth a look after deploy: open a client from Beranda (tiles count up once), close a period (the done check draws), `/login` with a mouse.
