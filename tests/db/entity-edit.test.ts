@@ -32,10 +32,10 @@ async function snapshot(g: G) {
   const controls = await runControls(db, g.client.id, 2026, 8);
   const lines = await db.journalLine.aggregate({ _sum: { debit: true, credit: true }, _count: true });
   return {
-    tb: tb.filter((r) => r.net !== 0n).map((r) => `${r.account.code}:${r.net}`), // a removed empty account had a zero row
+    tb: tb.filter((r) => r.net !== 0n).map((r) => `${r.account.code}:${r.net}`).sort(), // a removed empty account had a zero row
     revenue: String(is.totals.revenue),
     netProfit: String(is.totals.netProfit),
-    controls: controls.map((c) => `${c.key}:${c.status}`),
+    controls: controls.map((c) => `${c.key}:${c.status}`).sort(), // the list's order is not part of the books
     debit: String(lines._sum.debit),
     credit: String(lines._sum.credit),
     counts: [await db.journalEntry.count(), lines._count, await db.bankTransaction.count(), await db.statementImport.count(), await db.entity.count(), await db.bankAccount.count(), await db.account.count()],
