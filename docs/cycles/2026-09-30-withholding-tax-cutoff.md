@@ -156,3 +156,11 @@ Each finding was reproduced with a failing test first, one commit per finding.
 3. **Capex paid on a bill counted the withheld part as cash — real.** `cashFlow` took Σ settlement `amount` (gross cleared) as paid; a 50 jt asset bill paid with 45 jt bank + 5 jt
    PPh 23 showed −50 jt investing and a spurious +5 jt operating. It now uses Σ (`amount` − `withheld`), the cash that left the bank. Test: −45 jt investing, operating 0,
    still equal to the Neraca cash change.
+4. **Disposal proceeds "collected" read the whole account — real.** `room` came from the proceeds account's aggregate net movement in the year, so unrelated activity moved
+   the result both ways (a 100 jt receivable created in 1140 hid a collected 40 jt; an older opening receivable's collection made an unpaid disposal look collected).
+   Nothing links a receipt to a disposal (the bank line is only classified to the same account), so exact linkage is impossible with existing data. `collectedProceeds`
+   now reads the account as a first-in-first-out queue (opening balance and every debit, up to the period end): a cash credit (entry with a bank row or a cash-account
+   debit) clears the oldest open debit first, and only what it clears of the disposal's own proceeds line is investing; later debits never take from it; a credit with nothing
+   open (an advance) absorbs the next debit. **Limit (conservative):** an unrelated receivable older than the disposal in the same account is assumed to be paid first, so
+   the disposal's inflow shows later than it may have happened; the sections are zero-sum, so the total is still the Neraca cash change. Tests: 100 jt receivable created
+   in the account, older 30 jt receivable collected, both with the Neraca reconciliation.

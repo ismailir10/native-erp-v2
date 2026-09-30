@@ -186,6 +186,55 @@ export function cashLine(a: Pick<Account, "code" | "fsLine" | "isIntercompany">)
   }
 }
 
+/**
+ * Cash collected by `to` against each proceeds line of a disposal entry (line id → amount). Nothing links a receipt to a disposal — the bank line is
+ * just classified to the same account — so the account is read as a first-in-first-out queue of open debits (its opening balance and every later debit,
+ * disposals included): each credit clears the oldest open debit first, and only a credit that is cash (its entry has a bank row or a cash-account
+ * debit) counts as collected. Conservative by construction: a collection is credited to the disposal only after every older debit in the account
+ * has been cleared, and later debits never take from it.
+ */
+async function collectedProceeds(db: Db, entityIds: string[], to: Date, proceedsLines: { id: string; entryId: string; account: { code: string } }[]) {
+  const collected = new Map<string, bigint>();
+  if (!proceedsLines.length) return collected;
+  const codes = [...new Set(proceedsLines.map((l) => l.account.code))];
+  const rows = await db.journalLine.findMany({
+    where: { entityId: { in: entityIds }, date: { lte: to }, account: { code: { in: codes } } },
+    select: { id: true, entryId: true, entityId: true, debit: true, credit: true, account: { select: { code: true } }, entry: { select: { bankTransactionId: true } } },
+    orderBy: [{ date: "asc" }, { id: "asc" }],
+  });
+  const tagged = new Set(proceedsLines.map((l) => l.id));
+  const creditEntries = [...new Set(rows.filter((r) => r.credit > r.debit).map((r) => r.entryId))];
+  const cashEntries = new Set((await db.journalLine.findMany({ where: { entryId: { in: creditEntries }, debit: { gt: 0n }, account: { fsLine: "KAS_SETARA_KAS" } }, select: { entryId: true } })).map((r) => r.entryId));
+  const queues = new Map<string, { tag: string | null; left: bigint }[]>();
+  const surplus = new Map<string, bigint>(); // credits with nothing open yet (an advance): they absorb the next debit
+  for (const r of rows) {
+    const key = `${r.entityId}:${r.account.code}`;
+    const q = queues.get(key) ?? [];
+    queues.set(key, q);
+    let net = r.debit - r.credit;
+    if (net > 0n) {
+      const adv = surplus.get(key) ?? 0n;
+      const absorbed = adv < net ? adv : net;
+      surplus.set(key, adv - absorbed);
+      net -= absorbed;
+      if (net > 0n) q.push({ tag: tagged.has(r.id) ? r.id : null, left: net });
+    } else if (net < 0n) {
+      let credit = -net;
+      const cash = r.entry.bankTransactionId !== null || cashEntries.has(r.entryId);
+      while (credit > 0n && q.length) {
+        const head = q[0];
+        const take = head.left < credit ? head.left : credit;
+        head.left -= take;
+        credit -= take;
+        if (head.tag && cash) collected.set(head.tag, (collected.get(head.tag) ?? 0n) + take);
+        if (head.left === 0n) q.shift();
+      }
+      if (credit > 0n) surplus.set(key, (surplus.get(key) ?? 0n) + credit);
+    }
+  }
+  return collected;
+}
+
 /** Indirect cash flow from 1 January of `to`'s year to `to`: net profit and the movement of every other balance-sheet account. */
 export async function cashFlow(db: Db, scope: Scope, to: Date): Promise<CashFlow> {
   await single(db, scope);
@@ -217,18 +266,19 @@ export async function cashFlow(db: Db, scope: Scope, to: Date): Promise<CashFlow
   // one "non-kas" line, where it offsets the other side (the payable, the obligation). Non-cash entries within one section stay as they are.
   const lines = await db.journalLine.findMany({
     where: { entityId: { in: scope.entityIds }, date: { gte: from, lte: to }, entry: { kind: { not: "OPENING" } } },
-    select: { entryId: true, debit: true, credit: true, entry: { select: { bankTransactionId: true } }, account: { select: { code: true, type: true, fsLine: true, isIntercompany: true } } },
+    select: { id: true, entryId: true, debit: true, credit: true, entry: { select: { bankTransactionId: true } }, account: { select: { code: true, type: true, fsLine: true, isIntercompany: true } } },
     orderBy: [{ date: "asc" }, { id: "asc" }],
   });
   const byEntry = new Map<string, typeof lines>();
   for (const l of lines) byEntry.set(l.entryId, [...(byEntry.get(l.entryId) ?? []), l]);
   const NONCASH = "Transaksi non-kas (dilawankan dengan pos investasi/pendanaan)";
   // A disposal entry (the register's `disposalEntryId`) has no bank row: its proceeds sit on a receivable until the bank receipt is classified to
-  // the same account. The proceeds collected by the period end are the investing inflow; the rest of the entry (cost off, accumulated depreciation off,
-  // the gain or loss) is non-cash, so the sections still add up to the change in cash.
+  // the same account. The proceeds collected by the period end (collectedProceeds: first-in-first-out on that account, cash receipts only) are the
+  // investing inflow; the rest of the entry (cost off, accumulated depreciation off, the gain or loss) is non-cash, so the sections still add up
+  // to the change in cash.
   const disposals = new Set((await db.fixedAsset.findMany({ where: { entityId: { in: scope.entityIds }, disposalEntryId: { in: [...byEntry.keys()] } }, select: { disposalEntryId: true } })).map((d) => d.disposalEntryId!));
-  const uncollected = new Map<string, bigint>(); // proceeds account → its net debit movement in the period (what is still receivable)
-  for (const m of moved) if (m.net > 0n) uncollected.set(m.account.code, m.net);
+  const isProceeds = (l: (typeof lines)[number]) => l.account.fsLine !== "ASET_TETAP" && l.account.fsLine !== "AKUM_PENYUSUTAN" && l.account.type !== "PENDAPATAN" && l.account.type !== "BEBAN";
+  const collectedBy = await collectedProceeds(db, scope.entityIds, to, [...byEntry.values()].filter((e) => disposals.has(e[0].entryId)).flat().filter((l) => isProceeds(l) && l.debit - l.credit > 0n));
   const sectionOf = (a: (typeof lines)[number]["account"]) => (a.type === "PENDAPATAN" || a.type === "BEBAN" ? "OPERATING" : (cashLine(a)?.section ?? "CASH"));
   for (const entry of byEntry.values()) {
     // A bank-derived entry is cash even without a cash line: a statement row is posted to 1999 first and moved by a RECLASS entry.
@@ -242,18 +292,15 @@ export async function cashFlow(db: Db, scope: Scope, to: Date): Promise<CashFlow
           add(line.key, line.label, line.section, l.debit - l.credit); // undo the cost's investing effect …
         }
         let proceeds = 0n;
-        let receivable = 0n;
+        let received = 0n;
         for (const l of entry) {
-          if (l.account.fsLine === "ASET_TETAP" || l.account.fsLine === "AKUM_PENYUSUTAN" || l.account.type === "PENDAPATAN" || l.account.type === "BEBAN") continue;
+          if (!isProceeds(l)) continue;
           const net = l.debit - l.credit;
           if (net <= 0n) continue;
           proceeds += net;
-          const room = uncollected.get(l.account.code) ?? 0n;
-          const owing = net < room ? net : room;
-          uncollected.set(l.account.code, room - owing);
-          receivable += owing;
+          received += collectedBy.get(l.id) ?? 0n;
         }
-        const collected = proceeds - receivable;
+        const collected = received < proceeds ? received : proceeds;
         add("DISPOSAL", "Hasil pelepasan aset tetap", "INVESTING", collected);
         add("DISPOSAL_NONCASH", "Pelepasan aset tetap (non-kas): nilai buku dan laba/rugi", "OPERATING", cost - collected); // … and what wasn't cash is operating
         continue;
