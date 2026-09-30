@@ -513,6 +513,8 @@ model ControlAck {
   period     Period      @relation(fields: [periodId], references: [id])
   controlKey String
   note       String
+  /// The control's detail when the note was written: a note clears the control only while the detail is the same (null = legacy note).
+  detail     String?
   ackedById  String?
   ackedBy    FirmMember? @relation("AckDoneBy", fields: [ackedById], references: [id])
   createdAt  DateTime    @default(now())

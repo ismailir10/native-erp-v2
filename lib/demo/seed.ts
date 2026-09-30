@@ -96,7 +96,7 @@ export async function seedDemo(db: Db, opts: { log?: (s: string) => void; liveAi
         await db.closeSignoff.createMany({ data: CLOSE_SIGNOFFS.map((s) => ({ periodId: period.id, key: s.key })) });
         const controls = await runControls(db, client.id, year, month);
         for (const c of controls.filter((c) => c.status === "REVIEW")) {
-          await db.controlAck.create({ data: { periodId: period.id, controlKey: c.key, note: "Dicek, wajar (seed)" } });
+          await db.controlAck.create({ data: { periodId: period.id, controlKey: c.key, note: "Dicek, wajar (seed)", detail: c.detail } });
         }
         await lockPeriod(db, client.id, year, month, "Ditutup oleh seed demo");
       }

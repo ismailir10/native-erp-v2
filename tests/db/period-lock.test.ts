@@ -20,7 +20,7 @@ vi.mock("@/lib/tenant", async () => {
   };
 });
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
-const { unlockAction } = await import("@/app/actions");
+const { ackControlAction, unlockAction } = await import("@/app/actions");
 
 type G = Awaited<ReturnType<typeof makeGroup>>;
 const member = (g: G, role: "ADMIN" | "AKUNTAN", name: string) => db.firmMember.create({ data: { firmId: g.firm.id, userId: randomUUID(), email: `${name}@example.test`, name, role } });
@@ -162,5 +162,48 @@ describe("unlock: admin only, reasoned, logged", () => {
     await deleteClient(db, { firmId: g.firm.id, clientId: g.client.id, confirmName: "Grup Uji" });
     expect(await db.periodUnlockLog.count()).toBe(0);
     expect(await db.firmMember.count()).toBe(1);
+  });
+});
+
+describe("close notes answer the control as it read", () => {
+  beforeEach(resetDb);
+  const periodOf = (g: G, month: number) => db.period.upsert({ where: { clientId_year_month: { clientId: g.client.id, year: 2026, month } }, create: { firmId: g.firm.id, clientId: g.client.id, year: 2026, month }, update: {} });
+
+  it("a note clears the control only while its detail is unchanged; older notes without a detail keep working", async () => {
+    const g = await makeGroup();
+    await entry(g, 8);
+    const review = (await runControls(db, g.client.id, 2026, 8)).filter((c) => c.status === "REVIEW");
+    expect(review.length).toBeGreaterThanOrEqual(3);
+    const [same, changed, legacy] = review;
+    const period = await periodOf(g, 8);
+    await db.controlAck.createMany({ data: [
+      { periodId: period.id, controlKey: same.key, note: "Sudah dicek", detail: same.detail },
+      { periodId: period.id, controlKey: changed.key, note: "Dua transaksi, wajar", detail: "2 transaksi menunggu review" },
+      { periodId: period.id, controlKey: legacy.key, note: "Catatan lama" },
+    ] });
+    const now = new Map((await runControls(db, g.client.id, 2026, 8)).map((c) => [c.key, c]));
+    expect([now.get(same.key)!.ack, now.get(same.key)!.staleAck]).toEqual(["Sudah dicek", undefined]);
+    expect([now.get(changed.key)!.ack, now.get(changed.key)!.staleAck]).toEqual([undefined, "Dua transaksi, wajar"]);
+    expect(now.get(legacy.key)!.ack).toBe("Catatan lama");
+  });
+
+  it("the note action stores the detail it answered", async () => {
+    const g = await makeGroup();
+    const admin = await member(g, "ADMIN", "admin");
+    await entry(g, 8);
+    Object.assign(session, { firmId: g.firm.id, role: "ADMIN", memberId: admin.id });
+    const c = (await runControls(db, g.client.id, 2026, 8)).find((x) => x.status === "REVIEW")!;
+    expect(await ackControlAction(g.client.id, 2026, 8, c.key, "Wajar, dicek")).toEqual({ ok: true });
+    expect(await db.controlAck.findFirstOrThrow({ where: { controlKey: c.key } })).toMatchObject({ note: "Wajar, dicek", detail: c.detail, ackedById: admin.id });
+  });
+
+  it("reopening a month removes its sign-offs, so closing again needs them given again", async () => {
+    const g = await makeGroup();
+    const admin = await member(g, "ADMIN", "admin");
+    await entry(g, 8);
+    await lock(g, 8);
+    await unlockPeriod(db, g.client.id, 2026, 8, admin, "Faktur susulan");
+    expect(await db.closeSignoff.count({ where: { period: { clientId: g.client.id, month: 8 } } })).toBe(0);
+    await expect(lockPeriod(db, g.client.id, 2026, 8, "uji")).rejects.toThrow(/3 checklist belum dicentang/);
   });
 });

@@ -35,7 +35,7 @@ Their findings, confirmed against the code, that this cycle fixes:
       from the GL balance, never re-books). Laba Rugi shows 5190 inside Beban pokok pendapatan; the CALK adds a *Beban pokok penjualan* note:
       persediaan awal + pembelian (HPP accounts except 5190) − persediaan akhir. Close control `inv:<entity>` (REVIEW, never FAIL) when an entity
       with inventory has no count for the month ("stock opname hanya akhir tahun" is a valid note). Deleting a client deletes its counts.
-- [ ] **S2 Close notes and reopening.** A control note stores the control's detail at the time of the note; when the detail changes the note
+- [x] **S2 Close notes and reopening.** A control note stores the control's detail at the time of the note; when the detail changes the note
       no longer clears the control (shown "Catatan lama: …, kondisinya berubah"). Legacy notes (no stored detail) keep working. Reopening a
       month removes its sign-offs in the same transaction as the unlock log.
 - [ ] **S3 Review safety and speed.**
@@ -92,7 +92,7 @@ print styles; a fuller CALK (akta, pihak berelasi); PPh 23 at accrual instead of
 5. A reversal is offered only for manual adjustments; schedule, register, pack and bank entries have their own ways to change.
 
 ## Tasks
-- [ ] T1 S2 close notes + reopen — accept: DB test: note lapses on changed detail, legacy note holds, unlock clears sign-offs.
+- [x] T1 S2 close notes + reopen — accept: DB test: note lapses on changed detail, legacy note holds, unlock clears sign-offs.
 - [ ] T2 S1 domain: `InventoryCount`, `lib/inventory`, control, CALK note, client delete — accept: DB test for increase/decrease/equal/locked/recount.
 - [ ] T3 S1 UI: *Persediaan* page + menu — accept: record a count in the browser, Laba Rugi shows 5190, control passes.
 - [ ] T4 S4 tax rules + migration + tax-payment suggestion + rule specificity — accept: unit + DB tests.
@@ -106,5 +106,11 @@ print styles; a fuller CALK (akta, pihak berelasi); PPh 23 at accrual instead of
 - [ ] T12 S11 docs + full gate.
 
 ## Implementation
+- Plan: tasks T1–T12 sequential, inline (they share `app/actions.ts`, the close page and the review queue; one driver keeps the invariants
+  consistent). Test passes ran as four read-only subagents before the spec; their scripts and screenshots stay out of the repo.
+- T1: `prisma/schema.prisma` + `20260930060000_control_ack_detail` (`ControlAck.detail`), `lib/controls/index.ts` (`runControls` wraps the
+  collection and turns a note whose stored detail differs into `staleAck`; `unlockPeriod` deletes the month's sign-offs in its transaction),
+  `app/actions.ts` (`ackControlAction` stores the detail it answered), `lib/demo/seed.ts`, `components/app/close-panel.tsx` (stale note shown
+  "Catatan lama … kondisinya berubah" with *Perbarui catatan*; groups with problems first; the note field has a label), `tests/db/period-lock.test.ts`.
 ## Verification
 ## Ship Notes

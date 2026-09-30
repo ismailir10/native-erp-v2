@@ -29,9 +29,29 @@ export type Control = {
   detail: string;
   href?: string;
   ack?: string | null;
+  /** A note written for another state of this control (its detail changed since): shown, but it no longer clears the control. */
+  staleAck?: string | null;
 };
 
+/**
+ * Every control of the client for the month. A note clears a REVIEW only while the control still says what it said when the note was
+ * written: "2 transaksi menunggu review" acknowledged does not clear "200 transaksi menunggu review".
+ */
 export async function runControls(db: Db, clientId: string, year: number, month: number): Promise<Control[]> {
+  const controls = await collectControls(db, clientId, year, month);
+  const acks = await db.controlAck.findMany({ where: { period: { clientId, year, month } }, select: { controlKey: true, detail: true } });
+  const detailOf = new Map(acks.map((a) => [a.controlKey, a.detail]));
+  for (const c of controls) {
+    const stored = detailOf.get(c.key);
+    if (c.ack && stored != null && stored !== c.detail) {
+      c.staleAck = c.ack;
+      c.ack = undefined;
+    }
+  }
+  return controls;
+}
+
+async function collectControls(db: Db, clientId: string, year: number, month: number): Promise<Control[]> {
   const { start, end } = periodBounds(year, month);
   const entities = (
     await db.entity.findMany({ where: { clientId }, include: { bankAccounts: { include: { account: true } } }, orderBy: { name: "asc" } })
@@ -469,6 +489,8 @@ export async function unlockPeriod(db: Db, clientId: string, year: number, month
     const later = await laterLockedMonth(tx, clientId, year, month);
     if (later) throw new CloseError(`Buka kembali ${formatPeriod(later.year, later.month)} dulu: bulan setelahnya masih ditutup.`);
     await tx.periodUnlockLog.create({ data: { firmId: period.firmId, clientId, year, month, unlockedById: actor.id, reason: why } });
+    // A reopened month is changed on purpose: its sign-offs described the books before the change, so they are given again.
+    await tx.closeSignoff.deleteMany({ where: { periodId: period.id } });
     return tx.period.update({ where: { id: period.id }, data: { status: "OPEN", lockedAt: null, lockedById: null } });
   });
 }

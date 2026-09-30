@@ -7,7 +7,7 @@ import { getClientForFirm, getCurrentFirm, getCurrentMember } from "@/lib/tenant
 import { importStatement, type ImportSummary } from "@/lib/import/pipeline";
 import { resolveProvider } from "@/lib/settings/ai";
 import { acceptSimilar, reviewTransaction } from "@/lib/review";
-import { CloseError, lockPeriod, unlockPeriod } from "@/lib/controls";
+import { CloseError, lockPeriod, runControls, unlockPeriod } from "@/lib/controls";
 import { LedgerError } from "@/lib/ledger/post";
 import { postAdjustment } from "@/lib/ledger/adjustment";
 import { createSchedule, postAllDue, postInstallment, stopSchedule, type ScheduleInput } from "@/lib/adjust/schedules";
@@ -191,7 +191,9 @@ export async function ackControlAction(clientId: string, year: number, month: nu
     if (note.trim().length < 5) return { ok: false, error: "Tulis catatan singkat (min. 5 karakter)." };
     const period = await periodFor(clientId, year, month, { mustBeOpen: true });
     const ackedById = (await getCurrentMember()).id;
-    await prisma.controlAck.upsert({ where: { periodId_controlKey: { periodId: period.id, controlKey } }, create: { periodId: period.id, controlKey, note, ackedById }, update: { note, ackedById } });
+    // The note answers the control as it reads now; when its detail changes the note stops clearing it (lib/controls runControls).
+    const detail = (await runControls(prisma, clientId, year, month)).find((c) => c.key === controlKey)?.detail ?? null;
+    await prisma.controlAck.upsert({ where: { periodId_controlKey: { periodId: period.id, controlKey } }, create: { periodId: period.id, controlKey, note, detail, ackedById }, update: { note, detail, ackedById } });
     revalidatePath(`/clients/${clientId}`, "layout");
     return { ok: true };
   } catch (e) {
