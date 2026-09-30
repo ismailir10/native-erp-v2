@@ -2,6 +2,7 @@ import type { Db } from "@/lib/db";
 import { createClient, type ClientSpec } from "@/lib/setup";
 import { isCurrency } from "@/lib/fx/currency";
 import { isFramework, type Framework } from "@/lib/reports/framework";
+import { isBlankBankRow } from "@/lib/blank-bank";
 
 /**
  * "Tambah klien": a real client with its entities (PT/CV/owner), each with its functional currency and optional bank
@@ -26,7 +27,7 @@ export type NewClientInput = {
   entities: { name: string; shortName: string; kind: (typeof KINDS)[number]; npwp: string; currency?: string; reportingFramework?: Framework; banks: { bank: (typeof BANKS)[number]; number: string; label: string; isOverdraft?: boolean }[] }[];
 };
 
-/** Every problem at once, keyed by field. Optional: industry, short name, NPWP, framework (SAK EP), bank accounts, account label (defaults to "BCA ••5566"). */
+/** Every problem at once, keyed by field. Optional: industry, short name, NPWP, framework (SAK EP), bank accounts (an empty row is ignored), account label (defaults to "BCA ••5566"). */
 export function validateNewClient(input: NewClientInput): ClientSpec {
   const fields: Record<string, string> = {};
   const name = input.name.trim();
@@ -45,7 +46,9 @@ export function validateNewClient(input: NewClientInput): ClientSpec {
     if (!isCurrency(currency)) fields[`${at}.currency`] = "Pilih mata uang dari daftar.";
     const reportingFramework = e.reportingFramework ?? "SAK_EP";
     if (!isFramework(reportingFramework)) fields[`${at}.reportingFramework`] = "Pilih kerangka pelaporan.";
-    const banks = e.banks.map((b, k) => {
+    // Empty rows are skipped but keep their place: error keys name the rows the form shows.
+    const banks = e.banks.flatMap((b, k) => {
+      if (isBlankBankRow(b)) return [];
       const bt = `${at}.banks.${k}`;
       if (!BANKS.includes(b.bank)) fields[`${bt}.bank`] = "Pilih bank.";
       const number = b.number.replace(/[\s.\-]/g, "");
@@ -54,7 +57,7 @@ export function validateNewClient(input: NewClientInput): ClientSpec {
       else if (seen.has(number)) fields[`${bt}.number`] = "Nomor ini sudah dimasukkan di atas.";
       else seen.set(number, bt);
       const label = b.label.trim() || `${BANK_NAME[b.bank] ?? "Bank"}${b.isOverdraft ? " PRK" : ""} ••${number.slice(-4)}`;
-      return { bank: b.bank, number, label: label.slice(0, 60), isOverdraft: Boolean(b.isOverdraft) };
+      return [{ bank: b.bank, number, label: label.slice(0, 60), isOverdraft: Boolean(b.isOverdraft) }];
     });
     return { name: eName, shortName: e.shortName.trim() || eName, kind: e.kind, npwp: e.npwp.trim() || undefined, functionalCurrency: currency, reportingFramework, banks };
   });

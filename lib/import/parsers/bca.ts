@@ -1,7 +1,7 @@
 import { parseRupiah } from "@/lib/money";
 import { dateOnly } from "@/lib/format";
 import { ParseError, type ParsedRow, type ParsedStatement } from "@/lib/import/types";
-import { closingFromRows, periodFromText, readCsv } from "@/lib/import/parsers/common";
+import { closingFromRows, periodFromText, readCsv, SenWatch } from "@/lib/import/parsers/common";
 
 /**
  * KlikBCA (Bisnis) CSV mutasi export — approximated from 2026 exports; validate with real files.
@@ -9,7 +9,9 @@ import { closingFromRows, periodFromText, readCsv } from "@/lib/import/parsers/c
  * totals trailer ("Saldo Awal", "Saldo Akhir").
  */
 export function isBcaCsv(text: string) {
-  return /Informasi Rekening|Mutasi Rekening/i.test(text.slice(0, 300)) && /Tanggal Transaksi/i.test(text);
+  // BRI / BNI / BSI internet banking use the same title words and a "Tanggal Transaksi" column: only KlikBCA's header row
+  // (Tanggal Transaksi, Keterangan, Cabang, Jumlah, DB/CR, Saldo) makes it BCA.
+  return /Informasi Rekening|Mutasi Rekening/i.test(text.slice(0, 300)) && /^"?Tanggal Transaksi"?\s*,\s*"?Keterangan"?\s*,\s*"?Cabang\b/im.test(text);
 }
 
 export function parseBca(text: string): ParsedStatement {
@@ -33,6 +35,7 @@ export function parseBca(text: string): ParsedStatement {
   if (!period) throw new ParseError("Baris 'Periode' BCA tidak ditemukan");
   const { start, end } = period as { start: Date; end: Date };
 
+  const sen = new SenWatch();
   const parsed: ParsedRow[] = [];
   let lastDate = start;
   for (let i = headerIdx + 1; i < rows.length; i++) {
@@ -49,6 +52,8 @@ export function parseBca(text: string): ParsedStatement {
       date = dateOnly(year, month, Number(m[1]));
     }
     lastDate = date;
+    sen.check(amountStr, i + 1);
+    sen.check(balanceStr, i + 1);
     const amount = parseRupiah(amountStr);
     const signed = /DB/i.test(dbcr) ? -amount : amount;
     parsed.push({
@@ -69,5 +74,6 @@ export function parseBca(text: string): ParsedStatement {
     openingBalance,
     closingBalance: closing ?? closingFromRows(parsed, openingBalance),
     rows: parsed,
+    ...(sen.note() ? { notes: [sen.note()!] } : {}),
   };
 }

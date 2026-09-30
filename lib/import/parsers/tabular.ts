@@ -3,8 +3,8 @@ import { parseRupiah } from "@/lib/money";
 import { dateOnly } from "@/lib/format";
 import type { BankCode } from "@/lib/generated/prisma/enums";
 import { ParseError, YearNeededError, type ParsedRow, type ParsedStatement } from "@/lib/import/types";
-import { closingFromRows, periodFromText } from "@/lib/import/parsers/common";
-import { periodOf } from "@/lib/import/parsers/pdf";
+import { closingFromRows, dateParts as baseDateParts, periodFromText, SenWatch, type DateParts } from "@/lib/import/parsers/common";
+import { detectFormat, periodOf } from "@/lib/import/parsers/pdf";
 
 /**
  * Mandiri (MCM/Livin' export, XLSX) and a generic column-detecting reader for any CSV/XLSX/XLS with recognisable headers
@@ -12,13 +12,18 @@ import { periodOf } from "@/lib/import/parsers/pdf";
  * month opening with a SALDO AWAL row, `dd/MM` dates without a year, debet = money in (the books' side), a formula balance.
  */
 const HEADER_PATTERNS = {
-  date: /^(tanggal|tgl|date|posting date)/i,
-  desc: /(keterangan|deskripsi|description|remark|uraian)/i,
-  debit: /^(debet|debit|mutasi debet|keluar)/i,
-  credit: /^(kredit|credit|mutasi kredit|masuk)/i,
+  date: /^(tanggal|tgl|date|post(ing)? date|trans(action)? date)/i,
+  desc: /(keterangan|deskripsi|description|\bdesc\b|remark|uraian|narasi|berita|detail transaksi|transaction detail)/i,
+  debit: /^(debet|debit|mutasi debet|mutasi debit|(uang )?keluar|withdrawal|pengeluaran)/i,
+  credit: /^(kredit|credit|mutasi kredit|(uang )?masuk|deposit|pemasukan)/i,
   amount: /^(jumlah|nominal|amount|mutasi)$/i,
   balance: /^(saldo|balance|sisa saldo)/i,
 };
+/** "Debit (IDR)", "Jumlah (Rp)", "Saldo (IDR)": the currency in brackets after a label isn't part of the label. */
+const withoutUnit = (h: string) => h.replace(/\s*\((?:idr|rp\.?|rupiah|[a-z]{3})\)\s*$/i, "").trim();
+/** The values of a D/K column: only these, in a column beside an unsigned amount. Debit = money out of the account (the bank's way). */
+const FLAG_VALUE = /^(d|k|db|cr|dr|c|debet|debit|kredit|credit)$/i;
+const FLAG_OUT = /^(d|db|dr|debet|debit)$/i;
 const OPENING_ROW = /^(saldo\s*awal|opening\s*balance|beginning\s*balance|saldo\s*sebelumnya)\b/i;
 const CLOSING_ROW = /^(saldo\s*akhir|closing\s*balance|ending\s*balance)\b/i;
 const TOTAL_ROW = /^(total|jumlah|mutasi\s*(debet|debit|kredit|credit))\b/i;
@@ -57,10 +62,6 @@ export async function xlsxToSheets(buf: Buffer): Promise<Sheet[]> {
   });
 }
 
-export function isMandiriRows(rows: string[][]) {
-  return rows.slice(0, 8).some((r) => /mandiri/i.test(r.join(" ")));
-}
-
 /** A sheet without a transaction header: skipped in a workbook (a cover or summary sheet), an error on its own. */
 export class NoTableError extends ParseError {
   constructor() {
@@ -93,17 +94,7 @@ export function guessYear(fileName: string | undefined): number | null {
   return m ? 2000 + Number(m[2]) : null;
 }
 
-type DateParts = { d: number; m: number; y: number | null };
-
-function dateParts(text: string): DateParts | null {
-  const t = text.replace(/^'/, "").trim();
-  let m = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (m) return { y: Number(m[1]), m: Number(m[2]), d: Number(m[3]) };
-  m = t.match(/^(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2}|\d{4}))?$/);
-  if (!m) return null;
-  const parts = { d: Number(m[1]), m: Number(m[2]), y: m[3] ? Number(m[3].length === 2 ? `20${m[3]}` : m[3]) : null };
-  return parts.m >= 1 && parts.m <= 12 && parts.d >= 1 && parts.d <= 31 ? parts : null;
-}
+const dateParts = (text: string) => baseDateParts(text, { serial: true });
 
 function dateFrom(p: DateParts, cursor: YearCursor): Date {
   const d = dateOnly(p.y ?? cursor.year, p.m, p.d);
@@ -111,12 +102,34 @@ function dateFrom(p: DateParts, cursor: YearCursor): Date {
   return d;
 }
 
+/** The first run of digits (hyphens allowed) with six or more digits that isn't a dd-mm-yyyy / yyyy-mm-dd date. */
+function accountIn(line: string): string | null {
+  for (const m of line.matchAll(/\d[\d-]{4,}\d/g)) {
+    if (/^(\d{1,2}-\d{1,2}-\d{2,4}|\d{4}-\d{1,2}-\d{1,2})$/.test(m[0])) continue;
+    const digits = m[0].replace(/-/g, "");
+    if (digits.length >= 6) return digits;
+  }
+  return null;
+}
+
+/** The first column (of `candidates`) whose every non-empty cell below the header is a D/K-type value, with at least one. */
+function flagColumn(body: string[][], candidates: number[]): number {
+  return candidates.find((c) => {
+    const values = body.map((r) => (r[c] ?? "").trim()).filter(Boolean);
+    return values.length > 0 && values.every((v) => FLAG_VALUE.test(v));
+  }) ?? -1;
+}
+
 export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}): Parsed {
-  const headerIdx = rows.findIndex(
-    (r) => r.some((c) => HEADER_PATTERNS.date.test(c)) && r.some((c) => HEADER_PATTERNS.desc.test(c)),
-  );
+  // A header names the date and the description in two different cells (one unsplit line of a wrongly split file names both in one).
+  const isHeader = (r: string[]) => {
+    const d = r.findIndex((c) => HEADER_PATTERNS.date.test(withoutUnit(c)));
+    return d >= 0 && r.some((c, i) => i !== d && HEADER_PATTERNS.desc.test(withoutUnit(c)));
+  };
+  const headerIdx = rows.findIndex(isHeader);
   if (headerIdx < 0) throw new NoTableError();
-  const header = rows[headerIdx];
+  const rawHeader = rows[headerIdx];
+  const header = rawHeader.map(withoutUnit);
   const find = (re: RegExp) => header.findIndex((c) => re.test(c));
   const cDate = find(HEADER_PATTERNS.date);
   const cDesc = find(HEADER_PATTERNS.desc);
@@ -126,18 +139,21 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
   const cBal = find(HEADER_PATTERNS.balance);
   if ((cDb < 0 || cCr < 0) && cAmt < 0) throw new ParseError("Kolom debet/kredit atau jumlah tidak ditemukan");
   const split = cDb >= 0 && cCr >= 0;
+  // A column of only D/K-type values beside a single unsigned amount column says which way each amount goes.
+  const cFlag = split ? -1 : flagColumn(rows.slice(headerIdx + 1), header.map((_, c) => c).filter((c) => ![cDate, cDesc, cAmt, cBal].includes(c)));
   const money = [split ? cDb : -1, split ? cCr : -1, split ? -1 : cAmt, cBal].filter((c) => c >= 0);
   // The description, plus unlabeled text columns between the date and the first amount (e.g. the transaction type).
   const firstMoney = Math.min(...money);
   const descCols = [...new Set([cDesc, ...header.map((h, i) => (i > cDate && i < firstMoney && !h.trim() ? i : -1)).filter((i) => i >= 0)])]
-    .filter((i) => i !== cDate && !money.includes(i))
+    .filter((i) => i !== cDate && i !== cFlag && !money.includes(i))
     .sort((a, b) => a - b);
 
   let accountNumber: string | null = null;
   let period: { start: Date; end: Date } | null = null;
   for (const r of rows.slice(0, headerIdx)) {
     const line = r.join(" ");
-    if (/rekening|account/i.test(line)) accountNumber = line.match(/\d{6,}/)?.[0] ?? accountNumber;
+    // "0000-01-000123-50-9" (BRI prints the number in groups): one number, hyphens dropped.
+    if (/rekening|account/i.test(line)) accountNumber = accountIn(line) ?? accountNumber;
     period = periodFromText(line) ?? period;
   }
   period ??= periodOf(rows.slice(0, headerIdx).map((r) => r.join(" ")).join("\n"));
@@ -147,9 +163,21 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
   const drafts: Draft[] = [];
   let openingRow: { balance: bigint | null; parts: DateParts | null } | null = null;
   let printedClosing: bigint | null = null;
-  const num = (r: string[], c: number) => (c >= 0 && r[c] ? parseRupiah(r[c]) : 0n);
+  const sen = new SenWatch();
+  let at = 0; // the row being read (1-based), for the sen note
+  const num = (r: string[], c: number) => {
+    if (c < 0 || !r[c]) return 0n;
+    sen.check(r[c], at);
+    return parseRupiah(r[c]);
+  };
+  const bal = (r: string[]) => {
+    if (cBal < 0 || !r[cBal]) return null;
+    sen.check(r[cBal], at);
+    return parseRupiah(r[cBal]);
+  };
   for (let i = headerIdx + 1; i < rows.length; i++) {
     const r = rows[i];
+    at = i + 1;
     const dateText = r[cDate] ?? "";
     const text = descCols.map((c) => (r[c] ?? "").trim()).filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
     // Movement from the parsed values: "0" or "0,00" in a SALDO AWAL row is no movement (unreadable text counts as movement).
@@ -163,9 +191,9 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
     const noMovement = split ? isZero(cDb) && isZero(cCr) : isZero(cAmt);
     const label = OPENING_ROW.test(dateText) || OPENING_ROW.test(text) ? "open" : CLOSING_ROW.test(dateText) || CLOSING_ROW.test(text) ? "close" : TOTAL_ROW.test(dateText) ? "total" : null;
     if (label && (noMovement || !dateParts(dateText))) {
-      const bal = cBal >= 0 && r[cBal] ? parseRupiah(r[cBal]) : null;
-      if (label === "open" && !openingRow) openingRow = { balance: bal, parts: dateParts(dateText) };
-      if (label === "close" && bal !== null) printedClosing = bal;
+      const b = bal(r);
+      if (label === "open" && !openingRow) openingRow = { balance: b, parts: dateParts(dateText) };
+      if (label === "close" && b !== null) printedClosing = b;
       continue;
     }
     if (!dateText || /saldo|total/i.test(dateText)) continue;
@@ -175,13 +203,19 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
     if (noMovement) continue;
     const debit = split ? num(r, cDb) : 0n;
     const credit = split ? num(r, cCr) : 0n;
+    let amount = split ? credit - debit : num(r, cAmt);
+    if (cFlag >= 0) {
+      const f = (r[cFlag] ?? "").trim();
+      if (!FLAG_VALUE.test(f)) throw new ParseError(`Kolom D/K kosong di baris ${i + 1}: arah uang (masuk/keluar) tidak bisa ditentukan. Isi tandanya atau ekspor ulang.`);
+      amount = FLAG_OUT.test(f) ? -(amount < 0n ? -amount : amount) : amount < 0n ? -amount : amount;
+    }
     drafts.push({
       parts,
       description: text,
       debit,
       credit,
-      amount: split ? credit - debit : num(r, cAmt),
-      balance: cBal >= 0 && r[cBal] ? parseRupiah(r[cBal]) : null,
+      amount,
+      balance: bal(r),
       rowNumber: i + 1,
       rawRow: r.map((c) => c.replace(/\s+/g, " ").trim()).join(" | "),
     });
@@ -218,6 +252,9 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
 
   // ---- direction: the bank's way (kredit = masuk) unless only the books' way (debet = masuk) keeps the balance continuous ----
   const notes: string[] = [];
+  const senNote = sen.note();
+  if (senNote) notes.push(senNote);
+  if (cFlag >= 0) notes.push(`Kolom "${header[cFlag] || "D/K"}" dipakai sebagai tanda D/K: D / DB / Debet = uang keluar, K / CR / Kredit = uang masuk.`);
   const opening = (flip: boolean): bigint | null => {
     if (openingRow?.balance !== undefined && openingRow?.balance !== null) return openingRow.balance;
     const f = drafts[0];
@@ -272,7 +309,8 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
     end: new Date(Date.UTC(last.getUTCFullYear(), last.getUTCMonth() + 1, 0)),
   };
   return {
-    format,
+    // A file that names no bank stays GENERIC (only the lines above the table count: a transaction may name another bank).
+    format: format === "GENERIC" ? detectFormat(rows.slice(0, headerIdx + 1).map((r) => r.join(" ")).join("\n")) : format,
     accountNumber,
     periodStart: bounds.start,
     periodEnd: bounds.end,
@@ -298,7 +336,7 @@ export function parseWorkbook(sheets: Sheet[], ctx: { year?: number; fileName?: 
   let firstError: ParseError | null = null;
   for (const s of sheets) {
     try {
-      const st = parseTabular(s.rows, isMandiriRows(s.rows) ? "MANDIRI" : "GENERIC", { sheet: s.name, year: ctx.year, fileName: ctx.fileName, cursor });
+      const st = parseTabular(s.rows, "GENERIC", { sheet: s.name, year: ctx.year, fileName: ctx.fileName, cursor });
       read.push({ sheet: s, cursorIn: cursor, st });
       cursor = st.cursor;
     } catch (e) {
