@@ -108,4 +108,57 @@ describe("withholding on invoices", () => {
     // a line that carries withholding from a settlement can't be given another one by hand
     await expect(reviewTransaction(db, { bankTxId: receipt.id, accountCode: "1130", taxTag: null, withholding: { kind: "PPH_23", amount: 1n } })).rejects.toThrow(/pencocokan faktur/);
   });
+  describe("withholding already recorded on the bank line before it is matched", () => {
+    const prepare = async (g: G, wht: { kind: "PPH_23" | "PPH_4_2"; amount: bigint }) => {
+      const tx = await setup(g);
+      const inv = await sale(g);
+      const receipt = await tx("MITRA JASA");
+      await reviewTransaction(db, { bankTxId: receipt.id, accountCode: "1130", taxTag: null, withholding: wht });
+      return { inv, receipt };
+    };
+    const line = (id: string) => db.bankTransaction.findUniqueOrThrow({ where: { id } });
+
+    it("exactly the tax the settlement needs is adopted, not booked twice", async () => {
+      const g = await makeGroup();
+      const { inv, receipt } = await prepare(g, { kind: "PPH_23", amount: 200_000n });
+      const s = await settle(db, { clientId: g.client.id, invoiceId: inv.id, bankTransactionId: receipt.id });
+      expect(s).toMatchObject({ amount: 11_100_000n, withheld: 200_000n });
+      expect(await line(receipt.id)).toMatchObject({ whtKind: "PPH_23", whtAmount: 200_000n });
+      expect(await gl(g, "1180")).toBe(200_000n);
+      expect(await gl(g, "1130")).toBe(0n);
+      expect(await control(g, "ar")).toMatchObject({ status: "PASS" });
+      await unsettle(db, { clientId: g.client.id, settlementId: s.id });
+      expect(await line(receipt.id)).toMatchObject({ whtKind: null, whtAmount: 0n });
+    });
+
+    it("a smaller recorded tax is topped up by the difference only", async () => {
+      const g = await makeGroup();
+      const { inv, receipt } = await prepare(g, { kind: "PPH_23", amount: 100_000n });
+      const s = await settle(db, { clientId: g.client.id, invoiceId: inv.id, bankTransactionId: receipt.id });
+      expect(s).toMatchObject({ amount: 11_100_000n, withheld: 200_000n });
+      expect(await line(receipt.id)).toMatchObject({ whtKind: "PPH_23", whtAmount: 200_000n });
+      expect(await gl(g, "1180")).toBe(200_000n);
+      expect(await gl(g, "1130")).toBe(0n);
+      expect(await control(g, "ar")).toMatchObject({ status: "PASS" });
+    });
+
+    it("no recorded tax: the settlement books it once", async () => {
+      const g = await makeGroup();
+      const tx = await setup(g);
+      const inv = await sale(g);
+      const receipt = await tx("MITRA JASA");
+      await settleWithReclass(db, { clientId: g.client.id, invoiceId: inv.id, bankTransactionId: receipt.id });
+      expect(await line(receipt.id)).toMatchObject({ whtKind: "PPH_23", whtAmount: 200_000n });
+      expect(await gl(g, "1130")).toBe(0n);
+    });
+
+    it("a recorded tax of another kind is refused with a clear message and nothing is settled", async () => {
+      const g = await makeGroup();
+      const { inv, receipt } = await prepare(g, { kind: "PPH_4_2", amount: 200_000n });
+      await expect(settle(db, { clientId: g.client.id, invoiceId: inv.id, bankTransactionId: receipt.id })).rejects.toThrow(/PPh 4\(2\).*PPh 23/);
+      expect(await db.invoiceSettlement.count()).toBe(0);
+      expect(await line(receipt.id)).toMatchObject({ whtKind: "PPH_4_2", whtAmount: 200_000n });
+    });
+  });
+
 });
