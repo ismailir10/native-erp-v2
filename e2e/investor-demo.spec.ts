@@ -114,4 +114,14 @@ test("statement in → reviewed → traceable reports → combined → closed", 
   await expect(page.getByRole("dialog", { name: "Tutup buku Agustus 2026?" })).toBeVisible();
   await page.getByTestId("confirm-lock").click();
   await expect(page.getByText("Buku Agustus 2026 sudah ditutup")).toBeVisible();
+
+  // Reopening is for admins, needs a reason and stays in the history; the month is closed again for what follows.
+  await page.getByTestId("unlock").click();
+  await expect(page.getByTestId("confirm-lock")).toBeDisabled();
+  await page.getByTestId("unlock-reason").fill("Cek ulang sebelum laporan dikirim ke klien");
+  await page.getByTestId("confirm-lock").click();
+  await expect(page.getByTestId("unlock-history")).toContainText("Cek ulang sebelum laporan dikirim ke klien");
+  await page.getByTestId("lock").click();
+  await page.getByTestId("confirm-lock").click();
+  await expect(page.getByText("Buku Agustus 2026 sudah ditutup")).toBeVisible();
 });

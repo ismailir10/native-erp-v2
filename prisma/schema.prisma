@@ -169,6 +169,7 @@ model Client {
   invoices      Invoice[]
   taxYears      TaxYear[]
   leases        Lease[]
+  periodUnlocks PeriodUnlockLog[]
   coaVersion    Int                  @default(1)
 
   @@index([firmId])
@@ -272,6 +273,22 @@ model Period {
   signoffs   CloseSignoff[]
 
   @@unique([clientId, year, month])
+}
+
+/// Audit trail of reopening a closed month: admin only, with the reason typed at the time. Never edited; kept when the period is locked again.
+model PeriodUnlockLog {
+  id           String     @id @default(cuid())
+  firmId       String
+  clientId     String
+  client       Client     @relation(fields: [clientId], references: [id])
+  year         Int
+  month        Int
+  unlockedById String
+  unlockedBy   FirmMember @relation("PeriodUnlockedBy", fields: [unlockedById], references: [id])
+  reason       String
+  createdAt    DateTime   @default(now())
+
+  @@index([clientId, createdAt])
 }
 
 model StatementImport {
@@ -832,6 +849,7 @@ model FirmMember {
   postedEntries    JournalEntry[]        @relation("EntryPostedBy")
   signoffs         CloseSignoff[]        @relation("SignoffDoneBy")
   lockedPeriods    Period[]              @relation("PeriodLockedBy")
+  periodUnlocks    PeriodUnlockLog[]     @relation("PeriodUnlockedBy")
   acks             ControlAck[]          @relation("AckDoneBy")
   statementImports StatementImport[]     @relation("StatementImportedBy")
   ledgerImports    LedgerImport[]        @relation("LedgerImportedBy")

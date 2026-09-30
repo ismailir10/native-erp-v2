@@ -7,7 +7,7 @@ import { getClientForFirm, getCurrentFirm, getCurrentMember } from "@/lib/tenant
 import { importStatement, type ImportSummary } from "@/lib/import/pipeline";
 import { resolveProvider } from "@/lib/settings/ai";
 import { acceptSimilar, reviewTransaction } from "@/lib/review";
-import { CloseError, lockPeriod } from "@/lib/controls";
+import { CloseError, lockPeriod, unlockPeriod } from "@/lib/controls";
 import { LedgerError } from "@/lib/ledger/post";
 import { postAdjustment } from "@/lib/ledger/adjustment";
 import { createSchedule, postAllDue, postInstallment, stopSchedule, type ScheduleInput } from "@/lib/adjust/schedules";
@@ -217,10 +217,11 @@ export async function lockAction(clientId: string, year: number, month: number):
   }
 }
 
-export async function unlockAction(clientId: string, year: number, month: number): Promise<Result> {
+/** Admin only, in reverse order of closing, with a reason that is kept in the unlock log (lib/controls unlockPeriod). */
+export async function unlockAction(clientId: string, year: number, month: number, reason: string): Promise<Result> {
   try {
-    const period = await periodFor(clientId, year, month);
-    await prisma.period.update({ where: { id: period.id }, data: { status: "OPEN", lockedAt: null, lockedById: null } });
+    await getClientForFirm(clientId);
+    await unlockPeriod(prisma, clientId, year, month, await getCurrentMember(), reason);
     revalidatePath("/", "layout");
     return { ok: true };
   } catch (e) {
