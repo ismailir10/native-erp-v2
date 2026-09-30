@@ -20,11 +20,24 @@ description: Buku UI standard — 9fin look on a light background (navy ink, one
 - **shadcn first** (`components/ui/*`, base-nova on `@base-ui/react` — composition uses `render={<Link/>}`, not `asChild`).
   Vendored from annisaa-erp-v3 because `ui.shadcn.com` is blocked in the sandbox; add new ones from npm `shadcn` registry source or copy, then adapt tokens.
 - Product building blocks in `components/app/`: `PageHeader`, `NextStep`, `Stat`, `Money`, `StatusPill`, `MethodBadge`, `ScopeBar`, `FsTable`, charts. Reuse before creating.
+  Motion pieces live in `components/motion/` (see §Motion).
 - Charts: shadcn `chart` + Recharts. Load the `dataviz` skill first; run its palette validator. Single series → no legend;
   ≥2 series → legend + tooltip; if a colour fails 3:1 contrast, show the numbers in a table too. `isAnimationActive={false}`.
 - **Checkbox gotcha:** never wrap a base-ui `Checkbox` in `<label>` — the click is forwarded and toggles twice.
   Use `id` + `<label htmlFor>`.
 - Don't block keyboard input on `useTransition` pending when a `router.refresh()` follows; use an explicit busy flag.
+
+## Motion (`components/motion/`, ported from React Bits without a motion dependency)
+Motion is information, not decoration: it says *you arrived*, *this changed* or *this is done*. Otherwise nothing moves.
+- **Approved pieces:** `.page-settle` (every page via `app/(app)/template.tsx`, the auth card), `CountUp` (stat tiles, counts),
+  `ProgressFill`, `CheckDraw` (the done mark in `NextStep`), `DotGrid` (auth pages only). Reuse them; don't add a second way to do the same.
+- **Limits:** ≤ 450 ms, plays once, ease-out. Never on report/ledger tables, rows, inputs or anything the user is typing into; never loops.
+- `prefers-reduced-motion` → no motion at all (the CSS and `useArrival` handle it; new motion must too).
+- Hydrated server HTML never replays (`useArrival`): the value painted first is the value kept. Only client navigation animates.
+- Money moves in bigint (`lib/motion.ts` `tweenMinor`) and every frame is a real formatted amount; the last frame is the value exactly.
+- No lasting `transform` on page wrappers (fixed children would anchor to it) — animate `translate` with fill-mode `backwards`.
+- **Stays out** (breaks the look or the "No AI-slop" list): React Bits backgrounds other than DotGrid (aurora, plasma, silk, beams, particles…),
+  gradient/shiny/glitch/decrypt/scramble text, glass, glow/star borders, spotlight/tilt/magnet cards, cursor effects, 3D, click sparks.
 
 ## "Don't make me think"
 1. **Every page says what to do next** — a `NextStep` banner: one plain sentence (the instruction itself, no

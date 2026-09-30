@@ -13,25 +13,25 @@ login page (a hairline dot grid that reacts to the pointer in the brand blue).
 Who feels it: every accountant on every navigation (page settle, counters), the investor demo (login, first client overview).
 
 ## Spec
-- [ ] **Ports, not dependencies.** Four React Bits components ported to plain React + CSS in `components/motion/`, no `motion`/`gsap`/`ogl`
+- [x] **Ports, not dependencies.** Four React Bits components ported to plain React + CSS in `components/motion/`, no `motion`/`gsap`/`ogl`
       dependency (their npm deps are ~60–100 KB for effects that need ~2 KB). Each file credits React Bits; the upstream MIT + Commons Clause
       notice lives in `components/motion/REACT-BITS-LICENSE.md` (use inside a product is allowed; the components are not redistributed on their own).
-- [ ] **DotGrid** (Backgrounds/DotGrid) → login, lupa sandi, atur sandi (`AuthShell`): hairline-coloured dots, dots near the pointer tint to
+- [x] **DotGrid** (Backgrounds/DotGrid) → login, lupa sandi, atur sandi (`AuthShell`): hairline-coloured dots, dots near the pointer tint to
       `--primary`. Canvas, `aria-hidden`, `pointer-events: none`, redraws only on pointer movement (no idle rAF loop), colours read from CSS
       tokens (no hex in components). No pointer reaction under `prefers-reduced-motion` or on touch; the static grid stays.
-- [ ] **FadeContent** (Animations/FadeContent) → `app/(app)/template.tsx`: each page settles in (opacity + 4px rise, 220 ms) on navigation;
+- [x] **FadeContent** (Animations/FadeContent) → `app/(app)/template.tsx`: each page settles in (opacity + 4px rise, 220 ms) on navigation;
       the auth card does the same. CSS only; none under reduced motion.
-- [ ] **CountUp** (TextAnimations/CountUp) → client overview stat tiles (cash, revenue, net profit as compact money; controls passed),
+- [x] **CountUp** (TextAnimations/CountUp) → client overview stat tiles (cash, revenue, net profit as compact money; controls passed),
       Beranda "Klien selesai". Money is tweened in **bigint** (`lib/motion.ts` `tweenMinor`, never `Number` on an amount — accounting-rules §Money)
       and formatted with `formatMoneyCompact`, so every frame is a real formatted amount and the last frame is exactly the value.
       Server HTML holds the final value; a counter that hydrates from server HTML does **not** re-animate (no flash of the final value
       followed by 0) — only counters mounted by in-app navigation count, once, when on screen. Reduced motion → final value at once.
-- [ ] **StatusMark** (Micro/StatusMark, done state) → `NextStep tone="done"`: the circle and check draw in (≈450 ms) instead of a static icon.
+- [x] **StatusMark** (Micro/StatusMark, done state) → `NextStep tone="done"`: the circle and check draw in (≈450 ms) instead of a static icon.
       Pure SVG + CSS, server component, keeps the accessible label.
-- [ ] Close-progress bar on Beranda fills from 0 on arrival (same CountUp rule).
-- [ ] `ui-rules` gets a **Motion** section: what moves and why, the limits (≤ 450 ms, once, reduced-motion honoured, never on report tables
+- [x] Close-progress bar on Beranda fills from 0 on arrival (same CountUp rule).
+- [x] `ui-rules` gets a **Motion** section: what moves and why, the limits (≤ 450 ms, once, reduced-motion honoured, never on report tables
       or while typing), the approved components, and the React Bits families that stay out and why.
-- [ ] Tests: `tweenMinor` exact at 0/1, monotone, bigint-only, negative values; server render of `CountUp`/`CheckDraw` holds the final value.
+- [x] Tests: `tweenMinor` exact at 0/1, monotone, bigint-only, negative values; server render of `CountUp`/`CheckDraw` holds the final value.
 
 **Non-goals:** Backgrounds other than DotGrid; gradient/shiny/glitch/decrypt text; glass, glow, tilt, magnet, cursor effects; 3D; animated
 tables or ledger rows; a motion library dependency; any change to numbers, accounting logic or schema.
@@ -41,11 +41,31 @@ stopping. (2) Porting React Bits source into the product is within its licence (
 (3) No gate-reopener: no new dependency, no migration, no AI use, no accounting invariant touched.
 
 ## Tasks
-- [ ] T1 `lib/motion.ts` (tween + easing) + `components/motion/{count-up,check-draw,dot-grid}.tsx` + licence file — accept: unit tests pass
-- [ ] T2 Page settle (`app/(app)/template.tsx`) + auth shell (DotGrid + card settle) — accept: login renders, e2e unaffected
-- [ ] T3 CountUp on client overview + Beranda; CheckDraw in `NextStep` done; progress fill — accept: typecheck, e2e investor walk green
-- [ ] T4 `ui-rules` Motion section + AGENTS repo map — accept: no stale text
+- [x] T1 `lib/motion.ts` (tween + easing) + `components/motion/{count-up,check-draw,dot-grid}.tsx` + licence file — accept: unit tests pass
+- [x] T2 Page settle (`app/(app)/template.tsx`) + auth shell (DotGrid + card settle) — accept: login renders, e2e unaffected
+- [x] T3 CountUp on client overview + Beranda; CheckDraw in `NextStep` done; progress fill — accept: typecheck, e2e investor walk green
+- [x] T4 `ui-rules` Motion section + AGENTS repo map — accept: no stale text
 
 ## Implementation
+- T1 `lib/motion.ts` (`easeOutCubic`, `tweenMinor` bigint, `tweenCount`); `components/motion/arrival.ts` (`useArrival`: client mount and no
+  reduced motion; hydration is detected with `useSyncExternalStore`'s server snapshot, captured once in state), `count-up.tsx`,
+  `progress-fill.tsx`, `check-draw.tsx`, `dot-grid.tsx`, `REACT-BITS-LICENSE.md` (upstream notice); `.page-settle` / `.check-draw`
+  keyframes in `app/globals.css`. Test: `tests/unit/motion.test.ts`.
+- T2 `app/(app)/template.tsx` (remounts per navigation → one settle per page); `app/login/shell.tsx` (DotGrid + settling card; covers login,
+  lupa sandi, atur sandi).
+- T3 client overview stat tiles → `CountUp` (cash, revenue, net profit in the entity currency; controls passed/total); Beranda
+  *Kemajuan tutup buku* → `CountUp` + `ProgressFill`; `NextStep tone="done"` → `CheckDraw` (was lucide `CircleCheck`, same geometry).
+- T4 `ui-rules` §Motion (approved pieces, limits, what stays out), component list pointer, AGENTS repo map.
+- Chosen from React Bits after reading the source (repo cloned; reactbits.dev itself is blocked here): CountUp, FadeContent, DotGrid,
+  StatusMark. Rejected with reasons in `ui-rules` §Motion. Upstream uses `motion` / `gsap`; the ports use neither.
+
 ## Verification
+- `npm run lint && npm run typecheck && npm test` → 116 files, 862 tests passed. `npm run build` ✓. `npm run verify:books` → ALL PASS (1741).
+  No number, query or accounting path changed; the stat tiles show the same `formatMoneyCompact` output as before on their last frame.
+- Login in Chromium (1440 and 390 px): dots render from tokens, the ones near the pointer tint blue, no console errors, no horizontal
+  scroll at 390 px; with `reducedMotion: "reduce"` the settle animation is `none`.
+- `npm run test:e2e` is not runnable in this sandbox (Supabase Auth and cdn.sheetjs.com are blocked; `xlsx@0.18.5` stood in locally,
+  untracked). CI runs it. The signed-in pages were therefore not looked at in a browser here; e2e reads of the changed tiles use
+  retrying assertions only (checked: no one-shot `innerText` on them).
+
 ## Ship Notes
