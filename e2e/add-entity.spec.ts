@@ -10,7 +10,8 @@ test("add a bank account and an owner to an existing client", async ({ page }) =
   await expect(page.getByRole("heading", { name: "Impor Mutasi" })).toBeVisible();
   const base = new URL(page.url()).pathname.match(/\/clients\/[^/]+/)![0];
 
-  // The upload page says where a missing account is added.
+  // Impor says how it differs from Dokumen, and where a missing account is added.
+  await expect(page.getByText("Yang diimpor di sini langsung menjadi jurnal.")).toBeVisible();
   await page.getByRole("link", { name: "Tambahkan di Aturan klasifikasi" }).click();
   const card = page.getByTestId("entities-card");
   await expect(card).toContainText("PT Tambah Rekening");

@@ -39,7 +39,7 @@ export function EvidenceHome({ intakes, clients, clientId, connected, googleConf
   return <div className="space-y-6">
     <PageHeader title="Dokumen" description="Rekening koran, buku besar, laporan, dan konteks perusahaan dalam satu tempat." actions={actions} />
     {note}
-    <NextStep>Unggah file atau tempel tautan Drive. Periksa hasil sebelum mencatat ke buku.</NextStep>
+    <NextStep>Unggah file atau tempel tautan Drive untuk diperiksa dan ditanyakan. Isinya tidak otomatis menjadi jurnal; rekening koran bank dibukukan lewat Impor Mutasi di klien.</NextStep>
     {googleResult === "connected" && connected && <Alert role="status" className="border-pass/20 bg-pass-subtle text-pass"><CheckCircle2 /><AlertDescription className="text-pass">Google berhasil dihubungkan. Tambahkan dokumen lalu tempel tautan folder.</AlertDescription></Alert>}
     {googleResult === "error" && <Alert className="border-review/30 bg-review-subtle"><AlertCircle /><AlertDescription>{(googleReason && googleFailure[googleReason]) || "Google belum berhasil dihubungkan. Izin mungkin dibatalkan atau sesi kedaluwarsa. Coba hubungkan kembali."}</AlertDescription></Alert>}
     <Button disabled={busy} onClick={async () => { setBusy(true); const r = await createEvidenceAction(clientId); setBusy(false); if (r.ok) router.push(`/documents/${r.data.id}${suffix}`); else toast.error(r.error); }}><Upload className="size-4" /> Tambahkan dokumen</Button>

@@ -3,6 +3,7 @@ import { loadClientPage } from "@/lib/client-page";
 import type { SearchParams } from "@/lib/scope";
 import { formatDate } from "@/lib/format";
 import { liveUploadFile } from "@/lib/demo/seed";
+import { evidenceEnabled } from "@/lib/evidence/config";
 import { setupProgress } from "@/lib/setup-progress";
 import { SetupSteps } from "@/components/app/setup-steps";
 import { NextStep, PageHeader } from "@/components/app/page-header";
@@ -100,6 +101,7 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
         <NextStep href={setup.next?.href} cta={setup.next?.cta}>{setup.next?.text}</NextStep>
       )}
       <SetupSteps progress={setup} />
+      {evidenceEnabled() && <p className="text-sm text-muted-foreground">Ingin menyimpan berkas untuk ditanyakan, bukan dibukukan? Pakai <Link href="/documents" className="text-primary hover:underline">Dokumen</Link>. Yang diimpor di sini langsung menjadi jurnal.</p>}
       {!hasBanks ? (
         ledger
       ) : (
