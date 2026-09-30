@@ -1,4 +1,4 @@
-import { ParseError, type ParsedStatement } from "@/lib/import/types";
+import { ParseError, YearNeededError, type ParsedStatement } from "@/lib/import/types";
 import { isBcaCsv, parseBca } from "@/lib/import/parsers/bca";
 import { isBriCsv, parseBri } from "@/lib/import/parsers/bri";
 import { parseTabular, parseWorkbook, xlsxToSheets } from "@/lib/import/parsers/tabular";
@@ -33,12 +33,25 @@ async function parseAny(fileName: string, data: Buffer, opts: ParseOptions): Pro
   const xlsx = asXlsx(data);
   if (xlsx) return parseWorkbook(await xlsxToSheets(xlsx), { year: opts.year, fileName });
   const text = data.toString("utf8").replace(/^\uFEFF/, "");
-  if (isBcaCsv(text)) return [parseBca(text)];
-  if (isBriCsv(text)) return [parseBri(text)];
-  const first = text.split("\n")[0];
-  const delimiter = first.includes("\t") ? "\t" : first.includes(";") ? ";" : ",";
-  const { cursor: _cursor, verdict: _verdict, ...st } = parseTabular(readCsv(text, delimiter), "GENERIC", { year: opts.year, fileName });
-  void _cursor;
-  void _verdict;
-  return [st];
+  const generic = () => {
+    const first = text.split("\n")[0];
+    const delimiter = first.includes("\t") ? "\t" : first.includes(";") ? ";" : ",";
+    const { cursor: _cursor, verdict: _verdict, ...st } = parseTabular(readCsv(text, delimiter), "GENERIC", { year: opts.year, fileName });
+    void _cursor;
+    void _verdict;
+    return [st];
+  };
+  const specific = isBcaCsv(text) ? () => [parseBca(text)] : isBriCsv(text) ? () => [parseBri(text)] : null;
+  if (!specific) return generic();
+  try {
+    return specific();
+  } catch (e) {
+    // A file that only looks like BCA's / BRI's may still be a plain table: try the generic reader, keep this error if it can't either.
+    if (!(e instanceof ParseError)) throw e;
+    try {
+      return generic();
+    } catch (g) {
+      throw g instanceof YearNeededError ? g : e;
+    }
+  }
 }

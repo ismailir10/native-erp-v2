@@ -9,7 +9,9 @@ import { closingFromRows, periodFromText, readCsv } from "@/lib/import/parsers/c
  * totals trailer ("Saldo Awal", "Saldo Akhir").
  */
 export function isBcaCsv(text: string) {
-  return /Informasi Rekening|Mutasi Rekening/i.test(text.slice(0, 300)) && /Tanggal Transaksi/i.test(text);
+  // BRI / BNI / BSI internet banking use the same title words and a "Tanggal Transaksi" column: only KlikBCA's header row
+  // (Tanggal Transaksi, Keterangan, Cabang, Jumlah, DB/CR, Saldo) makes it BCA.
+  return /Informasi Rekening|Mutasi Rekening/i.test(text.slice(0, 300)) && /^"?Tanggal Transaksi"?\s*,\s*"?Keterangan"?\s*,\s*"?Cabang\b/im.test(text);
 }
 
 export function parseBca(text: string): ParsedStatement {

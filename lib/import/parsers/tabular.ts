@@ -111,6 +111,16 @@ function dateFrom(p: DateParts, cursor: YearCursor): Date {
   return d;
 }
 
+/** The first run of digits (hyphens allowed) with six or more digits that isn't a dd-mm-yyyy / yyyy-mm-dd date. */
+function accountIn(line: string): string | null {
+  for (const m of line.matchAll(/\d[\d-]{4,}\d/g)) {
+    if (/^(\d{1,2}-\d{1,2}-\d{2,4}|\d{4}-\d{1,2}-\d{1,2})$/.test(m[0])) continue;
+    const digits = m[0].replace(/-/g, "");
+    if (digits.length >= 6) return digits;
+  }
+  return null;
+}
+
 export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}): Parsed {
   const headerIdx = rows.findIndex(
     (r) => r.some((c) => HEADER_PATTERNS.date.test(c)) && r.some((c) => HEADER_PATTERNS.desc.test(c)),
@@ -137,7 +147,8 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
   let period: { start: Date; end: Date } | null = null;
   for (const r of rows.slice(0, headerIdx)) {
     const line = r.join(" ");
-    if (/rekening|account/i.test(line)) accountNumber = line.match(/\d{6,}/)?.[0] ?? accountNumber;
+    // "0000-01-000123-50-9" (BRI prints the number in groups): one number, hyphens dropped.
+    if (/rekening|account/i.test(line)) accountNumber = accountIn(line) ?? accountNumber;
     period = periodFromText(line) ?? period;
   }
   period ??= periodOf(rows.slice(0, headerIdx).map((r) => r.join(" ")).join("\n"));

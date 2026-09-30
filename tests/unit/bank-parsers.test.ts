@@ -1,0 +1,36 @@
+import { describe, expect, it } from "vitest";
+import { parseStatement } from "@/lib/import/parsers";
+import { briInternetBankingCsv, expectAugust } from "../bank-fixture";
+
+describe("routing: bank CSVs that borrow BCA's words", () => {
+  it("reads a BRI internet-banking CSV titled 'Mutasi Rekening' with a 'Tanggal Transaksi' header", async () => {
+    const st = await parseStatement("bri-ib.csv", briInternetBankingCsv());
+    expectAugust(st);
+    expect(st.accountNumber).toBe("000001000123509");
+  });
+
+  it("still reads the KlikBCA export as BCA", async () => {
+    const csv = [
+      "Informasi Rekening - Mutasi Rekening",
+      "No. rekening : 0000012345",
+      "Periode : 01/08/2026 - 31/08/2026",
+      "",
+      "Tanggal Transaksi,Keterangan,Cabang,Jumlah,,Saldo",
+      `'02/08,"PEMBAYARAN LISTRIK PLN",'0000,"2,450,000.00",DB,"97,550,000.00"`,
+      `"Saldo Awal : 100,000,000.00"`,
+      `"Saldo Akhir : 97,550,000.00"`,
+    ].join("\n");
+    const st = await parseStatement("klikbca.csv", Buffer.from(csv));
+    expect(st.format).toBe("BCA");
+    expect(st.rows.map((r) => r.amount)).toEqual([-2_450_000n]);
+  });
+
+  it("falls back to the generic reader when the BCA reader can't read a file that looks like BCA's, keeping the BCA error if both fail", async () => {
+    // Looks like KlikBCA (title + header) but carries no 'Periode' line: the BCA reader throws; the generic one can read it.
+    const readable = ["Informasi Rekening - Mutasi Rekening", "Tanggal Transaksi,Keterangan,Cabang,Jumlah,Saldo", "01/08/2026,A,0000,100,1100", "02/08/2026,B,0000,-50,1050"].join("\n");
+    const st = await parseStatement("x.csv", Buffer.from(readable));
+    expect(st.rows.map((r) => r.amount)).toEqual([100n, -50n]);
+    const unreadable = ["Informasi Rekening - Mutasi Rekening", "Tanggal Transaksi,Keterangan,Cabang,Foo", "01/08/2026,A,0000,B"].join("\n");
+    await expect(parseStatement("x.csv", Buffer.from(unreadable))).rejects.toThrow(/Periode/);
+  });
+});
