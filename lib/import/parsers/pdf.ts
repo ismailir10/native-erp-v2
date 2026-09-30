@@ -420,6 +420,7 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
       current.description = current.parts.join(" ").replace(/\s+/g, " ").trim();
       current.rawRow += ` / ${line.cells.map((c) => c.text).join(" | ")}`;
       current.lastY = line.y;
+      if (unreadable && !current.moneySeen) current.unreadable ??= unreadable;
       if (current.amount === 0n && nums.length) {
         const amt = nums.find((n) => n.kind === "amount" || n.kind === "credit" || n.kind === "debit");
         if (amt) current.moneySeen = true;

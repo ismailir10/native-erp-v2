@@ -53,8 +53,8 @@ export const MONTHS: Record<string, number> = {
 
 export type DateParts = { d: number; m: number; y: number | null };
 
-/** Time of day after a date ("10:15:30", "10.15", "2:05 PM"): part of the cell, not of the date. */
-const TIME = String.raw`(?:[ T]+\d{1,2}[:.]\d{2}(?:[:.]\d{2})?(?:\s*[AaPp][Mm])?)?`;
+/** Time of day after a date ("10:15:30", "10.15", "2:05 PM", "00:00:00.000Z", "10:15+07:00"): part of the cell, not of the date. */
+const TIME = String.raw`(?:[ T]+\d{1,2}[:.]\d{2}(?:[:.]\d{2}(?:\.\d+)?)?(?:\s*[AaPp][Mm])?(?:\s*(?:Z|[+-]\d{2}:?\d{2}))?)?`;
 const year = (y: string) => Number(y.length === 2 ? `20${y}` : y);
 
 /**

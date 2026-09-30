@@ -139,6 +139,24 @@ describe("PDF statements: month-name dates, signed / Rp amounts", () => {
   });
 });
 
+describe("a damaged amount on a continuation line", () => {
+  it("is refused, not posted as 0", async () => {
+    const head: [number, string][] = [[40, "Tanggal"], [110, "Keterangan"], [400, "Nominal"], [490, "Saldo"]];
+    const pdf = makePdf([
+      [
+        ...table(800, ["Bank Mandiri Livin", "Nomor Rekening : 0000000123456", "Periode : 01/08/2026 - 31/08/2026"].map((l) => [[40, l]] as [number, string][])),
+        ...table(740, [
+          head,
+          [[40, "01/08/2026"], [110, "SALDO AWAL"], [490, idn(100_000_000)]],
+          [[40, "02/08/2026"], [110, "TRF KE BUDI"]],
+          [[110, "lanjutan"], [400, "-1.2x0.000,00"], [490, idn(98_800_000)]],
+        ]),
+      ],
+    ]);
+    await expect(parseStatement("livin.pdf", pdf)).rejects.toThrow(/1\.2x0\.000,00.*tidak bisa dibaca/);
+  });
+});
+
 describe("a separate D/K flag column beside an unsigned amount", () => {
   it("reads BNI Mobile's Tipe (DB/CR) column", async () => {
     expectAugust(await parseStatement("bni-mobile.xlsx", await bniMobileXlsx()));
