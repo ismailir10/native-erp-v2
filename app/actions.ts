@@ -47,6 +47,7 @@ import { acceptMappings, MappingError, suggestMappings } from "@/lib/ledger-impo
 import { infraErrorMessage } from "@/lib/db-errors";
 import { deleteClient, DeleteClientError } from "@/lib/clients/delete";
 import { requireMember } from "@/lib/auth/session";
+import { EntityEditError, removeBankAccount, removeEntity, renameEntity, updateBankAccount } from "@/lib/clients/entities";
 import type { FsLine } from "@/lib/coa/template";
 import type { MapMethod } from "@/lib/generated/prisma/enums";
 
@@ -60,7 +61,7 @@ function fail(e: unknown): { ok: false; error: string; needsPassword?: boolean; 
   if (e instanceof PdfPasswordError) return { ok: false, error: e.message, needsPassword: true };
   if (e instanceof YearNeededError) return { ok: false, error: e.message, needsYear: true, yearGuess: e.guess };
   if (e instanceof DeleteClientError) return { ok: false, error: e.message };
-  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError || e instanceof MoneyError || e instanceof RateError || e instanceof RevaluationError || e instanceof LedgerImportError || e instanceof MappingError || e instanceof EntitySettingsError) return { ok: false, error: e.message };
+  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError || e instanceof MoneyError || e instanceof RateError || e instanceof RevaluationError || e instanceof LedgerImportError || e instanceof MappingError || e instanceof EntitySettingsError || e instanceof EntityEditError) return { ok: false, error: e.message };
   const infra = infraErrorMessage(e);
   console.error(e);
   return { ok: false, error: infra ?? "Terjadi kesalahan tak terduga. Coba lagi." };
@@ -493,12 +494,19 @@ export async function addClientAction(input: NewClientInput): Promise<Result<{ c
   }
 }
 
+/** The client of the session's firm, or a plain "not found" for the form (another firm's id looks the same as a wrong one). */
+async function ownClient(clientId: string) {
+  return getClientForFirm(clientId).catch(() => {
+    throw new EntityEditError("Klien tidak ditemukan.");
+  });
+}
+
 type NewEntityInput = NewClientInput["entities"][number];
 
 /** "Tambah rekening" on an entity of an existing client. `fields` keys ("bank.number") say what to fix. */
 export async function addBankAccountAction(clientId: string, entityId: string, input: NewEntityInput["banks"][number]): Promise<Result<{ bankAccountId: string }>> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await ownClient(clientId);
     const bank = await addBankAccount(prisma, client.firmId, client.id, entityId, input);
     revalidatePath("/", "layout");
     return { ok: true, bankAccountId: bank.id };
@@ -511,12 +519,77 @@ export async function addBankAccountAction(clientId: string, entityId: string, i
 /** "Tambah perusahaan atau pemilik" on an existing client. */
 export async function addEntityAction(clientId: string, input: NewEntityInput): Promise<Result<{ entityId: string }>> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await ownClient(clientId);
     const entity = await addEntity(prisma, client.firmId, client.id, input);
     revalidatePath("/", "layout");
     return { ok: true, entityId: entity.id };
   } catch (e) {
     if (e instanceof OnboardingError) return { ok: false, error: e.message, fields: e.fields };
+    return fail(e);
+  }
+}
+
+type EditFailure = { ok: false; error: string; fields?: Record<string, string> };
+const editFail = (e: unknown): EditFailure | ReturnType<typeof fail> => (e instanceof OnboardingError ? { ok: false, error: e.message, fields: e.fields } : fail(e));
+
+/** Rename a company/owner (labels only: no figure moves). Any member. */
+export async function renameEntityAction(clientId: string, entityId: string, input: { name: string; shortName: string; npwp: string }): Promise<Result> {
+  try {
+    const client = await ownClient(clientId);
+    await renameEntity(prisma, { firmId: client.firmId, clientId: client.id, entityId, ...input });
+    revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (e) {
+    return editFail(e);
+  }
+}
+
+/** Rename a bank account; bank and number only change while nothing was imported. Any member. */
+export async function updateBankAccountAction(clientId: string, bankAccountId: string, input: { label: string; bank: NewEntityInput["banks"][number]["bank"]; number: string }): Promise<Result> {
+  try {
+    const client = await ownClient(clientId);
+    await updateBankAccount(prisma, { firmId: client.firmId, clientId: client.id, bankAccountId, ...input });
+    revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (e) {
+    return editFail(e);
+  }
+}
+
+/** Admin only: removes a bank account nothing points to (lib/clients/entities.ts). */
+export async function removeBankAccountAction(clientId: string, bankAccountId: string): Promise<Result> {
+  let member;
+  try {
+    member = await requireMember("ADMIN");
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Hanya admin kantor yang dapat menghapus rekening." };
+  }
+  try {
+    const client = await ownClient(clientId);
+    const r = await removeBankAccount(prisma, { firmId: client.firmId, clientId: client.id, bankAccountId });
+    console.info(`bank account removed: firm=${client.firmId} client=${client.id} account="${r.label}" by member=${member.id} at ${new Date().toISOString()}`);
+    revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Admin only: removes a company/owner nothing points to (lib/clients/entities.ts). */
+export async function removeEntityAction(clientId: string, entityId: string): Promise<Result> {
+  let member;
+  try {
+    member = await requireMember("ADMIN");
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Hanya admin kantor yang dapat menghapus perusahaan." };
+  }
+  try {
+    const client = await ownClient(clientId);
+    const r = await removeEntity(prisma, { firmId: client.firmId, clientId: client.id, entityId });
+    console.info(`entity removed: firm=${client.firmId} client=${client.id} entity="${r.name}" bankAccounts=${r.bankAccounts} by member=${member.id} at ${new Date().toISOString()}`);
+    revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (e) {
     return fail(e);
   }
 }
