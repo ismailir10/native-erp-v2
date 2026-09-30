@@ -17,6 +17,16 @@ enum EntityKind {
   BADAN_USAHA_ASING
 }
 
+/// Which accounting standard an entity's report set names (CALK, statement titles, signatory). Wording only: no number depends on it.
+enum ReportingFramework {
+  /// SAK EMKM: micro and small businesses. No deferred tax, right-of-use assets or other comprehensive income.
+  SAK_EMKM
+  /// SAK EP: private entities without public accountability. The default, and what every entity had before this column existed.
+  SAK_EP
+  /// SAK yang berlaku umum (PSAK penuh).
+  SAK_UMUM
+}
+
 enum AccountType {
   ASET
   LIABILITAS
@@ -167,6 +177,7 @@ model Client {
   invoices      Invoice[]
   taxYears      TaxYear[]
   leases        Lease[]
+  periodUnlocks PeriodUnlockLog[]
   coaVersion    Int                  @default(1)
 
   @@index([firmId])
@@ -183,6 +194,7 @@ model Entity {
   npwp               String?
   /// ISO 4217 code; journal amounts of this entity are minor units of it (ADR 0006). Registry: lib/fx/currency.ts.
   functionalCurrency String               @default("IDR")
+  reportingFramework ReportingFramework   @default(SAK_EP)
   bankAccounts       BankAccount[]
   entries            JournalEntry[]
   sourceAccounts     SourceAccount[]
@@ -269,6 +281,22 @@ model Period {
   signoffs   CloseSignoff[]
 
   @@unique([clientId, year, month])
+}
+
+/// Audit trail of reopening a closed month: admin only, with the reason typed at the time. Never edited; kept when the period is locked again.
+model PeriodUnlockLog {
+  id           String     @id @default(cuid())
+  firmId       String
+  clientId     String
+  client       Client     @relation(fields: [clientId], references: [id])
+  year         Int
+  month        Int
+  unlockedById String
+  unlockedBy   FirmMember @relation("PeriodUnlockedBy", fields: [unlockedById], references: [id])
+  reason       String
+  createdAt    DateTime   @default(now())
+
+  @@index([clientId, createdAt])
 }
 
 model StatementImport {
@@ -834,6 +862,7 @@ model FirmMember {
   postedEntries    JournalEntry[]        @relation("EntryPostedBy")
   signoffs         CloseSignoff[]        @relation("SignoffDoneBy")
   lockedPeriods    Period[]              @relation("PeriodLockedBy")
+  periodUnlocks    PeriodUnlockLog[]     @relation("PeriodUnlockedBy")
   acks             ControlAck[]          @relation("AckDoneBy")
   statementImports StatementImport[]     @relation("StatementImportedBy")
   ledgerImports    LedgerImport[]        @relation("LedgerImportedBy")

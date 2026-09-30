@@ -1,6 +1,6 @@
 import { parseRupiah } from "@/lib/money";
 import { ParseError, type ParsedRow, type ParsedStatement } from "@/lib/import/types";
-import { closingFromRows, monthBoundsOf, openingFromRows, parseDateDMY, readCsv } from "@/lib/import/parsers/common";
+import { closingFromRows, monthBoundsOf, openingFromBalances, parseDateDMY, readCsv, SenWatch } from "@/lib/import/parsers/common";
 
 /** BRI (BRImo/CMS) CSV — semicolon-delimited, ISO dates, plain decimals. Approximated. */
 export function isBriCsv(text: string) {
@@ -17,10 +17,12 @@ export function parseBri(text: string): ParsedStatement {
   const [cDate, cDesc, cDb, cCr, cBal] = ["TGL_TRAN", "DESK_TRAN", "MUTASI_DEBET", "MUTASI_KREDIT", "SALDO_AKHIR_MUTASI"].map(col);
   if ([cDate, cDesc, cDb, cCr].some((c) => c < 0)) throw new ParseError("Kolom BRI tidak lengkap");
 
+  const sen = new SenWatch();
   const parsed: ParsedRow[] = [];
   for (let i = headerIdx + 1; i < rows.length; i++) {
     const r = rows[i];
     if (!r[cDate]) continue;
+    for (const c of [cDb, cCr, cBal]) if (c >= 0) sen.check(r[c], i + 1);
     parsed.push({
       date: parseDateDMY(r[cDate]),
       description: r[cDesc].replace(/\s+/g, " ").trim(),
@@ -31,7 +33,15 @@ export function parseBri(text: string): ParsedStatement {
     });
   }
   const { start, end } = monthBoundsOf(parsed);
-  const openingBalance = openingFromRows(parsed);
+  const notes: string[] = [];
+  const senNote = sen.note();
+  if (senNote) notes.push(senNote);
+  let openingBalance = openingFromBalances(parsed);
+  if (openingBalance === null) {
+    // No row prints a balance (a CMS export without SALDO_AKHIR_MUTASI): the opening is unknown, not silently right.
+    openingBalance = 0n;
+    notes.push("Kolom saldo kosong di semua baris: saldo awal tidak diketahui dan dianggap 0, sehingga mutasi tidak bisa dicocokkan dengan saldo bank. Isi Saldo Awal sendiri dari rekening koran.");
+  }
   return {
     format: "BRI",
     accountNumber: acctRow?.[1]?.replace(/[^\d]/g, "") ?? null,
@@ -40,5 +50,6 @@ export function parseBri(text: string): ParsedStatement {
     openingBalance,
     closingBalance: closingFromRows(parsed, openingBalance),
     rows: parsed,
+    ...(notes.length ? { notes } : {}),
   };
 }

@@ -29,6 +29,18 @@ describe("Tambah klien", () => {
     expect(await db.account.count({ where: { clientId: client.id, code: { in: ["1190", "1199", "1999", "3200"] } } })).toBe(4);
   });
 
+  it("stores each entity's reporting framework, SAK EP when none is chosen, and rejects an unknown one", async () => {
+    const firm = await db.$transaction((tx) => createFirm(tx, "KJA Uji"));
+    const withFramework = input();
+    withFramework.entities[0].reportingFramework = "SAK_EMKM";
+    const client = await addClient(db, firm.id, withFramework);
+    const rows = await db.entity.findMany({ where: { clientId: client.id }, orderBy: { name: "asc" } });
+    expect(rows.map((e) => [e.shortName, e.reportingFramework])).toEqual([["Budi", "SAK_EMKM"], ["PT Maju Bersama", "SAK_EP"]]);
+    const bad = input();
+    (bad.entities[1] as { reportingFramework?: string }).reportingFramework = "IFRS";
+    expect(() => validateNewClient(bad)).toThrow("Pilih kerangka pelaporan.");
+  });
+
   it("reports every problem at once, keyed by field", () => {
     const bad = input();
     bad.name = " ";
@@ -78,5 +90,26 @@ describe("Tambah klien", () => {
     const entities = await db.entity.findMany({ where: { clientId: client.id }, orderBy: { shortName: "asc" } });
     expect(entities.map((e) => [e.shortName, e.functionalCurrency])).toEqual([["HOLDCO", "SGD"], ["SKP", "IDR"]]);
     expect(await db.bankAccount.count()).toBe(0);
+  });
+
+  it("ignores a bank row left completely empty (the form starts with one), not one that is half filled", () => {
+    const blank = { bank: "BCA" as const, number: "", label: "" };
+    const spec = validateNewClient({
+      name: "Toko Maju",
+      industry: "",
+      entities: [{ name: "PT Toko Maju", shortName: "", kind: "PT", npwp: "", banks: [blank, { bank: "BCA", number: "872 014 5566", label: "" }, { ...blank, number: "   " }] }],
+    });
+    expect(spec.entities[0].banks.map((b) => b.number)).toEqual(["8720145566"]);
+    expect(validateNewClient({ name: "Toko Maju", industry: "", entities: [{ name: "PT Toko Maju", shortName: "", kind: "PT", npwp: "", banks: [blank] }] }).entities[0].banks).toEqual([]);
+
+    // A label or the PRK box without a number is a real mistake: named on the row that is shown (index kept, blanks included).
+    const half = { name: "Toko Maju", industry: "", entities: [{ name: "PT Toko Maju", shortName: "", kind: "PT" as const, npwp: "", banks: [blank, { ...blank, label: "Giro utama" }, { ...blank, isOverdraft: true }] }] };
+    let err: OnboardingError | null = null;
+    try {
+      validateNewClient(half);
+    } catch (e) {
+      err = e as OnboardingError;
+    }
+    expect(err?.fields).toEqual({ "entities.0.banks.1.number": "Isi nomor rekening.", "entities.0.banks.2.number": "Isi nomor rekening." });
   });
 });

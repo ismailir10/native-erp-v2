@@ -5,9 +5,10 @@ import { balanceSheet, incomeStatement, type BalanceSheet, type FsItem, type Inc
 import { cashFlow, equityChanges, otherComprehensiveIncome, EQUITY_ROWS, EQUITY_ROW_LABEL } from "@/lib/reports/statements";
 import { financialNotes, type NoteCell } from "@/lib/reports/notes";
 import { isMixed, scopeEntities } from "@/lib/reports/fx";
+import { frameworkLabel, scopeFramework, signatoryOf, statementNames } from "@/lib/reports/framework";
 
 /**
- * The financial statements as one Excel workbook (accounting-rules 12): Neraca, Laba Rugi (with other comprehensive income), Perubahan
+ * The financial statements as one Excel workbook (accounting-rules 12): Neraca, Laba Rugi (with other comprehensive income unless SAK EMKM), Perubahan
  * Ekuitas, Arus Kas, CALK and the directors' statement — each from the same functions as the page, never a second computation. Amounts are
  * Excel numbers (text beyond 2^53). Mixed-currency scopes get Neraca and Laba Rugi only, as on the page.
  */
@@ -20,6 +21,10 @@ export async function financialStatementsWorkbook(db: Db, scope: Scope, year: nu
   const lastYearEnd = dateOnly(year - 1, 12, 31);
   const priorTo = periodBounds(year - 1, month).end;
   const mixed = isMixed(await scopeEntities(db, scope.entityIds));
+  // Names and the signatory follow the entities' reporting framework (reports/framework.ts); no figure does.
+  const entities = await db.entity.findMany({ where: { id: { in: scope.entityIds } }, select: { kind: true, reportingFramework: true } });
+  const framework = scopeFramework(entities);
+  const names = statementNames(framework);
   const [bs, bsPrior, is, isPrior] = await Promise.all([
     balanceSheet(db, scope, asOf),
     balanceSheet(db, scope, lastYearEnd).catch(() => null),
@@ -67,7 +72,7 @@ export async function financialStatementsWorkbook(db: Db, scope: Scope, year: nu
   // Neraca
   const cur = formatDate(asOf);
   const old = formatDate(lastYearEnd);
-  const nr = sheet("Neraca", "Laporan Posisi Keuangan", `Per ${cur}${bsPrior ? ` dan ${old}` : ""}`, [56, 20, 20]);
+  const nr = sheet("Neraca", names.position, `Per ${cur}${bsPrior ? ` dan ${old}` : ""}`, [56, 20, 20]);
   head(nr, ["", cur, ...(bsPrior ? [old] : [])]);
   const both = <T,>(a: T, pick: (b: BalanceSheet) => T) => [a, ...(bsPrior ? [pick(bsPrior)] : [])];
   const section = (title: string, a: FsItem[], pick: (b: BalanceSheet) => FsItem[]) => {
@@ -87,7 +92,7 @@ export async function financialStatementsWorkbook(db: Db, scope: Scope, year: nu
   // Laba Rugi (with other comprehensive income)
   const colCur = `1 Jan – ${cur}`;
   const colOld = `1 Jan – ${formatDate(priorTo)}`;
-  const lr = sheet("Laba Rugi", "Laporan Laba Rugi dan Penghasilan Komprehensif Lain", `Untuk periode 1 Januari – ${cur}${isPrior ? `, dibandingkan periode yang sama ${year - 1}` : ""}`, [56, 20, 20]);
+  const lr = sheet("Laba Rugi", names.income, `Untuk periode 1 Januari – ${cur}${isPrior ? `, dibandingkan periode yang sama ${year - 1}` : ""}`, [56, 20, 20]);
   head(lr, ["", colCur, ...(isPrior ? [colOld] : [])]);
   const pl = <T,>(a: T, pick: (i: IncomeStatement) => T) => [a, ...(isPrior ? [pick(isPrior)] : [])];
   items(lr, pl(is.revenue, (i) => i.revenue));
@@ -100,7 +105,7 @@ export async function financialStatementsWorkbook(db: Db, scope: Scope, year: nu
   line(lr, "Laba sebelum pajak", pl(is.totals.profitBeforeTax, (i) => i.totals.profitBeforeTax), { bold: true });
   items(lr, pl(is.tax, (i) => i.tax));
   line(lr, "Laba bersih", pl(is.totals.netProfit, (i) => i.totals.netProfit), { bold: true });
-  if (!mixed) {
+  if (!mixed && framework !== "SAK_EMKM") {
     const [oci, ociPrior] = await Promise.all([otherComprehensiveIncome(db, scope, dateOnly(year, 1, 1), asOf), otherComprehensiveIncome(db, scope, dateOnly(year - 1, 1, 1), priorTo)]);
     line(lr, "Penghasilan komprehensif lain", [], { bold: true });
     items(lr, pl(oci.items, () => ociPrior.items));
@@ -110,26 +115,26 @@ export async function financialStatementsWorkbook(db: Db, scope: Scope, year: nu
 
   // Perubahan Ekuitas
   const eq = await equityChanges(db, scope, asOf);
-  const pe = sheet("Perubahan Ekuitas", "Laporan Perubahan Ekuitas", `Untuk periode 1 Januari – ${cur}`, [40, ...eq.columns.map(() => 20), 20]);
+  const pe = sheet("Perubahan Ekuitas", names.equity, `Untuk periode 1 Januari – ${cur}`, [40, ...eq.columns.map(() => 20), 20]);
   head(pe, ["", ...eq.columns.map((c) => c.label), "Jumlah"]);
   for (const r of EQUITY_ROWS) {
     if (r !== "opening" && r !== "closing" && eq.totals[r] === 0n) continue;
-    const label = r === "opening" ? `Saldo ${formatDate(eq.openedAt)}` : r === "closing" ? `Saldo ${cur}` : EQUITY_ROW_LABEL[r];
+    const label = r === "opening" ? `Saldo ${formatDate(eq.openedAt)}` : r === "closing" ? `Saldo ${cur}` : frameworkLabel(framework, EQUITY_ROW_LABEL[r]);
     line(pe, label, [...eq.values[r], eq.totals[r]], { bold: r === "opening" || r === "closing" });
   }
 
   // Arus Kas
   const cf = await cashFlow(db, scope, asOf);
-  const ak = sheet("Arus Kas", "Laporan Arus Kas (metode tidak langsung)", `Untuk periode 1 Januari – ${cur}`, [56, 20]);
+  const ak = sheet("Arus Kas", names.cashFlow, `Untuk periode 1 Januari – ${cur}`, [56, 20]);
   line(ak, "ARUS KAS DARI AKTIVITAS OPERASI", [], { bold: true });
   line(ak, "Laba bersih", [cf.netProfit], { indent: 1 });
-  for (const i of cf.operating) line(ak, `${i.label} (${i.codes.join(", ")})`, [i.amount], { indent: 1 });
+  for (const i of cf.operating) line(ak, `${frameworkLabel(framework, i.label)} (${i.codes.join(", ")})`, [i.amount], { indent: 1 });
   line(ak, "Kas bersih dari aktivitas operasi", [cf.totals.OPERATING], { bold: true });
   line(ak, "ARUS KAS DARI AKTIVITAS INVESTASI", [], { bold: true });
-  for (const i of cf.investing) line(ak, `${i.label} (${i.codes.join(", ")})`, [i.amount], { indent: 1 });
+  for (const i of cf.investing) line(ak, `${frameworkLabel(framework, i.label)} (${i.codes.join(", ")})`, [i.amount], { indent: 1 });
   line(ak, "Kas bersih dari aktivitas investasi", [cf.totals.INVESTING], { bold: true });
   line(ak, "ARUS KAS DARI AKTIVITAS PENDANAAN", [], { bold: true });
-  for (const i of cf.financing) line(ak, `${i.label} (${i.codes.join(", ")})`, [i.amount], { indent: 1 });
+  for (const i of cf.financing) line(ak, `${frameworkLabel(framework, i.label)} (${i.codes.join(", ")})`, [i.amount], { indent: 1 });
   line(ak, "Kas bersih dari aktivitas pendanaan", [cf.totals.FINANCING], { bold: true });
   line(ak, "Kenaikan (penurunan) bersih kas dan setara kas", [cf.net], { bold: true });
   line(ak, `Kas dan setara kas ${formatDate(cf.openedAt)}`, [cf.openingCash]);
@@ -154,8 +159,8 @@ export async function financialStatementsWorkbook(db: Db, scope: Scope, year: nu
     ck.addRow([]);
   }
 
-  // Pernyataan Direksi
-  const pd = wb.addWorksheet("Pernyataan Direksi");
+  // Pernyataan Direksi (Pemilik/Pengurus for a CV, a firm or an individual)
+  const pd = wb.addWorksheet(signatoryOf(entities).sheet);
   pd.getColumn(1).width = 100;
   notes.directors.forEach((text, i) => {
     const r = pd.addRow([text]);

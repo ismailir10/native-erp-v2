@@ -12,6 +12,7 @@ import { leaseSchedule, positionAt } from "@/lib/leases/schedule";
 import { terms } from "@/lib/leases/register";
 import { valuation } from "@/lib/benefits/valuation";
 import { glBalance, packApplies, taxPack } from "@/lib/tax/pack";
+import { scopeFramework, signatoryOf, standardOf, type Framework, type Signatory } from "@/lib/reports/framework";
 
 /**
  * CALK draft and the directors' statement (accounting-rules 12): every figure comes from the same functions as its page — the statements,
@@ -22,8 +23,9 @@ import { glBalance, packApplies, taxPack } from "@/lib/tax/pack";
 export type NoteCell = string | bigint | null;
 export type NoteTable = { columns: string[]; rows: NoteCell[][]; total?: NoteCell[] };
 export type Note = { number: string; title: string; paragraphs: string[]; tables: NoteTable[] };
-export type Notes = { title: string; entities: string; asOf: Date; comparativeLabel: string; notes: Note[]; directors: string[] };
+export type Notes = { title: string; entities: string; asOf: Date; comparativeLabel: string; notes: Note[]; directors: string[]; framework: Framework; signatory: Signatory };
 
+const EMKM_DEFERRED_REVIEW = "SAK EMKM tidak mengatur pajak tangguhan: tinjau saldo ini bersama kerangka pelaporan entitas.";
 const pct = (bp: number) => `${(bp / 100).toLocaleString("id-ID", { maximumFractionDigits: 2 })}%`;
 
 export async function financialNotes(db: Db, scope: Scope, year: number, month: number): Promise<Notes> {
@@ -31,6 +33,10 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
   if (isMixed(await scopeEntities(db, scope.entityIds))) throw new MixedScopeError();
   const client = await db.client.findUniqueOrThrow({ where: { id: scope.clientId }, select: { name: true } });
   const currency = entities[0]?.functionalCurrency ?? "IDR";
+  // The framework changes wording and gates policies the standard does not have — never a figure (framework.ts).
+  const framework = scopeFramework(entities);
+  const emkm = framework === "SAK_EMKM";
+  const signatory = signatoryOf(entities);
   const asOf = periodBounds(year, month).end;
   const lastYearEnd = dateOnly(year - 1, 12, 31);
   const priorTo = periodBounds(year - 1, month).end;
@@ -63,7 +69,7 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
     entities.length > 1 ? "Laporan gabungan ini adalah pandangan manajemen atas entitas-entitas dalam grup, bukan laporan konsolidasian menurut SAK." : "",
   ].filter(Boolean));
 
-  // Going concern: liabilities above assets is disclosed with the plans that support the going-concern basis (SAK EP).
+  // Going concern: liabilities above assets is disclosed with the plans that support the going-concern basis.
   if (bs.totals.equity < 0n) {
     const deficit = bs.equity.filter((i) => i.fsLine === "SALDO_LABA" || i.fsLine === "LABA_BERJALAN").reduce((s, i) => s + i.amount, 0n);
     add("Kelangsungan usaha", [
@@ -81,14 +87,19 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
     has(db.lease.count({ where: { entityId: ids, cancelEntryId: null } })),
     has(db.benefitSetting.count({ where: { entityId: ids } })),
   ]);
+  const basis = `Laporan keuangan disusun berdasarkan ${standardOf(framework).named} dengan dasar akrual dan konsep biaya historis, dalam ${currency === "IDR" ? "Rupiah" : currency}.`;
   add("Ikhtisar kebijakan akuntansi", [
-    `Dasar penyusunan. Laporan keuangan disusun berdasarkan Standar Akuntansi Keuangan Entitas Privat (SAK EP) dengan dasar akrual dan konsep biaya historis, dalam ${currency === "IDR" ? "Rupiah" : currency}. Laporan arus kas disusun dengan metode tidak langsung.`,
+    emkm
+      ? `Dasar penyusunan. ${basis} Laporan keuangan terdiri dari Laporan Posisi Keuangan, Laporan Laba Rugi dan Catatan atas Laporan Keuangan (CALK). Laporan arus kas dan perubahan ekuitas tidak diwajibkan oleh SAK EMKM; keduanya disajikan sebagai informasi tambahan dari buku yang sama.`
+      : `Dasar penyusunan. ${basis} Laporan arus kas disusun dengan metode tidak langsung.`,
     "Kas dan setara kas meliputi kas dan rekening bank yang dapat digunakan tanpa pembatasan.",
-    `Piutang usaha dicatat sebesar nilai tagihan${ckpnSet ? "; cadangan kerugian penurunan nilai diukur dengan pendekatan sederhana (kerugian kredit ekspektasian sepanjang umur) memakai matriks provisi dari umur piutang (PSAK 109)" : ""}.`,
+    `Piutang usaha dicatat sebesar nilai tagihan${ckpnSet ? (emkm ? "; penyisihan piutang tidak tertagih diakui sebesar estimasi jumlah yang tidak dapat ditagih berdasarkan umur piutang" : "; cadangan kerugian penurunan nilai diukur dengan pendekatan sederhana (kerugian kredit ekspektasian sepanjang umur) memakai matriks provisi dari umur piutang (PSAK 109)") : ""}.`,
     assets ? "Aset tetap dicatat sebesar biaya perolehan dikurangi akumulasi penyusutan, disusutkan dengan metode garis lurus selama umur manfaatnya; tanah tidak disusutkan." : "",
-    leases ? "Sewa. Sebagai penyewa, entitas mengakui aset hak guna dan liabilitas sewa sebesar nilai kini pembayaran sewa yang didiskonto dengan suku bunga pinjaman inkremental; aset hak guna disusutkan garis lurus selama masa sewa, bunga dibebankan dengan metode suku bunga efektif. Sewa jangka pendek (≤ 12 bulan) dibebankan langsung." : "",
-    benefits ? "Imbalan kerja. Liabilitas imbalan pascakerja sesuai PP 35/2021 dihitung dengan metode Projected Unit Credit; biaya jasa dan bunga diakui di laba rugi, pengukuran kembali di penghasilan komprehensif lain." : "",
-    "Pajak penghasilan kini dihitung dari laba fiskal; pajak tangguhan diakui atas beda temporer antara nilai tercatat dan dasar pengenaan pajak aset dan liabilitas dengan tarif yang berlaku.",
+    leases && !emkm ? "Sewa. Sebagai penyewa, entitas mengakui aset hak guna dan liabilitas sewa sebesar nilai kini pembayaran sewa yang didiskonto dengan suku bunga pinjaman inkremental; aset hak guna disusutkan garis lurus selama masa sewa, bunga dibebankan dengan metode suku bunga efektif. Sewa jangka pendek (≤ 12 bulan) dibebankan langsung." : "",
+    benefits ? `Imbalan kerja. Liabilitas imbalan pascakerja sesuai PP 35/2021 dihitung dengan metode Projected Unit Credit; biaya jasa dan bunga diakui di laba rugi, pengukuran kembali ${emkm ? "dicatat langsung di ekuitas" : "di penghasilan komprehensif lain"}.` : "",
+    emkm
+      ? "Pajak penghasilan dibebankan sebesar pajak kini yang dihitung dari laba fiskal."
+      : "Pajak penghasilan kini dihitung dari laba fiskal; pajak tangguhan diakui atas beda temporer antara nilai tercatat dan dasar pengenaan pajak aset dan liabilitas dengan tarif yang berlaku.",
     "Pendapatan diakui saat barang diserahkan atau jasa diberikan; beban diakui saat terjadi.",
   ].filter(Boolean).map((p, i) => `${String.fromCharCode(97 + i)}. ${p}`));
 
@@ -137,8 +148,13 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
       if (!(await settingAt(db, e.id, year, month))) continue;
       const c = await ckpn(db, scope.clientId, e.id, year, month);
       if (c.total === null) continue;
-      note.paragraphs.push(`${entities.length > 1 ? `${e.shortName}: ` : ""}cadangan kerugian penurunan nilai piutang ${formatMoney(c.total, currency)} (matriks provisi, metode ${c.setting.method === "ROLL_RATE" ? "roll rate" : "tarif manual"}, faktor forward-looking ${pct(c.setting.forwardBp)}).`);
-      note.tables.push({ columns: ["Umur", "Saldo", "Tarif kerugian", "CKPN"], rows: c.rows.map((r) => [BUCKET_LABEL[r.bucket], r.open, r.rate === null ? "–" : `${(Number(r.rate) / 10_000).toLocaleString("id-ID", { maximumFractionDigits: 2 })}%`, r.amount]), total: ["Jumlah", c.rows.reduce((t, r) => t + r.open, 0n), null, c.total] });
+      const who = entities.length > 1 ? `${e.shortName}: ` : "";
+      note.paragraphs.push(
+        emkm
+          ? `${who}penyisihan piutang tidak tertagih ${formatMoney(c.total, currency)} (dari umur piutang, tarif ${c.setting.method === "ROLL_RATE" ? "dari riwayat pelunasan" : "manual"}).`
+          : `${who}cadangan kerugian penurunan nilai piutang ${formatMoney(c.total, currency)} (matriks provisi, metode ${c.setting.method === "ROLL_RATE" ? "roll rate" : "tarif manual"}, faktor forward-looking ${pct(c.setting.forwardBp)}).`,
+      );
+      note.tables.push({ columns: ["Umur", "Saldo", emkm ? "Tarif penyisihan" : "Tarif kerugian", emkm ? "Penyisihan" : "CKPN"], rows: c.rows.map((r) => [BUCKET_LABEL[r.bucket], r.open, r.rate === null ? "–" : `${(Number(r.rate) / 10_000).toLocaleString("id-ID", { maximumFractionDigits: 2 })}%`, r.amount]), total: ["Jumlah", c.rows.reduce((t, r) => t + r.open, 0n), null, c.total] });
     }
   }
   // Leases: each lease as journalled (months posted by the period end; the liability after the last posted month), then the ledger itself —
@@ -172,11 +188,13 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
     const sum = (k: "rou" | "accumulated" | "current" | "nonCurrent") => leasePos.reduce((t, x) => t + x[k], 0n);
     const differs = (["rou", "accumulated", "current", "nonCurrent"] as const).some((k) => sum(k) !== ledger[k]);
     add("Sewa", [
-      `Aset hak guna dan liabilitas sewa per ${formatDate(asOf)} dari jurnal sewa yang sudah dicatat. Beban bunga sewa tahun berjalan ${formatMoney(leasePos.reduce((t, x) => t + x.interest, 0n), currency)}; penyusutan aset hak guna ${formatMoney(leasePos.reduce((t, x) => t + x.depreciation, 0n), currency)}.`,
+      emkm
+        ? `Aset sewa dan liabilitas sewa per ${formatDate(asOf)} dari jurnal sewa yang sudah dicatat. Beban bunga sewa tahun berjalan ${formatMoney(leasePos.reduce((t, x) => t + x.interest, 0n), currency)}; penyusutan aset sewa ${formatMoney(leasePos.reduce((t, x) => t + x.depreciation, 0n), currency)}. SAK EMKM tidak mengatur pengakuan sewa seperti ini; tinjau kerangka pelaporan entitas (SAK EP mengaturnya).`
+        : `Aset hak guna dan liabilitas sewa per ${formatDate(asOf)} dari jurnal sewa yang sudah dicatat. Beban bunga sewa tahun berjalan ${formatMoney(leasePos.reduce((t, x) => t + x.interest, 0n), currency)}; penyusutan aset hak guna ${formatMoney(leasePos.reduce((t, x) => t + x.depreciation, 0n), currency)}.`,
       ...(differs ? ["Daftar sewa berbeda dengan buku besar: ada jurnal bulanan sewa yang belum dicatat atau pembayaran sewa yang belum diklasifikasikan ke 2170. Neraca memakai angka buku besar."] : []),
     ], [
       {
-        columns: ["Sewa", "Aset hak guna", "Akumulasi penyusutan", "Liabilitas jangka pendek", "Liabilitas jangka panjang"],
+        columns: ["Sewa", emkm ? "Aset sewa" : "Aset hak guna", "Akumulasi penyusutan", "Liabilitas jangka pendek", "Liabilitas jangka panjang"],
         rows: [...leasePos.map((x): NoteCell[] => [`${x.l.name} · ${x.l.lessor}`, x.rou, x.accumulated, x.current, x.nonCurrent]), ["Jumlah daftar sewa", sum("rou"), sum("accumulated"), sum("current"), sum("nonCurrent")]],
         total: ["Buku besar (1230, 1239, 2170, 2400)", ledger.rou, ledger.accumulated, ledger.current, ledger.nonCurrent],
       },
@@ -195,7 +213,7 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
     ]);
   }
   if (oci.items.length) {
-    add("Penghasilan komprehensif lain", ["Pos yang tidak akan direklasifikasi ke laba rugi."], [{ columns: ["Pos", "Jumlah"], rows: oci.items.map((i) => [i.label, i.amount]), total: ["Jumlah", oci.total] }]);
+    add(emkm ? "Pos ekuitas lain (pengukuran kembali)" : "Penghasilan komprehensif lain", [emkm ? "Pos yang dicatat langsung di ekuitas, tidak melalui laba rugi." : "Pos yang tidak akan direklasifikasi ke laba rugi."], [{ columns: ["Pos", "Jumlah"], rows: oci.items.map((i) => [i.label, i.amount]), total: ["Jumlah", oci.total] }]);
   }
   // The deferred tax line is what the Neraca carries (1270 − 2320); a computed amount that differs is an estimate not yet journalled.
   const deferredRows = async (entityId: string, computed: bigint | null): Promise<NoteCell[][]> => {
@@ -203,7 +221,7 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
       (await glBalance(db, scope.clientId, entityId, ACCOUNT_CODES.DEFERRED_TAX_ASSET, asOf)) + (await glBalance(db, scope.clientId, entityId, ACCOUNT_CODES.DEFERRED_TAX_LIABILITY, asOf));
     const rows: NoteCell[][] = [];
     if (posted !== 0n) rows.push([posted > 0n ? "Aset pajak tangguhan" : "Liabilitas pajak tangguhan", posted < 0n ? -posted : posted]);
-    if (computed !== null && computed !== posted) rows.push(["Estimasi pajak tangguhan belum dicatat (catat di Pajak Badan)", computed - posted]);
+    if (!emkm && computed !== null && computed !== posted) rows.push(["Estimasi pajak tangguhan belum dicatat (catat di Pajak Badan)", computed - posted]);
     return rows;
   };
   for (const e of entities) {
@@ -211,10 +229,11 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
     if (!p || p.regime !== "NORMAL") {
       // No PPh badan reconciliation here (final regime, a person, other books), but a 1270/2320 balance on the Neraca still has its note.
       const posted = await deferredRows(e.id, null);
-      if (posted.length) add(`Pajak tangguhan${entities.length > 1 ? ` · ${e.shortName}` : ""}`, ["Saldo pajak tangguhan yang tercatat di buku besar."], [{ columns: ["Uraian", "Jumlah"], rows: posted }]);
+      if (posted.length) add(`Pajak tangguhan${entities.length > 1 ? ` · ${e.shortName}` : ""}`, ["Saldo pajak tangguhan yang tercatat di buku besar.", ...(emkm ? [EMKM_DEFERRED_REVIEW] : [])], [{ columns: ["Uraian", "Jumlah"], rows: posted }]);
       continue;
     }
-    add(`Pajak penghasilan${entities.length > 1 ? ` · ${e.shortName}` : ""}`, [`Rekonsiliasi laba komersial ke laba fiskal ${year} s.d. ${cur} (estimasi, bukan SPT).`], [
+    const deferred = await deferredRows(e.id, p.deferred?.amount ?? null);
+    add(`Pajak penghasilan${entities.length > 1 ? ` · ${e.shortName}` : ""}`, [`Rekonsiliasi laba komersial ke laba fiskal ${year} s.d. ${cur} (estimasi, bukan SPT).`, ...(emkm && deferred.length ? [EMKM_DEFERRED_REVIEW] : [])], [
       {
         columns: ["Uraian", "Jumlah"],
         rows: [
@@ -224,7 +243,7 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
           ...(p.compensation > 0n ? [["Kompensasi kerugian", -p.compensation] as NoteCell[]] : []),
           ["Penghasilan kena pajak", p.tax.pkp],
           ["Pajak penghasilan kini", p.tax.due],
-          ...(await deferredRows(e.id, p.deferred?.amount ?? null)),
+          ...deferred,
         ],
       },
     ]);
@@ -237,26 +256,28 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
     asOf,
     comparativeLabel: formatDate(lastYearEnd),
     notes,
-    directors: directorsStatement(title, asOf),
+    directors: directorsStatement(title, asOf, framework, signatory),
+    framework,
+    signatory,
   };
 }
 
-/** The directors' statement of responsibility (a template: name and signature are left blank). */
-export function directorsStatement(entity: string, asOf: Date): string[] {
+/** The statement of responsibility (a template: name and signature are left blank), for the framework and whoever signs for the entity. */
+export function directorsStatement(entity: string, asOf: Date, framework: Framework = "SAK_EP", signatory: Signatory = signatoryOf([{ kind: "PT" }])): string[] {
   return [
-    "SURAT PERNYATAAN DIREKSI",
+    signatory.title,
     `TENTANG TANGGUNG JAWAB ATAS LAPORAN KEUANGAN ${entity.toUpperCase()}`,
     `UNTUK PERIODE YANG BERAKHIR ${formatDate(asOf).toUpperCase()}`,
     "Kami yang bertanda tangan di bawah ini:",
-    "Nama: ____________________    Jabatan: Direktur",
+    `Nama: ____________________    Jabatan: ${signatory.role}`,
     "menyatakan bahwa:",
     `1. Kami bertanggung jawab atas penyusunan dan penyajian laporan keuangan ${entity};`,
-    "2. Laporan keuangan telah disusun dan disajikan sesuai dengan Standar Akuntansi Keuangan Entitas Privat;",
+    `2. Laporan keuangan telah disusun dan disajikan sesuai dengan ${standardOf(framework).full};`,
     "3. a. Semua informasi dalam laporan keuangan telah dimuat secara lengkap dan benar;",
     "   b. Laporan keuangan tidak mengandung informasi atau fakta material yang tidak benar, dan tidak menghilangkan informasi atau fakta material;",
     `4. Kami bertanggung jawab atas sistem pengendalian intern dalam ${entity}.`,
     "Demikian pernyataan ini dibuat dengan sebenarnya.",
     "____________________, ____________________",
-    "Direktur",
+    signatory.role,
   ];
 }
