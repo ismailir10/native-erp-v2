@@ -78,7 +78,8 @@ describe("tax payments by code, and without one", () => {
     const sql = readFileSync(path.join(__dirname, "../../prisma/migrations/20260930060200_tax_code_rules/migration.sql"), "utf8");
     const statements = sql.split("\n").filter((l) => !l.startsWith("--")).join("\n").split(/;\s*\n/).map((s) => s.trim()).filter(Boolean);
     for (let run = 0; run < 2; run++) for (const s of statements) await db.$executeRawUnsafe(s);
-    expect((await db.rule.findMany({ where: { firmId: other.id }, orderBy: { pattern: "asc" } })).map((r) => [r.pattern, r.accountCode])).toEqual([
+    // Sorted here, not by the database: collations order "411125-100" and "411125100" differently.
+    expect((await db.rule.findMany({ where: { firmId: other.id } })).map((r) => [r.pattern, r.accountCode]).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
       ["411121", "2140"], ["411124", "2141"], ["411125-100", "1180"], ["411125-200", "2146"], ["411125100", "1180"], ["411125200", "2146"], ["411128", "2145"], ["411211", "2130"],
     ]);
   });
