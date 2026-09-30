@@ -11,6 +11,8 @@ import { formatMoneyCompact } from "@/lib/money";
 import { FxMissing, withFx } from "@/components/app/fx-missing";
 import { FxMissingError } from "@/lib/reports/fx";
 import { NextStep, PageHeader, Stat } from "@/components/app/page-header";
+import { SetupSteps } from "@/components/app/setup-steps";
+import { setupProgress } from "@/lib/setup-progress";
 import { ScopeBar } from "@/components/app/scope-bar";
 import { StatusPill } from "@/components/app/status";
 import { Money } from "@/components/app/money";
@@ -22,18 +24,12 @@ import { ArrowRight } from "lucide-react";
 export default async function ClientOverview({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, period, scope, periodOptions, entityOptions, base, scopeLabel, currency } = await loadClientPage(params, searchParams);
   const s = { clientId: client.id, entityIds: scope.entityIds };
-  // A ledger import brings its own opening rows, so those entities don't need a separate Saldo Awal.
-  const withOpening = new Set(
-    (await prisma.journalEntry.findMany({ where: { entityId: { in: client.entities.map((e) => e.id) }, kind: { in: ["OPENING", "IMPORTED"] } }, select: { entityId: true }, distinct: ["entityId"] })).map((j) => j.entityId),
-  );
-  const noOpening = client.entities.filter((e) => !withOpening.has(e.id));
   // Indonesian tax estimates only make sense for Rupiah entities.
   const idrScope = { clientId: client.id, entityIds: client.entities.filter((e) => scope.entityIds.includes(e.id) && e.functionalCurrency === "IDR").map((e) => e.id) };
-  const [figures, tax, controls, openReview, auto, periodRow] = await Promise.all([
+  const [figures, tax, controls, auto, periodRow] = await Promise.all([
     withFx(async () => ({ series: await monthlySeries(prisma, s, period.end, 6), is: await incomeStatement(prisma, s, period.start, period.end) })),
     taxSummary(prisma, idrScope, period.start, period.end),
     runControls(prisma, client.id, period.year, period.month),
-    prisma.bankTransaction.count({ where: { entityId: { in: scope.entityIds }, status: "NEEDS_REVIEW" } }),
     automationByMonth([client.id]),
     prisma.period.findUnique({ where: { clientId_year_month: { clientId: client.id, year: period.year, month: period.month } } }),
   ]);
@@ -48,6 +44,7 @@ export default async function ClientOverview({ params, searchParams }: { params:
   for (const c of controls) counts[c.status]++;
   const missing = controls.filter((c) => c.key.startsWith("bank:") && c.detail.includes("belum diimpor"));
   const q = { period: period.key, entity: scope.value };
+  const setup = await setupProgress(prisma, client.id, { period, missingStatements: missing.map((m) => m.title), params: q });
   const locked = periodRow?.status === "LOCKED";
   const hasPpn = tax.ppnKeluaran !== 0n || tax.ppnMasukan !== 0n;
 
@@ -61,23 +58,10 @@ export default async function ClientOverview({ params, searchParams }: { params:
 
       {locked ? (
         <NextStep tone="done">Buku {formatPeriod(period.year, period.month)} sudah ditutup.</NextStep>
-      ) : noOpening.length ? (
-        <NextStep href={`${base}/opening`} cta="Isi saldo awal">
-          Isi saldo awal {noOpening.map((e) => e.shortName).join(" dan ")} dulu, supaya saldo bank di buku cocok dengan rekening koran.
-        </NextStep>
-      ) : missing.length ? (
-        <NextStep href={`${base}/import`} cta="Impor mutasi">
-          Mutasi {missing.map((m) => m.title.replace("Rekonsiliasi ", "")).join(", ")} untuk {formatPeriod(period.year, period.month)} belum diimpor.
-        </NextStep>
-      ) : openReview ? (
-        <NextStep href={`${base}/review`} cta="Review transaksi">
-          {openReview} transaksi perlu dicek. Semuanya sudah punya usulan akun.
-        </NextStep>
-      ) : (
-        <NextStep href={`${base}/close`} cta="Tutup buku">
-          Semua transaksi sudah terklasifikasi. Cek kontrol lalu tutup buku.
-        </NextStep>
-      )}
+      ) : setup.next ? (
+        <NextStep href={setup.next.href} cta={setup.next.cta}>{setup.next.text}</NextStep>
+      ) : null}
+      <SetupSteps progress={setup} />
 
       {fxMissing || !is ? (
         <FxMissing error={fxMissing!} base={base} compact />
