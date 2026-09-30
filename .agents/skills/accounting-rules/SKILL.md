@@ -14,8 +14,8 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
    of the PKL equity lines), the changes in equity and the indirect cash flow (`lib/reports/statements.ts`: every balance-sheet account's
    movement, classified by FS line — leases, employee benefits and deferred tax by code; single-currency scopes), whose opening is 31
    December plus the year's Saldo Awal (kind OPENING) entries — never a flow — and each is checked against the Neraca. CALK and the Excel
-   set (`lib/reports/notes.ts`, `workbook.ts`) reuse those functions and the registers; notes are never stored. In the cash flow a register disposal's **collected** proceeds and the paid part
-   of a purchase bill's investing debit (by its settlements, any year) are investing; the rest of those entries is a non-cash operating line, so the sections still add up to the Neraca's change in cash.
+   set (`lib/reports/notes.ts`, `workbook.ts`) reuse those functions and the registers; notes are never stored. In the cash flow a register disposal's **collected** proceeds (nothing links a receipt to a disposal, so the proceeds account is read first-in-first-out: cash credits clear its older debits first, later debits never take from it — conservative, an older unrelated receivable delays the disposal's inflow) and the paid part
+   of a purchase bill's investing debit (by the cash of its settlements, i.e. less the tax they withheld; any year) are investing; the rest of those entries is a non-cash operating line, so the sections still add up to the Neraca's change in cash.
    `Entity.reportingFramework` (SAK EMKM / EP / Umum, default EP; a group takes the most demanding) decides **wording only** — the standard the CALK
    names, statement titles, which policies are described (EMKM has no PSAK 109 matrix, right-of-use, deferred tax or OCI wording) and
    who signs (Direksi for PT / foreign, Pemilik/Pengurus for CV / individual) — through `lib/reports/framework.ts`; no figure may depend on it.
@@ -92,7 +92,7 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     template account created on first use when the code is free. An `Invoice` may name the expected tax (`whtKind`, `whtAmount` on the DPP); it stays gross and posts as before. An
     `InvoiceSettlement.amount` is what it clears on the invoice (gross); `withheld` is the tax part of it, so open amount, aging, CKPN and `ar:`/`ap:` still read Σ amount. A settlement that
     closes the invoice with a shortfall within the expected tax books that tax by default (else it is typed); a bank line's free amount = |amount| − Σ (amount − withheld). Tax on a
-    settled line changes only by (un)settling. It is never added to the tax pack's credits on its own (the accountant types the bukti potong).
+    settled line changes only by (un)settling (kind and amount). Tax already recorded on the line by hand is adopted by the settlement, never added on top (only the missing difference is; another kind is refused). It is never added to the tax pack's credits on its own (the accountant types the bukti potong).
 5e. **CKPN piutang — PSAK 109 simplified approach** (`lib/receivables/ckpn.ts`): per entity with a saved `CkpnSetting`, computed at read
     time from its **sales invoices and settlements** (no stored aging). Loss rates are **Roll rate** (invoice by invoice between consecutive
     month-ends over the last N months: of what was open in a bucket and has aged beyond it by the next month-end, the share still open, capped

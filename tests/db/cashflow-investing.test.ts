@@ -7,6 +7,7 @@ import { disposeAsset } from "@/lib/assets/dispose";
 import { createInvoice } from "@/lib/receivables/invoices";
 import { settleWithReclass } from "@/lib/receivables/settle";
 import { importStatement } from "@/lib/import/pipeline";
+import { reviewTransaction } from "@/lib/review";
 import { cashFlow } from "@/lib/reports/statements";
 import { balanceSheet } from "@/lib/reports/ledger";
 import { dateOnly } from "@/lib/format";
@@ -20,12 +21,13 @@ const scope = (g: G) => ({ clientId: g.client.id, entityIds: [g.pt.entity.id] })
 const items = (xs: { key: string; amount: bigint }[]) => xs.map((i) => [i.key, i.amount]);
 
 /** Books start 31 Dec 2025: bank 100 jt, a machine at cost 120 jt with 90 jt accumulated depreciation, capital the rest. */
-async function opening(g: G) {
+async function opening(g: G, receivable = 0n) {
   await postOpening(db, { clientId: g.client.id, entityId: g.pt.entity.id, date: dateOnly(2025, 12, 31), lines: [
     { accountCode: "1120", debit: "100000000", credit: "0" },
+    ...(receivable > 0n ? [{ accountCode: "1140", debit: String(receivable), credit: "0" }] : []),
     { accountCode: "1210", debit: "120000000", credit: "0" },
     { accountCode: "1219", debit: "0", credit: "90000000" },
-    { accountCode: "3100", debit: "0", credit: "130000000" },
+    { accountCode: "3100", debit: "0", credit: String(130n * J + receivable) },
   ] });
   return createAsset(db, { clientId: g.client.id, entityId: g.pt.entity.id, name: "Mesin cetak", taxGroup: "KELOMPOK_2", fiscalMethod: "GARIS_LURUS", acquiredOn: "2024-01-01", cost: "120000000", usefulLifeMonths: 48, openingAccumulated: "90000000", remainingMonths: 12, assetAccountCode: "1210", startYear: 2026, startMonth: 2 });
 }
@@ -100,5 +102,74 @@ describe("cash flow: disposal proceeds and capex on a payable in investing", () 
     expect(y2.totals.OPERATING).toBe(0n);
     await reconciles(g, y2, dateOnly(2027, 12, 31));
     await reconciles(g, y1, dateOnly(2026, 12, 31));
+  });
+  it("counts only the cash of a bill settled with withholding as investing (50 jt bill: 45 jt bank + 5 jt PPh 23 withheld)", async () => {
+    const g = await makeGroup();
+    await opening(g);
+    const bill = await createInvoice(db, { clientId: g.client.id, entityId: g.pt.entity.id, direction: "PURCHASE", contactName: "CV Mesin Maju", number: "MM-5", issueDate: "2026-03-01", dpp: "50.000.000", counterCode: "1210", whtKind: "PPH_23", whtAmount: "5.000.000" });
+    const csv = ["Tanggal;Keterangan;Debet;Kredit;Saldo", "15/03/2026;TRSF E-BANKING DB CV MESIN MAJU MM-5;45000000;0;55000000", ""].join("\n");
+    await importStatement(db, { bankAccountId: g.pt.banks[0].id, fileName: "bca.csv", data: Buffer.from(csv), provider: null });
+    const s = await settleWithReclass(db, { clientId: g.client.id, invoiceId: bill.id, bankTransactionId: (await db.bankTransaction.findFirstOrThrow({ where: { description: { contains: "MM-5" } } })).id });
+    expect(s).toMatchObject({ amount: 50n * J, withheld: 5n * J });
+    const cf = await cashFlow(db, scope(g), dateOnly(2026, 12, 31));
+    expect(items(cf.investing)).toEqual([["ASET_TETAP", -45n * J]]); // only what left the bank
+    expect(cf.totals).toEqual({ OPERATING: 0n, INVESTING: -45n * J, FINANCING: 0n });
+    expect(cf.net).toBe(-45n * J);
+    await reconciles(g, cf, dateOnly(2026, 12, 31));
+  });
+  it("is not moved by unrelated activity in the proceeds account: a 100 jt receivable created there does not hide a collected 40 jt disposal", async () => {
+    const g = await makeGroup();
+    const a = await opening(g);
+    await disposeAsset(db, { clientId: g.client.id, assetId: a.id, date: "2026-01-20", proceeds: "40000000", proceedsCode: "1140" });
+    await post(g, 2026, 2, 1, "Penjualan kredit lain", [["1140", 100n * J], ["4100", -100n * J]]);
+    await post(g, 2026, 2, 10, "Penerimaan hasil penjualan mesin", [["1120", 40n * J], ["1140", -40n * J]]);
+    const cf = await cashFlow(db, scope(g), dateOnly(2026, 12, 31));
+    expect(items(cf.investing)).toEqual([["DISPOSAL", 40n * J]]);
+    await reconciles(g, cf, dateOnly(2026, 12, 31));
+  });
+
+  it("does not call the collection of an older, unrelated receivable in the same account a disposal inflow", async () => {
+    const g = await makeGroup();
+    const a = await opening(g, 30n * J); // 30 jt of other receivables already in 1140
+    await disposeAsset(db, { clientId: g.client.id, assetId: a.id, date: "2026-01-20", proceeds: "40000000", proceedsCode: "1140" });
+    await post(g, 2026, 2, 10, "Penerimaan piutang lama", [["1120", 30n * J], ["1140", -30n * J]]);
+    const cf = await cashFlow(db, scope(g), dateOnly(2026, 12, 31));
+    expect(cf.investing).toEqual([]); // the 30 jt paid the older receivable first; the disposal's 40 jt is still open
+    expect(cf.net).toBe(30n * J);
+    await reconciles(g, cf, dateOnly(2026, 12, 31));
+    await post(g, 2026, 3, 10, "Penerimaan berikutnya", [["1120", 25n * J], ["1140", -25n * J]]);
+    const later = await cashFlow(db, scope(g), dateOnly(2026, 12, 31));
+    expect(items(later.investing)).toEqual([["DISPOSAL", 25n * J]]); // the older 30 jt is cleared: the next 25 jt is the disposal's
+    await reconciles(g, later, dateOnly(2026, 12, 31));
+  });
+
+  it("counts only the cash of a disposal receipt with withholding (100 jt proceeds: 90 jt bank + 10 jt PPh 23 withheld)", async () => {
+    const g = await makeGroup();
+    const a = await opening(g);
+    await disposeAsset(db, { clientId: g.client.id, assetId: a.id, date: "2026-01-20", proceeds: "100000000", proceedsCode: "1140" });
+    const csv = ["Tanggal;Keterangan;Debet;Kredit;Saldo", "10/02/2026;TRSF E-BANKING CR PEMBELI MESIN;0;90000000;190000000", ""].join("\n");
+    await importStatement(db, { bankAccountId: g.pt.banks[0].id, fileName: "bca.csv", data: Buffer.from(csv), provider: null });
+    const line = await db.bankTransaction.findFirstOrThrow({ where: { description: { contains: "PEMBELI MESIN" } } });
+    await reviewTransaction(db, { bankTxId: line.id, accountCode: "1140", taxTag: null, withholding: { kind: "PPH_23", amount: 10n * J } });
+    const cf = await cashFlow(db, scope(g), dateOnly(2026, 12, 31));
+    expect(items(cf.investing)).toEqual([["DISPOSAL", 90n * J]]); // only what reached the bank
+    expect(cf.net).toBe(90n * J);
+    await reconciles(g, cf, dateOnly(2026, 12, 31));
+  });
+
+  it("undoes a collection when the receipt is later reclassified away from the proceeds account", async () => {
+    const g = await makeGroup();
+    const a = await opening(g);
+    await disposeAsset(db, { clientId: g.client.id, assetId: a.id, date: "2026-01-20", proceeds: "40000000", proceedsCode: "1140" });
+    const csv = ["Tanggal;Keterangan;Debet;Kredit;Saldo", "10/02/2026;TRSF E-BANKING CR PEMBELI MESIN;0;40000000;140000000", ""].join("\n");
+    await importStatement(db, { bankAccountId: g.pt.banks[0].id, fileName: "bca.csv", data: Buffer.from(csv), provider: null });
+    const line = await db.bankTransaction.findFirstOrThrow({ where: { description: { contains: "PEMBELI MESIN" } } });
+    await reviewTransaction(db, { bankTxId: line.id, accountCode: "1140", taxTag: null });
+    expect(items((await cashFlow(db, scope(g), dateOnly(2026, 12, 31))).investing)).toEqual([["DISPOSAL", 40n * J]]);
+    await reviewTransaction(db, { bankTxId: line.id, accountCode: "4100", taxTag: null }); // it was a sale, not the machine: the receivable is open again
+    const cf = await cashFlow(db, scope(g), dateOnly(2026, 12, 31));
+    expect(cf.investing).toEqual([]);
+    expect(cf.net).toBe(40n * J);
+    await reconciles(g, cf, dateOnly(2026, 12, 31));
   });
 });

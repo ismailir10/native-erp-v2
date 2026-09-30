@@ -142,3 +142,31 @@ Code rollback = revert the merge; existing rows keep their defaults, so no data 
 **No env vars, no manual steps, no AI use, no new dependency.** Existing numbers do not change: rules apply to new imports, legacy PPh 25 lines count by bank date, invoices and
 settlements default to nothing withheld, and the cash-flow change only affects disposals and paid capex bills (presentation; totals unchanged).
 **Follow-ups:** inline withholding in the review queue; masa pajak and withheld tax in the Excel kertas kerja; collecting a disposal's proceeds in a later year in investing.
+
+## Review fixes (PR #69, automated review)
+Each finding was reproduced with a failing test first, one commit per finding.
+1. **Settlement double-booked a withholding already on the bank line — real.** `settleTx` added the settlement's tax to `BankTransaction.whtAmount`, so a line already
+   carrying a hand-recorded PPh 23 (Ubah akun) got it twice (400k) while the settlement cleared only 11,1 jt. Now the tax recorded on the line and not yet claimed by
+   a settlement (`whtAmount` − Σ settlement `withheld`) is *adopted*: only the missing difference is added, the kind comes from the line when the invoice names none,
+   and it is also the expected tax for the default shortfall. A different kind is refused ("Mutasi ini sudah mencatat pemotongan PPh 4(2), sedangkan pencocokan ini PPh 23 …").
+   A leftover recorded tax bigger than one settlement needs stays available for the next settlement of the same line. Unsettling removes the adopted tax with the settlement
+   (the line goes back to no withholding; type it again if it should stay). Tests: exactly equal, smaller (topped up), none, incompatible kind.
+2. **Kind of settlement-owned withholding editable — real.** The guard in `reviewTransactionTx` compared the amount only; PPh 23 → PPh 4(2)/21 at the same nominal passed.
+   It now compares kind and amount. Test: the change is refused and the 1180 / 8200 balances do not move.
+3. **Capex paid on a bill counted the withheld part as cash — real.** `cashFlow` took Σ settlement `amount` (gross cleared) as paid; a 50 jt asset bill paid with 45 jt bank + 5 jt
+   PPh 23 showed −50 jt investing and a spurious +5 jt operating. It now uses Σ (`amount` − `withheld`), the cash that left the bank. Test: −45 jt investing, operating 0,
+   still equal to the Neraca cash change.
+4. **Disposal proceeds "collected" read the whole account — real.** `room` came from the proceeds account's aggregate net movement in the year, so unrelated activity moved
+   the result both ways (a 100 jt receivable created in 1140 hid a collected 40 jt; an older opening receivable's collection made an unpaid disposal look collected).
+   Nothing links a receipt to a disposal (the bank line is only classified to the same account), so exact linkage is impossible with existing data. `collectedProceeds`
+   now reads the account as a first-in-first-out queue (opening balance and every debit, up to the period end): a cash credit (entry with a bank row or a cash-account
+   debit) clears the oldest open debit first, and only what it clears of the disposal's own proceeds line is investing; later debits never take from it; a credit with nothing
+   open (an advance) absorbs the next debit. **Limit (conservative):** an unrelated receivable older than the disposal in the same account is assumed to be paid first, so
+   the disposal's inflow shows later than it may have happened; the sections are zero-sum, so the total is still the Neraca cash change. Tests: 100 jt receivable created
+   in the account, older 30 jt receivable collected, both with the Neraca reconciliation.
+5. **Disposal collection counted the withheld tax as cash (PR #70 review) — real.** A receipt with a tax leg (Dr bank 90 + Dr 1180 10 / Cr proceeds 100, one RECLASS
+   entry with the bank row) was read as 100 of cash. The cash a credit can count is now spent once per bank line (its amount) or per typed entry (its cash debits), so 90 is
+   investing and the 10 clears the receivable without being an inflow.
+6. **A reclass away from the proceeds account left the collection in place (PR #70 review) — real.** The reversing debit was queued as an unrelated open debit, so the
+   inflow stayed although the GL had the receivable unpaid again. A debit posted for the same bank line now takes that line's earlier clearing of the account back
+   (queue and collected amount), and the cash it used is available again. Tests: both cases in `tests/db/cashflow-investing.test.ts`, each with the Neraca reconciliation.
