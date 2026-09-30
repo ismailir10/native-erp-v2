@@ -30,13 +30,15 @@ const TEMPLATES: { label: string; memo: string; lines: Line[] }[] = [
   { label: "Piutang usaha", memo: "Pengakuan piutang atas penjualan belum dibayar", lines: [{ accountCode: "1130", debit: "", credit: "" }, { accountCode: "4100", debit: "", credit: "" }] },
 ];
 
-export function JournalForm({ clientId, entities, accounts, defaultDate }: { clientId: string; entities: { id: string; name: string; currency: string }[]; accounts: { code: string; name: string; group: string; entityId: string | null }[]; defaultDate: string }) {
+/** `lockedMonths` ("YYYY-MM"): closed months; a date in one is refused by the server, so the form says so before anything is typed. */
+export function JournalForm({ clientId, entities, accounts, defaultDate, lockedMonths = [], closeHref }: { clientId: string; entities: { id: string; name: string; currency: string }[]; accounts: { code: string; name: string; group: string; entityId: string | null }[]; defaultDate: string; lockedMonths?: string[]; closeHref?: string }) {
   const router = useRouter();
   const [entityId, setEntityId] = useState(entities[0]?.id ?? "");
   const [date, setDate] = useState(defaultDate);
   const [memo, setMemo] = useState("");
   const [lines, setLines] = useState<Line[]>([{ accountCode: "", debit: "", credit: "" }, { accountCode: "", debit: "", credit: "" }]);
   const [pending, start] = useTransition();
+  const lockedMonth = lockedMonths.includes(date.slice(0, 7));
   // Amounts are typed in the selected entity's own currency; the server parses them the same way.
   const currency = entities.find((e) => e.id === entityId)?.currency ?? "IDR";
   const cur = currency === "IDR" ? "" : ` (${currency})`;
@@ -69,19 +71,19 @@ export function JournalForm({ clientId, entities, accounts, defaultDate }: { cli
       </div>
       <div className="grid gap-4 sm:grid-cols-3">
         <Field>
-          <FieldLabel>Entitas</FieldLabel>
+          <FieldLabel htmlFor="journal-entity">Entitas</FieldLabel>
           <Select value={entityId} onValueChange={(v) => changeEntity(v as string)}>
-            <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+            <SelectTrigger id="journal-entity" className="w-full"><SelectValue /></SelectTrigger>
             <SelectContent>{entities.map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}</SelectContent>
           </Select>
         </Field>
         <Field>
-          <FieldLabel>Tanggal</FieldLabel>
-          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <FieldLabel htmlFor="journal-date">Tanggal</FieldLabel>
+          <Input id="journal-date" type="date" lang="id-ID" value={date} onChange={(e) => setDate(e.target.value)} aria-invalid={lockedMonth || undefined} />
         </Field>
         <Field>
-          <FieldLabel>Keterangan</FieldLabel>
-          <Input value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="mis. Penyusutan Agustus" />
+          <FieldLabel htmlFor="journal-memo">Keterangan</FieldLabel>
+          <Input id="journal-memo" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="mis. Penyusutan Agustus" />
         </Field>
       </div>
       <div className="overflow-x-auto rounded-lg border">
@@ -112,10 +114,16 @@ export function JournalForm({ clientId, entities, accounts, defaultDate }: { cli
         </Table>
       </div>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      {lockedMonth && (
+        <p role="alert" className="rounded-md border border-fail/30 bg-fail-subtle px-3 py-2 text-sm text-fail" data-testid="journal-locked">
+          Bulan tanggal ini sudah ditutup, jadi jurnalnya akan ditolak. Pilih tanggal di bulan yang masih terbuka, atau minta admin membuka kembali bulan itu di{" "}
+          {closeHref ? <a href={closeHref} className="font-medium underline underline-offset-4">Tutup Buku</a> : "Tutup Buku"} (dengan alasan).
+        </p>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <StatusPill status={balanced ? "PASS" : "REVIEW"} label={error ? "Periksa nominal" : balanced ? "Seimbang" : dr === cr ? "Isi nominal" : `Selisih ${formatMoney(dr - cr, currency)}`} />
         <Button
-          disabled={!balanced || pending}
+          disabled={!balanced || pending || lockedMonth}
           onClick={() =>
             start(async () => {
               const r = await adjustmentAction({ clientId, entityId, date, memo, lines });

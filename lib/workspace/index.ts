@@ -75,23 +75,27 @@ export async function getWorkspaceOverview(db: Db, firmId: string, input: Worksp
       db.journalEntry.count({ where: { firmId, entity: { clientId: c.id }, date: { gte: start, lte: end } } }),
     ]);
     const readiness = closeReadiness(controls, period?.signoffs.map(s => s.key) ?? []);
-    const state = period?.status === "LOCKED" ? "LOCKED" : !activity ? "EMPTY" : readiness.fails.length ? "FAIL" : readiness.ready ? "READY" : "REVIEW";
+    // A failed control outranks "no journal this month": a client with nothing booked can still have broken books.
+    const state = period?.status === "LOCKED" ? "LOCKED" : readiness.fails.length ? "FAIL" : !activity ? "EMPTY" : readiness.ready ? "READY" : "REVIEW";
     const labels = { LOCKED: "Buku ditutup", EMPTY: "Belum ada jurnal bulan ini", FAIL: "Kontrol gagal", READY: "Siap tutup buku", REVIEW: "Perlu dicek" };
     const missingStatements = controls.filter(control => control.key.startsWith("bank:") && control.detail.includes("belum diimpor")).map(control => ({ title: control.title, detail: `${control.scope} · ${control.detail}`, href: workspaceHref(control.href ?? `/clients/${c.id}/import`, scope) }));
     const setup = await setupProgress(db, c.id, { period: { year: scope.year, month: scope.month }, missingStatements: missingStatements.map(m => m.title) });
     return { id: c.id, name: c.name, state, label: labels[state], hasActivity: activity > 0, openReview: entities.filter(e => e.clientId === c.id).reduce((n, e) => n + e.openReview, 0), failCount: readiness.fails.length, reviewCount: readiness.unacked.length, missingSignoffs: readiness.missing.length, missingStatements, setup: { step: setup.current, hasData: setup.hasData, hasBanks: setup.hasBanks, next: setup.next, opening: setup.needsOpening.map(e => e.shortName) }, closeHref: workspaceHref(`/clients/${c.id}/close`, scope) };
   }));
-  const tasks: WorkspaceTask[] = entities.filter(e => e.openReview > 0).map(e => ({ id: `review:${e.id}`, title: `Periksa ${e.openReview} transaksi`, detail: `${e.name} · sampai ${scope.periodLabel}`, href: e.reviewHref, priority: "high", clientId: e.clientId, entityId: e.id }));
+  // The detail names the client when the company's own name doesn't (an owner "Budi Santoso" can belong to two clients).
+  const tasks: WorkspaceTask[] = entities.filter(e => e.openReview > 0).map(e => ({ id: `review:${e.id}`, title: `Periksa ${e.openReview} transaksi`, detail: `${e.name === e.clientName ? e.name : `${e.clientName} · ${e.name}`} · sampai ${scope.periodLabel}`, href: e.reviewHref, priority: "high", clientId: e.clientId, entityId: e.id }));
   for (const c of clients) {
     if (c.state === "LOCKED") continue;
     // A client still in setup gets ONE task naming the step (upload, then Saldo Awal), instead of generic "lengkapi" tasks.
     if (c.setup.step === "import" && !c.setup.hasData && c.setup.next) { tasks.push({ id: `setup:${c.id}`, title: c.setup.hasBanks ? `Mulai ${c.name}: unggah rekening koran` : `Mulai ${c.name}: impor buku besar`, detail: c.setup.hasBanks ? "Langkah 1 dari 4 · dari sini Saldo Awal terisi otomatis" : "Langkah 1 dari 4", href: workspaceHref(c.setup.next.href, scope), priority: "normal", clientId: c.id }); continue; }
     if (c.setup.step === "opening" && c.setup.next) { tasks.push({ id: `opening:${c.id}`, title: `Isi saldo awal ${c.setup.opening.join(" dan ")}`, detail: `${c.name} · langkah 2 dari 4, saldo bank sudah terisi dari rekening koran`, href: workspaceHref(c.setup.next.href, scope), priority: "normal", clientId: c.id }); continue; }
-    if (c.missingStatements.length) tasks.push({ id: `statement:${c.id}`, title: `Lengkapi ${c.missingStatements.length} rekening koran`, detail: `${c.name} · ${c.missingStatements.map(item => item.detail).join("; ")}`, href: c.missingStatements[0].href, priority: "normal", clientId: c.id });
+    if (c.missingStatements.length) tasks.push({ id: `statement:${c.id}`, title: `Lengkapi ${c.missingStatements.length} rekening koran`, detail: `${c.name} · ${c.missingStatements.map(item => item.detail).join("; ")}`, href: c.missingStatements[0].href, priority: "high", clientId: c.id });
     if (c.state === "EMPTY") tasks.push({ id: `import:${c.id}`, title: "Lengkapi buku bulan ini", detail: c.name, href: workspaceHref(`/clients/${c.id}/import`, scope, scope.kind === "entity" ? { entity: scope.entityIds[0] } : {}), priority: "normal", clientId: c.id });
     else tasks.push({ id: `close:${c.id}`, title: c.failCount ? `Perbaiki ${c.failCount} kontrol gagal` : c.reviewCount ? `Periksa ${c.reviewCount} temuan tutup buku` : c.missingSignoffs ? `Lengkapi ${c.missingSignoffs} pemeriksaan akhir` : "Tutup buku", detail: `${c.name} · seluruh grup/klien`, href: c.closeHref, priority: c.failCount ? "high" : "normal", clientId: c.id });
   }
-  tasks.sort((a, b) => Number(b.priority === "high") - Number(a.priority === "high"));
+  // What blocks the books first: failed controls, then missing statements (review of what isn't imported can't finish), then review.
+  const rank = (t: WorkspaceTask) => (t.priority !== "high" ? 3 : t.id.startsWith("close:") ? 0 : t.id.startsWith("statement:") ? 1 : 2);
+  tasks.sort((a, b) => rank(a) - rank(b));
   return { scope, entities, clients, tasks, counts: { entities: entities.length, openReview: entities.reduce((n, e) => n + e.openReview, 0), closed: clients.filter(c => c.state === "LOCKED").length, clients: clients.length } };
 }
 export type WorkspaceOverview = Awaited<ReturnType<typeof getWorkspaceOverview>>;

@@ -64,7 +64,7 @@ Their findings, confirmed against the code, that this cycle fixes:
 - [x] **S7 Import guard and transfer pairing.** A statement for an account that already has statements, ending before the earliest one, is
       refused when its closing balance differs from that statement's opening, with a message naming both dates and balances ("periksa tahun dan
       rekeningnya"). "TRF" counts as a transfer hint.
-- [ ] **S8 Beranda and navigation.** Client status checks FAIL before *Belum ada jurnal*; missing statements and failed controls rank as
+- [x] **S8 Beranda and navigation.** Client status checks FAIL before *Belum ada jurnal*; missing statements and failed controls rank as
       high-priority tasks ahead of review; a review task names the client when the entity name differs. *Jurnal Penyesuaian* and *Persediaan*
       sit in the main client menu (month-end, before Tutup Buku). The journal form in a locked month is disabled under a warning (not green)
       saying how to reopen.
@@ -100,7 +100,7 @@ print styles; a fuller CALK (akta, pihak berelasi); PPh 23 at accrual instead of
 - [x] T6 S3 review: tax labels, withholding with gross-up, guess safety, search/filter/bulk — accept: unit test for gross-up, DB test for no-learn, e2e filter.
 - [x] T7 S6 reports status, comparatives, labels, signs, Excel draft mark — accept: page shows *Draf* with reasons; no empty columns.
 - [x] T8 S7 import guard + TRF — accept: DB test refuses the wrong-year file; unit test pairs TRF.
-- [ ] T9 S8 Beranda, menu, locked journal form — accept: unit/DB test for ordering; screenshot.
+- [x] T9 S8 Beranda, menu, locked journal form — accept: unit/DB test for ordering; screenshot.
 - [ ] T10 S9 reverse manual journal — accept: DB test (mirror, once, locked refused).
 - [ ] T11 S10 Saldo Awal totals — accept: screenshot.
 - [ ] T12 S11 docs + full gate.
@@ -151,6 +151,12 @@ print styles; a fuller CALK (akta, pihak berelasi); PPh 23 at accrual instead of
 - T8: `lib/import/pipeline.ts` (a file with new rows ending before the account's first statement is refused unless its closing balance is
   that statement's opening balance; the message names both dates and balances and says to import the nearest missing month first),
   `lib/classify/transfer.ts` (`TRF` is a transfer hint), accounting-rules 12 / 13, `tests/db/import-opening-guard.test.ts`, `tests/unit/import.test.ts`.
+- T9: `lib/workspace/index.ts` (status: *Kontrol gagal* before *Belum ada jurnal*; missing statements are high priority; tasks ranked failed
+  controls → missing statements → review → the rest; a review task names the client when the company's name differs),
+  `components/app/journal-form.tsx` (`lockedMonths`: a date in a closed month shows a red note with the way out and disables *Simpan*;
+  labels tied to their fields), journal page (the locked-month banner is a warning with *Buka Tutup Buku*, no longer green),
+  `components/app/app-sidebar.tsx` (client list collapsible keyed so its default can change without the Base UI warning),
+  `app/icon.svg` (no favicon 404), `tests/db/workspace.test.ts`; also fixes the T8 unit test's types (vitest doesn't typecheck).
 ## Verification
 - After T2: `npm test` → `Test Files 113 passed (113)`, `Tests 840 passed (840)`.
 ## Ship Notes
