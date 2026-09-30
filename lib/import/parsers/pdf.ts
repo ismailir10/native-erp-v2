@@ -3,7 +3,7 @@ import type { BankCode } from "@/lib/generated/prisma/enums";
 import { dateOnly } from "@/lib/format";
 import { parseRupiah } from "@/lib/money";
 import { ParseError, type DepositProduct, type ParsedRow, type ParsedStatement } from "@/lib/import/types";
-import { closingFromRows, dateParts, MONTHS, monthBoundsOf, periodFromText } from "@/lib/import/parsers/common";
+import { closingFromRows, dateParts, MONTHS, monthBoundsOf, periodFromText, SenWatch } from "@/lib/import/parsers/common";
 
 /**
  * Text PDF e-statements (BCA / Mandiri / BRI and similar layouts). No AI: text + positions → table rows,
@@ -294,6 +294,7 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
       .find(Boolean)
       ?.replace(/-/g, "") ?? null;
 
+  const sen = new SenWatch();
   type Draft = ParsedRow & { flag: "DB" | "CR" | null; parts: string[]; page: number; lastY: number; moneySeen: boolean; unreadable: string | null };
   const drafts: Draft[] = [];
   let cols: Column[] | null = null;
@@ -351,6 +352,7 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
       if (NUMBER.test(c.text) && c.x0 > descCol.x0) {
         const col = nearest(cols, c, moneyKinds);
         if (col) {
+          sen.check(c.text, lineNo);
           nums.push({ kind: col.kind, ...money(c.text) });
           continue;
         }
@@ -456,5 +458,6 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
     openingBalance: opening,
     closingBalance: closing ?? closingFromRows(rows, opening),
     rows,
+    ...(sen.note() ? { notes: [sen.note()!] } : {}),
   };
 }

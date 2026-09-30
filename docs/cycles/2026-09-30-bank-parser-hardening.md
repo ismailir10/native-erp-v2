@@ -63,7 +63,7 @@ new banks' *PDF* layouts beyond the header/date/amount variants above; changing 
 - [x] T4 Month-name & serial dates in tabular files (P2, part 1) — accept: bni-direct.xlsx, mandiri-livin signed xlsx, cimb `;` csv, serial xlsx.
 - [x] T5 PDF dates, `+`/`Rp` amounts, no silent zero (P2 part 2, P3) — accept: cimb-dd-Mmm-yyyy.pdf and mandiri-livin-nominal-plus.pdf.
 - [x] T6 D/K flag column (P6) — accept: bni-mobile-dk-flag.xlsx continuous.
-- [ ] T7 Sen note + BRI empty balance (P7) — accept: note present and rows still whole Rupiah; bri-nobal.csv parses.
+- [x] T7 Sen note + BRI empty balance (P7) — accept: note present and rows still whole Rupiah; bri-nobal.csv parses.
 - [ ] T8 Bank tag from content + PDF preamble bank detection (P8) — accept: fixtures tagged; a multi-account PDF whose body mentions another bank keeps its own.
 - [ ] T9 Tambah klien empty bank row (F1) — accept: unit test on validation; visible message in the form.
 
@@ -75,6 +75,7 @@ new banks' *PDF* layouts beyond the header/date/amount variants above; changing 
 - T4: `parsers/common.ts` (one shared `dateParts`: numeric with 2/4-digit year and an optional time, ISO, month names Indonesian/English (`dd-Mmm-yy`, `dd Mmm yyyy`, `Mmm dd, yyyy`), year-less; `excelSerialDate` behind an opt-in for tabular date cells; `MONTHS` moved here; `parseDateDMY` uses it — BRI now also reads `dd-Mmm-yy`), `parsers/tabular.ts` uses it. Tests: `tests/unit/bank-dates.test.ts`, four end-to-end layouts in `bank-parsers.test.ts`.
 - T5: `parsers/pdf.ts` (`parseDate` on the shared `dateParts`: month names, hyphens, 2-digit years; `NUMBER` takes a leading `+`/`-` and `Rp`/`IDR`; a digit-and-punctuation figure under an amount column that isn't a number marks its row `unreadable`, and a dated row that ends with no amount but such a figure fails the parse with the page and text instead of becoming 0). Tests: 6 PDF cases in `bank-parsers.test.ts`.
 - T6: `parsers/tabular.ts` (`flagColumn`: the first column beside a single amount column whose non-empty cells are all D/K-type values — D/DB/DR/Debet/Debit out, K/CR/C/Kredit/Credit in — sets the sign of |amount|; excluded from the description; a dated movement row with no flag fails with its row number; a note says the column was used). Tests: 6 cases in `bank-parsers.test.ts`.
+- T7: `parsers/common.ts` (`SenWatch`: collects amounts/balances with a non-zero fraction via `parseCents`, one Bahasa note with up to three examples; `openingFromBalances`: opening from the first printed balance less the movement up to it), used by `tabular.ts`, `bca.ts`, `bri.ts`, `pdf.ts` → `ParsedStatement.notes` (the existing channel shown with the import). `parseRupiah` is untouched: amounts stay whole Rupiah, half-up (rule 6a). BRI with a balance column that is empty on the first rows derives the opening from a later balance; empty on every row → opening 0 plus a note that it is unknown (BCA's no-trailer fallback is the same 0).
 
 ## Verification
 - T1 gate: lint clean, typecheck clean, `npm test` 95 files / 638 tests passed. New tests failed before the change (BRI IB fixture: "Baris 'Periode' BCA tidak ditemukan").
@@ -83,5 +84,6 @@ new banks' *PDF* layouts beyond the header/date/amount variants above; changing 
 - T4 gate: lint, typecheck clean; `npm test` 96 files / 680 tests passed. New tests failed before (`dateParts is not a function`; "Format tanggal tidak dikenali … 01/08/26 10:15:30 / 01-Aug-2026 / 01 Agu 2026 / 46235").
 - T5 gate: lint, typecheck clean; `npm test` 96 files / 686 tests passed. New PDF tests failed before ("Tidak ada baris transaksi yang terbaca"; Livin' amounts `0n,-2450000n,…`; the unreadable amount resolved instead of rejecting).
 - T6 gate: lint, typecheck clean; `npm test` 96 files / 693 tests passed. New tests failed before (all amounts positive; missing flag not refused).
+- T7 gate: lint, typecheck clean; `npm test` 96 files / 698 tests passed. New tests failed before (no note; BRI "Saldo awal tidak dapat ditentukan (kolom saldo kosong)").
 
 ## Ship Notes

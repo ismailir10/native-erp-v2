@@ -169,3 +169,51 @@ describe("a separate D/K flag column beside an unsigned amount", () => {
     expectAugust(await parseStatement("x.xlsx", await xlsxBuffer("S", [["Tanggal", "Keterangan", "Jumlah", "Kanal", "Saldo"], ...rows])));
   });
 });
+
+describe("sen are never rounded silently; a BRI file without balances still reads", () => {
+  it("notes a spreadsheet amount with sen, keeping whole Rupiah", async () => {
+    const buf = await xlsxBuffer("S", [
+      ["Tanggal", "Keterangan", "Debet", "Kredit", "Saldo"],
+      ["01/08/2026", "SALDO AWAL", "", "", "1000.50"],
+      ["02/08/2026", "A", 0, 100.49, 1100.99],
+    ]);
+    const st = await parseStatement("sen.xlsx", buf);
+    expect(st.rows.map((r) => r.amount)).toEqual([100n]);
+    expect(st.openingBalance).toBe(1001n);
+    expect(st.notes?.join(" ")).toMatch(/3 nilai berisi sen.*baris 3: "100\.49"/);
+  });
+
+  it("notes an Indonesian '1.500.000,50' in a CSV, and stays quiet for ',00'", async () => {
+    const csv = (amount: string) => Buffer.from(["Tanggal;Keterangan;Debet;Kredit;Saldo", `01/08/2026;A;0,00;${amount};2.500.000,00`, "02/08/2026;B;500.000,00;0,00;2.000.000,00"].join("\n"));
+    const st = await parseStatement("x.csv", csv("1.500.000,50"));
+    expect(st.notes?.join(" ")).toMatch(/1\.500\.000,50/);
+    const quiet = await parseStatement("x.csv", csv("1.500.000,00"));
+    expect((quiet.notes ?? []).join(" ")).not.toMatch(/sen/);
+  });
+
+  it("notes sen in BRI and BCA CSVs and in PDF rows", async () => {
+    const bri = `NOREK;3333\nTGL_TRAN;DESK_TRAN;MUTASI_DEBET;MUTASI_KREDIT;SALDO_AKHIR_MUTASI\n2026-08-02;X;0.00;5000.50;15000.00\n`;
+    expect((await parseStatement("bri.csv", Buffer.from(bri))).notes?.join(" ")).toMatch(/5000\.50/);
+    const bca = ["Informasi Rekening - Mutasi Rekening", "No. rekening : 1", "Periode : 01/08/2026 - 31/08/2026", "", "Tanggal Transaksi,Keterangan,Cabang,Jumlah,,Saldo", `'02/08,"A",'0000,"2,450.75",DB,"97,549.25"`, `"Saldo Awal : 100,000.00"`].join("\n");
+    expect((await parseStatement("bca.csv", Buffer.from(bca))).notes?.join(" ")).toMatch(/2,450\.75/);
+    const pdf = await parseStatement("livin.pdf", mandiriLivinPdf((a) => (a > 0 ? "+" : "-") + idn(a).replace(",00", a === 45_678 ? ",50" : ",00")));
+    expect(pdf.notes?.join(" ")).toMatch(/45\.678,50/);
+  });
+
+  it("reads a BRI TGL_TRAN CSV whose balance column is empty, saying the opening is unknown", async () => {
+    const bri = `NOREK;3333\nTGL_TRAN;DESK_TRAN;MUTASI_DEBET;MUTASI_KREDIT;SALDO_AKHIR_MUTASI\n2026-08-02;X;0.00;5000.00;\n2026-08-03;Y;1000.00;0.00;\n`;
+    const st = await parseStatement("bri.csv", Buffer.from(bri));
+    expect(st.format).toBe("BRI");
+    expect(st.rows.map((r) => r.amount)).toEqual([5000n, -1000n]);
+    expect(st.openingBalance).toBe(0n);
+    expect(st.closingBalance).toBe(4000n);
+    expect(st.notes?.join(" ")).toMatch(/saldo.*kosong/i);
+  });
+
+  it("derives a BRI opening from the first balance that is printed", async () => {
+    const bri = `NOREK;3333\nTGL_TRAN;DESK_TRAN;MUTASI_DEBET;MUTASI_KREDIT;SALDO_AKHIR_MUTASI\n2026-08-02;X;0.00;5000.00;\n2026-08-03;Y;1000.00;0.00;14000.00\n`;
+    const st = await parseStatement("bri.csv", Buffer.from(bri));
+    expect(st.openingBalance).toBe(10_000n);
+    expect(checkContinuity(st).ok).toBe(true);
+  });
+});

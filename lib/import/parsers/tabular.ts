@@ -3,7 +3,7 @@ import { parseRupiah } from "@/lib/money";
 import { dateOnly } from "@/lib/format";
 import type { BankCode } from "@/lib/generated/prisma/enums";
 import { ParseError, YearNeededError, type ParsedRow, type ParsedStatement } from "@/lib/import/types";
-import { closingFromRows, dateParts as baseDateParts, periodFromText, type DateParts } from "@/lib/import/parsers/common";
+import { closingFromRows, dateParts as baseDateParts, periodFromText, SenWatch, type DateParts } from "@/lib/import/parsers/common";
 import { periodOf } from "@/lib/import/parsers/pdf";
 
 /**
@@ -167,9 +167,21 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
   const drafts: Draft[] = [];
   let openingRow: { balance: bigint | null; parts: DateParts | null } | null = null;
   let printedClosing: bigint | null = null;
-  const num = (r: string[], c: number) => (c >= 0 && r[c] ? parseRupiah(r[c]) : 0n);
+  const sen = new SenWatch();
+  let at = 0; // the row being read (1-based), for the sen note
+  const num = (r: string[], c: number) => {
+    if (c < 0 || !r[c]) return 0n;
+    sen.check(r[c], at);
+    return parseRupiah(r[c]);
+  };
+  const bal = (r: string[]) => {
+    if (cBal < 0 || !r[cBal]) return null;
+    sen.check(r[cBal], at);
+    return parseRupiah(r[cBal]);
+  };
   for (let i = headerIdx + 1; i < rows.length; i++) {
     const r = rows[i];
+    at = i + 1;
     const dateText = r[cDate] ?? "";
     const text = descCols.map((c) => (r[c] ?? "").trim()).filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
     // Movement from the parsed values: "0" or "0,00" in a SALDO AWAL row is no movement (unreadable text counts as movement).
@@ -183,9 +195,9 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
     const noMovement = split ? isZero(cDb) && isZero(cCr) : isZero(cAmt);
     const label = OPENING_ROW.test(dateText) || OPENING_ROW.test(text) ? "open" : CLOSING_ROW.test(dateText) || CLOSING_ROW.test(text) ? "close" : TOTAL_ROW.test(dateText) ? "total" : null;
     if (label && (noMovement || !dateParts(dateText))) {
-      const bal = cBal >= 0 && r[cBal] ? parseRupiah(r[cBal]) : null;
-      if (label === "open" && !openingRow) openingRow = { balance: bal, parts: dateParts(dateText) };
-      if (label === "close" && bal !== null) printedClosing = bal;
+      const b = bal(r);
+      if (label === "open" && !openingRow) openingRow = { balance: b, parts: dateParts(dateText) };
+      if (label === "close" && b !== null) printedClosing = b;
       continue;
     }
     if (!dateText || /saldo|total/i.test(dateText)) continue;
@@ -207,7 +219,7 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
       debit,
       credit,
       amount,
-      balance: cBal >= 0 && r[cBal] ? parseRupiah(r[cBal]) : null,
+      balance: bal(r),
       rowNumber: i + 1,
       rawRow: r.map((c) => c.replace(/\s+/g, " ").trim()).join(" | "),
     });
@@ -244,6 +256,8 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
 
   // ---- direction: the bank's way (kredit = masuk) unless only the books' way (debet = masuk) keeps the balance continuous ----
   const notes: string[] = [];
+  const senNote = sen.note();
+  if (senNote) notes.push(senNote);
   if (cFlag >= 0) notes.push(`Kolom "${header[cFlag] || "D/K"}" dipakai sebagai tanda D/K: D / DB / Debet = uang keluar, K / CR / Kredit = uang masuk.`);
   const opening = (flip: boolean): bigint | null => {
     if (openingRow?.balance !== undefined && openingRow?.balance !== null) return openingRow.balance;

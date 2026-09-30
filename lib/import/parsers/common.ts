@@ -1,5 +1,6 @@
 import Papa from "papaparse";
 import { dateOnly } from "@/lib/format";
+import { parseCents } from "@/lib/money";
 import { ParseError, type ParsedRow } from "@/lib/import/types";
 
 export function readCsv(text: string, delimiter?: string): string[][] {
@@ -113,10 +114,42 @@ export function monthBoundsOf(rows: ParsedRow[]) {
   };
 }
 
+/** Opening = the first printed balance less the movement up to and including that row; null when no row prints a balance. */
 export function openingFromRows(rows: ParsedRow[]): bigint {
-  const first = rows[0];
-  if (!first || first.balance === null) throw new ParseError("Saldo awal tidak dapat ditentukan (kolom saldo kosong)");
-  return first.balance - first.amount;
+  const opening = openingFromBalances(rows);
+  if (opening === null) throw new ParseError("Saldo awal tidak dapat ditentukan (kolom saldo kosong)");
+  return opening;
+}
+
+export function openingFromBalances(rows: ParsedRow[]): bigint | null {
+  let moved = 0n;
+  for (const r of rows) {
+    moved += r.amount;
+    if (r.balance !== null) return r.balance - moved;
+  }
+  return null;
+}
+
+/**
+ * Amounts are whole Rupiah (accounting-rules §6a: sen round half-up per line), but a statement that prints sen must say so: the
+ * running balance can then differ by a few Rupiah from the file's. Collects every value with a non-zero fraction.
+ */
+export class SenWatch {
+  private hits: { row: number; text: string }[] = [];
+  check(text: string | undefined, row: number) {
+    if (!text) return;
+    try {
+      if (parseCents(text.replace(/\s*(DB|CR|DR|D|K|C)$/i, "")) % 100n !== 0n && !this.hits.some((h) => h.row === row && h.text === text.trim())) this.hits.push({ row, text: text.trim() });
+    } catch {
+      // not a number: the amount reader reports it
+    }
+  }
+  /** One note for the statement (Bahasa), or null when every amount was whole. */
+  note(): string | null {
+    if (!this.hits.length) return null;
+    const eg = this.hits.slice(0, 3).map((h) => `baris ${h.row}: "${h.text}"`).join(", ");
+    return `${this.hits.length} nilai berisi sen (mis. ${eg}). Buku membulatkan setiap nilai ke Rupiah penuh, jadi saldo berjalan bisa selisih beberapa Rupiah dari file.`;
+  }
 }
 
 export function closingFromRows(rows: ParsedRow[], opening: bigint): bigint {
