@@ -81,6 +81,12 @@ export async function addClient(db: Db, firmId: string, input: NewClientInput) {
   return client;
 }
 
+/** The 9-account limit surfaces as a field message, not as an unexpected error. */
+const limitReached = (field: string) => (e: unknown): never => {
+  if (e instanceof Error && e.message.startsWith("Maksimal 9 rekening")) throw new OnboardingError({ [field]: `${e.message}.` });
+  throw e;
+};
+
 const TAKEN = "Nomor ini sudah dipakai rekening lain di klien ini.";
 
 /** Bank numbers of the client, so an added account can't repeat one (the form rule for a new client is the same). */
@@ -97,7 +103,7 @@ export async function addBankAccount(db: Db, firmId: string, clientId: string, e
   const bank = cleanBank(input, "bank", fields, await takenNumbers(db, clientId), TAKEN);
   if (!bank && !Object.keys(fields).length) fields["bank.number"] = "Isi nomor rekening.";
   if (Object.keys(fields).length || !bank) throw new OnboardingError(fields);
-  return db.$transaction(async (tx) => createBankAccount(tx, firmId, clientId, entity, bank, await freeGlCodes(tx, clientId)));
+  return db.$transaction(async (tx) => createBankAccount(tx, firmId, clientId, entity, bank, await freeGlCodes(tx, clientId))).catch(limitReached("bank"));
 }
 
 /** "Tambah perusahaan atau pemilik" on an existing client, with an optional first bank account. */
@@ -107,5 +113,5 @@ export async function addEntity(db: Db, firmId: string, clientId: string, input:
   const fields: Record<string, string> = {};
   const spec = cleanEntity(input, "entity", fields, await takenNumbers(db, clientId), TAKEN);
   if (Object.keys(fields).length) throw new OnboardingError(fields);
-  return db.$transaction(async (tx) => (await createEntity(tx, firmId, clientId, spec, await freeGlCodes(tx, clientId))).entity);
+  return db.$transaction(async (tx) => (await createEntity(tx, firmId, clientId, spec, await freeGlCodes(tx, clientId))).entity).catch(limitReached("entity"));
 }

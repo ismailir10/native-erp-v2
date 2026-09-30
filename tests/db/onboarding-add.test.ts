@@ -31,7 +31,7 @@ describe("adding to an existing client", () => {
     const g = await makeGroup();
     for (let i = 0; i < 6; i++) await addBankAccount(db, g.firm.id, g.client.id, g.pt.entity.id, bank(`77000000${i}0`));
     expect((await db.account.findMany({ where: { clientId: g.client.id, isBank: true } })).length).toBe(9);
-    await expect(addBankAccount(db, g.firm.id, g.client.id, g.pt.entity.id, bank("8800000000"))).rejects.toThrow(/Maksimal 9 rekening/);
+    await expect(addBankAccount(db, g.firm.id, g.client.id, g.pt.entity.id, bank("8800000000"))).rejects.toThrow("Maksimal 9 rekening bank per klien.");
     expect(await db.bankAccount.count()).toBe(9);
     expect(await db.account.count({ where: { clientId: g.client.id, code: "1101" } })).toBe(1);
   });

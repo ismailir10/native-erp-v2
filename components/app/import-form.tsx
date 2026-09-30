@@ -133,6 +133,7 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
                 ))}
               </SelectContent>
             </Select>
+            <FieldDescription>Rekening tidak ada di daftar? <Link href={`/clients/${clientId}/settings`} className="text-primary hover:underline">Tambahkan di Aturan klasifikasi</Link>.</FieldDescription>
           </Field>
           <Field>
             <FieldLabel>2. File rekening koran</FieldLabel>

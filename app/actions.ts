@@ -29,7 +29,7 @@ import { PdfPasswordError } from "@/lib/import/parsers/pdf";
 import { MoneyError, parseMoney } from "@/lib/money";
 import { dateOnly } from "@/lib/format";
 import { liveUploadFile } from "@/lib/demo/seed";
-import { addClient, OnboardingError, type NewClientInput } from "@/lib/onboarding";
+import { addBankAccount, addClient, addEntity, OnboardingError, type NewClientInput } from "@/lib/onboarding";
 import { EntitySettingsError, setReportingFramework } from "@/lib/entity-settings";
 import { OpeningError, postOpening, type OpeningLineInput } from "@/lib/opening";
 import type { TaxTag, WithholdingKind } from "@/lib/generated/prisma/enums";
@@ -487,6 +487,34 @@ export async function addClientAction(input: NewClientInput): Promise<Result<{ c
     const client = await addClient(prisma, firm.id, input);
     revalidatePath("/", "layout");
     return { ok: true, clientId: client.id };
+  } catch (e) {
+    if (e instanceof OnboardingError) return { ok: false, error: e.message, fields: e.fields };
+    return fail(e);
+  }
+}
+
+type NewEntityInput = NewClientInput["entities"][number];
+
+/** "Tambah rekening" on an entity of an existing client. `fields` keys ("bank.number") say what to fix. */
+export async function addBankAccountAction(clientId: string, entityId: string, input: NewEntityInput["banks"][number]): Promise<Result<{ bankAccountId: string }>> {
+  try {
+    const client = await getClientForFirm(clientId);
+    const bank = await addBankAccount(prisma, client.firmId, client.id, entityId, input);
+    revalidatePath("/", "layout");
+    return { ok: true, bankAccountId: bank.id };
+  } catch (e) {
+    if (e instanceof OnboardingError) return { ok: false, error: e.message, fields: e.fields };
+    return fail(e);
+  }
+}
+
+/** "Tambah perusahaan atau pemilik" on an existing client. */
+export async function addEntityAction(clientId: string, input: NewEntityInput): Promise<Result<{ entityId: string }>> {
+  try {
+    const client = await getClientForFirm(clientId);
+    const entity = await addEntity(prisma, client.firmId, client.id, input);
+    revalidatePath("/", "layout");
+    return { ok: true, entityId: entity.id };
   } catch (e) {
     if (e instanceof OnboardingError) return { ok: false, error: e.message, fields: e.fields };
     return fail(e);
