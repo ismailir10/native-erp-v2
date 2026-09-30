@@ -1,7 +1,8 @@
 import type { Db } from "@/lib/db";
 import type { AccountType, NormalBalance } from "@/lib/generated/prisma/enums";
 import type { LedgerRow } from "@/components/app/ledger-table";
-import { dateOnly, formatDate, formatDateTime } from "@/lib/format";
+import { dateOnly, formatDate, formatDateTime, toIsoDate } from "@/lib/format";
+import { REVERSAL_OWNERS, reversalBlocker } from "@/lib/ledger/reverse";
 import { formatMoney } from "@/lib/money";
 import { formatRateId } from "@/lib/fx/currency";
 import { sourceAccountLabel } from "@/lib/ledger-import/code";
@@ -37,6 +38,7 @@ export async function accountLedger(
           bankTransaction: { include: { import: true, bankAccount: true } },
           ledgerImport: { select: { fileName: true } },
           postedBy: { select: { name: true } },
+          ...REVERSAL_OWNERS,
         },
       },
       sourceAccount: { select: { code: true, name: true } },
@@ -59,6 +61,7 @@ export async function accountLedger(
       credit: l.credit.toString(),
       balance: balances[idx].toString(),
       entry: { lines: l.entry.lines.map((x) => ({ code: x.account.code, name: x.account.name, debit: x.debit.toString(), credit: x.credit.toString() })) },
+      reversal: l.entry.kind === "ADJUSTMENT" ? { entryId: l.entry.id, blocker: reversalBlocker(l.entry), date: toIsoDate(l.entry.date) } : undefined,
       source: t
         ? { bankTxId: t.id, accountCode: t.accountCode, taxTag: t.taxTag, whtKind: t.whtKind, whtAmount: t.whtAmount.toString(), fileName: t.import.fileName, sheet: t.sourceSheet, rowNumber: t.rowNumber, rawRow: t.rawRow, description: t.description, amount: t.amount.toString(), bank: `${t.bankAccount.label} · ${t.bankAccount.number}`, method: t.method, reason: t.reason, status: t.status }
         : null,

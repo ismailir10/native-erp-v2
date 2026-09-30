@@ -27,6 +27,10 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
    line moving that entity's balance on the account toward zero); close control `bank-entity:` (REVIEW) shows such leftovers.
 3. **Posted entries are immutable.** Corrections = new entry. Bank lines change via `postBankTransaction()`,
    which posts a **RECLASS of the difference** on the classification side only; the bank side never changes.
+3a. **Balik jurnal** (`lib/ledger/reverse.ts`): a manual `ADJUSTMENT` is corrected by a new `ADJUSTMENT` that mirrors every line (debit ↔ credit,
+    same accounts and source accounts), dated by the accountant on or after the original, through `postJournal()`; `reversesId` (unique) points
+    at the original, so an entry is reversed once and a reversal is never reversed. An entry a schedule, register, pack, stock count or lease
+    owns, a foreign-currency or revaluation entry, and every non-adjustment are refused with where to change them instead.
 4. **Locked periods reject every write** — imports, reclasses, adjustments. Closing goes in order: a month can't be locked while an earlier
    month with entries other than the Saldo Awal is open (`lockPeriod`, checked again under the client lock). Unlock (`unlockPeriod`) is
    explicit, **ADMIN only**, needs a reason (≥ 5 characters), runs in reverse order (refused while a later month is locked) and writes a

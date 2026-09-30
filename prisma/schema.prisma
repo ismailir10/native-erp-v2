@@ -413,6 +413,10 @@ model JournalEntry {
   benefitPosting    BenefitPosting?
   /// The proposal this entry was posted from (close copilot, 1999 correction).
   proposal          ProposedEntry?
+  /// A manual adjustment this entry reverses line by line (*Balik jurnal*, accounting-rules 3a); an entry is reversed at most once.
+  reversesId        String?              @unique
+  reverses          JournalEntry?        @relation("Reversal", fields: [reversesId], references: [id], onDelete: Restrict)
+  reversedBy        JournalEntry?        @relation("Reversal")
   /// Member who posted it; null for seeds and system postings ("Sistem").
   postedById        String?
   postedBy          FirmMember?          @relation("EntryPostedBy", fields: [postedById], references: [id])

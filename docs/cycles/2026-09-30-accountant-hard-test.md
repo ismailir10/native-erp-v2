@@ -68,7 +68,7 @@ Their findings, confirmed against the code, that this cycle fixes:
       high-priority tasks ahead of review; a review task names the client when the entity name differs. *Jurnal Penyesuaian* and *Persediaan*
       sit in the main client menu (month-end, before Tutup Buku). The journal form in a locked month is disabled under a warning (not green)
       saying how to reopen.
-- [ ] **S9 Reverse a manual journal.** The entry dialog of a manual `ADJUSTMENT` (no schedule, register or pack behind it) offers *Balik
+- [x] **S9 Reverse a manual journal.** The entry dialog of a manual `ADJUSTMENT` (no schedule, register or pack behind it) offers *Balik
       jurnal*: a new `ADJUSTMENT` with every line mirrored, dated by the accountant (default the 1st of the next month), memo "Pembalik: …",
       refused in a locked month and when already reversed (stored `reversesId`).
 - [ ] **S10 Saldo Awal shows its plug.** Totals of debit and credit and the difference that goes to 3200 Saldo Laba, live, before saving.
@@ -101,7 +101,7 @@ print styles; a fuller CALK (akta, pihak berelasi); PPh 23 at accrual instead of
 - [x] T7 S6 reports status, comparatives, labels, signs, Excel draft mark — accept: page shows *Draf* with reasons; no empty columns.
 - [x] T8 S7 import guard + TRF — accept: DB test refuses the wrong-year file; unit test pairs TRF.
 - [x] T9 S8 Beranda, menu, locked journal form — accept: unit/DB test for ordering; screenshot.
-- [ ] T10 S9 reverse manual journal — accept: DB test (mirror, once, locked refused).
+- [x] T10 S9 reverse manual journal — accept: DB test (mirror, once, locked refused).
 - [ ] T11 S10 Saldo Awal totals — accept: screenshot.
 - [ ] T12 S11 docs + full gate.
 
@@ -157,6 +157,12 @@ print styles; a fuller CALK (akta, pihak berelasi); PPh 23 at accrual instead of
   labels tied to their fields), journal page (the locked-month banner is a warning with *Buka Tutup Buku*, no longer green),
   `components/app/app-sidebar.tsx` (client list collapsible keyed so its default can change without the Base UI warning),
   `app/icon.svg` (no favicon 404), `tests/db/workspace.test.ts`; also fixes the T8 unit test's types (vitest doesn't typecheck).
+  `e2e/investor-demo.spec.ts` no longer opens *Pengaturan klien* to reach Jurnal Penyesuaian.
+- T10: `prisma/schema.prisma` + `20260930060300_entry_reversal` (`JournalEntry.reversesId`, unique self-relation), `lib/ledger/post.ts`
+  (`reversesId` passed through), `lib/ledger/reverse.ts` (`reversalBlocker` names where an owned entry is changed instead; `reverseEntry`
+  under a per-entry lock), `reverseEntryAction` (tenant via the entry's client), `lib/reports/account-ledger.ts` + `components/app/ledger-table.tsx`
+  (drawer section *Balik jurnal* with the date, default the 1st of the next month, or the reason it doesn't apply), `lib/clients/delete.ts`
+  (clears the self-reference first), accounting-rules 3a, `tests/db/reverse-entry.test.ts`, `e2e/reverse-journal.spec.ts`.
 ## Verification
 - After T2: `npm test` → `Test Files 113 passed (113)`, `Tests 840 passed (840)`.
 ## Ship Notes
