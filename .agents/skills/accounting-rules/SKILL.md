@@ -14,7 +14,8 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
    of the PKL equity lines), the changes in equity and the indirect cash flow (`lib/reports/statements.ts`: every balance-sheet account's
    movement, classified by FS line — leases, employee benefits and deferred tax by code; single-currency scopes), whose opening is 31
    December plus the year's Saldo Awal (kind OPENING) entries — never a flow — and each is checked against the Neraca. CALK and the Excel
-   set (`lib/reports/notes.ts`, `workbook.ts`) reuse those functions and the registers; notes are never stored.
+   set (`lib/reports/notes.ts`, `workbook.ts`) reuse those functions and the registers; notes are never stored. In the cash flow a register disposal's **collected** proceeds and the paid part
+   of a purchase bill's investing debit (by its settlements, any year) are investing; the rest of those entries is a non-cash operating line, so the sections still add up to the Neraca's change in cash.
 2. **`postJournal()` (`lib/ledger/post.ts`) is the only writer.** It enforces Σdebit = Σcredit, ≥2 lines,
    one positive side per line, open period, accounts in the entity's client COA. The DB also CHECKs
    `debit>=0, credit>=0, (debit=0) <> (credit=0)` (init migration). Never `prisma.journalLine.create` elsewhere.
@@ -72,12 +73,20 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     losses typed per origin year as left at 1 January (at most five years back), used oldest first up to fiscal profit, expired ones
     skipped; last year's December fiscal loss from the books is only suggested. The **Excel kertas kerja** is built from the same pack. Normal regime 22 %, Pasal 31E (turnover = usaha revenue ≤ Rp 50 M: PKP × 4,8 M ÷ turnover at
     11 %), each part rounded down; PP 55/2022 final 0,5 % of turnover when the accountant chooses it (no corrections, credits or journal).
-    Credits = PPh 25 bank lines (tag PPH_25, wherever they sit) + bukti potong typed with the account they sit on → PPh 29 (2146) or 28A (1181);
+    Credits = PPh 25 bank lines (tag PPH_25, wherever they sit; by **masa pajak** `BankTransaction.taxMonth` — the month before payment when the line is classified, editable in the pack; a line without one counts by its bank date) + bukti potong typed with the account they sit on → PPh 29 (2146) or 28A (1181);
     next year's PPh 25 = (terutang − PPh 22/23/24) ÷ 12. Deferred tax = 22 % × (fiscal − book value of the register + the CKPN allowance, 5e). **Journals by click only**
     (`ADJUSTMENT`, dated the period end): each books the **difference** from earlier postings of its kind (deferred balances across years) under a
     per entity-year lock; pack accounts (1181, 1270, 2146, 2320, 8110) are created on first use when free, a code used for something else is
     refused. December control `tax:` is REVIEW while the current-tax journal has a difference. The firm rule files "PPH 25" to 1180 (prepaid).
     Everything is labelled an estimate, never an SPT.
+5h. **Withholding — PPh 21/22/23/4(2)** (`lib/tax/withholding.ts`): tax a payer withholds is the part of a payment *not in the bank amount*, so it lives on the
+    **classification side** of the bank line's journal (`BankTransaction.whtKind` + `whtAmount`, posted and changed by `postBankTransaction`'s RECLASS of the difference — the bank side
+    never moves, rule 3). Receipts (a customer withholds): Dr 1180 for PPh 22/23, Dr 8200 for PPh 4(2) (final, not a credit) and the receivable is credited **gross**; payments (we
+    withhold): the payable / expense / lease liability is debited gross, Cr 2140 PPh 21, 2141 PPh 23, 2145 PPh 4(2)/22, until the remittance (rule 13a) clears it. The tax account is a
+    template account created on first use when the code is free. An `Invoice` may name the expected tax (`whtKind`, `whtAmount` on the DPP); it stays gross and posts as before. An
+    `InvoiceSettlement.amount` is what it clears on the invoice (gross); `withheld` is the tax part of it, so open amount, aging, CKPN and `ar:`/`ap:` still read Σ amount. A settlement that
+    closes the invoice with a shortfall within the expected tax books that tax by default (else it is typed); a bank line's free amount = |amount| − Σ (amount − withheld). Tax on a
+    settled line changes only by (un)settling. It is never added to the tax pack's credits on its own (the accountant types the bukti potong).
 5e. **CKPN piutang — PSAK 109 simplified approach** (`lib/receivables/ckpn.ts`): per entity with a saved `CkpnSetting`, computed at read
     time from its **sales invoices and settlements** (no stored aging). Loss rates are **Roll rate** (invoice by invoice between consecutive
     month-ends over the last N months: of what was open in a bucket and has aged beyond it by the next month-end, the share still open, capped
@@ -153,6 +162,9 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     INTEREST → 8200, BIAYA TXN / FEE PAYMENT / MATERAI / STAMP DUTY → 7100) are firm **rules** (they post); a new firm rule reaches
     existing firms only through a data migration. The last-resort simple guess depends on the entity (`lib/classify/fallback.ts`):
     company in → 4100 / out → 6190; PERORANGAN in → 4910 / out → 3300 Prive.
+13a. **Tax remittances file to the liability they clear** (firm rules, `lib/classify/rules.ts`): PPh 21 → 2140, PPh 23 → 2141, PPh 4(2) / final → 2145, PPh 29 → 2146, PPN → 2130, PPh 25 → 1180
+    (prepaid, rule 5d), Bea Meterai → 7100. A remittance without the withholding booked leaves that liability **debit**, which the sanity control *Saldo berlawanan dengan sifat akun* raises
+    — book the withholding (payroll, or rule 5h) rather than moving the remittance. A rule whose account the client's chart lacks is skipped (`matchRule(…, codes)`), never a failed import.
 14. **Only deterministic methods (TRANSFER/RULE/MEMORY, confidence ≥ 0.9) auto-post.** AI and heuristic results
     post to **1999** with `NEEDS_REVIEW` and a prefilled suggestion. Reviewer accept → reclass + Memory upsert.
     A merchant key that names no counterparty (only channel/transfer/loan/cash words, refs and digits — `isGenericKey`,
