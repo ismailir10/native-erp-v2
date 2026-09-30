@@ -216,3 +216,16 @@ describe("tax payments as banks print them", () => {
     expect(taxPaymentSuggestion("RESTITUSI PAJAK DJP", "IN")).toBeNull();
   });
 });
+
+describe("transfer hints", () => {
+  it("pairs a transfer written TRF between the PT and its owner", () => {
+    const d = (day: number) => new Date(Date.UTC(2026, 0, day));
+    const items = [
+      { id: "a", entityId: "pt", bankAccountId: "bca", date: d(5), amount: -25_000_000n, description: "TRSF E-BANKING DB 0501 BUDI SANTOSO" },
+      { id: "b", entityId: "owner", bankAccountId: "bri", date: d(5), amount: 25_000_000n, description: "TRF DR PT MAJU BERSAMA" },
+    ];
+    const m = matchTransfers(items, []);
+    expect(m.get("b")?.accountCode).toBe("1190");
+    expect(m.get("a")?.accountCode).toBe("1190");
+  });
+});

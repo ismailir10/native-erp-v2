@@ -171,8 +171,10 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
 
 ## Import & classification (`lib/import/pipeline.ts`)
 12. Parse → continuity check (opening + Σ = every printed balance → closing) → dedupe by row hash → classify → post, all-or-nothing in one transaction.
+    A statement with new rows that ends before the account's first imported statement must hand over to it (its closing balance = that
+    statement's opening balance); otherwise the whole file is refused (another year or account's file would become the history and drive Saldo Awal).
 13. Order: **transfer matcher → rules (client before firm, unless a matching firm rule's pattern strictly contains the client rule's — a client "PAJAK" never swallows the firm's "PAJAK BUNGA") → memory → financing / tax-payment suggestion → AI → heuristic.** Transfer matching
-    needs a textual hint (TRSF/PINDAH BUKU/own entity name) — equal amounts alone are never enough — and pairs within **2 business
+    needs a textual hint (TRSF/TRF/PINDAH BUKU/own entity name) — equal amounts alone are never enough — and pairs within **2 business
     days** (Sat/Sun don't count). Financing text (the sanity control's words, `lib/classify/financing`) gets a balance-sheet
     suggestion (loan → 2210, interest → 7110, fees → 7100, capital → 3100, own-account move → 1199) without an AI call; it is a
     HEURISTIC and goes to review. Bank interest, fees and stamp duty as banks print them (BUNGA/INTEREST out → 7110, TAX ON

@@ -8,7 +8,7 @@ import { ACCOUNT_CODES } from "@/lib/coa/template";
  * A hinted line whose counterpart isn't imported still goes to 1199/1190 when the hint
  * names an own entity; the clearing controls then surface the open half.
  */
-const TRANSFER_HINT = /TRSF|TRANSFER|PINDAH ?BUKU|PEMINDAHAN|OVERBOOK|SETOR TUNAI|TARIK TUNAI/i;
+const TRANSFER_HINT = /TRSF|\bTRF\b|TRANSFER|PINDAH ?BUKU|PEMINDAHAN|OVERBOOK|SETOR TUNAI|TARIK TUNAI/i;
 const DAY = 86_400_000;
 /** A Friday transfer that lands on Tuesday (weekend, SKN clearing) is still the same transfer. */
 export const MATCH_BUSINESS_DAYS = 2;

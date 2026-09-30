@@ -14,6 +14,7 @@ import type { AiProvider } from "@/lib/ai/provider";
 import { postBankTransaction } from "@/lib/ledger/bank";
 import { defaultTaxMonth } from "@/lib/tax/masa";
 import { formatDate, formatPeriod } from "@/lib/format";
+import { formatMoney } from "@/lib/money";
 
 export type ImportSummary = {
   importId: string;
@@ -100,6 +101,16 @@ export async function importStatement(
   if (opening && early.length) {
     const first = early.reduce((a, b) => (+b.r.date < +a.r.date ? b : a)).r.date;
     throw new ParseError(`Saldo awal ${entity.shortName} dicatat per ${formatDate(opening.date)}, sudah termasuk transaksi sampai tanggal itu. File ini berisi ${early.length} transaksi bertanggal sampai ${formatDate(opening.date)} (paling awal ${formatDate(first)}). Pilih file yang mulai setelah tanggal itu, atau koreksi saldo awal lewat Jurnal Penyesuaian.`);
+  }
+
+  // A statement from before the account's first one must hand over to it: its closing balance is that statement's opening balance. One
+  // that doesn't (another year, another account's file) would become the account's history and drive Saldo Awal — refused, whole file.
+  if (fresh.length) {
+    const first = await db.statementImport.findFirst({ where: { bankAccountId: bankAccount.id }, orderBy: [{ periodStart: "asc" }, { createdAt: "asc" }] });
+    if (first && +st.periodEnd < +first.periodStart && st.closingBalance !== first.openingBalance) {
+      const money = (v: bigint) => formatMoney(v, bankAccount.currency);
+      throw new ParseError(`File ini berakhir ${formatDate(st.periodEnd)} dengan saldo ${money(st.closingBalance)}, tetapi rekening koran ${bankAccount.label} yang sudah diimpor dimulai ${formatDate(first.periodStart)} dengan saldo awal ${money(first.openingBalance)}. Saldonya tidak nyambung: periksa tahun dan rekeningnya. Bila ada bulan di antaranya yang belum diimpor, impor dulu bulan yang paling dekat dengan ${formatDate(first.periodStart)}.`);
+    }
   }
 
   // Nothing new and the statement is already on file: no second history row claiming an import that changed nothing.

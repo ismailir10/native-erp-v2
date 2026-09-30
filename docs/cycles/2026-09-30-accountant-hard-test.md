@@ -61,7 +61,7 @@ Their findings, confirmed against the code, that this cycle fixes:
       dates hold entries; the YTD label starts at the books' start when the Saldo Awal falls in the year ("1 Maret – 31 Agustus 2026").
       Expenses under *Pendapatan (beban) lain-lain* are positive like other expenses with a *Jumlah* line; "(Dinyatakan dalam Rupiah)" /
       the currency under each statement title. The CALK tax note says when the PPh kini isn't journaled yet.
-- [ ] **S7 Import guard and transfer pairing.** A statement for an account that already has statements, ending before the earliest one, is
+- [x] **S7 Import guard and transfer pairing.** A statement for an account that already has statements, ending before the earliest one, is
       refused when its closing balance differs from that statement's opening, with a message naming both dates and balances ("periksa tahun dan
       rekeningnya"). "TRF" counts as a transfer hint.
 - [ ] **S8 Beranda and navigation.** Client status checks FAIL before *Belum ada jurnal*; missing statements and failed controls rank as
@@ -99,7 +99,7 @@ print styles; a fuller CALK (akta, pihak berelasi); PPh 23 at accrual instead of
 - [x] T5 S5 PP 55 journal + text — accept: DB test posts 0,5 % difference once.
 - [x] T6 S3 review: tax labels, withholding with gross-up, guess safety, search/filter/bulk — accept: unit test for gross-up, DB test for no-learn, e2e filter.
 - [x] T7 S6 reports status, comparatives, labels, signs, Excel draft mark — accept: page shows *Draf* with reasons; no empty columns.
-- [ ] T8 S7 import guard + TRF — accept: DB test refuses the wrong-year file; unit test pairs TRF.
+- [x] T8 S7 import guard + TRF — accept: DB test refuses the wrong-year file; unit test pairs TRF.
 - [ ] T9 S8 Beranda, menu, locked journal form — accept: unit/DB test for ordering; screenshot.
 - [ ] T10 S9 reverse manual journal — accept: DB test (mirror, once, locked refused).
 - [ ] T11 S10 Saldo Awal totals — accept: screenshot.
@@ -148,6 +148,9 @@ print styles; a fuller CALK (akta, pihak berelasi); PPh 23 at accrual instead of
   route), CALK tax note says when PPh kini isn't journaled, client overview footer no longer says "basis kas", `tests/db/report-status.test.ts`,
   `e2e/statements.spec.ts`. Decision: *Pendapatan (beban) lain-lain* keeps expenses in parentheses — it is a net section, the usual SAK EP
   presentation — rather than splitting it.
+- T8: `lib/import/pipeline.ts` (a file with new rows ending before the account's first statement is refused unless its closing balance is
+  that statement's opening balance; the message names both dates and balances and says to import the nearest missing month first),
+  `lib/classify/transfer.ts` (`TRF` is a transfer hint), accounting-rules 12 / 13, `tests/db/import-opening-guard.test.ts`, `tests/unit/import.test.ts`.
 ## Verification
 - After T2: `npm test` → `Test Files 113 passed (113)`, `Tests 840 passed (840)`.
 ## Ship Notes
