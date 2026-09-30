@@ -28,6 +28,10 @@ Who feels it: the accountant whose client's ERP prints the Neraca this way (it i
 - [x] Sheets titled "PnL Profit Loss Report", "Laporan Laba Rugi …", "… Cash Flow Report" are recognised as reports and skipped (title row ≤ 60 chars).
 - [x] Real-layout test: FKM Dec 2024 (numbers as text and as numbers) → balanced, Total Aktiva = Total Pasiva = the rows' sum, all
       totals INFO/OK, liabilities flipped, the P&L sheets not offered.
+- [x] **Mapping suggestions read Indonesian ERP names** (rules only, still accepted by click): `Bahan Baku/Kemasan/Pendukung`, `Seragam`, `Apparel` → 1160 persediaan;
+      asset-side `Sewa …` / `Asuransi …` → 1170 (not a receivable/right-of-use); `Aset Lisensi`, `Aset Tidak Berwujud (Merk)` → 1250; `QRIS/EDC/GoPay/OVO/ShopeePay`, BJB/BSI/BTN/Maybank/Panin/Danamon → 1120;
+      `Akrual …` → 2150 (was the bank loan for "Akrual Credit Card"); `Uang Muka Penjualan (Customer)` → 2160; `Pb1` / pajak restoran → 2145; `Pph 29` → 2146 (2145 when the chart predates it);
+      `Modal - …` → 3100, `Modal/Setoran Modal Tambahan` → 3110, `Saldo Awal` → 3200. FKM's 148 accounts: 105 → 143 suggested.
 **Non-goals:** posting P&L sheets; more than a header row of panels per sheet; any schema change; any AI.
 **Assumptions:** (1) Source codes stay verbatim (`1 1 01 01`), like other files. (2) A group row is a coded row with a deeper next row; a leaf at
 the deepest level with value 0 stays an account (as today). (3) I proceed without waiting for approval because the request was to fix what
@@ -36,6 +40,7 @@ real client files break; no gate-reopener (no migration, dependency or AI).
 ## Tasks
 - [x] T1 reader: amount/level headers, panel detection, code/name swap, group headings, period date, report titles — accept: `tests/unit/ledger-read.test.ts` new cases
 - [x] T2 `rangeRef` and `planNeraca` handle column-qualified refs — accept: unit test + `tests/db/ledger-import.test.ts` FKM case posts balanced
+- [x] T4 mapping keywords for Indonesian ERP names — accept: `tests/db/mapping.test.ts`
 - [x] T3 skills/docs: `accounting-rules` §15a note, README format list — accept: no stale text
 
 ## Implementation
@@ -44,6 +49,7 @@ real client files break; no gate-reopener (no migration, dependency or AI).
 - T2: `lib/ledger-import/check.ts` `rangeRef` groups column-qualified refs (`BS!A15-18,F15-18`); single-panel refs unchanged.
   Tests: `tests/unit/ledger-read.test.ts` (two-panel read, no split on a repeated word, prefixed report titles), `tests/db/ledger-import.test.ts` (stage → map → post, refs).
 - T3: `accounting-rules` 15a, README.
+- T4: `lib/ledger-import/mapping.ts` KEYWORDS (the list above), `tests/db/mapping.test.ts` "reads the Indonesian ERP names…" (an existing test caught "Piutang Sewa" → excluded receivables/income from the prepaid-rent rule).
 - Real-file check (kept out of the repo): the FKM Dec 2024 sheet rebuilt from the Drive text → 148 accounts, the file's Total Aset / Total Aktiva / Total Pasiva match the rows
   (Rp 1 of 7190 rounding: the client's own cents), nothing left without a section.
 
