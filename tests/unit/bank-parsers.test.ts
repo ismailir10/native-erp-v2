@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseStatement } from "@/lib/import/parsers";
-import { briInternetBankingCsv, expectAugust } from "../bank-fixture";
+import { briInternetBankingCsv, cimbOctoCsv, expectAugust, titleWithCommasSemicolonCsv, utf16TabCsv } from "../bank-fixture";
 
 describe("routing: bank CSVs that borrow BCA's words", () => {
   it("reads a BRI internet-banking CSV titled 'Mutasi Rekening' with a 'Tanggal Transaksi' header", async () => {
@@ -32,5 +32,30 @@ describe("routing: bank CSVs that borrow BCA's words", () => {
     expect(st.rows.map((r) => r.amount)).toEqual([100n, -50n]);
     const unreadable = ["Informasi Rekening - Mutasi Rekening", "Tanggal Transaksi,Keterangan,Cabang,Foo", "01/08/2026,A,0000,B"].join("\n");
     await expect(parseStatement("x.csv", Buffer.from(unreadable))).rejects.toThrow(/Periode/);
+  });
+});
+
+describe("text files: delimiter and encoding", () => {
+  it("picks ';' from the table, not from a comma-laden title row above it", async () => {
+    const st = await parseStatement("rekening.csv", titleWithCommasSemicolonCsv());
+    expectAugust(st);
+  });
+
+  it("picks ';' when a title row without any delimiter comes first", async () => {
+    const st = await parseStatement("cimb.csv", cimbOctoCsv("08"));
+    expectAugust(st);
+  });
+
+  it("decodes a UTF-16 (BOM) tab-separated text export", async () => {
+    const st = await parseStatement("unicode.txt", utf16TabCsv());
+    expectAugust(st);
+  });
+
+  it("decodes UTF-16 big-endian with a BOM too", async () => {
+    const le = utf16TabCsv().subarray(2);
+    const be = Buffer.from(le);
+    be.swap16();
+    const st = await parseStatement("unicode.txt", Buffer.concat([Buffer.from([0xfe, 0xff]), be]));
+    expectAugust(st);
   });
 });

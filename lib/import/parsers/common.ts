@@ -7,6 +7,41 @@ export function readCsv(text: string, delimiter?: string): string[][] {
   return res.data.map((r) => r.map((c) => (c ?? "").trim()));
 }
 
+/** Text of a CSV/TXT upload: UTF-8 (BOM dropped), or UTF-16 with a BOM (Excel's "Unicode text"). */
+export function decodeText(data: Buffer): string {
+  if (data[0] === 0xff && data[1] === 0xfe) return data.subarray(2).toString("utf16le");
+  if (data[0] === 0xfe && data[1] === 0xff) return Buffer.from(data.subarray(2)).swap16().toString("utf16le");
+  return data.toString("utf8").replace(/^\uFEFF/, "");
+}
+
+/**
+ * The delimiter of a text table: whichever of tab, ';' and ',' splits most of the first lines into the same number of fields
+ * (title rows above the table, or a decimal comma inside a cell, must not decide it). Delimiters inside quotes don't count.
+ */
+export function detectDelimiter(text: string): string {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim()).slice(0, 12);
+  let best = ",";
+  let bestScore = 0;
+  for (const d of ["\t", ";", ","]) {
+    const counts = lines.map((l) => {
+      let n = 0;
+      let quoted = false;
+      for (const ch of l) {
+        if (ch === '"') quoted = !quoted;
+        else if (ch === d && !quoted) n++;
+      }
+      return n;
+    });
+    const tally = new Map<number, number>();
+    for (const c of counts) if (c > 0) tally.set(c, (tally.get(c) ?? 0) + 1);
+    // Score: fields on the lines that agree on the most common count (ties: the wider table).
+    const [mode, lineCount] = [...tally.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0] ?? [0, 0];
+    const score = mode * lineCount;
+    if (score > bestScore) [best, bestScore] = [d, score];
+  }
+  return best;
+}
+
 /** "31/08/2026", "2026-08-31", "31-08-2026" → UTC date-only. */
 export function parseDateDMY(s: string): Date {
   const t = s.replace(/^'/, "").trim();

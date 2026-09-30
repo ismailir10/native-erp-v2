@@ -2,7 +2,7 @@ import { ParseError, YearNeededError, type ParsedStatement } from "@/lib/import/
 import { isBcaCsv, parseBca } from "@/lib/import/parsers/bca";
 import { isBriCsv, parseBri } from "@/lib/import/parsers/bri";
 import { parseTabular, parseWorkbook, xlsxToSheets } from "@/lib/import/parsers/tabular";
-import { readCsv } from "@/lib/import/parsers/common";
+import { decodeText, detectDelimiter, readCsv } from "@/lib/import/parsers/common";
 import { parsePdfSections } from "@/lib/import/parsers/pdf";
 import { asXlsx, sniffFile } from "@/lib/import/workbook";
 
@@ -32,11 +32,9 @@ async function parseAny(fileName: string, data: Buffer, opts: ParseOptions): Pro
   if (sniffFile(data) === "PDF") return parsePdfSections(data, opts);
   const xlsx = asXlsx(data);
   if (xlsx) return parseWorkbook(await xlsxToSheets(xlsx), { year: opts.year, fileName });
-  const text = data.toString("utf8").replace(/^\uFEFF/, "");
+  const text = decodeText(data);
   const generic = () => {
-    const first = text.split("\n")[0];
-    const delimiter = first.includes("\t") ? "\t" : first.includes(";") ? ";" : ",";
-    const { cursor: _cursor, verdict: _verdict, ...st } = parseTabular(readCsv(text, delimiter), "GENERIC", { year: opts.year, fileName });
+    const { cursor: _cursor, verdict: _verdict, ...st } = parseTabular(readCsv(text, detectDelimiter(text)), "GENERIC", { year: opts.year, fileName });
     void _cursor;
     void _verdict;
     return [st];
