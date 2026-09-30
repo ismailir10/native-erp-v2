@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { ArrowRight, CircleCheck } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
+import { CheckDraw } from "@/components/motion/check-draw";
 
 export function PageHeader({ title, description, actions }: { title: string; description?: React.ReactNode; actions?: React.ReactNode }) {
   return (
@@ -25,7 +26,7 @@ export function NextStep({ children, href, cta, tone = "info" }: { children: Rea
       )}
       data-testid="next-step"
     >
-      {tone === "done" ? <CircleCheck className="size-4 shrink-0" aria-hidden /> : <span className="size-2 shrink-0 bg-brand ring-1 ring-primary/40" aria-hidden />}
+      {tone === "done" ? <CheckDraw /> : <span className="size-2 shrink-0 bg-brand ring-1 ring-primary/40" aria-hidden />}
       <div className="min-w-0 flex-1 font-medium">{children}</div>
       {href && cta && (
         <Link href={href} className={buttonVariants({ size: "sm" })}>

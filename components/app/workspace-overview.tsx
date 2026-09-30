@@ -5,7 +5,8 @@ import { workspaceHref } from "@/lib/workspace";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusPill } from "@/components/app/status";
-import { Progress } from "@/components/ui/progress";
+import { CountUp } from "@/components/motion/count-up";
+import { ProgressFill } from "@/components/motion/progress-fill";
 
 /** The task list: the first `limit` tasks, or all of them when `expanded` (Beranda's `?tugas=semua`); one page, two lengths. */
 export function WorkspaceTasks({ data, limit, expanded = false }: { data: WorkspaceOverview; limit?: number; expanded?: boolean }) {
@@ -16,7 +17,7 @@ export function WorkspaceTasks({ data, limit, expanded = false }: { data: Worksp
 
 export function WorkspaceClose({ data }: { data: WorkspaceOverview }) {
   const { closed, clients } = data.counts;
-  return <Card><CardHeader><CardTitle role="heading" aria-level={2}>Kemajuan tutup buku</CardTitle><CardDescription>{data.scope.periodLabel} · penutupan per grup / klien</CardDescription></CardHeader><CardContent className="space-y-4"><div><div className="mb-2 flex justify-between gap-2 text-sm"><span>Klien selesai</span><strong className="num">{closed} / {clients}</strong></div><Progress value={clients ? (closed / clients) * 100 : 0} aria-label={`${closed} dari ${clients} klien selesai tutup buku`} /></div>{data.scope.kind === "entity" && <p className="text-xs leading-relaxed text-muted-foreground">Status mencakup seluruh grup / klien induk perusahaan ini.</p>}<ul className="divide-y">{data.clients.map((client) => <li key={client.id} className="flex flex-wrap items-center justify-between gap-2 py-3"><Link href={client.closeHref} className="inline-flex min-w-0 items-center gap-1 text-sm font-medium hover:text-primary">{client.name}<ArrowRight className="size-3.5 shrink-0" /></Link><StatusPill status={client.state === "LOCKED" || client.state === "READY" ? "PASS" : client.state === "FAIL" ? "FAIL" : "REVIEW"} label={client.label} /></li>)}</ul>{!clients && <p className="text-sm text-muted-foreground">Belum ada klien dalam ruang kerja ini.</p>}</CardContent></Card>;
+  return <Card><CardHeader><CardTitle role="heading" aria-level={2}>Kemajuan tutup buku</CardTitle><CardDescription>{data.scope.periodLabel} · penutupan per grup / klien</CardDescription></CardHeader><CardContent className="space-y-4"><div><div className="mb-2 flex justify-between gap-2 text-sm"><span>Klien selesai</span><strong><CountUp value={closed} suffix={` / ${clients}`} /></strong></div><ProgressFill value={clients ? (closed / clients) * 100 : 0} aria-label={`${closed} dari ${clients} klien selesai tutup buku`} /></div>{data.scope.kind === "entity" && <p className="text-xs leading-relaxed text-muted-foreground">Status mencakup seluruh grup / klien induk perusahaan ini.</p>}<ul className="divide-y">{data.clients.map((client) => <li key={client.id} className="flex flex-wrap items-center justify-between gap-2 py-3"><Link href={client.closeHref} className="inline-flex min-w-0 items-center gap-1 text-sm font-medium hover:text-primary">{client.name}<ArrowRight className="size-3.5 shrink-0" /></Link><StatusPill status={client.state === "LOCKED" || client.state === "READY" ? "PASS" : client.state === "FAIL" ? "FAIL" : "REVIEW"} label={client.label} /></li>)}</ul>{!clients && <p className="text-sm text-muted-foreground">Belum ada klien dalam ruang kerja ini.</p>}</CardContent></Card>;
 }
 
 export function WorkspaceFinancials({ data }: { data: WorkspaceOverview }) {
