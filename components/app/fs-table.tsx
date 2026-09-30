@@ -9,7 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 const HIDE_ON_PHONE = "hidden sm:table-cell";
 
 /** Financial-statement table: section → FS line → accounts (each links to its ledger). */
-export type FsSection = { title?: string; items: FsItem[][]; total?: { label: string; values: bigint[]; strong?: boolean } };
+/** `total.subtotal`: a "Jumlah …" line shown only when the section has lines (an empty "Jumlah aset tidak lancar –" says nothing). */
+export type FsSection = { title?: string; items: FsItem[][]; total?: { label: string; values: bigint[]; strong?: boolean; subtotal?: boolean } };
 /** Client accounts behind a Buku account (current-period column only), keyed by Buku account code. */
 export type FsParts = Record<string, { key: string; code: string; name: string; amount: bigint; href?: string }[]>;
 
@@ -94,7 +95,7 @@ function SectionRows({ section, keys, accountHref, currency, parts }: { section:
           </Fragment>
         );
       })}
-      {section.total && (
+      {section.total && !(section.total.subtotal && keys.length === 0) && (
         <TableRow className="border-t-2 border-b-0 border-foreground/15 hover:bg-transparent">
           <TableCell className={cn("py-2 pl-6", section.total.strong ? "font-semibold" : "font-medium")}>{section.total.label}</TableCell>
           {section.total.values.map((v, i) => (

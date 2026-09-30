@@ -38,6 +38,8 @@ export type PostInput = {
   installment?: number;
   /** Member doing the posting; null/undefined = system (seed, migration). Attribution only, never a rule. */
   actorId?: string | null;
+  /** The entry this one reverses (lib/ledger/reverse.ts); unique, so an entry is reversed once. */
+  reversesId?: string;
   lines: PostLine[];
 };
 
@@ -143,6 +145,7 @@ export async function postJournal(tx: Tx, input: PostInput) {
       sourceRef: input.sourceRef,
       scheduleId: input.scheduleId,
       installment: input.installment,
+      reversesId: input.reversesId,
       postedById: input.actorId ?? null,
       lines: {
         create: lines.map((l) => ({

@@ -16,6 +16,11 @@ export function formatDateTime(d: Date): string {
   return `${formatDate(wib)} ${hh}.${mm}`;
 }
 
+/** "1 Maret 2026": the full month name, for statement headings. */
+export function formatDateLong(d: Date): string {
+  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+
 export function formatPeriod(year: number, month: number): string {
   return `${MONTHS[month - 1]} ${year}`;
 }

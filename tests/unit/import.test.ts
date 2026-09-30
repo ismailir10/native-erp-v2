@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseStatement } from "@/lib/import/parsers";
 import { checkContinuity, isGenericKey, merchantKey } from "@/lib/import/normalize";
 import { matchRule, sortRules, FIRM_RULES } from "@/lib/classify/rules";
+import { taxPaymentSuggestion } from "@/lib/classify/financing";
 import { matchTransfers } from "@/lib/classify/transfer";
 
 const BCA = `Informasi Rekening - Mutasi Rekening
@@ -174,5 +175,58 @@ describe("transfer matcher — pending counterpart", () => {
     const r = matchTransfers(items, own);
     expect(r.get("x")?.accountCode).toBe("1199");
     expect(r.get("y")?.accountCode).toBe("1190");
+  });
+});
+
+describe("tax payments as banks print them", () => {
+  const rules = sortRules(FIRM_RULES.map((r) => ({ ...r, clientId: null })));
+  const code = (text: string) => {
+    const m = matchRule(rules, text, "OUT");
+    return m && [m.accountCode, m.taxTag];
+  };
+
+  it("files by the KAP-KJS code of the state receipt", () => {
+    expect(code("DJP ONLINE SSP 411121-100 MASA 02")).toEqual(["2140", "PPH_21"]);
+    expect(code("MPN G2 411124-104 NTPN 0A1B2C")).toEqual(["2141", "PPH_23"]);
+    expect(code("MPN G3 BILLING 411128-420 PPH FINAL UMKM")).toEqual(["2145", "PPH_4_2"]);
+    expect(code("PEMBAYARAN PAJAK 411125-100 MASA 03")).toEqual(["1180", "PPH_25"]);
+    expect(code("PEMBAYARAN PAJAK 411125-200 TAHUN 2025")).toEqual(["2146", null]);
+    expect(code("MPN 411211-100 MASA JAN")).toEqual(["2130", "PPN_KELUARAN"]);
+  });
+
+  it("a client rule gives way only to a firm rule that says strictly more about the same text", () => {
+    const withClient = sortRules([
+      ...FIRM_RULES.map((r) => ({ ...r, clientId: null })),
+      { pattern: "PAJAK", direction: "OUT" as const, accountCode: "2130", taxTag: null, priority: 60, clientId: "c1" },
+      { pattern: "BUNGA", direction: "IN" as const, accountCode: "4910", taxTag: null, priority: 60, clientId: "c1" },
+    ]);
+    expect(matchRule(withClient, "PAJAK BUNGA", "OUT")?.accountCode).toBe("8200");
+    expect(matchRule(withClient, "PAJAK MASA MARET", "OUT")?.accountCode).toBe("2130");
+    // Same pattern, not more specific: the client's choice stands.
+    expect(matchRule(withClient, "BUNGA JASA", "IN")?.accountCode).toBe("4910");
+  });
+
+  it("suggests a tax liability for review when the text names no tax, never an expense", () => {
+    for (const text of ["MPN G2 PENERIMAAN NEGARA 123456789012345", "BAYAR PAJAK KPP PRATAMA", "DJP ONLINE KODE BILLING 012345678901234"]) {
+      expect(taxPaymentSuggestion(text, "OUT")).toMatchObject({ method: "HEURISTIC", accountCode: "2145" });
+    }
+    expect(taxPaymentSuggestion("PAJAK", "OUT")).toMatchObject({ accountCode: "2145" });
+    for (const text of ["PAJAK KENDARAAN SAMSAT B 1234 XY", "PBB 2026 KANTOR", "PEMBAYARAN BILLING TELKOMSEL", "TRSF E-BANKING DB 2108/FTSCY KANTOR KONSULTAN PAJAK HARAPAN", "PAJAK RESTORAN"]) {
+      expect(taxPaymentSuggestion(text, "OUT")).toBeNull();
+    }
+    expect(taxPaymentSuggestion("RESTITUSI PAJAK DJP", "IN")).toBeNull();
+  });
+});
+
+describe("transfer hints", () => {
+  it("pairs a transfer written TRF between the PT and its owner", () => {
+    const d = (day: number) => new Date(Date.UTC(2026, 0, day));
+    const items = [
+      { id: "a", entityId: "pt", bankAccountId: "bca", date: d(5), amount: -25_000_000n, direction: "OUT" as const, merchantKey: "BUDI SANTOSO", description: "TRSF E-BANKING DB 0501 BUDI SANTOSO" },
+      { id: "b", entityId: "owner", bankAccountId: "bri", date: d(5), amount: 25_000_000n, direction: "IN" as const, merchantKey: "PT MAJU BERSAMA", description: "TRF DR PT MAJU BERSAMA" },
+    ];
+    const m = matchTransfers(items, []);
+    expect(m.get("b")?.accountCode).toBe("1190");
+    expect(m.get("a")?.accountCode).toBe("1190");
   });
 });

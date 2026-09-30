@@ -11,7 +11,7 @@ export type RuleLike = {
   clientId?: string | null;
 };
 
-/** Client rules beat firm rules; then lower priority number wins; then longer pattern. */
+/** Client rules beat firm rules (unless a matching firm rule is strictly more specific, see matchRule); then lower priority number wins; then longer pattern. */
 export function sortRules<T extends RuleLike>(rules: T[]): T[] {
   return [...rules].sort(
     (a, b) =>
@@ -27,19 +27,22 @@ export function sortRules<T extends RuleLike>(rules: T[]): T[] {
  */
 export function matchRule(rules: RuleLike[], description: string, direction: Direction, codes?: ReadonlySet<string>): Classification | null {
   const text = description.toUpperCase();
-  for (const r of rules) {
-    if (r.direction && r.direction !== direction) continue;
-    if (codes && !codes.has(r.accountCode)) continue;
-    if (!text.includes(r.pattern.toUpperCase())) continue;
-    return {
-      method: "RULE",
-      accountCode: r.accountCode,
-      taxTag: r.taxTag,
-      confidence: 0.97,
-      reason: `Aturan: keterangan mengandung "${r.pattern}"`,
-    };
+  const hits = rules.filter((r) => (!r.direction || r.direction === direction) && (!codes || codes.has(r.accountCode)) && text.includes(r.pattern.toUpperCase()));
+  let r = hits[0];
+  if (!r) return null;
+  // A client rule beats firm rules, except a firm rule that says strictly more about the same text: a client's "PAJAK" (tax payments)
+  // must not swallow the firm's "PAJAK BUNGA" (final tax on interest, 8200).
+  if (r.clientId) {
+    const pattern = r.pattern.toUpperCase();
+    r = hits.find((f) => !f.clientId && f.pattern.length > pattern.length && f.pattern.toUpperCase().includes(pattern)) ?? r;
   }
-  return null;
+  return {
+    method: "RULE",
+    accountCode: r.accountCode,
+    taxTag: r.taxTag,
+    confidence: 0.97,
+    reason: `Aturan: keterangan mengandung "${r.pattern}"`,
+  };
 }
 
 /** Firm-wide starter rules for common Indonesian bank descriptors. */
@@ -85,6 +88,16 @@ export const FIRM_RULES: Omit<RuleLike, "clientId">[] = [
   // An instalment is a prepayment credited against the year's PPh badan (accounting-rules 5d), not an expense.
   { pattern: "PPH 25", direction: "OUT", accountCode: "1180", taxTag: "PPH_25", priority: 15 },
   { pattern: "PPH25", direction: "OUT", accountCode: "1180", taxTag: "PPH_25", priority: 15 },
+  // Tax payments as the bank prints the state receipt: the KAP-KJS code names the tax. They rank before the
+  // words above, so "PPH 23 … 411121-100" files by its code.
+  { pattern: "411121", direction: "OUT", accountCode: "2140", taxTag: "PPH_21", priority: 12 },
+  { pattern: "411124", direction: "OUT", accountCode: "2141", taxTag: "PPH_23", priority: 12 },
+  { pattern: "411128", direction: "OUT", accountCode: "2145", taxTag: "PPH_4_2", priority: 12 },
+  { pattern: "411125-100", direction: "OUT", accountCode: "1180", taxTag: "PPH_25", priority: 12 },
+  { pattern: "411125100", direction: "OUT", accountCode: "1180", taxTag: "PPH_25", priority: 12 },
+  { pattern: "411125-200", direction: "OUT", accountCode: "2146", taxTag: null, priority: 12 },
+  { pattern: "411125200", direction: "OUT", accountCode: "2146", taxTag: null, priority: 12 },
+  { pattern: "411211", direction: "OUT", accountCode: "2130", taxTag: "PPN_KELUARAN", priority: 12 },
   { pattern: "PAYROLL", direction: "OUT", accountCode: "6100", taxTag: null, priority: 30 },
   { pattern: "GAJI", direction: "OUT", accountCode: "6100", taxTag: null, priority: 30 },
   { pattern: "BPJS", direction: "OUT", accountCode: "6110", taxTag: null, priority: 30 },

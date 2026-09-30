@@ -52,3 +52,35 @@ describe("tax payment rules migration", () => {
     expect((await rule(g.firm.id, "PPH 23")).map((r) => r.accountCode)).toEqual(["2141"]); // re-added for the firm that lacked it
   });
 });
+
+describe("tax payments by code, and without one", () => {
+  beforeEach(resetDb);
+
+  it("files a coded state receipt by its code, suggests a liability for an uncoded one, and a client's 'PAJAK' leaves interest tax alone", async () => {
+    const g = await makeGroup();
+    await db.rule.create({ data: { firmId: g.firm.id, clientId: g.client.id, pattern: "PAJAK", direction: "OUT", accountCode: "2130", taxTag: null, priority: 60, source: "USER" } });
+    const csv = [
+      "Tanggal;Keterangan;Debet;Kredit;Saldo",
+      "10/02/2027;DJP ONLINE SSP 411121-100;3300000;0;96700000",
+      "12/02/2027;MPN G2 PENERIMAAN NEGARA 012345678901234;1500000;0;95200000",
+      "28/02/2027;PAJAK BUNGA;54000;0;95146000",
+      "",
+    ].join("\n");
+    await importStatement(db, { bankAccountId: g.pt.banks[0].id, fileName: "bca-feb.csv", data: Buffer.from(csv), provider: null });
+    const t = async (text: string) => db.bankTransaction.findFirstOrThrow({ where: { description: { contains: text } } });
+    expect(await t("411121")).toMatchObject({ accountCode: "2140", taxTag: "PPH_21", status: "POSTED", method: "RULE" });
+    expect(await t("MPN G2")).toMatchObject({ suggestedCode: "2145", status: "NEEDS_REVIEW", method: "HEURISTIC" });
+    expect(await t("PAJAK BUNGA")).toMatchObject({ accountCode: "8200", taxTag: "PPH_4_2", method: "RULE" });
+  });
+
+  it("the code rules reach existing firms once", async () => {
+    const other = await db.firm.create({ data: { name: "Kantor Lama" } });
+    const sql = readFileSync(path.join(__dirname, "../../prisma/migrations/20260930060200_tax_code_rules/migration.sql"), "utf8");
+    const statements = sql.split("\n").filter((l) => !l.startsWith("--")).join("\n").split(/;\s*\n/).map((s) => s.trim()).filter(Boolean);
+    for (let run = 0; run < 2; run++) for (const s of statements) await db.$executeRawUnsafe(s);
+    // Sorted here, not by the database: collations order "411125-100" and "411125100" differently.
+    expect((await db.rule.findMany({ where: { firmId: other.id } })).map((r) => [r.pattern, r.accountCode]).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      ["411121", "2140"], ["411124", "2141"], ["411125-100", "1180"], ["411125-200", "2146"], ["411125100", "1180"], ["411125200", "2146"], ["411128", "2145"], ["411211", "2130"],
+    ]);
+  });
+});

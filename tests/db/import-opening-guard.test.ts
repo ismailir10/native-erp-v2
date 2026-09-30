@@ -42,3 +42,22 @@ describe("statement rows before Saldo Awal", () => {
     expect(again.duplicates).toBe(1);
   });
 });
+
+describe("a statement from before the account's first one", () => {
+  beforeEach(resetDb);
+
+  it("is refused when its closing balance doesn't hand over to the first statement (wrong year), accepted when it does", async () => {
+    const g = await makeGroup();
+    const bank = g.pt.banks[0].id;
+    // January 2026 opens with 250.000.000 (the balance before its first row).
+    await importStatement(db, { bankAccountId: bank, fileName: "bca-jan.csv", data: csv("05/01/2026;TRSF CR TOKO;0;10000000;260000000"), provider: null });
+    // A March 2025 file ending with 999.000.000: another year's statement.
+    await expect(importStatement(db, { bankAccountId: bank, fileName: "bca-mar-2025.csv", data: csv("03/03/2025;TRSF CR TOKO X;0;1000000;999000000"), provider: null })).rejects.toThrow(
+      "File ini berakhir 31 Mar 2025 dengan saldo Rp 999.000.000, tetapi rekening koran BCA Giro yang sudah diimpor dimulai 1 Jan 2026 dengan saldo awal Rp 250.000.000. Saldonya tidak nyambung: periksa tahun dan rekeningnya. Bila ada bulan di antaranya yang belum diimpor, impor dulu bulan yang paling dekat dengan 1 Jan 2026.",
+    );
+    expect(await db.statementImport.count()).toBe(1);
+    // December 2025 ending at 250.000.000 hands over: imported.
+    const dec = await importStatement(db, { bankAccountId: bank, fileName: "bca-des.csv", data: csv("20/12/2025;TRSF CR TOKO;0;5000000;250000000"), provider: null });
+    expect(dec.rows - dec.duplicates).toBe(1);
+  });
+});

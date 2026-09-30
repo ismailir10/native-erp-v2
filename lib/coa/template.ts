@@ -54,6 +54,9 @@ export const ACCOUNT_CODES = {
   BANK_LOAN: "2210",
   /** Where Saldo Awal proposes a time deposit listed on a statement (pledged / longer than 3 months: not cash). */
   DEPOSIT: "1260",
+  INVENTORY: "1160",
+  /** Periodic-method stock adjustment inside HPP: persediaan awal − persediaan akhir (accounting-rules 5i). */
+  INVENTORY_CHANGE: "5190",
 } as const;
 
 export const FS_LINES = {
@@ -150,6 +153,7 @@ export const COA_TEMPLATE: AccountSeed[] = [
   a("4910", "Pendapatan Lain-lain", "PENDAPATAN", "PENDAPATAN_LAIN"),
   a("5100", "Pembelian Bahan & Barang Dagang", "BEBAN", "HPP"),
   a("5110", "Biaya Kemitraan & Produksi", "BEBAN", "HPP"),
+  a("5190", "Perubahan Persediaan", "BEBAN", "HPP"),
   a("6100", "Beban Gaji & Tunjangan", "BEBAN", "BEBAN_UMUM_ADM"),
   a("6105", "Beban Imbalan Kerja", "BEBAN", "BEBAN_UMUM_ADM"),
   a("6110", "Beban BPJS", "BEBAN", "BEBAN_UMUM_ADM"),

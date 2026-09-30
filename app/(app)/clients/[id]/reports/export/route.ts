@@ -3,6 +3,7 @@ import { getClientForFirm, getCurrentFirm } from "@/lib/tenant";
 import { parsePeriod, resolveEntityScope } from "@/lib/scope";
 import { financialStatementsWorkbook, statementsFileName } from "@/lib/reports/workbook";
 import { FxMissingError } from "@/lib/reports/fx";
+import { reasonText, reportStatus } from "@/lib/reports/status";
 
 /** GET ?entity=<id|combined>&period=YYYY-MM — the financial statements as one Excel workbook (accounting-rules 12). */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -16,7 +17,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const title = scope.mode === "combined" ? `${client.name} (gabungan)` : client.entities.find((e) => e.id === scope.value)!.name;
   const firm = await getCurrentFirm();
   try {
-    const body = await financialStatementsWorkbook(prisma, { clientId: client.id, entityIds: scope.entityIds }, period.year, period.month, { firm: firm.name, title });
+    const status = await reportStatus(prisma, client.id, scope.entityIds, period.year, period.month);
+    const draft = status.locked ? undefined : status.reasons.length ? `belum final: ${status.reasons.map(reasonText).join("; ")}; bulan belum ditutup.` : "bulan belum ditutup.";
+    const body = await financialStatementsWorkbook(prisma, { clientId: client.id, entityIds: scope.entityIds }, period.year, period.month, { firm: firm.name, title, draft });
     return new Response(new Uint8Array(body), {
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

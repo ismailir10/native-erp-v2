@@ -58,3 +58,23 @@ it("serupa with the reviewer's own account: every same-key line goes there, and 
   expect(rows.map((r) => [r.status, r.accountCode, r.method])).toEqual([["REVIEWED", "1190", "MANUAL"], ["REVIEWED", "1190", "MANUAL"]]);
   expect((await db.memory.findFirstOrThrow()).accountCode).toBe("1190");
 });
+
+it("a simple guess accepted unchanged is not learned; a chosen account, a financing suggestion or the seed's truth is", async () => {
+  const g = await makeGroup();
+  const bank = g.pt.banks[0];
+  const date = dateOnly(2026, 8, 3);
+  const imported = await db.statementImport.create({ data: { firmId: g.firm.id, bankAccountId: bank.id, fileName: "g.csv", format: "BCA", periodStart: date, periodEnd: date, openingBalance: 0n, closingBalance: 0n, rowCount: 4, continuityOk: true } });
+  const tx = (hash: string, description: string, suggestedCode: string) =>
+    db.bankTransaction.create({ data: { firmId: g.firm.id, entityId: g.pt.entity.id, bankAccountId: bank.id, importId: imported.id, date, description, merchantKey: description, direction: "OUT", amount: -1_000_000n, rowNumber: 1, rawRow: "synthetic", hash, status: "NEEDS_REVIEW", method: "HEURISTIC", confidence: 0.3, reason: "Tebakan sederhana", suggestedCode } });
+  const guess = await tx("a", "TOKO MAKMUR", "6190");
+  const chosen = await tx("b", "CV KARYA ABADI", "6190");
+  const loan = await tx("c", "ANGSURAN KREDIT KI BANK X", "2210");
+  const truth = await tx("d", "PT SUMBER REJEKI", "6190");
+  expect(await reviewTransaction(db, { bankTxId: guess.id, accountCode: "6190", taxTag: null })).toMatchObject({ learned: false });
+  expect(await reviewTransaction(db, { bankTxId: chosen.id, accountCode: "5100", taxTag: null })).toMatchObject({ learned: true });
+  expect(await reviewTransaction(db, { bankTxId: loan.id, accountCode: "2210", taxTag: null })).toMatchObject({ learned: true });
+  expect(await reviewTransaction(db, { bankTxId: truth.id, accountCode: "6190", taxTag: null, learn: true })).toMatchObject({ learned: true });
+  expect((await db.memory.findMany({ orderBy: { merchantKey: "asc" } })).map((m) => [m.merchantKey, m.accountCode])).toEqual([
+    ["ANGSURAN KREDIT KI BANK X", "2210"], ["CV KARYA ABADI", "5100"], ["PT SUMBER REJEKI", "6190"],
+  ]);
+});

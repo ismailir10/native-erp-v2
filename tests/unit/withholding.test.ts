@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { classificationNets } from "@/lib/ledger/bank";
-import { withholdingAccountCode, withholdingFor } from "@/lib/tax/withholding";
+import { grossUpWithholding, withholdingAccountCode, withholdingFor } from "@/lib/tax/withholding";
 
 describe("withholding", () => {
   it("computes the tax on a base from a percentage, half up", () => {
@@ -32,5 +32,25 @@ describe("withholding", () => {
     const nets = classificationNets(-11_100_000n + 200_000n, { accountCode: "6170", taxTag: "PPN_MASUKAN", withholding: { kind: "PPH_23", amount: 200_000n } });
     expect([...nets.values()].reduce((t, v) => t + v, 0n)).toBe(10_900_000n);
     expect(nets.get("2141")).toBe(-200_000n);
+  });
+});
+
+describe("withholding from a net bank amount (Review)", () => {
+  it("grosses up: the bank paid DPP − tax, the tax is on the DPP", () => {
+    // Jasa angkut Rp 10.000.000, PPh 23 2 % → paid 9.800.000.
+    expect(grossUpWithholding(-9_800_000n, "2")).toBe(200_000n);
+    // Sewa gudang Rp 30.000.000, PPh 4(2) 10 % → paid 27.000.000.
+    expect(grossUpWithholding(-27_000_000n, "10")).toBe(3_000_000n);
+    // A customer paid DPP 10 jt + PPN 11 % − PPh 23 2 % = 10.900.000.
+    expect(grossUpWithholding(10_900_000n, "2", 11n)).toBe(200_000n);
+    expect(grossUpWithholding(1_000_000n, "1,5")).toBe(15_228n); // 1.015.228,4 − 1.000.000, half up
+    expect(() => grossUpWithholding(1n, "0")).toThrow(/Tarif/);
+    expect(() => grossUpWithholding(1n, "dua")).toThrow(/Tarif/);
+  });
+
+  it("the gross-up and the posting agree: the classification side is the DPP (+ PPN)", () => {
+    const tax = grossUpWithholding(10_900_000n, "2", 11n);
+    const nets = classificationNets(10_900_000n, { accountCode: "4110", taxTag: "PPN_KELUARAN", withholding: { kind: "PPH_23", amount: tax } });
+    expect(Object.fromEntries(nets)).toEqual({ "4110": -10_000_000n, "2130": -1_100_000n, "1180": 200_000n });
   });
 });

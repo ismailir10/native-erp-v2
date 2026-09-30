@@ -27,6 +27,10 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
    line moving that entity's balance on the account toward zero); close control `bank-entity:` (REVIEW) shows such leftovers.
 3. **Posted entries are immutable.** Corrections = new entry. Bank lines change via `postBankTransaction()`,
    which posts a **RECLASS of the difference** on the classification side only; the bank side never changes.
+3a. **Balik jurnal** (`lib/ledger/reverse.ts`): a manual `ADJUSTMENT` is corrected by a new `ADJUSTMENT` that mirrors every line (debit ↔ credit,
+    same accounts and source accounts), dated by the accountant on or after the original, through `postJournal()`; `reversesId` (unique) points
+    at the original, so an entry is reversed once and a reversal is never reversed. An entry a schedule, register, pack, stock count or lease
+    owns, a foreign-currency or revaluation entry, and every non-adjustment are refused with where to change them instead.
 4. **Locked periods reject every write** — imports, reclasses, adjustments. Closing goes in order: a month can't be locked while an earlier
    month with entries other than the Saldo Awal is open (`lockPeriod`, checked again under the client lock). Unlock (`unlockPeriod`) is
    explicit, **ADMIN only**, needs a reason (≥ 5 characters), runs in reverse order (refused while a later month is locked) and writes a
@@ -80,7 +84,7 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     **suggestions only**; an accepted one follows its account's year-to-date balance × its % (1–100, changeable). **Kompensasi kerugian**:
     losses typed per origin year as left at 1 January (at most five years back), used oldest first up to fiscal profit, expired ones
     skipped; last year's December fiscal loss from the books is only suggested. The **Excel kertas kerja** is built from the same pack. Normal regime 22 %, Pasal 31E (turnover = usaha revenue ≤ Rp 50 M: PKP × 4,8 M ÷ turnover at
-    11 %), each part rounded down; PP 55/2022 final 0,5 % of turnover when the accountant chooses it (no corrections, credits or journal).
+    11 %), each part rounded down; PP 55/2022 final 0,5 % of turnover when the accountant chooses it (no corrections or credits; its current journal books the year-to-date final tax Dr 8200 / Cr 2145 as the difference from earlier postings — the monthly payments, filed to 2145 by the tax rules, clear it — and reverses a normal-regime posting made before the switch).
     Credits = PPh 25 bank lines (tag PPH_25, wherever they sit; by **masa pajak** `BankTransaction.taxMonth` — the month before payment when the line is classified, editable in the pack; a line without one counts by its bank date) + bukti potong typed with the account they sit on → PPh 29 (2146) or 28A (1181);
     next year's PPh 25 = (terutang − PPh 22/23/24) ÷ 12. Deferred tax = 22 % × (fiscal − book value of the register + the CKPN allowance, 5e). **Journals by click only**
     (`ADJUSTMENT`, dated the period end): each books the **difference** from earlier postings of its kind (deferred balances across years) under a
@@ -124,6 +128,15 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     opening obligation not in 2310 → 3200; the rest → 3920 (equity, OCI). All against GL balances, so paid benefits and re-posting are
     respected. Control `eb:` in December. Tax: 2310 is a deductible temporary difference; the deferred tax on the remeasurement goes to 3920.
     Everything is labelled an estimate, not a licensed actuary's report.
+5i. **Persediaan & HPP — periodic method** (`lib/inventory`): purchases go to cost of sales (5100) as classified; the month-end stock count is
+    typed by the accountant (`InventoryCount`: entity, month, counted amount, the book value before, note, who) and **one `ADJUSTMENT` by
+    click**, dated the month end, brings every PERSEDIAAN account's total to it on 1160 against **5190 Perubahan Persediaan** (HPP line;
+    template accounts created on first use): an increase Dr 1160 / Cr 5190, a decrease the reverse, nothing when equal. The book value is
+    read from the GL, never stored as truth; counting a month again books only the new difference; refused in a locked month and once a later
+    month is counted; negative counts refused. Control `inv:<entity>` (REVIEW, never FAIL) for an entity with inventory (a PERSEDIAAN balance,
+    an earlier count, or a trading *Bidang usaha* with HPP this year): no count this month, or books that moved after it. The CALK *Beban
+    pokok* note computes persediaan awal (31 December + the year's OPENING entries) + pembelian (HPP accounts other than 5190) + what was
+    put on Persediaan directly − persediaan akhir, which equals the Laba Rugi line by construction.
 6. `bigint` **minor units of the entity's functional currency** everywhere in the domain (ADR 0006). IDR has exponent 0,
    so for IDR entities that is whole Rupiah, as before. Parse with `parseRupiah()` / `parseMinor()` (handles `1.234.567,00`,
    `1,234,567.00`, `(2.500)`), format with `formatRupiah()` / `formatMoney(value, currency)`. Convert to `Number` only for chart
@@ -162,16 +175,18 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
 
 ## Import & classification (`lib/import/pipeline.ts`)
 12. Parse → continuity check (opening + Σ = every printed balance → closing) → dedupe by row hash → classify → post, all-or-nothing in one transaction.
-13. Order: **transfer matcher → rules (client before firm) → memory → financing suggestion → AI → heuristic.** Transfer matching
-    needs a textual hint (TRSF/PINDAH BUKU/own entity name) — equal amounts alone are never enough — and pairs within **2 business
+    A statement with new rows that ends before the account's first imported statement must hand over to it (its closing balance = that
+    statement's opening balance); otherwise the whole file is refused (another year or account's file would become the history and drive Saldo Awal).
+13. Order: **transfer matcher → rules (client before firm, unless a matching firm rule's pattern strictly contains the client rule's — a client "PAJAK" never swallows the firm's "PAJAK BUNGA") → memory → financing / tax-payment suggestion → AI → heuristic.** Transfer matching
+    needs a textual hint (TRSF/TRF/PINDAH BUKU/own entity name) — equal amounts alone are never enough — and pairs within **2 business
     days** (Sat/Sun don't count). Financing text (the sanity control's words, `lib/classify/financing`) gets a balance-sheet
     suggestion (loan → 2210, interest → 7110, fees → 7100, capital → 3100, own-account move → 1199) without an AI call; it is a
     HEURISTIC and goes to review. Bank interest, fees and stamp duty as banks print them (BUNGA/INTEREST out → 7110, TAX ON
     INTEREST → 8200, BIAYA TXN / FEE PAYMENT / MATERAI / STAMP DUTY → 7100) are firm **rules** (they post); a new firm rule reaches
     existing firms only through a data migration. The last-resort simple guess depends on the entity (`lib/classify/fallback.ts`):
     company in → 4100 / out → 6190; PERORANGAN in → 4910 / out → 3300 Prive.
-13a. **Tax remittances file to the liability they clear** (firm rules, `lib/classify/rules.ts`): PPh 21 → 2140, PPh 23 → 2141, PPh 4(2) / final → 2145, PPh 29 → 2146, PPN → 2130, PPh 25 → 1180
-    (prepaid, rule 5d), Bea Meterai → 7100. A remittance without the withholding booked leaves that liability **debit**, which the sanity control *Saldo berlawanan dengan sifat akun* raises
+13a. **Tax remittances file to the liability they clear** (firm rules, `lib/classify/rules.ts`, by words or by the KAP-KJS code on the state receipt — 411121, 411124, 411128, 411125-100/-200, 411211): PPh 21 → 2140, PPh 23 → 2141, PPh 4(2) / final → 2145, PPh 29 → 2146, PPN → 2130, PPh 25 → 1180
+    (prepaid, rule 5d), Bea Meterai → 7100. A payment that reads as a state tax payment without naming the tax (MPN, DJP, SSP, KPP, kode billing; regional taxes excluded) gets a HEURISTIC suggestion 2145 for review (`taxPaymentSuggestion`), never an expense and no AI call. A remittance without the withholding booked leaves that liability **debit**, which the sanity control *Saldo berlawanan dengan sifat akun* raises
     — book the withholding (payroll, or rule 5h) rather than moving the remittance. A rule whose account the client's chart lacks is skipped (`matchRule(…, codes)`), never a failed import.
 14. **Only deterministic methods (TRANSFER/RULE/MEMORY, confidence ≥ 0.9) auto-post.** AI and heuristic results
     post to **1999** with `NEEDS_REVIEW` and a prefilled suggestion. Reviewer accept → reclass + Memory upsert.
@@ -252,6 +267,6 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
 24. Every row has `firmId`. Server actions resolve the client through `getClientForFirm()` before any write.
 25. **Deleting a client** (`lib/clients/delete.ts`) is not a ledger correction: an admin removes a client entered by mistake or a test
     copy after typing its exact name. Everything that is its books (entities, accounts, periods, journals, bank and ledger imports,
-    memories, client rules, proposals, invoices, assets, schedules, leases, employee benefits, tax records, evidence) goes in one
+    memories, client rules, proposals, invoices, assets, schedules, leases, employee benefits, tax records, stock counts, evidence) goes in one
     transaction; firm rules, rates, mortality tables and
     AI caches stay. A new table that references a client or entity must be added to that function.

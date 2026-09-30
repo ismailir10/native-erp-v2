@@ -14,6 +14,8 @@ import { subledgerVsLedger } from "@/lib/receivables/aging";
 import { ckpn, settingAt } from "@/lib/receivables/ckpn";
 import { leasesVsLedger } from "@/lib/leases/register";
 import { valuation } from "@/lib/benefits/valuation";
+import { inventoryRows } from "@/lib/inventory";
+import { openingDate, statementCoverage } from "@/lib/controls/coverage";
 import { packApplies, taxPack } from "@/lib/tax/pack";
 
 /**
@@ -29,9 +31,29 @@ export type Control = {
   detail: string;
   href?: string;
   ack?: string | null;
+  /** A note written for another state of this control (its detail changed since): shown, but it no longer clears the control. */
+  staleAck?: string | null;
 };
 
+/**
+ * Every control of the client for the month. A note clears a REVIEW only while the control still says what it said when the note was
+ * written: "2 transaksi menunggu review" acknowledged does not clear "200 transaksi menunggu review".
+ */
 export async function runControls(db: Db, clientId: string, year: number, month: number): Promise<Control[]> {
+  const controls = await collectControls(db, clientId, year, month);
+  const acks = await db.controlAck.findMany({ where: { period: { clientId, year, month } }, select: { controlKey: true, detail: true } });
+  const detailOf = new Map(acks.map((a) => [a.controlKey, a.detail]));
+  for (const c of controls) {
+    const stored = detailOf.get(c.key);
+    if (c.ack && stored != null && stored !== c.detail) {
+      c.staleAck = c.ack;
+      c.ack = undefined;
+    }
+  }
+  return controls;
+}
+
+async function collectControls(db: Db, clientId: string, year: number, month: number): Promise<Control[]> {
   const { start, end } = periodBounds(year, month);
   const entities = (
     await db.entity.findMany({ where: { clientId }, include: { bankAccounts: { include: { account: true } } }, orderBy: { name: "asc" } })
@@ -69,28 +91,26 @@ export async function runControls(db: Db, clientId: string, year: number, month:
 
     let statementMissing = false;
     // Books start at the entity's Saldo Awal (else the account's first statement): a month ending before that needs no statement.
-    const opening = await db.journalEntry.findFirst({ where: { entityId: e.id, kind: "OPENING" }, orderBy: { date: "asc" }, select: { date: true } });
+    const opening = await openingDate(db, e.id);
     for (const ba of e.bankAccounts) {
       const lastTx = await db.bankTransaction.findFirst({
         where: { bankAccountId: ba.id, date: { lte: end }, balance: { not: null } },
         orderBy: [{ date: "desc" }, { rowNumber: "desc" }],
       });
-      const coverage = await db.statementImport.findMany({ where: { bankAccountId: ba.id, periodStart: { lte: end }, periodEnd: { gte: start } } });
+      const cover = await statementCoverage(db, ba.id, opening, start, end);
       const glRow = tb.find((r) => r.account.id === ba.accountId);
       const gl = glRow?.net ?? 0n;
       const key = `bank:${ba.id}`;
-      if (coverage.length === 0) {
-        const first = opening ? null : await db.statementImport.findFirst({ where: { bankAccountId: ba.id }, orderBy: { periodStart: "asc" }, select: { periodStart: true } });
-        const startsAfter = opening ? end.getTime() <= opening.date.getTime() : !!first && end.getTime() < first.periodStart.getTime();
-        if (startsAfter) {
-          const from = opening ? new Date(opening.date.getTime() + 86_400_000) : first!.periodStart;
-          controls.push({ key, title: `Rekonsiliasi ${ba.label}`, scope: e.shortName, status: "PASS", detail: `Pembukuan rekening ini mulai ${formatDate(from)}` });
-          continue;
-        }
+      if (cover.state === "before") {
+        controls.push({ key, title: `Rekonsiliasi ${ba.label}`, scope: e.shortName, status: "PASS", detail: `Pembukuan rekening ini mulai ${formatDate(cover.from)}` });
+        continue;
+      }
+      if (cover.state === "missing") {
         statementMissing = true;
         controls.push({ key, title: `Rekonsiliasi ${ba.label}`, scope: e.shortName, status: "REVIEW", detail: "Mutasi bulan ini belum diimpor", href: `${base}/import`, ack: acks.get(key) });
         continue;
       }
+      const { coverage } = cover;
       const stmt = lastTx?.balance ?? coverage[coverage.length - 1].closingBalance;
       const ok = stmt === gl;
       controls.push({
@@ -171,6 +191,27 @@ export async function runControls(db: Db, clientId: string, year: number, month:
         detail: `${due.length} angsuran: ${list.join("; ")}${due.length > 3 ? `; +${due.length - 3} lainnya` : ""}`,
         href: `${base}/journals/new?period=${year}-${String(month).padStart(2, "0")}`,
         ack: acks.get(sKey),
+      });
+    }
+
+    // Persediaan (rule 5i): an entity with inventory needs the month-end count, and the books must still equal it.
+    const [inv] = await inventoryRows(db, clientId, year, month, [e.id]);
+    if (inv?.applies) {
+      const iKey = `inv:${e.id}`;
+      const counted = inv.count;
+      const status = counted && counted.amount === inv.book ? "PASS" : "REVIEW";
+      controls.push({
+        key: iKey,
+        title: "Persediaan akhir (stock opname)",
+        scope: e.shortName,
+        status,
+        detail: !counted
+          ? `Persediaan akhir ${formatPeriod(year, month)} belum dicatat; saldo buku ${fmt(inv.book)}${inv.previous ? `, terakhir dihitung ${formatPeriod(inv.previous.year, inv.previous.month)}` : ""}`
+          : counted.amount === inv.book
+            ? `Saldo buku = hasil hitung ${fmt(counted.amount)}`
+            : `Saldo buku ${fmt(inv.book)} berbeda dari hasil hitung ${fmt(counted.amount)}; catat ulang hitungannya`,
+        href: `${base}/inventory?period=${year}-${String(month).padStart(2, "0")}`,
+        ack: status === "REVIEW" ? acks.get(iKey) : undefined,
       });
     }
 
@@ -273,12 +314,13 @@ export async function runControls(db: Db, clientId: string, year: number, month:
     // Tax pack (rule 5d): in December, a company's PPh badan for the year should be booked.
     if (month === 12 && packApplies(e)) {
       const pack = await taxPack(db, clientId, e.id, year, month);
-      const expense = pack?.proposals.CURRENT.find((l) => l.code === ACCOUNT_CODES.CURRENT_TAX)?.amount ?? 0n;
+      const final = pack?.regime === "FINAL_UMKM";
+      const expense = pack?.proposals.CURRENT.find((l) => l.code === (final ? ACCOUNT_CODES.FINAL_TAX : ACCOUNT_CODES.CURRENT_TAX))?.amount ?? 0n;
       if (pack && pack.proposals.CURRENT.length) {
         const tKey = `tax:${e.id}`;
         controls.push({
           key: tKey,
-          title: `PPh badan ${year} belum dijurnal`,
+          title: final ? `PPh final ${year} belum dijurnal` : `PPh badan ${year} belum dijurnal`,
           scope: e.shortName,
           status: "REVIEW",
           detail: `Estimasi PPh terutang ${fmt(pack.tax.due)}; jurnal pajak kini yang belum dicatat ${expense >= 0n ? "" : "mengurangi beban "}${fmt(expense < 0n ? -expense : expense)}`,
@@ -469,6 +511,8 @@ export async function unlockPeriod(db: Db, clientId: string, year: number, month
     const later = await laterLockedMonth(tx, clientId, year, month);
     if (later) throw new CloseError(`Buka kembali ${formatPeriod(later.year, later.month)} dulu: bulan setelahnya masih ditutup.`);
     await tx.periodUnlockLog.create({ data: { firmId: period.firmId, clientId, year, month, unlockedById: actor.id, reason: why } });
+    // A reopened month is changed on purpose: its sign-offs described the books before the change, so they are given again.
+    await tx.closeSignoff.deleteMany({ where: { periodId: period.id } });
     return tx.period.update({ where: { id: period.id }, data: { status: "OPEN", lockedAt: null, lockedById: null } });
   });
 }

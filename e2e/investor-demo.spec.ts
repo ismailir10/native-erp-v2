@@ -69,8 +69,6 @@ test("statement in → reviewed → traceable reports → combined → closed", 
 
   // 6. Adjustments: the depreciation schedule proposes August's installment → Catat; the machine reviewed in step 3 is a
   // fixed-asset candidate → a 48-month schedule from September
-  const setup = page.getByRole("button", { name: "Pengaturan klien" });
-  if ((await setup.getAttribute("aria-expanded")) !== "true") await setup.click();
   await page.getByRole("link", { name: "Jurnal Penyesuaian" }).click();
   await expect(page.getByRole("heading", { name: "Jurnal Penyesuaian" })).toBeVisible();
   const due = page.getByTestId("schedule-proposals");
@@ -91,13 +89,19 @@ test("statement in → reviewed → traceable reports → combined → closed", 
   await expect(page.getByTestId("schedule-candidates")).toHaveCount(0);
 
   // 7. Close: arithmetic passes; the ledger scan flags the machine bought in August (Aset Tetap moves for the first time
-  // since its opening balance) → the accountant notes why → sign-offs → lock
+  // since its opening balance), and PT Ayam holds stock with no August count → the accountant notes why → sign-offs → lock
   await page.getByRole("link", { name: "Tutup Buku" }).click();
   await expect(page.getByRole("heading", { name: "Tutup Buku" })).toBeVisible();
   await expect(page.getByText("Lolos").first()).toBeVisible();
   await expect(page.getByText("Gagal")).toHaveCount(0);
   const flagged = page.locator('[data-testid^="control-"]').filter({ hasText: "Perlu dicek" });
-  await expect(flagged).toHaveCount(1);
+  await expect(flagged).toHaveCount(2);
+  const stock = page.getByTestId("control-inv");
+  await expect(stock).toContainText("Persediaan akhir Agustus 2026 belum dicatat");
+  await stock.getByRole("button", { name: "Beri catatan" }).click();
+  await page.getByRole("dialog").getByRole("textbox").fill("Klien menghitung stok hanya di akhir tahun; nilai pakan di gudang stabil.");
+  await page.getByRole("button", { name: "Simpan catatan" }).click();
+  await expect(stock).toContainText("akhir tahun");
   const capex = page.getByTestId("control-dormant");
   await expect(capex).toContainText("1210 Aset Tetap");
   await capex.getByRole("button", { name: "Beri catatan" }).click();
@@ -123,6 +127,13 @@ test("statement in → reviewed → traceable reports → combined → closed", 
   await page.getByTestId("unlock-reason").fill("Cek ulang sebelum laporan dikirim ke klien");
   await page.getByTestId("confirm-lock").click();
   await expect(page.getByTestId("unlock-history")).toContainText("Cek ulang sebelum laporan dikirim ke klien");
+  // A reopened month is reviewed again: its sign-offs were cleared, the control notes stay.
+  await expect(page.getByTestId("lock")).toBeDisabled();
+  for (let i = 0; i < (await boxes.count()); i++) {
+    await expect(boxes.nth(i)).not.toBeChecked();
+    await boxes.nth(i).click();
+    await expect(boxes.nth(i)).toBeChecked();
+  }
   await page.getByTestId("lock").click();
   await page.getByTestId("confirm-lock").click();
   await expect(page.getByText("Buku Agustus 2026 sudah ditutup")).toBeVisible();

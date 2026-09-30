@@ -109,7 +109,7 @@ export function TaxPackPanel(props: { clientId: string; periodKey: string; perio
                   </div>
                 ))}
               </div>
-              <Button disabled={busy} onClick={() => run(() => postTaxAction({ ...scope, month: v.month, kind }), kind === "CURRENT" ? "Jurnal PPh badan dicatat" : "Jurnal pajak tangguhan dicatat")}>
+              <Button disabled={busy} onClick={() => run(() => postTaxAction({ ...scope, month: v.month, kind }), kind === "CURRENT" ? (final ? "Jurnal PPh final dicatat" : "Jurnal PPh badan dicatat") : "Jurnal pajak tangguhan dicatat")}>
                 Catat jurnal per {props.periodLabel}
               </Button>
             </>
@@ -176,7 +176,7 @@ export function TaxPackPanel(props: { clientId: string; periodKey: string; perio
             <>
               {row(<Link href={`${base}/reports?period=${props.periodKey}&entity=${v.entity.id}`} className="hover:text-primary">Peredaran bruto (pendapatan usaha)</Link>, v.turnover)}
               {row("PPh final 0,5% (PP 55/2022)", v.tax.due, { strong: true, testid: "tax-due" })}
-              <p className="pt-2 text-xs text-muted-foreground">PPh final disetor per bulan dan dicatat saat dibayar (8200). Buku tidak menilai syarat PP 55/2022: peredaran bruto paling banyak Rp 4,8 M setahun dan batas waktu 4 tahun pajak untuk PT.</p>
+              <p className="pt-2 text-xs text-muted-foreground">PPh final dihitung dari peredaran bruto; jurnalnya di bawah membebankan 8200 dan setoran bulanan melunasi utangnya (2145). Buku tidak menilai syarat PP 55/2022: peredaran bruto paling banyak Rp 4,8 M setahun, dan jangka waktu paling lama 3 tahun pajak untuk PT, 4 tahun untuk CV, firma dan koperasi, 7 tahun untuk orang pribadi (Pasal 59).</p>
             </>
           ) : (
             <>
@@ -268,7 +268,7 @@ export function TaxPackPanel(props: { clientId: string; periodKey: string; perio
       )}
 
       {!final && proposal("CURRENT", "Jurnal pajak kini", "Membawa beban pajak, kredit pajak dan utang PPh 29 (atau lebih bayar) ke estimasi di atas. Hanya selisih dari jurnal pajak sebelumnya yang dicatat.")}
-      {final && v.proposals.CURRENT.length > 0 && proposal("CURRENT", "Pembalikan jurnal pajak kini", "Skema final tidak memakai jurnal pajak kini: jurnal PPh badan yang dicatat sebelum skema diganti dibalik.")}
+      {final && proposal("CURRENT", "Jurnal PPh final", "Membebankan PPh final 0,5% × peredaran bruto tahun berjalan ke 8200 dan mencatat utangnya di 2145; setoran bulanan (kode 411128-420) melunasi 2145. Jurnal PPh badan skema normal yang dicatat sebelumnya ikut dibalik. Hanya selisih dari jurnal sebelumnya yang dicatat.")}
       {v.deferred && proposal("DEFERRED", "Jurnal pajak tangguhan", "Membawa aset/liabilitas pajak tangguhan ke saldo di atas; perubahannya ke 8110.")}
 
       {v.postings.length > 0 && (

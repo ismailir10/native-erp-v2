@@ -14,12 +14,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 
 export default async function NewJournalPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, period, periodOptions } = await loadClientPage(params, searchParams);
-  const [due, candidates, schedules, p] = await Promise.all([
+  const [due, candidates, schedules, p, lockedPeriods] = await Promise.all([
     proposalViews(prisma, client.id, period.year, period.month),
     candidateViews(prisma, client.id, period.year, period.month),
     scheduleViews(prisma, client.id),
     prisma.period.findUnique({ where: { clientId_year_month: { clientId: client.id, year: period.year, month: period.month } }, select: { status: true } }),
+    prisma.period.findMany({ where: { clientId: client.id, status: "LOCKED" }, select: { year: true, month: true } }),
   ]);
+  const lockedMonths = lockedPeriods.map((l) => `${l.year}-${String(l.month).padStart(2, "0")}`);
+  const closeHref = `/clients/${client.id}/close?period=${period.key}`;
   const locked = p?.status === "LOCKED";
   const label = formatPeriod(period.year, period.month);
   const next = period.month === 12 ? `${period.year + 1}-01` : `${period.year}-${String(period.month + 1).padStart(2, "0")}`;
@@ -36,7 +39,7 @@ export default async function NewJournalPage({ params, searchParams }: { params:
     <div className="space-y-6">
       <PageHeader title="Jurnal Penyesuaian" description="Untuk yang tidak lewat bank: penyusutan, akrual, piutang." actions={<ScopeBar entities={[]} periods={periodOptions} period={period.key} />} />
       {locked ? (
-        <NextStep tone="done">Buku {label} sudah ditutup. Jurnal ke periode ini ditolak.</NextStep>
+        <NextStep href={closeHref} cta="Buka Tutup Buku">Buku {label} sudah ditutup, jadi jurnal bertanggal di bulan ini ditolak. Pilih bulan yang masih terbuka di kanan atas, atau minta admin membuka kembali {label} (dengan alasan).</NextStep>
       ) : due.length ? (
         <NextStep>Catat {due.length} jurnal terjadwal {label} di bawah, lalu tambahkan penyesuaian lain bila perlu.</NextStep>
       ) : candidates.length ? (
@@ -53,6 +56,8 @@ export default async function NewJournalPage({ params, searchParams }: { params:
               entities={entities}
               accounts={accounts.map((a) => ({ code: a.code, name: a.name, group: accountGroup(a), entityId: a.bankAccounts[0]?.entityId ?? null }))}
               defaultDate={toIsoDate(period.end)}
+              lockedMonths={lockedMonths}
+              closeHref={closeHref}
             />
           </CardContent>
         </Card>

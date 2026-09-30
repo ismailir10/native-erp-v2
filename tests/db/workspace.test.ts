@@ -161,3 +161,23 @@ it("a client still in setup gets one task naming the step: upload first, then Sa
   expect(tasks[0].title).toBe("Isi saldo awal PT Uji");
   expect(new URL(tasks[0].href, "https://buku.example").pathname).toBe(`/clients/${g.client.id}/opening`);
 });
+
+it("ranks what blocks the books first and names the client on a review task", async () => {
+  const g = await makeGroup();
+  // Past setup: both entities have their Saldo Awal at 31 July.
+  for (const e of [g.pt.entity.id, g.owner.entity.id]) {
+    const cash = await db.account.findUniqueOrThrow({ where: { clientId_code: { clientId: g.client.id, code: "1110" } } });
+    const equity = await db.account.findUniqueOrThrow({ where: { clientId_code: { clientId: g.client.id, code: "3100" } } });
+    await db.$transaction(tx => postJournal(tx, { entityId: e, date: dateOnly(2026, 7, 31), kind: "OPENING", memo: "Saldo awal", lines: [{ accountId: cash.id, debit: 5n }, { accountId: equity.id, credit: 5n }] }));
+  }
+  await sale(g, g.pt.entity.id, 1000n);
+  const bank = g.pt.banks[0];
+  const imp = await db.statementImport.create({ data: { firmId: g.firm.id, bankAccountId: bank.id, fileName: "bca.csv", format: "BCA", periodStart: dateOnly(2026, 8, 1), periodEnd: dateOnly(2026, 8, 31), openingBalance: 0n, closingBalance: 0n, rowCount: 1, continuityOk: true } });
+  await db.bankTransaction.create({ data: { firmId: g.firm.id, entityId: g.pt.entity.id, bankAccountId: bank.id, importId: imp.id, date: dateOnly(2026, 8, 5), description: "TOKO", merchantKey: "TOKO", direction: "OUT", amount: -10n, rowNumber: 1, rawRow: "synthetic", hash: "h1", status: "NEEDS_REVIEW", method: "AI", confidence: 0.8, reason: "contoh", suggestedCode: "6190" } });
+  const { tasks } = await getWorkspaceOverview(db, g.firm.id, { period: "2026-08" });
+  const at = (prefix: string) => tasks.findIndex(t => t.id.startsWith(prefix));
+  // Mandiri and the owner's BRI have no August statement: that comes before reviewing what was imported.
+  expect(at("statement:")).toBeGreaterThanOrEqual(0);
+  expect(at("statement:")).toBeLessThan(at("review:"));
+  expect(tasks[at("review:")].detail).toBe("Grup Uji · PT Uji Sejahtera · sampai Agustus 2026");
+});

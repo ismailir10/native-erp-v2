@@ -6,7 +6,9 @@ import { balanceSheet, combinedWorksheet, incomeStatement, type BalanceSheet, ty
 import { cashFlow, equityChanges, otherComprehensiveIncome } from "@/lib/reports/statements";
 import { CashFlowTable, EquityTable, NotesView } from "@/components/app/statements";
 import { financialNotes } from "@/lib/reports/notes";
-import { formatPeriod, monthName } from "@/lib/format";
+import { formatDateLong, formatPeriod, monthName } from "@/lib/format";
+import { reportStatus } from "@/lib/reports/status";
+import { ReportStatusBar } from "@/components/app/report-status";
 import { scopeFramework, statementNames } from "@/lib/reports/framework";
 import { NextStep, PageHeader } from "@/components/app/page-header";
 import { ScopeBar } from "@/components/app/scope-bar";
@@ -44,7 +46,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
   const header = (
     <PageHeader
       title="Laporan Keuangan"
-      description={`${scopeLabel} · basis kas + penyesuaian${note ? ` · ${note}` : ""}`}
+      description={`${scopeLabel} · dari buku besar${note ? ` · ${note}` : ""}`}
       actions={<ScopeBar entities={entityOptions} periods={periodOptions} entity={scope.value} period={period.key} />}
     />
   );
@@ -95,13 +97,30 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
     const r = await withFx(() => balanceSheet(prisma, s, d));
     return { label: formatPeriod(d.getUTCFullYear(), d.getUTCMonth() + 1), bs: r instanceof FxMissingError ? null : r };
   };
-  const comparisons = +prevEnd === +lastYearEnd ? [await compare(prevEnd)] : [await compare(prevEnd), await compare(lastYearEnd)];
+  // A comparative column only where the books hold something by then (no column of dashes before the books start). When the books
+  // start inside this year, the Saldo Awal position stands in for 31 December.
+  const entryBy = async (to: Date, from?: Date) => !!(await prisma.journalLine.findFirst({ where: { entityId: { in: scope.entityIds }, date: { gte: from, lte: to } }, select: { id: true } }));
+  const firstOpening = await prisma.journalEntry.findFirst({ where: { entityId: { in: scope.entityIds }, kind: "OPENING", date: { gte: lastYearEnd, lte: period.end } }, orderBy: { date: "asc" }, select: { date: true } });
+  const booksStart = firstOpening && +firstOpening.date >= +yearStart && !(await entryBy(new Date(+firstOpening.date - 86_400_000))) ? new Date(+firstOpening.date + 86_400_000) : yearStart;
+  const ytdLabel = `${formatDateLong(booksStart).replace(` ${period.year}`, "")} – akhir ${formatPeriod(period.year, period.month)}`;
+  const openingAt = firstOpening?.date;
+  const labelFor = (d: Date) => (openingAt && +d === +openingAt ? `Saldo awal ${formatDateLong(d)}` : undefined);
+  const compareDates: { date: Date; label?: string }[] = [];
+  if (await entryBy(prevEnd)) compareDates.push({ date: prevEnd, label: labelFor(prevEnd) });
+  if (+lastYearEnd !== +prevEnd) {
+    if (await entryBy(lastYearEnd)) compareDates.push({ date: lastYearEnd, label: labelFor(lastYearEnd) });
+    else if (openingAt && +openingAt > +lastYearEnd && +openingAt < +prevEnd) compareDates.push({ date: openingAt, label: labelFor(openingAt) });
+  }
+  const comparisons = await Promise.all(compareDates.map(async (c) => ({ ...(await compare(c.date)), ...(c.label ? { label: c.label } : {}) })));
   const shown = comparisons.filter((c): c is { label: string; bs: BalanceSheet } => c.bs !== null);
   const missingLabels = comparisons.filter((c) => !c.bs).map((c) => c.label);
   const cmp = <T,>(cur: T, pick: (b: BalanceSheet) => T): T[] => [cur, ...shown.map((c) => pick(c.bs))];
   // Laba Rugi: the same months of last year, and other comprehensive income (single-currency scopes).
-  const prior = await withFx(() => incomeStatement(prisma, s, priorFrom, priorTo));
+  const prior = (await entryBy(priorTo, priorFrom)) ? await withFx(() => incomeStatement(prisma, s, priorFrom, priorTo)) : null;
   const isPrior = prior instanceof FxMissingError ? null : prior;
+  const status = await reportStatus(prisma, client.id, scope.entityIds, period.year, period.month);
+  const unit = currency === "IDR" ? "Dinyatakan dalam Rupiah" : `Dinyatakan dalam ${currency}`;
+  const sum = (items: FsItem[]) => items.reduce((t, i) => t + i.amount, 0n);
   const plCols = <T,>(month: T, ytd: T, old: T | undefined): T[] => (isPrior ? [month, ytd, old as T] : [month, ytd]);
   const [ociMonth, ociYtd, ociPrior] = mixed ? [null, null, null] : await Promise.all([otherComprehensiveIncome(prisma, s, period.start, period.end), otherComprehensiveIncome(prisma, s, yearStart, period.end), otherComprehensiveIncome(prisma, s, priorFrom, priorTo)]);
   const hasOci = !emkm && !!ociMonth && [ociMonth, ociYtd, ociPrior].some((o) => o && o.items.length);
@@ -111,6 +130,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
   return (
     <div className="space-y-6">
       {header}
+      <ReportStatusBar status={status} base={base} q={q} />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <NextStep>Pilih nama akun untuk menelusuri buku besar sampai baris sumbernya.</NextStep>
         <a href={withParams(`${base}/reports/export`, { period: period.key, entity: scope.value })} className={buttonVariants({ variant: "outline", size: "sm" })} download data-testid="fs-download">
@@ -132,7 +152,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
           <Card>
             <CardHeader>
               <CardTitle>{names.income}</CardTitle>
-              <CardDescription>{monthName(period.month)} {period.year} dan 1 Januari – akhir {formatPeriod(period.year, period.month)}{isPrior ? `, dibandingkan periode yang sama tahun ${period.year - 1}` : ""}</CardDescription>
+              <CardDescription>{monthName(period.month)} {period.year} dan {ytdLabel}{isPrior ? `, dibandingkan periode yang sama tahun ${period.year - 1}` : ""} · {unit}</CardDescription>
             </CardHeader>
             <CardContent className="px-0">
               <FsTable
@@ -166,6 +186,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
                 Per akhir {formatPeriod(period.year, period.month)}
                 {shown.length ? `, dibandingkan ${shown.map((c) => c.label).join(" dan ")}` : ""}
                 {missingLabels.length ? `. Pembanding ${missingLabels.join(" dan ")}: isi kurs penutup bulan itu di halaman Kurs.` : ""}
+                {` · ${unit}`}
               </CardDescription>
             </CardHeader>
             <CardContent className="px-0">
@@ -175,11 +196,14 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
                 parts={partsOf(bsParts, bsItems)}
                 columns={[formatPeriod(period.year, period.month), ...shown.map((c) => c.label)]}
                 sections={[
-                  { title: "Aset lancar", items: cmp(bs.currentAssets, (b) => b.currentAssets) },
-                  { title: "Aset tidak lancar", items: cmp(bs.nonCurrentAssets, (b) => b.nonCurrentAssets), total: { label: "Total aset", values: cmp(bs.totals.assets, (b) => b.totals.assets), strong: true } },
-                  { title: "Liabilitas jangka pendek", items: cmp(bs.currentLiabilities, (b) => b.currentLiabilities) },
-                  { title: "Liabilitas jangka panjang", items: cmp(bs.nonCurrentLiabilities, (b) => b.nonCurrentLiabilities), total: { label: "Total liabilitas", values: cmp(bs.totals.liabilities, (b) => b.totals.liabilities) } },
-                  { title: "Ekuitas", items: cmp(bs.equity, (b) => b.equity), total: { label: "Total liabilitas & ekuitas", values: cmp(bs.totals.liabilities + bs.totals.equity, (b) => b.totals.liabilities + b.totals.equity), strong: true } },
+                  { title: "Aset lancar", items: cmp(bs.currentAssets, (b) => b.currentAssets), total: { label: "Jumlah aset lancar", values: cmp(sum(bs.currentAssets), (b) => sum(b.currentAssets)), subtotal: true } },
+                  { title: "Aset tidak lancar", items: cmp(bs.nonCurrentAssets, (b) => b.nonCurrentAssets), total: { label: "Jumlah aset tidak lancar", values: cmp(sum(bs.nonCurrentAssets), (b) => sum(b.nonCurrentAssets)), subtotal: true } },
+                  { items: cmp([], () => []), total: { label: "Total aset", values: cmp(bs.totals.assets, (b) => b.totals.assets), strong: true } },
+                  { title: "Liabilitas jangka pendek", items: cmp(bs.currentLiabilities, (b) => b.currentLiabilities), total: { label: "Jumlah liabilitas jangka pendek", values: cmp(sum(bs.currentLiabilities), (b) => sum(b.currentLiabilities)), subtotal: true } },
+                  { title: "Liabilitas jangka panjang", items: cmp(bs.nonCurrentLiabilities, (b) => b.nonCurrentLiabilities), total: { label: "Jumlah liabilitas jangka panjang", values: cmp(sum(bs.nonCurrentLiabilities), (b) => sum(b.nonCurrentLiabilities)), subtotal: true } },
+                  { items: cmp([], () => []), total: { label: "Total liabilitas", values: cmp(bs.totals.liabilities, (b) => b.totals.liabilities) } },
+                  { title: "Ekuitas", items: cmp(bs.equity, (b) => b.equity), total: { label: "Jumlah ekuitas", values: cmp(bs.totals.equity, (b) => b.totals.equity) } },
+                  { items: cmp([], () => []), total: { label: "Total liabilitas & ekuitas", values: cmp(bs.totals.liabilities + bs.totals.equity, (b) => b.totals.liabilities + b.totals.equity), strong: true } },
                 ]}
               />
             </CardContent>
@@ -193,7 +217,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
                 {names.equity}
                 {equity && <StatusPill status={equity.totals.closing === equity.balanceSheetEquity ? "PASS" : "FAIL"} label={equity.totals.closing === equity.balanceSheetEquity ? "Sama dengan Neraca" : "Beda dengan Neraca"} />}
               </CardTitle>
-              <CardDescription>1 Januari – akhir {formatPeriod(period.year, period.month)}</CardDescription>
+              <CardDescription>{ytdLabel} · {unit}</CardDescription>
             </CardHeader>
             <CardContent className="px-0">
               {equity ? <EquityTable data={equity} currency={currency} accountHref={href} framework={framework} /> : <p className="px-6 text-sm text-muted-foreground">Laporan ini hanya untuk cakupan satu mata uang.</p>}
@@ -208,7 +232,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
                 {emkm ? "Laporan Arus Kas (informasi tambahan)" : "Laporan Arus Kas"}
                 {cash && <StatusPill status={cash.openingCash + cash.net === cash.closingCash ? "PASS" : "FAIL"} label={cash.openingCash + cash.net === cash.closingCash ? "Sama dengan kas di Neraca" : "Beda dengan kas di Neraca"} />}
               </CardTitle>
-              <CardDescription>Metode tidak langsung, dari perubahan pos neraca · 1 Januari – akhir {formatPeriod(period.year, period.month)}</CardDescription>
+              <CardDescription>Metode tidak langsung, dari perubahan pos neraca · {ytdLabel} · {unit}</CardDescription>
             </CardHeader>
             <CardContent className="px-0">
               {cash ? <CashFlowTable data={cash} currency={currency} accountHref={href} framework={framework} /> : <p className="px-6 text-sm text-muted-foreground">Laporan ini hanya untuk cakupan satu mata uang.</p>}

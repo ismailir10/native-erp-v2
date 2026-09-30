@@ -18,6 +18,16 @@ test("an unsaved correction survives a reload; Simpan saves in one click; Enter 
   await expect(items).toHaveCount(2);
   await expect(page.getByTestId("review-count")).toHaveText("2 menunggu");
 
+  // Search and filters narrow the queue; nothing is lost.
+  await page.getByRole("button", { name: /^Uang masuk/ }).click();
+  await expect(items).toHaveCount(1);
+  await expect(items.first()).toContainText("KOPERASI");
+  await page.getByRole("button", { name: /^Semua/ }).click();
+  await page.getByLabel("Cari transaksi").fill("rak display");
+  await expect(items).toHaveCount(1);
+  await page.getByLabel("Cari transaksi").fill("");
+  await expect(items).toHaveCount(2);
+
   // Change the rack purchase to a fixed asset by typing on the closed picker: the keys land in its search and Enter picks the
   // first match. Then reload before saving.
   const rack = items.filter({ hasText: "RAK DISPLAY" });

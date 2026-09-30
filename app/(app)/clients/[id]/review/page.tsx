@@ -8,6 +8,7 @@ import { ScopeBar } from "@/components/app/scope-bar";
 import { ReviewQueue } from "@/components/app/review-queue";
 import { isGenericKey } from "@/lib/import/normalize";
 import { simpleGuessRows } from "@/lib/ai/retry";
+import { isSimpleGuess } from "@/lib/classify/fallback";
 import { resolveAiConfig } from "@/lib/settings/ai";
 import { getCurrentMember } from "@/lib/tenant";
 
@@ -40,6 +41,7 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
     taxTag: t.taxTag,
     // A key with no counterparty ("BI FAST OUTGOING") groups unrelated payments: never offered as *serupa*.
     similar: isGenericKey(t.merchantKey) ? 1 : (similarCount.get(`${t.merchantKey}|${t.direction}`) ?? 1),
+    guess: isSimpleGuess(t),
   }));
   const options = classifiableOptions(accounts);
 
@@ -48,7 +50,7 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
       <PageHeader title="Review transaksi" description={`${scopeLabel} · mutasi sampai ${formatDate(period.end)}, termasuk sisa periode sebelumnya`} actions={<ScopeBar entities={entityOptions} periods={periodOptions} entity={scope.value} period={period.key} />} />
       {txs.length > 0 ? (
         <NextStep>
-          Cek usulan akun. Tekan <b>Enter</b> untuk menerima, atau ganti akunnya. Buku mengingat pilihan Anda untuk impor berikutnya.
+          Cek usulan akun. Tekan <b>Enter</b> untuk menerima, atau ganti akunnya. Buku mengingat pilihan Anda untuk impor berikutnya; <b>Tebakan</b> tidak diterima dengan Enter dan tidak diingat sampai Anda memilih akunnya.
         </NextStep>
       ) : (
         <NextStep href={`${base}/close?entity=${scope.value}&period=${period.key}`} cta="Tutup buku" tone="done">Tidak ada transaksi menunggu review dalam cakupan ini.</NextStep>

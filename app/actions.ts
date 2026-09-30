@@ -1,15 +1,15 @@
 "use server";
 
-import { isGenericKey } from "@/lib/import/normalize";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { getClientForFirm, getCurrentFirm, getCurrentMember } from "@/lib/tenant";
 import { importStatement, type ImportSummary } from "@/lib/import/pipeline";
 import { resolveProvider } from "@/lib/settings/ai";
 import { acceptSimilar, reviewTransaction } from "@/lib/review";
-import { CloseError, lockPeriod, unlockPeriod } from "@/lib/controls";
+import { CloseError, lockPeriod, runControls, unlockPeriod } from "@/lib/controls";
 import { LedgerError } from "@/lib/ledger/post";
 import { postAdjustment } from "@/lib/ledger/adjustment";
+import { reverseEntry } from "@/lib/ledger/reverse";
 import { createSchedule, postAllDue, postInstallment, stopSchedule, type ScheduleInput } from "@/lib/adjust/schedules";
 import { createAsset, type AssetInput } from "@/lib/assets/register";
 import { disposeAsset, type DisposalInput } from "@/lib/assets/dispose";
@@ -22,6 +22,7 @@ import { candidateViews, type CandidateView } from "@/lib/receivables/view";
 import { postCkpn, saveCkpnSetting, type CkpnSettingInput } from "@/lib/receivables/ckpn";
 import { taxPack } from "@/lib/tax/pack";
 import { postTax } from "@/lib/tax/post";
+import { recordInventoryCount } from "@/lib/inventory";
 import { acceptSuggestion, addCorrection, addCredit, deleteCorrection, deleteCredit, deleteLoss, dismissSuggestion, setCorrectionPercent, setLoss, setRegime, setTaxMonth, type CorrectionInput, type CreditInput } from "@/lib/tax/records";
 import type { TaxPostingKind, TaxRegime } from "@/lib/generated/prisma/enums";
 import { AccountMismatchError, ParseError, YearNeededError } from "@/lib/import/types";
@@ -128,11 +129,10 @@ export async function reviewAction(input: { bankTxId: string; accountCode: strin
       const t = await prisma.bankTransaction.findUniqueOrThrow({ where: { id: input.bankTxId }, select: { bankAccount: { select: { entity: { select: { functionalCurrency: true } } } } } });
       parsed = { kind: withholding.kind, amount: parseMoney(withholding.amount, t.bankAccount.entity.functionalCurrency) };
     } else parsed = withholding;
-    await reviewTransaction(prisma, { ...rest, withholding: parsed, actorId: (await getCurrentMember()).id });
+    // Memory learns only keys that name a counterparty, and never an unchanged simple guess (lib/review.ts): the toast must not promise more.
+    const { learned } = await reviewTransaction(prisma, { ...rest, withholding: parsed, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${clientId}`, "layout");
-    // Memory learns only keys that name a counterparty (lib/review.ts): the toast must not promise more.
-    const { merchantKey } = await prisma.bankTransaction.findUniqueOrThrow({ where: { id: input.bankTxId }, select: { merchantKey: true } });
-    return { ok: true, learned: !isGenericKey(merchantKey) };
+    return { ok: true, learned };
   } catch (e) {
     return fail(e);
   }
@@ -191,7 +191,9 @@ export async function ackControlAction(clientId: string, year: number, month: nu
     if (note.trim().length < 5) return { ok: false, error: "Tulis catatan singkat (min. 5 karakter)." };
     const period = await periodFor(clientId, year, month, { mustBeOpen: true });
     const ackedById = (await getCurrentMember()).id;
-    await prisma.controlAck.upsert({ where: { periodId_controlKey: { periodId: period.id, controlKey } }, create: { periodId: period.id, controlKey, note, ackedById }, update: { note, ackedById } });
+    // The note answers the control as it reads now; when its detail changes the note stops clearing it (lib/controls runControls).
+    const detail = (await runControls(prisma, clientId, year, month)).find((c) => c.key === controlKey)?.detail ?? null;
+    await prisma.controlAck.upsert({ where: { periodId_controlKey: { periodId: period.id, controlKey } }, create: { periodId: period.id, controlKey, note, detail, ackedById }, update: { note, detail, ackedById } });
     revalidatePath(`/clients/${clientId}`, "layout");
     return { ok: true };
   } catch (e) {
@@ -229,6 +231,20 @@ export async function unlockAction(clientId: string, year: number, month: number
     await getClientForFirm(clientId);
     await unlockPeriod(prisma, clientId, year, month, await getCurrentMember(), reason);
     revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** *Balik jurnal* on a manual adjustment (lib/ledger/reverse.ts): tenant checked through the entry's client. */
+export async function reverseEntryAction(input: { entryId: string; date: string }): Promise<Result> {
+  try {
+    const entry = await prisma.journalEntry.findUniqueOrThrow({ where: { id: input.entryId }, select: { entity: { select: { clientId: true } } } });
+    const client = await getClientForFirm(entry.entity.clientId);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) return { ok: false, error: "Pilih tanggal jurnal pembalik." };
+    await reverseEntry(prisma, { clientId: client.id, entryId: input.entryId, date: new Date(`${input.date}T00:00:00Z`), actorId: (await getCurrentMember()).id });
+    revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
   } catch (e) {
     return fail(e);
@@ -442,6 +458,17 @@ export async function saveCkpnSettingAction(input: CkpnSettingInput) {
 }
 export async function postCkpnAction(input: { clientId: string; entityId: string; year: number; month: number }) {
   return taxWrite(input.clientId, (clientId, actorId) => postCkpn(prisma, { ...input, clientId, actorId }));
+}
+
+/** Month-end stock count (rule 5i): the typed value is read in the entity's currency; the journal is the difference from the books. */
+export async function recordInventoryCountAction(input: { clientId: string; entityId: string; year: number; month: number; amount: string; note?: string }) {
+  return taxWrite(input.clientId, async (clientId, actorId) => {
+    const entity = await prisma.entity.findFirst({ where: { id: input.entityId, clientId } });
+    if (!entity) throw new LedgerError("Pilih entitas.");
+    if (!input.amount.trim()) throw new LedgerError("Isi nilai persediaan hasil stock opname (0 bila habis).");
+    const amount = parseMoney(input.amount, entity.functionalCurrency);
+    return recordInventoryCount(prisma, { clientId, entityId: entity.id, year: input.year, month: input.month, amount, note: input.note, actorId });
+  });
 }
 
 export async function postTaxAction(input: { clientId: string; entityId: string; year: number; month: number; kind: TaxPostingKind }) {

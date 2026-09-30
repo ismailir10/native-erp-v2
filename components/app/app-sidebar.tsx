@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { BookOpen, Building2, ChartColumn, HandCoins, KeyRound, ReceiptText, Warehouse, ChevronDown, ClipboardCheck, Coins, FileSpreadsheet, FolderOpen, Home, Inbox, Landmark, ListFilter, LogOut, NotebookPen, Plus, Scale, Settings2, SlidersHorizontal, Upload, Users } from "lucide-react";
+import { BookOpen, Boxes, Building2, ChartColumn, HandCoins, KeyRound, ReceiptText, Warehouse, ChevronDown, ClipboardCheck, Coins, FileSpreadsheet, FolderOpen, Home, Inbox, Landmark, ListFilter, LogOut, NotebookPen, Plus, Scale, Settings2, SlidersHorizontal, Upload, Users } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { BrandMark } from "@/components/app/brand-mark";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
@@ -24,14 +24,15 @@ const ACCOUNTING = [
   { href: "/trial-balance", label: "Neraca Saldo", icon: Scale },
   { href: "/reports", label: "Laporan Keuangan", icon: FileSpreadsheet },
   { href: "/receivables", label: "Piutang & Utang", icon: HandCoins },
+  { href: "/inventory", label: "Persediaan", icon: Boxes },
   { href: "/assets", label: "Aset Tetap", icon: Warehouse },
   { href: "/leases", label: "Sewa (PSAK 116)", icon: KeyRound },
   { href: "/benefits", label: "Imbalan Kerja", icon: Users },
   { href: "/tax", label: "Pajak Badan", icon: ReceiptText },
+  { href: "/journals/new", label: "Jurnal Penyesuaian", icon: NotebookPen },
   { href: "/close", label: "Tutup Buku", icon: ClipboardCheck },
 ];
 const SETUP = [
-  { href: "/journals/new", label: "Jurnal Penyesuaian", icon: NotebookPen },
   { href: "/rates", label: "Kurs", icon: Coins },
   { href: "/settings", label: "Aturan klasifikasi", icon: ListFilter },
 ];
@@ -73,7 +74,7 @@ export function AppSidebar({ firmName, clients, user, documents = true }: { firm
       <SidebarContent>
         <SidebarGroup><SidebarMenu>{DESTINATIONS.filter((item) => documents || item.href !== "/documents").map((item) => <SidebarMenuItem key={item.href}><SidebarMenuButton isActive={pathname === item.href || (item.href !== "/" && pathname.startsWith(`${item.href}/`))} render={<Link href={destinationHref(item.href)} onClick={closeMobile} />}><item.icon /><span>{item.label}</span></SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu></SidebarGroup>
         {selectedClient && <SidebarGroup><SidebarGroupLabel>Akuntansi · {selectedClient.name}</SidebarGroupLabel><SidebarMenu><SidebarMenuItem><SidebarMenuButton isActive={pathname === `/clients/${selectedClient.id}`} render={<Link href={clientHref(selectedClient)} onClick={closeMobile} />}><Building2 /><span>Ringkasan klien</span></SidebarMenuButton>{accountingLinks(ACCOUNTING, selectedClient)}</SidebarMenuItem><Collapsible open={inSetup || setupOpen} onOpenChange={setSetupOpen} render={<SidebarMenuItem />}><CollapsibleTrigger render={<SidebarMenuButton className="group/trigger text-sidebar-foreground/70" />}><Settings2 /><span>Pengaturan klien</span><ChevronDown className="ml-auto transition-transform group-data-[panel-open]/trigger:rotate-180" /></CollapsibleTrigger><CollapsibleContent>{accountingLinks(SETUP, selectedClient)}</CollapsibleContent></Collapsible></SidebarMenu></SidebarGroup>}
-        <SidebarGroup><Collapsible defaultOpen={!selectedClient}><CollapsibleTrigger render={<SidebarGroupLabel render={<button type="button" />} className="group/trigger w-full cursor-pointer hover:bg-sidebar-accent" />}><span>Daftar klien ({clients.length})</span><ChevronDown className="ml-auto transition-transform group-data-[panel-open]/trigger:rotate-180" /></CollapsibleTrigger><CollapsibleContent><SidebarMenu>{clients.map((client) => <SidebarMenuItem key={client.id}><SidebarMenuButton isActive={client.id === selectedClient?.id} render={<Link href={clientHref(client)} onClick={closeMobile} />}><Building2 /><span>{client.name}</span></SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu></CollapsibleContent></Collapsible><SidebarMenu><SidebarMenuItem><SidebarMenuButton render={<Link href="/clients/new" onClick={closeMobile} />}><Plus /><span>Tambah klien</span></SidebarMenuButton></SidebarMenuItem></SidebarMenu></SidebarGroup>
+        <SidebarGroup><Collapsible key={selectedClient ? "client" : "firm"} defaultOpen={!selectedClient}><CollapsibleTrigger render={<SidebarGroupLabel render={<button type="button" />} className="group/trigger w-full cursor-pointer hover:bg-sidebar-accent" />}><span>Daftar klien ({clients.length})</span><ChevronDown className="ml-auto transition-transform group-data-[panel-open]/trigger:rotate-180" /></CollapsibleTrigger><CollapsibleContent><SidebarMenu>{clients.map((client) => <SidebarMenuItem key={client.id}><SidebarMenuButton isActive={client.id === selectedClient?.id} render={<Link href={clientHref(client)} onClick={closeMobile} />}><Building2 /><span>{client.name}</span></SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu></CollapsibleContent></Collapsible><SidebarMenu><SidebarMenuItem><SidebarMenuButton render={<Link href="/clients/new" onClick={closeMobile} />}><Plus /><span>Tambah klien</span></SidebarMenuButton></SidebarMenuItem></SidebarMenu></SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="border-t border-sidebar-border"><SidebarMenu><SidebarMenuItem><SidebarMenuButton isActive={pathname === "/settings"} render={<Link href={destinationHref("/settings")} onClick={closeMobile} />}><SlidersHorizontal /><span>Pengaturan</span></SidebarMenuButton></SidebarMenuItem><SidebarMenuItem><form action={signOutAction}><SidebarMenuButton type="submit"><LogOut /><span>Keluar</span></SidebarMenuButton></form></SidebarMenuItem></SidebarMenu>{user && <p className="truncate px-2 text-xs text-sidebar-foreground/70">{user.name} · {user.role}</p>}</SidebarFooter>
     </Sidebar>

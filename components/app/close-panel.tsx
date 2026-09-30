@@ -66,7 +66,9 @@ export function ClosePanel(props: {
       }
     });
 
-  const groups = [...new Set(props.controls.map((c) => c.scope))];
+  // Groups with something to do come first (a group-level problem must not hide under a company's passing controls).
+  const worst = (g: string) => Math.min(...props.controls.filter((c) => c.scope === g).map((c) => ORDER[c.status]));
+  const groups = [...new Set(props.controls.map((c) => c.scope))].sort((a, b) => worst(a) - worst(b));
 
   return (
     <div className="grid gap-4 lg:grid-cols-3">
@@ -87,6 +89,11 @@ export function ClosePanel(props: {
                     <div className="text-sm font-medium">{c.title}</div>
                     <div className="text-xs text-muted-foreground">{c.detail}</div>
                     {c.ack && <div className="mt-1 flex items-center gap-1 text-xs text-foreground"><MessageSquare className="size-3" /> {c.ack}</div>}
+                    {c.staleAck && (
+                      <div className="mt-1 flex items-center gap-1 text-xs text-review" data-testid="stale-ack">
+                        <MessageSquare className="size-3" /> Catatan lama: “{c.staleAck}” — kondisinya berubah, periksa dan beri catatan lagi.
+                      </div>
+                    )}
                   </div>
                   {c.href && c.status !== "PASS" && (
                     <Link href={c.href} className="text-sm font-medium text-primary hover:underline">Periksa</Link>
@@ -97,8 +104,8 @@ export function ClosePanel(props: {
                     </Button>
                   )}
                   {c.status === "REVIEW" && !props.locked && (
-                    <Button variant="outline" size="sm" onClick={() => { setAckFor(c); setNote(c.ack ?? ""); }}>
-                      {c.ack ? "Ubah catatan" : "Beri catatan"}
+                    <Button variant="outline" size="sm" onClick={() => { setAckFor(c); setNote(c.ack ?? c.staleAck ?? ""); }}>
+                      {c.ack ? "Ubah catatan" : c.staleAck ? "Perbarui catatan" : "Beri catatan"}
                     </Button>
                   )}
                   {explained[c.key] && (
@@ -240,7 +247,7 @@ export function ClosePanel(props: {
             <DialogTitle>Catatan: {ackFor?.title}</DialogTitle>
             <DialogDescription>{ackFor?.detail}. Jelaskan kenapa ini wajar. Catatan ikut tersimpan di arsip tutup buku.</DialogDescription>
           </DialogHeader>
-          <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="mis. Transfer pinjaman pemilik, bukti di folder klien" rows={3} />
+          <Textarea aria-label="Catatan kontrol" value={note} onChange={(e) => setNote(e.target.value)} placeholder="mis. Transfer pinjaman pemilik, bukti di folder klien" rows={3} />
           <DialogFooter>
             <Button variant="outline" onClick={() => setAckFor(null)}>Batal</Button>
             <Button
