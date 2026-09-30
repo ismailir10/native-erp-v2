@@ -22,7 +22,7 @@ import { candidateViews, type CandidateView } from "@/lib/receivables/view";
 import { postCkpn, saveCkpnSetting, type CkpnSettingInput } from "@/lib/receivables/ckpn";
 import { taxPack } from "@/lib/tax/pack";
 import { postTax } from "@/lib/tax/post";
-import { acceptSuggestion, addCorrection, addCredit, deleteCorrection, deleteCredit, deleteLoss, dismissSuggestion, setCorrectionPercent, setLoss, setRegime, type CorrectionInput, type CreditInput } from "@/lib/tax/records";
+import { acceptSuggestion, addCorrection, addCredit, deleteCorrection, deleteCredit, deleteLoss, dismissSuggestion, setCorrectionPercent, setLoss, setRegime, setTaxMonth, type CorrectionInput, type CreditInput } from "@/lib/tax/records";
 import type { TaxPostingKind, TaxRegime } from "@/lib/generated/prisma/enums";
 import { AccountMismatchError, ParseError, YearNeededError } from "@/lib/import/types";
 import { PdfPasswordError } from "@/lib/import/parsers/pdf";
@@ -429,6 +429,10 @@ export async function addCreditAction(input: Omit<CreditInput, "actorId">) {
 }
 export async function deleteCreditAction(clientId: string, creditId: string) {
   return taxWrite(clientId, (id) => deleteCredit(prisma, { clientId: id, creditId }));
+}
+/** The masa pajak of a PPh 25 instalment: which year's credit it is (lib/tax/records.ts). */
+export async function setTaxMonthAction(clientId: string, bankTransactionId: string, month: string) {
+  return taxWrite(clientId, (id) => setTaxMonth(prisma, { clientId: id, bankTransactionId, month }));
 }
 /** The accountant's click: the tax journal of a kind, as the difference from what is already booked. */
 export async function saveCkpnSettingAction(input: CkpnSettingInput) {

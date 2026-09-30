@@ -5,6 +5,7 @@ import { postBankTransaction } from "@/lib/ledger/bank";
 import { LedgerError } from "@/lib/ledger/post";
 import { isGenericKey } from "@/lib/import/normalize";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
+import { defaultTaxMonth } from "@/lib/tax/masa";
 import { checkWithholding, type Withholding } from "@/lib/tax/withholding";
 
 type ReviewArgs = {
@@ -63,6 +64,8 @@ export async function reviewTransactionTx(tx: Tx, args: ReviewArgs) {
       status: "REVIEWED",
       accountCode: args.accountCode,
       taxTag: args.taxTag,
+      // The masa pajak of a PPh 25 instalment: the month before payment unless the accountant set one; none once it isn't PPh 25.
+      taxMonth: args.taxTag === "PPH_25" ? (t.taxMonth ?? defaultTaxMonth(t.date)) : null,
       whtKind: withholding?.kind ?? null,
       whtAmount: withholding?.amount ?? 0n,
       method: changed ? "MANUAL" : t.method,

@@ -12,6 +12,7 @@ import { AUTO_POST_CONFIDENCE, type Classification } from "@/lib/classify/types"
 import { suggestWithAi } from "@/lib/ai/classify";
 import type { AiProvider } from "@/lib/ai/provider";
 import { postBankTransaction } from "@/lib/ledger/bank";
+import { defaultTaxMonth } from "@/lib/tax/masa";
 import { formatPeriod } from "@/lib/format";
 
 export type ImportSummary = {
@@ -244,6 +245,7 @@ export async function importStatement(
             accountCode: auto ? c.accountCode : ACCOUNT_CODES.SUSPENSE,
             suggestedCode: c.accountCode,
             taxTag: c.taxTag,
+            taxMonth: c.taxTag === "PPH_25" ? defaultTaxMonth(it.date) : null,
           },
         });
         idMap.set(it.id, created.id);

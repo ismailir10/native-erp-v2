@@ -331,6 +331,8 @@ model BankTransaction {
   /// Tax withheld from this payment (the part not in the bank amount): on the classification side of the line's journal.
   whtKind       WithholdingKind?
   whtAmount     BigInt              @default(0)
+  /// Masa pajak of a PPh 25 instalment (first day of the month it is for); set when the line is classified, editable. Null = counted by bank date.
+  taxMonth      DateTime?           @db.Date
   matchedTxId   String?
   entries       JournalEntry[]
   proposals     ProposedEntry[]

@@ -26,7 +26,7 @@ function toView(p: TaxPack) {
     compensation: s(p.compensation),
     lossSuggestion: p.lossSuggestion ? { originYear: p.lossSuggestion.originYear, amount: s(p.lossSuggestion.amount) } : null,
     tax: { regime: p.tax.regime, pkp: s(p.tax.pkp), facilityPkp: s(p.tax.facilityPkp), facilityTax: s(p.tax.facilityTax), regularPkp: s(p.tax.regularPkp), regularTax: s(p.tax.regularTax), due: s(p.tax.due) },
-    credits: p.credits.map((c) => ({ key: c.key, type: c.type, label: c.label, date: formatDate(c.date), month: `${c.date.getUTCFullYear()}-${String(c.date.getUTCMonth() + 1).padStart(2, "0")}`, amount: s(c.amount), accountCode: c.accountCode, source: c.source })),
+    credits: p.credits.map((c) => ({ key: c.key, type: c.type, label: c.label, date: formatDate(c.date), month: `${c.date.getUTCFullYear()}-${String(c.date.getUTCMonth() + 1).padStart(2, "0")}`, masa: c.masa ? `${c.masa.getUTCFullYear()}-${String(c.masa.getUTCMonth() + 1).padStart(2, "0")}` : null, amount: s(c.amount), accountCode: c.accountCode, source: c.source })),
     settlement: p.settlement ? { credits: s(p.settlement.credits), balance: s(p.settlement.balance), nextInstalment: s(p.settlement.nextInstalment) } : null,
     deferred: p.deferred ? { assets: s(p.deferred.assets), allowance: s(p.deferred.allowance), leases: s(p.deferred.leases), employeeBenefits: s(p.deferred.employeeBenefits), temporaryDifference: s(p.deferred.temporaryDifference), amount: s(p.deferred.amount), oci: s(p.deferred.oci) } : null,
     proposals: { CURRENT: p.proposals.CURRENT.map((l) => ({ code: l.code, amount: s(l.amount) })), DEFERRED: p.proposals.DEFERRED.map((l) => ({ code: l.code, amount: s(l.amount) })) },

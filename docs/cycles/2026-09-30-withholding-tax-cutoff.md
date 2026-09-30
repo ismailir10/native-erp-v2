@@ -77,7 +77,7 @@ to numbers of existing bank lines or entries; no new dependency.
 - [x] T2 Withholding on the bank split (schema, `postBankTransaction`, review) — accept: scenario (b) and lease test
 - [x] T3 Withholding on invoices and settlements (schema, create, settle, unsettle, free amounts) — accept: scenario (a), `ar:`/`ap:` PASS
 - [x] T4 UI for withholding (invoice form, settle dialog, review) — accept: typecheck, lint, screenshot of the settle dialog
-- [ ] T5 PPh 25 masa pajak (schema, default at classification, pack query, edit in the pack) — accept: 12-instalment test
+- [x] T5 PPh 25 masa pajak (schema, default at classification, pack query, edit in the pack) — accept: 12-instalment test
 - [ ] T6 Cash flow: disposal proceeds and capex on payable in investing — accept: 120/90/40 test, Neraca reconciliation holds
 - [ ] T7 Docs (accounting-rules, README) and end-of-cycle gates — accept: gates pasted below
 
@@ -101,5 +101,9 @@ to numbers of existing bank lines or entries; no new dependency.
   + amount for any bank line — rent, services; this is where a payment without an invoice gets the option), `app/actions.ts` (`reviewAction` withholding, `settleAction`),
   `lib/receivables/{aging,view}.ts`, `lib/reports/account-ledger.ts`, `e2e/receivables.spec.ts` (a PPh 23 invoice on the fresh e2e client). The review queue itself is unchanged:
   its keyboard flow stays one decision per card; the option is one *Ubah akun* away (a follow-up if accountants want it inline).
+- T5: migration `20260930050300_tax_month` (`BankTransaction.taxMonth` date, nullable, no backfill), `lib/tax/masa.ts` (`defaultTaxMonth`), `lib/import/pipeline.ts` and `lib/review.ts`
+  (stored when a line is classified as PPh 25; cleared when it isn't), `lib/tax/pack.ts` (instalments by `taxMonth`, a line without one by bank date; `Credit.masa`),
+  `lib/tax/records.ts` (`setTaxMonth`: not after the payment month, refuses when December of the year it leaves or joins is locked), `app/actions.ts`, `lib/tax/view.ts`,
+  `components/app/tax-pack.tsx` (month input on each PPh 25 credit). Test `tests/db/tax-month.test.ts` (12 instalments, December paid 14 January).
 ## Verification
 ## Ship Notes
