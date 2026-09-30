@@ -65,7 +65,7 @@ new banks' *PDF* layouts beyond the header/date/amount variants above; changing 
 - [x] T6 D/K flag column (P6) — accept: bni-mobile-dk-flag.xlsx continuous.
 - [x] T7 Sen note + BRI empty balance (P7) — accept: note present and rows still whole Rupiah; bri-nobal.csv parses.
 - [x] T8 Bank tag from content + PDF preamble bank detection (P8) — accept: fixtures tagged; a multi-account PDF whose body mentions another bank keeps its own.
-- [ ] T9 Tambah klien empty bank row (F1) — accept: unit test on validation; visible message in the form.
+- [x] T9 Tambah klien empty bank row (F1) — accept: unit test on validation; visible message in the form.
 
 ## Implementation
 - Plan: tasks T1–T9 sequential, done inline (each touches the same parser files; no independent slice worth delegating).
@@ -77,6 +77,7 @@ new banks' *PDF* layouts beyond the header/date/amount variants above; changing 
 - T6: `parsers/tabular.ts` (`flagColumn`: the first column beside a single amount column whose non-empty cells are all D/K-type values — D/DB/DR/Debet/Debit out, K/CR/C/Kredit/Credit in — sets the sign of |amount|; excluded from the description; a dated movement row with no flag fails with its row number; a note says the column was used). Tests: 6 cases in `bank-parsers.test.ts`.
 - T7: `parsers/common.ts` (`SenWatch`: collects amounts/balances with a non-zero fraction via `parseCents`, one Bahasa note with up to three examples; `openingFromBalances`: opening from the first printed balance less the movement up to it), used by `tabular.ts`, `bca.ts`, `bri.ts`, `pdf.ts` → `ParsedStatement.notes` (the existing channel shown with the import). `parseRupiah` is untouched: amounts stay whole Rupiah, half-up (rule 6a). BRI with a balance column that is empty on the first rows derives the opening from a later balance; empty on every row → opening 0 plus a note that it is unknown (BCA's no-trailer fallback is the same 0).
 - T8: `parsers/pdf.ts` (`detectFormat` exported and stricter — bank names such as "Bank Mandiri", Livin', Kopra, "Bank Rakyat", BRImo, capital BCA, SMBC/Jenius, not a bare "Mandiri"/"Bri" that a company name contains; the multi-account path reads it from the lines above the first section, not the whole text), `parsers/tabular.ts` (a GENERIC statement takes its bank from the lines above and including the header; `isMandiriRows` removed — it scanned data rows). No enum change; a file that names no bank stays GENERIC (CIMB, BNI, Permata have no code).
+- T9: `lib/blank-bank.ts` (`isBlankBankRow`: no number, no name, not PRK), `lib/onboarding.ts` (`validateNewClient` skips blank rows but keeps their index in error keys), `components/app/client-form.tsx` (redirect uses the same helper; a server field error is also raised as a toast so it is seen off-screen), `tests/db/onboarding.test.ts`, `e2e/new-client-bank-row.spec.ts`. Finding: before the change the field message "Isi nomor rekening." *was* rendered under the row (the e2e step for it passed before), but the untouched default row blocked saving; the e2e step that saves with the empty row failed before the change and passes after.
 
 ## Verification
 - T1 gate: lint clean, typecheck clean, `npm test` 95 files / 638 tests passed. New tests failed before the change (BRI IB fixture: "Baris 'Periode' BCA tidak ditemukan").
@@ -87,5 +88,6 @@ new banks' *PDF* layouts beyond the header/date/amount variants above; changing 
 - T6 gate: lint, typecheck clean; `npm test` 96 files / 693 tests passed. New tests failed before (all amounts positive; missing flag not refused).
 - T7 gate: lint, typecheck clean; `npm test` 96 files / 698 tests passed. New tests failed before (no note; BRI "Saldo awal tidak dapat ditentukan (kolom saldo kosong)").
 - T8 gate: lint, typecheck clean; `npm test` 96 files / 709 tests passed. New tests failed before (CSV always GENERIC, a data row mentioning Mandiri tagged MANDIRI, a Mandiri PDF whose transaction names Jenius tagged SMBC).
+- T9 gate: lint, typecheck clean; `npm test` 96 files / 710 tests passed. The new unit test failed before ("Periksa 2 isian yang ditandai."). `e2e/new-client-bank-row.spec.ts` against `next dev` on :3200: failed before (no navigation after saving with an empty row), `1 passed` after.
 
 ## Ship Notes
