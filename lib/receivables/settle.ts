@@ -2,7 +2,7 @@ import type { Db, Tx } from "@/lib/db";
 import { LedgerError } from "@/lib/ledger/post";
 import { reviewTransactionTx, setWithholdingTx } from "@/lib/review";
 import type { WithholdingKind } from "@/lib/generated/prisma/enums";
-import { checkWithholding } from "@/lib/tax/withholding";
+import { checkWithholding, WITHHOLDING_LABEL } from "@/lib/tax/withholding";
 import { formatPeriod } from "@/lib/format";
 import { formatMoney, parseMoney } from "@/lib/money";
 
@@ -66,6 +66,9 @@ async function settleTx(tx: Tx, input: SettleInput) {
   if (explicitWht !== null && explicitWht < 0n) throw new LedgerError("Pemotongan pajak tidak boleh negatif.");
   // Cash: what was asked, else the most both can take (less the expected withholding when that is what closes the invoice).
   const expected = invoice.whtAmount - invoice.settlements.reduce((s, x) => s + x.withheld, 0n);
+  // Tax the accountant already recorded on the bank line by hand (Ubah akun) and no settlement has claimed yet: this settlement adopts it.
+  const pool = t.whtAmount - t.settlements.reduce((s, x) => s + x.withheld, 0n);
+  const expectedTax = pool > expected ? pool : expected;
   let cash: bigint;
   if (input.amount?.trim()) cash = parseMoney(input.amount, cur);
   else if (explicitWht !== null) cash = open - explicitWht < free ? open - explicitWht : free;
@@ -73,7 +76,7 @@ async function settleTx(tx: Tx, input: SettleInput) {
   if (cash <= 0n) throw new LedgerError("Nominal pencocokan harus lebih dari nol.");
   if (cash > free) throw new LedgerError(`Melebihi sisa mutasi yang belum dicocokkan (${formatMoney(free, cur)}).`);
   const shortfall = open - cash;
-  const withheld = explicitWht ?? (shortfall > 0n && expected > 0n && shortfall <= expected ? shortfall : 0n);
+  const withheld = explicitWht ?? (shortfall > 0n && expectedTax > 0n && shortfall <= expectedTax ? shortfall : 0n);
   const amount = cash + withheld;
   if (amount > open) throw new LedgerError(`Melebihi sisa ${invoice.number} (${formatMoney(open, cur)}).`);
   const exists = await tx.invoiceSettlement.findUnique({ where: { invoiceId_bankTransactionId: { invoiceId: invoice.id, bankTransactionId: t.id } } });
@@ -82,10 +85,14 @@ async function settleTx(tx: Tx, input: SettleInput) {
   if (withheld > 0n) {
     // The tax leg goes on the bank line's classification side (rule 3: a RECLASS of the difference), so the payable/receivable account
     // moves by the gross the invoice was cleared by.
-    const kind = invoice.whtKind ?? input.whtKind;
+    const kind = invoice.whtKind ?? input.whtKind ?? t.whtKind;
     if (!kind) throw new LedgerError("Pilih jenis pajak yang dipotong.");
-    if (t.whtKind && t.whtKind !== kind) throw new LedgerError(`Mutasi ini sudah mencatat pemotongan ${t.whtKind.replace("PPH_", "PPh ").replace("4_2", "4(2)")} dari jenis lain.`);
-    await setWithholdingTx(tx, t.id, checkWithholding({ kind, amount: t.whtAmount + withheld }, t.direction), input.actorId);
+    if (t.whtKind && t.whtKind !== kind) {
+      throw new LedgerError(`Mutasi ini sudah mencatat pemotongan ${WITHHOLDING_LABEL[t.whtKind]}, sedangkan pencocokan ini ${WITHHOLDING_LABEL[kind]}. Samakan jenisnya (ubah pemotongan di mutasi) sebelum mencocokkan.`);
+    }
+    // Only what the line does not carry yet is added: a recorded tax is adopted, never booked twice.
+    const missing = withheld - pool;
+    if (missing > 0n) await setWithholdingTx(tx, t.id, checkWithholding({ kind, amount: t.whtAmount + missing }, t.direction), input.actorId);
   }
   return created;
 }
