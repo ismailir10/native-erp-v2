@@ -62,7 +62,7 @@ new banks' *PDF* layouts beyond the header/date/amount variants above; changing 
 - [x] T3 Header patterns (P4) — accept: `Post Date` / `Transaction Desc` / `Debit (IDR)` layouts parse (needs T2 for the delimiter cases only where noted).
 - [x] T4 Month-name & serial dates in tabular files (P2, part 1) — accept: bni-direct.xlsx, mandiri-livin signed xlsx, cimb `;` csv, serial xlsx.
 - [x] T5 PDF dates, `+`/`Rp` amounts, no silent zero (P2 part 2, P3) — accept: cimb-dd-Mmm-yyyy.pdf and mandiri-livin-nominal-plus.pdf.
-- [ ] T6 D/K flag column (P6) — accept: bni-mobile-dk-flag.xlsx continuous.
+- [x] T6 D/K flag column (P6) — accept: bni-mobile-dk-flag.xlsx continuous.
 - [ ] T7 Sen note + BRI empty balance (P7) — accept: note present and rows still whole Rupiah; bri-nobal.csv parses.
 - [ ] T8 Bank tag from content + PDF preamble bank detection (P8) — accept: fixtures tagged; a multi-account PDF whose body mentions another bank keeps its own.
 - [ ] T9 Tambah klien empty bank row (F1) — accept: unit test on validation; visible message in the form.
@@ -74,6 +74,7 @@ new banks' *PDF* layouts beyond the header/date/amount variants above; changing 
 - T3: `parsers/tabular.ts` (wider date/desc/debit/credit patterns; a header names date and description in different cells; a bracketed currency after a label — "Debit (IDR)" — is ignored), `parsers/pdf.ts` (same label additions and unit stripping for the PDF header row).
 - T4: `parsers/common.ts` (one shared `dateParts`: numeric with 2/4-digit year and an optional time, ISO, month names Indonesian/English (`dd-Mmm-yy`, `dd Mmm yyyy`, `Mmm dd, yyyy`), year-less; `excelSerialDate` behind an opt-in for tabular date cells; `MONTHS` moved here; `parseDateDMY` uses it — BRI now also reads `dd-Mmm-yy`), `parsers/tabular.ts` uses it. Tests: `tests/unit/bank-dates.test.ts`, four end-to-end layouts in `bank-parsers.test.ts`.
 - T5: `parsers/pdf.ts` (`parseDate` on the shared `dateParts`: month names, hyphens, 2-digit years; `NUMBER` takes a leading `+`/`-` and `Rp`/`IDR`; a digit-and-punctuation figure under an amount column that isn't a number marks its row `unreadable`, and a dated row that ends with no amount but such a figure fails the parse with the page and text instead of becoming 0). Tests: 6 PDF cases in `bank-parsers.test.ts`.
+- T6: `parsers/tabular.ts` (`flagColumn`: the first column beside a single amount column whose non-empty cells are all D/K-type values — D/DB/DR/Debet/Debit out, K/CR/C/Kredit/Credit in — sets the sign of |amount|; excluded from the description; a dated movement row with no flag fails with its row number; a note says the column was used). Tests: 6 cases in `bank-parsers.test.ts`.
 
 ## Verification
 - T1 gate: lint clean, typecheck clean, `npm test` 95 files / 638 tests passed. New tests failed before the change (BRI IB fixture: "Baris 'Periode' BCA tidak ditemukan").
@@ -81,5 +82,6 @@ new banks' *PDF* layouts beyond the header/date/amount variants above; changing 
 - T3 gate: lint, typecheck clean; `npm test` 95 files / 649 tests passed. The 6 new header tests failed before (NoTableError / missing amount column).
 - T4 gate: lint, typecheck clean; `npm test` 96 files / 680 tests passed. New tests failed before (`dateParts is not a function`; "Format tanggal tidak dikenali … 01/08/26 10:15:30 / 01-Aug-2026 / 01 Agu 2026 / 46235").
 - T5 gate: lint, typecheck clean; `npm test` 96 files / 686 tests passed. New PDF tests failed before ("Tidak ada baris transaksi yang terbaca"; Livin' amounts `0n,-2450000n,…`; the unreadable amount resolved instead of rejecting).
+- T6 gate: lint, typecheck clean; `npm test` 96 files / 693 tests passed. New tests failed before (all amounts positive; missing flag not refused).
 
 ## Ship Notes

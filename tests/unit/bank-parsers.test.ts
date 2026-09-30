@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseStatement } from "@/lib/import/parsers";
 import { checkContinuity } from "@/lib/import/normalize";
-import { BAL, TX, bniDirectCsv, briInternetBankingCsv, cimbPdf, idn, mandiriLivinPdf, mandiriLivinXlsx, serialDateXlsx, cimbOctoCsv, expectAugust, p2, permataCsv, titleWithCommasSemicolonCsv, utf16TabCsv } from "../bank-fixture";
+import { BAL, TX, bniDirectCsv, bniDirectXlsx, bniMobileXlsx, xlsxBuffer, briInternetBankingCsv, cimbPdf, idn, mandiriLivinPdf, mandiriLivinXlsx, serialDateXlsx, cimbOctoCsv, expectAugust, p2, permataCsv, titleWithCommasSemicolonCsv, utf16TabCsv } from "../bank-fixture";
 
 describe("routing: bank CSVs that borrow BCA's words", () => {
   it("reads a BRI internet-banking CSV titled 'Mutasi Rekening' with a 'Tanggal Transaksi' header", async () => {
@@ -135,5 +135,37 @@ describe("PDF statements: month-name dates, signed / Rp amounts", () => {
   it("refuses an amount it can't read instead of posting the row as 0", async () => {
     const broken = mandiriLivinPdf((a) => (a === 45_678 ? "45.6x8,00" : (a > 0 ? "+" : "-") + idn(a)));
     await expect(parseStatement("livin.pdf", broken)).rejects.toThrow(/45\.6x8,00.*tidak bisa dibaca/);
+  });
+});
+
+describe("a separate D/K flag column beside an unsigned amount", () => {
+  it("reads BNI Mobile's Tipe (DB/CR) column", async () => {
+    expectAugust(await parseStatement("bni-mobile.xlsx", await bniMobileXlsx()));
+  });
+
+  it("reads BNI Direct's D/K column (with dd-Mmm-yy dates and a SALDO AWAL row)", async () => {
+    const st = await parseStatement("bni-direct.xlsx", await bniDirectXlsx());
+    expectAugust(st);
+    expect(st.notes?.join(" ")).toMatch(/D\/K/);
+  });
+
+  it.each([
+    ["Debet", "Kredit"],
+    ["DR", "CR"],
+    ["d", "k"],
+  ])("reads %s / %s as out / in", async (out, into) => {
+    const rows = TX.map((t, i) => [`${p2(t.d)}/08/2026`, t.desc.join(" "), Math.abs(t.amt), t.amt < 0 ? out : into, BAL[i]]);
+    const st = await parseStatement("x.xlsx", await xlsxBuffer("S", [["Tanggal", "Keterangan", "Nominal", "Jenis", "Saldo"], ...rows]));
+    expectAugust(st);
+  });
+
+  it("refuses a row whose flag is missing rather than guessing its side", async () => {
+    const rows = TX.map((t, i) => [`${p2(t.d)}/08/2026`, t.desc.join(" "), Math.abs(t.amt), i === 1 ? "" : t.amt < 0 ? "DB" : "CR", BAL[i]]);
+    await expect(parseStatement("x.xlsx", await xlsxBuffer("S", [["Tanggal", "Keterangan", "Jumlah", "Tipe", "Saldo"], ...rows]))).rejects.toThrow(/D\/K.*baris 3/);
+  });
+
+  it("leaves a signed amount column with a text column of other values alone", async () => {
+    const rows = TX.map((t, i) => [`${p2(t.d)}/08/2026`, t.desc.join(" "), t.amt, i % 2 ? "QRIS" : "TRANSFER", BAL[i]]);
+    expectAugust(await parseStatement("x.xlsx", await xlsxBuffer("S", [["Tanggal", "Keterangan", "Jumlah", "Kanal", "Saldo"], ...rows])));
   });
 });

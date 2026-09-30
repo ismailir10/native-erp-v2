@@ -21,6 +21,9 @@ const HEADER_PATTERNS = {
 };
 /** "Debit (IDR)", "Jumlah (Rp)", "Saldo (IDR)": the currency in brackets after a label isn't part of the label. */
 const withoutUnit = (h: string) => h.replace(/\s*\((?:idr|rp\.?|rupiah|[a-z]{3})\)\s*$/i, "").trim();
+/** The values of a D/K column: only these, in a column beside an unsigned amount. Debit = money out of the account (the bank's way). */
+const FLAG_VALUE = /^(d|k|db|cr|dr|c|debet|debit|kredit|credit)$/i;
+const FLAG_OUT = /^(d|db|dr|debet|debit)$/i;
 const OPENING_ROW = /^(saldo\s*awal|opening\s*balance|beginning\s*balance|saldo\s*sebelumnya)\b/i;
 const CLOSING_ROW = /^(saldo\s*akhir|closing\s*balance|ending\s*balance)\b/i;
 const TOTAL_ROW = /^(total|jumlah|mutasi\s*(debet|debit|kredit|credit))\b/i;
@@ -113,6 +116,14 @@ function accountIn(line: string): string | null {
   return null;
 }
 
+/** The first column (of `candidates`) whose every non-empty cell below the header is a D/K-type value, with at least one. */
+function flagColumn(body: string[][], candidates: number[]): number {
+  return candidates.find((c) => {
+    const values = body.map((r) => (r[c] ?? "").trim()).filter(Boolean);
+    return values.length > 0 && values.every((v) => FLAG_VALUE.test(v));
+  }) ?? -1;
+}
+
 export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}): Parsed {
   // A header names the date and the description in two different cells (one unsplit line of a wrongly split file names both in one).
   const isHeader = (r: string[]) => {
@@ -132,11 +143,13 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
   const cBal = find(HEADER_PATTERNS.balance);
   if ((cDb < 0 || cCr < 0) && cAmt < 0) throw new ParseError("Kolom debet/kredit atau jumlah tidak ditemukan");
   const split = cDb >= 0 && cCr >= 0;
+  // A column of only D/K-type values beside a single unsigned amount column says which way each amount goes.
+  const cFlag = split ? -1 : flagColumn(rows.slice(headerIdx + 1), header.map((_, c) => c).filter((c) => ![cDate, cDesc, cAmt, cBal].includes(c)));
   const money = [split ? cDb : -1, split ? cCr : -1, split ? -1 : cAmt, cBal].filter((c) => c >= 0);
   // The description, plus unlabeled text columns between the date and the first amount (e.g. the transaction type).
   const firstMoney = Math.min(...money);
   const descCols = [...new Set([cDesc, ...header.map((h, i) => (i > cDate && i < firstMoney && !h.trim() ? i : -1)).filter((i) => i >= 0)])]
-    .filter((i) => i !== cDate && !money.includes(i))
+    .filter((i) => i !== cDate && i !== cFlag && !money.includes(i))
     .sort((a, b) => a - b);
 
   let accountNumber: string | null = null;
@@ -182,12 +195,18 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
     if (noMovement) continue;
     const debit = split ? num(r, cDb) : 0n;
     const credit = split ? num(r, cCr) : 0n;
+    let amount = split ? credit - debit : num(r, cAmt);
+    if (cFlag >= 0) {
+      const f = (r[cFlag] ?? "").trim();
+      if (!FLAG_VALUE.test(f)) throw new ParseError(`Kolom D/K kosong di baris ${i + 1}: arah uang (masuk/keluar) tidak bisa ditentukan. Isi tandanya atau ekspor ulang.`);
+      amount = FLAG_OUT.test(f) ? -(amount < 0n ? -amount : amount) : amount < 0n ? -amount : amount;
+    }
     drafts.push({
       parts,
       description: text,
       debit,
       credit,
-      amount: split ? credit - debit : num(r, cAmt),
+      amount,
       balance: cBal >= 0 && r[cBal] ? parseRupiah(r[cBal]) : null,
       rowNumber: i + 1,
       rawRow: r.map((c) => c.replace(/\s+/g, " ").trim()).join(" | "),
@@ -225,6 +244,7 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
 
   // ---- direction: the bank's way (kredit = masuk) unless only the books' way (debet = masuk) keeps the balance continuous ----
   const notes: string[] = [];
+  if (cFlag >= 0) notes.push(`Kolom "${header[cFlag] || "D/K"}" dipakai sebagai tanda D/K: D / DB / Debet = uang keluar, K / CR / Kredit = uang masuk.`);
   const opening = (flip: boolean): bigint | null => {
     if (openingRow?.balance !== undefined && openingRow?.balance !== null) return openingRow.balance;
     const f = drafts[0];
