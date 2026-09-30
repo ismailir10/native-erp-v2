@@ -72,7 +72,7 @@ Their findings, confirmed against the code, that this cycle fixes:
       jurnal*: a new `ADJUSTMENT` with every line mirrored, dated by the accountant (default the 1st of the next month), memo "Pembalik: …",
       refused in a locked month and when already reversed (stored `reversesId`).
 - [x] **S10 Saldo Awal shows its plug.** Totals of debit and credit and the difference that goes to 3200 Saldo Laba, live, before saving.
-- [ ] **S11 Docs + tests.** DB tests for S1, S2, S4, S5, S7, S9; unit tests for the gross-up, rule order and hints; e2e for the Persediaan page
+- [x] **S11 Docs + tests.** DB tests for S1, S2, S4, S5, S7, S9; unit tests for the gross-up, rule order and hints; e2e for the Persediaan page
       and review filters; accounting-rules, README and ui-rules rows; full gate incl. `verify:books`.
 
 **Gate reopeners (approved up front by the user's "just get them done"):** schema migration (InventoryCount, ControlAck.detail,
@@ -103,7 +103,7 @@ print styles; a fuller CALK (akta, pihak berelasi); PPh 23 at accrual instead of
 - [x] T9 S8 Beranda, menu, locked journal form — accept: unit/DB test for ordering; screenshot.
 - [x] T10 S9 reverse manual journal — accept: DB test (mirror, once, locked refused).
 - [x] T11 S10 Saldo Awal totals — accept: screenshot.
-- [ ] T12 S11 docs + full gate.
+- [x] T12 S11 docs + full gate.
 
 ## Implementation
 - Plan: tasks T1–T12 sequential, inline (they share `app/actions.ts`, the close page and the review queue; one driver keeps the invariants
@@ -166,6 +166,35 @@ print styles; a fuller CALK (akta, pihak berelasi); PPh 23 at accrual instead of
 - T11: `components/app/opening-form.tsx` (a *Jumlah* footer with the plug included, and a note naming the difference that goes to 3200 —
   highlighted for a company with no 31xx capital line, "modal tidak ikut tercatat sebagai saldo laba"), opening page passes `company`.
   Checked in the browser: bank lines + Piutang 350 jt → *Selisih Rp 1.429.000.000 dicatat ke 3200 … di sisi kredit* with the capital hint.
+- T12: README rows (Import, Classify, Ledger, Persediaan, Pajak Badan, Reports, Close), `docs/demo/investor-demo.md` (two *Perlu dicek* at
+  the close — the stock count is noted; reopening clears the sign-offs). The first full e2e run found three things, fixed here:
+  "KANTOR KONSULTAN PAJAK" (a consultant's fee in the demo) was suggested as a tax liability — `taxPaymentSuggestion` now needs a paying
+  word (BAYAR/SETOR/PEMBAYARAN PAJAK), a state marker (MPN, DJP, SSP, KPP, NTPN, kode billing) or a bare "PAJAK"; `nativeButton={false}`
+  made "Kembali ke dokumen" a role=button — the three spots use `buttonVariants` on a `Link`; the investor walk notes the new stock-count
+  control and re-ticks the sign-offs after reopening.
 ## Verification
-- After T2: `npm test` → `Test Files 113 passed (113)`, `Tests 840 passed (840)`.
+- After T2: `npm test` → `Test Files 113 passed (113)`, `Tests 840 passed (840)`. After T6: `Test Files 113 passed (113)`, `Tests 849 passed (849)`.
+- End of cycle, on the last code commit (each run in this sandbox): `npm run lint` clean · `npm run typecheck` clean · `npm test` →
+  `Test Files 115 passed (115)`, `Tests 855 passed (855)` · `npm run build` compiled · `npm run demo:reset && npm run verify:books` →
+  `ALL PASS — 1741 pemeriksaan saldo cocok dengan ground truth.` (1717 before: the template's new 5190 adds checks) ·
+  `npm run test:e2e` → `28 passed (3.4m)`, and again with `DEMO_MODE=false` (CI's private-mode pass) → `28 passed (3.5m)`.
+- How e2e ran here: Supabase Auth is blocked from this sandbox, so a local stand-in for the GoTrue endpoints the app uses (password token,
+  `/user`, admin users) served `NEXT_PUBLIC_SUPABASE_URL`; everything else is the real app on `next start`. `xlsx@0.18.5` stands in for the
+  CDN tarball (untracked). CI runs the real local Supabase stack.
+- Browser checks (screenshots looked at): Persediaan page before/after a count; Laba Rugi with 5190 and the CALK HPP table; review queue
+  on a rules-only client (Enter on a guess, gross-up, filters); Neraca with the draft bar, subtotals and the *Saldo awal* comparative; the
+  journal form in a closed month; Saldo Awal totals.
 ## Ship Notes
+- **Migrations (4):** `20260930060000_control_ack_detail` (column), `20260930060100_inventory_count` (table), `20260930060200_tax_code_rules`
+  (data: 8 firm rules per existing firm, idempotent), `20260930060300_entry_reversal` (column + unique FK). Applied by `vercel-build`.
+- **Env vars:** none. **New dependency:** none. **AI calls:** none added (tax-payment text is suggested without AI).
+- **Behaviour changes to know:**
+  - Existing control notes keep working (no stored detail); new notes lapse when the control's text changes.
+  - Reopening a month clears its sign-offs.
+  - Trading clients and every entity holding Persediaan get a REVIEW *Persediaan akhir* in each open month until a count or a note.
+  - Tax payments by KAP code now auto-post to their liability; a client rule no longer overrides a strictly more specific firm rule.
+  - Under PP 55/2022 the pack now proposes the 8200 / 2145 journal.
+  - An unchanged simple guess is not learned; Enter doesn't accept it.
+  - A statement ending before an account's first statement must hand over its balance, else it is refused.
+- **Rollback:** revert the merge commit. The migrations are additive; leaving them in place is harmless to the previous code (new
+  columns nullable, new table unused, extra firm rules only file tax payments by code).
