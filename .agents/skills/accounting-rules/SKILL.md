@@ -92,7 +92,7 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     template account created on first use when the code is free. An `Invoice` may name the expected tax (`whtKind`, `whtAmount` on the DPP); it stays gross and posts as before. An
     `InvoiceSettlement.amount` is what it clears on the invoice (gross); `withheld` is the tax part of it, so open amount, aging, CKPN and `ar:`/`ap:` still read Σ amount. A settlement that
     closes the invoice with a shortfall within the expected tax books that tax by default (else it is typed); a bank line's free amount = |amount| − Σ (amount − withheld). Tax on a
-    settled line changes only by (un)settling. It is never added to the tax pack's credits on its own (the accountant types the bukti potong).
+    settled line changes only by (un)settling (kind and amount). Tax already recorded on the line by hand is adopted by the settlement, never added on top (only the missing difference is; another kind is refused). It is never added to the tax pack's credits on its own (the accountant types the bukti potong).
 5e. **CKPN piutang — PSAK 109 simplified approach** (`lib/receivables/ckpn.ts`): per entity with a saved `CkpnSetting`, computed at read
     time from its **sales invoices and settlements** (no stored aging). Loss rates are **Roll rate** (invoice by invoice between consecutive
     month-ends over the last N months: of what was open in a bucket and has aged beyond it by the next month-end, the share still open, capped
