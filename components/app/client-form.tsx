@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { addClientAction, createEvidenceClientAction } from "@/app/actions";
 import { CURRENCIES, CURRENCY_CODES } from "@/lib/fx/currency";
+import { isBlankBankRow } from "@/lib/blank-bank";
 
 import type { NewClientInput } from "@/lib/onboarding";
 
@@ -62,6 +63,8 @@ export function ClientForm({ initial, evidenceIntakeId, onCreated }: { initial?:
       if (!r.ok) {
         if (r.fields) {
           setErrors(r.fields);
+          // The marked field may be off-screen (a bank row far down): say it here too.
+          toast.error(r.error);
           // Focus the first marked field so the message is where the user is looking.
           requestAnimationFrame(() => document.querySelector<HTMLElement>("[aria-invalid=true]")?.focus());
         } else toast.error(r.error);
@@ -69,7 +72,7 @@ export function ClientForm({ initial, evidenceIntakeId, onCreated }: { initial?:
       }
       toast.success(`${name} ditambahkan`);
       // Ledger-only clients start with the ledger import; clients with bank accounts with Saldo Awal.
-      router.push(entities.some((e) => e.banks.length) ? `/clients/${r.clientId}/opening` : `/clients/${r.clientId}/import?tab=ledger`);
+      router.push(entities.some((e) => e.banks.some((b) => !isBlankBankRow(b))) ? `/clients/${r.clientId}/opening` : `/clients/${r.clientId}/import?tab=ledger`);
     } finally {
       setBusy(false);
     }
