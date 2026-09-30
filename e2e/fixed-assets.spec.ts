@@ -8,6 +8,8 @@ import { expect, test, type Page } from "@playwright/test";
 async function pickOption(page: Page, label: string, option: string | RegExp) {
   await page.getByRole("combobox", { name: label }).click();
   await page.getByRole("option", { name: option }).click();
+  // The list closes before the next picker opens: two open lists would both offer the same account.
+  await expect(page.getByRole("listbox")).toHaveCount(0);
 }
 
 test("fixed assets: register a purchase, depreciate, dispose at a gain", async ({ page }) => {

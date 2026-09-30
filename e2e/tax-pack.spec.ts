@@ -9,6 +9,8 @@ import ExcelJS from "exceljs";
 async function pickOption(page: Page, label: string, option: string | RegExp) {
   await page.getByRole("combobox", { name: label }).click();
   await page.getByRole("option", { name: option }).click();
+  // The list closes before the next picker opens: two open lists would both offer the same account.
+  await expect(page.getByRole("listbox")).toHaveCount(0);
 }
 
 test("tax pack: corrections, PPh badan with 31E, credits, current-tax journal", async ({ page }) => {

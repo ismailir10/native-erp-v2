@@ -7,6 +7,8 @@ import { expect, test, type Page } from "@playwright/test";
 async function pickOption(page: Page, label: string, name: RegExp) {
   await page.getByRole("combobox", { name: label, exact: true }).click();
   await page.getByRole("option", { name }).click();
+  // The list closes before the next picker opens: two open lists would both offer the same account.
+  await expect(page.getByRole("listbox")).toHaveCount(0);
 }
 
 test("a manual accrual is reversed from its ledger line on the next month's first day", async ({ page }) => {
