@@ -11,9 +11,9 @@ Automated end to end by `e2e/investor-demo.spec.ts` — if you change this scrip
 > days per client per month. Buku does it in minutes, and every number traces back to the bank line it came from."
 
 ### 1. Beranda — the firm's month-end at a glance (30 s)
-- Four main destinations: Beranda, Pekerjaan, Dokumen, Laporan. Shared client/company and period selectors govern the work.
+- Three main destinations: Beranda (with the task list), Dokumen, Laporan. Shared client/company and period selectors govern the work.
 - Ask **Apa yang menghambat tutup buku?** and inspect the cited close controls. Answers keep their original context when selectors change.
-- Open **Pekerjaan** and choose **Lengkapi 1 rekening koran** for Grup Ayam Nusantara. The held-back bank statement remains the next live step.
+- On **Beranda** open **Semua pekerjaan** and choose **Lengkapi 1 rekening koran** for Grup Ayam Nusantara. The held-back bank statement remains the next live step.
 
 > Talking point: *the product gets cheaper to run every month — memory and rules replace AI calls.*
 

@@ -13,6 +13,7 @@ import { ChevronRight } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { isGenericKey } from "@/lib/import/normalize";
+import { EntitiesCard } from "@/components/app/entities-card";
 import { requireWorkspaceSession } from "@/lib/auth/session";
 import { DeleteClientCard } from "@/components/app/delete-client";
 import { FrameworkCard } from "@/components/app/framework-card";
@@ -46,6 +47,7 @@ export default async function SettingsPage({ params, searchParams }: { params: P
         <Stat label="Panggilan AI (total)" value={usage._sum.calls ?? 0} hint={`${((usage._sum.promptTokens ?? 0) + (usage._sum.completionTokens ?? 0)).toLocaleString("id-ID")} token`} />
         <Stat label="Jawaban AI tersimpan" value={cacheSize} hint="Penerima atau pengirim yang sama tidak ditanyakan lagi" />
       </div>
+      <EntitiesCard clientId={client.id} entities={client.entities.map((e) => ({ id: e.id, name: e.name, kind: e.kind, banks: e.bankAccounts.map((b) => ({ id: b.id, label: b.label, number: b.number, code: b.account.code, isOverdraft: b.isOverdraft })) }))} />
       <FrameworkCard clientId={client.id} entities={client.entities.map((e) => ({ id: e.id, name: e.name, framework: e.reportingFramework }))} />
       <Card>
         <CardHeader>

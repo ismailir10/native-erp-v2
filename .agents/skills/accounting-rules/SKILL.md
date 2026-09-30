@@ -34,6 +34,8 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
 5. **Opening balances** are `OPENING` entries; the plug goes to 3200 Saldo Laba. Prior-year P&L folds into 3200 in the TB.
    Saldo Awal prefills bank lines from the first statement and proposes (never posts) time deposits the statements list
    (`StatementImport.deposits`, on 1260, changeable); loan rows in the statements prompt for the loan balance.
+   Saldo Awal precedes activity from both sides: `postOpening` refuses a date on/after the first bank row, and `importStatement` refuses the
+   file when any not-yet-imported row is dated on/before the entity's opening (it is already inside the opening; counted again it breaks the bank recon).
 5a. **Adjustment schedules** (`lib/adjust`): depreciation, amortisation and accruals are an `AdjustmentSchedule` (entity, debit / credit
     account, total in minor units, months, start). Installments are exact (⌊total/n⌋, remainder on the last); an accrual is one month
     and reverses on the 1st of the next. Each month's installment is **proposed at read time and posted only by the accountant's click**

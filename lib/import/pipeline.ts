@@ -13,7 +13,7 @@ import { suggestWithAi } from "@/lib/ai/classify";
 import type { AiProvider } from "@/lib/ai/provider";
 import { postBankTransaction } from "@/lib/ledger/bank";
 import { defaultTaxMonth } from "@/lib/tax/masa";
-import { formatPeriod } from "@/lib/format";
+import { formatDate, formatPeriod } from "@/lib/format";
 
 export type ImportSummary = {
   importId: string;
@@ -92,6 +92,15 @@ export async function importStatement(
   const seen = await dedupe(db, bankAccount.id, st, hashes);
   const fresh = st.rows.map((r, i) => ({ r, hash: hashes[i] })).filter((_, i) => !seen.duplicate[i]);
   const notes = [...(st.notes ?? []), ...seen.notes];
+
+  // Saldo Awal already contains everything up to its date: a new row on or before it would be counted twice and break the bank
+  // reconciliation. Only rows not yet imported count, so a statement that was imported before stays importable.
+  const opening = await db.journalEntry.findFirst({ where: { entityId: entity.id, kind: "OPENING" }, orderBy: { date: "asc" }, select: { date: true } });
+  const early = opening ? fresh.filter(({ r }) => +r.date <= +opening.date) : [];
+  if (opening && early.length) {
+    const first = early.reduce((a, b) => (+b.r.date < +a.r.date ? b : a)).r.date;
+    throw new ParseError(`Saldo awal ${entity.shortName} dicatat per ${formatDate(opening.date)}, sudah termasuk transaksi sampai tanggal itu. File ini berisi ${early.length} transaksi bertanggal sampai ${formatDate(opening.date)} (paling awal ${formatDate(first)}). Pilih file yang mulai setelah tanggal itu, atau koreksi saldo awal lewat Jurnal Penyesuaian.`);
+  }
 
   // Nothing new and the statement is already on file: no second history row claiming an import that changed nothing.
   if (fresh.length === 0 && !args.evidenceVersionId) {
