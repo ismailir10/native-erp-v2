@@ -106,5 +106,16 @@ to an existing client (new action, larger); (c) telling *Dokumen* apart from *Im
 - T9: `e2e/real-client.spec.ts`, `.agents/skills/ui-rules/SKILL.md` (rule 14), `README.md` — the real-client walk asserts the strip and follows the on-screen buttons: create → Impor → Isi saldo awal (prefilled) → banner → Tutup Buku.
 
 ## Verification
-- T1 gate: `npm run lint && npm run typecheck && npm test` → Test Files 109 passed (109), Tests 820 passed (820). (Sandbox note: `xlsx` is served from cdn.sheetjs.com, blocked by the session's network policy; a local-only `xlsx@0.18.5` stand-in from npm was installed for node_modules and is not committed.)
+- T1 gate: `npm run lint && npm run typecheck && npm test` → Test Files 109 passed (109), Tests 820 passed (820). (Sandbox note: `xlsx` is served from cdn.sheetjs.com, blocked by the session's network policy; a local-only `xlsx@0.18.5` stand-in from npm was installed for node_modules and is not committed.)- End-of-cycle gate (after the self-review fix), each run just now in this sandbox:
+  - `npm run lint` → clean; `npm run typecheck` → clean.
+  - `npm test` → `Test Files 109 passed (109)`, `Tests 821 passed (821)` (setup-progress: 6 tests; workspace: +1; the existing workspace test now expects the `setup:` task).
+  - `npm run build` → compiled, all routes listed.
+  - `npm run demo:reset && npm run verify:books` → `ALL PASS — 1717 pemeriksaan saldo cocok dengan ground truth.` (no report number changed).
+  - **`npm run test:e2e` was NOT run here.** The sandbox's network policy blocks `oexirgohnltkgigcteyp.supabase.co` (login needs Supabase Auth), so the Playwright suite (and any screenshot of the pages) could not be produced; CI runs it against a local Supabase stack. The nine e2e specs touched by this cycle were checked by reading for strict-mode collisions with the new strip/CTAs (`.first()` / scoped locators where the same link name now appears twice) — CI is the first real run.
+  - `xlsx` is served from `cdn.sheetjs.com`, also blocked, so `npm ci` fails here; a local-only `xlsx@0.18.5` stand-in was put in `node_modules` (package.json and the lockfile are untouched and were restored). CI installs the real 0.20.3.
+
 ## Ship Notes
+- Migrations: none. Env vars: none. New dependency: none. No AI calls. No accounting invariant touched (no report number moves; `verify:books` ALL PASS).
+- Manual steps: none. Watch the e2e job on this PR first — it is the only end-to-end run of this change.
+- Rollback: revert the merge commit; nothing is stored (the journey is derived from the books).
+- Follow-ups (each needs its own approval, see Spec): refuse statement rows dated on/before an existing opening; add a company or bank account to an existing client; explain Dokumen vs Impor Mutasi to new users; merge Beranda and Pekerjaan.
