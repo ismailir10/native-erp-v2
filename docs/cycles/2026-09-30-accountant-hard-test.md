@@ -178,6 +178,10 @@ print styles; a fuller CALK (akta, pihak berelasi); PPh 23 at accrual instead of
   `Test Files 115 passed (115)`, `Tests 855 passed (855)` · `npm run build` compiled · `npm run demo:reset && npm run verify:books` →
   `ALL PASS — 1741 pemeriksaan saldo cocok dengan ground truth.` (1717 before: the template's new 5190 adds checks) ·
   `npm run test:e2e` → `28 passed (3.4m)`, and again with `DEMO_MODE=false` (CI's private-mode pass) → `28 passed (3.5m)`.
+- CI (GitHub Actions, real local Supabase stack) found two things the sandbox didn't, both test-only and fixed: the migrated-rules test
+  sorted by the database, whose collation orders "411125-100" after "411125100" (now sorted in JS); and on the slower runner the line-2
+  account picker opened while line 1's list was still closing, so an option matched twice (the three journal-line specs now wait for the
+  list to close). CI then passed on `f0da0d8`.
 - How e2e ran here: Supabase Auth is blocked from this sandbox, so a local stand-in for the GoTrue endpoints the app uses (password token,
   `/user`, admin users) served `NEXT_PUBLIC_SUPABASE_URL`; everything else is the real app on `next start`. `xlsx@0.18.5` stands in for the
   CDN tarball (untracked). CI runs the real local Supabase stack.
