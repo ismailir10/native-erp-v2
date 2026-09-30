@@ -47,7 +47,7 @@ Their findings, confirmed against the code, that this cycle fixes:
         "Bruto Rp X · PPh 23 Rp Y" before accepting.
       - A search box (description / amount), filters *Semua · Uang masuk · Uang keluar · Tebakan*, and *Terima semua usulan yakin (N)* for
         the visible AI/memory suggestions with confidence ≥ 80 %.
-- [ ] **S4 Tax payments and rules.** Firm rules for tax payments as banks print them, by KAP/KJS code: 411121 → 2140 PPh 21, 411124 → 2141
+- [x] **S4 Tax payments and rules.** Firm rules for tax payments as banks print them, by KAP/KJS code: 411121 → 2140 PPh 21, 411124 → 2141
       PPh 23, 411128 → 2145 PPh final, 411125-100 → 1180 PPh 25, 411125-200 → 2146 PPh 29, 411211 → 2130 PPN (data migration for existing
       firms, like `20260930050000_tax_payment_rules`). A payment reading as a tax payment without a code (MPN, DJP, SSP, "PAJAK", billing
       code) gets a review suggestion 2145 *Utang Pajak Lainnya* with the reason "setoran pajak — pilih utang pajaknya", never an expense.
@@ -95,7 +95,7 @@ print styles; a fuller CALK (akta, pihak berelasi); PPh 23 at accrual instead of
 - [x] T1 S2 close notes + reopen — accept: DB test: note lapses on changed detail, legacy note holds, unlock clears sign-offs.
 - [x] T2 S1 domain: `InventoryCount`, `lib/inventory`, control, CALK note, client delete — accept: DB test for increase/decrease/equal/locked/recount.
 - [x] T3 S1 UI: *Persediaan* page + menu — accept: record a count in the browser, Laba Rugi shows 5190, control passes.
-- [ ] T4 S4 tax rules + migration + tax-payment suggestion + rule specificity — accept: unit + DB tests.
+- [x] T4 S4 tax rules + migration + tax-payment suggestion + rule specificity — accept: unit + DB tests.
 - [ ] T5 S5 PP 55 journal + text — accept: DB test posts 0,5 % difference once.
 - [ ] T6 S3 review: tax labels, withholding with gross-up, guess safety, search/filter/bulk — accept: unit test for gross-up, DB test for no-learn, e2e filter.
 - [ ] T7 S6 reports status, comparatives, labels, signs, Excel draft mark — accept: page shows *Draf* with reasons; no empty columns.
@@ -121,6 +121,10 @@ print styles; a fuller CALK (akta, pihak berelasi); PPh 23 at accrual instead of
   sidebar (*Persediaan* after Piutang & Utang; *Jurnal Penyesuaian* moved from Pengaturan klien to before Tutup Buku), `e2e/inventory.spec.ts`.
   Driven in the browser on CV Sinar Retail August: count Rp 112.500.000 against a book Rp 95.000.000 → Laba Rugi *5190 (17.500.000)*, HPP
   909.050.000 = awal 95.000.000 + pembelian 926.550.000 − akhir 112.500.000 in the CALK.
+- T4: `lib/classify/rules.ts` (KAP-KJS code rules at priority 12; `matchRule` lets a strictly more specific matching firm rule win over a
+  client rule), `20260930060200_tax_code_rules` (data migration, idempotent), `lib/classify/financing.ts` (`taxPaymentSuggestion`:
+  MPN / DJP / SSP / KPP / kode billing / NTPN / "PAJAK" out, regional taxes excluded → 2145 for review), `lib/import/pipeline.ts`,
+  `lib/ai/retry.ts` (not sent to AI), accounting-rules 13 / 13a, `tests/unit/import.test.ts`, `tests/db/tax-rules.test.ts`.
 ## Verification
 - After T2: `npm test` → `Test Files 113 passed (113)`, `Tests 840 passed (840)`.
 ## Ship Notes

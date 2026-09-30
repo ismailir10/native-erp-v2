@@ -38,3 +38,23 @@ export function financingSuggestion(description: string, direction: Direction): 
   if (OWN_MOVE.test(description)) return guess("1199", "Pindah dana antar rekening sendiri: kliring sampai pasangannya diimpor");
   return null;
 }
+
+/**
+ * A tax payment printed without a known code (MPN, DJP, SSP, "BAYAR PAJAK KPP", a billing code): it clears a tax liability, never an
+ * expense (rule 13a). Which one the text doesn't say, so the suggestion is 2145 for review with the reason naming the choices; the KAP
+ * code rules and the "PPH 21 / 23 / 25 / PPN" words (rules.ts) catch the ones that do say. Regional taxes (vehicle, land and building,
+ * hotel, restaurant, advertising) are costs and left alone.
+ */
+const TAX_PAYMENT = /\b(MPN|DJP|SSP|PAJAK|KODE BILLING|PENERIMAAN NEGARA|KPP|NTPN)\b/i;
+const REGIONAL_TAX = /\b(KENDARAAN|PKB|PBB|BPHTB|REKLAME|HOTEL|RESTORAN|SAMSAT|BBNKB|AIR TANAH|PARKIR|DAERAH|BAPENDA|BAPPEDA)\b/i;
+
+export function taxPaymentSuggestion(description: string, direction: Direction): Classification | null {
+  if (direction !== "OUT" || !TAX_PAYMENT.test(description) || REGIONAL_TAX.test(description)) return null;
+  return {
+    method: "HEURISTIC",
+    accountCode: "2145",
+    taxTag: null,
+    confidence: FINANCING_CONFIDENCE,
+    reason: "Setoran pajak ke negara: pilih utang pajaknya (PPh 21 → 2140, PPh 23 → 2141, PPN → 2130, PPh 25 → 1180), bukan beban",
+  };
+}

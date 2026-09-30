@@ -5,7 +5,7 @@ import { parseStatementSections } from "@/lib/import/parsers";
 import { checkContinuity, isGenericKey, merchantKey, rowHash } from "@/lib/import/normalize";
 import { AccountMismatchError, ParseError, type ParsedStatement } from "@/lib/import/types";
 import { matchRule, sortRules } from "@/lib/classify/rules";
-import { financingSuggestion } from "@/lib/classify/financing";
+import { financingSuggestion, taxPaymentSuggestion } from "@/lib/classify/financing";
 import { simpleGuess } from "@/lib/classify/fallback";
 import { matchTransfers, type TransferCandidate } from "@/lib/classify/transfer";
 import { AUTO_POST_CONFIDENCE, type Classification } from "@/lib/classify/types";
@@ -164,7 +164,7 @@ export async function importStatement(
   const result = new Map<string, Classification>();
   const pendingAi: { key: string; direction: Direction; sample: string }[] = [];
   for (const it of items) {
-    const financing = financingSuggestion(it.description, it.direction);
+    const financing = financingSuggestion(it.description, it.direction) ?? taxPaymentSuggestion(it.description, it.direction);
     const c =
       transfers.get(it.id) ??
       matchRule(rules, it.description, it.direction, codes) ??
@@ -174,7 +174,7 @@ export async function importStatement(
           ? ({ method: "MEMORY", accountCode: m.accountCode, taxTag: m.taxTag, confidence: 0.95, reason: `Pernah dikonfirmasi ${m.hits}× untuk "${m.merchantKey}"` } as Classification)
           : null;
       })() ??
-      // Loans, capital and own-money moves: a balance-sheet suggestion for review, no AI call (rules 13–14).
+      // Loans, capital, own-money moves and tax payments: a balance-sheet suggestion for review, no AI call (rules 13–14).
       (financing && codes.has(financing.accountCode) ? financing : null);
     if (c) result.set(it.id, c);
     else pendingAi.push({ key: it.merchantKey, direction: it.direction, sample: it.description });

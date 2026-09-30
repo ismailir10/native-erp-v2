@@ -1,18 +1,18 @@
 import type { Db } from "@/lib/db";
 import type { AiProvider } from "@/lib/ai/provider";
 import { suggestWithAi } from "@/lib/ai/classify";
-import { financingSuggestion } from "@/lib/classify/financing";
+import { financingSuggestion, taxPaymentSuggestion } from "@/lib/classify/financing";
 
 /**
- * Lines still in review that only got the simple guess (the AI call failed, was capped or off at import). Financing text is
- * left out: its balance-sheet suggestion comes without an AI call (rule 13).
+ * Lines still in review that only got the simple guess (the AI call failed, was capped or off at import). Financing text and tax payments are
+ * left out: their balance-sheet suggestion comes without an AI call (rule 13).
  */
 export async function simpleGuessRows(db: Db, args: { clientId: string; entityIds: string[]; through: Date }) {
   const rows = await db.bankTransaction.findMany({
     where: { entityId: { in: args.entityIds }, bankAccount: { entity: { clientId: args.clientId } }, status: "NEEDS_REVIEW", method: "HEURISTIC", date: { lte: args.through } },
     orderBy: [{ date: "asc" }, { rowNumber: "asc" }],
   });
-  return rows.filter((r) => !financingSuggestion(r.description, r.direction));
+  return rows.filter((r) => !financingSuggestion(r.description, r.direction) && !taxPaymentSuggestion(r.description, r.direction));
 }
 
 /**

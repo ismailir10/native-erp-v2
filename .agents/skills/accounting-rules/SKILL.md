@@ -171,7 +171,7 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
 
 ## Import & classification (`lib/import/pipeline.ts`)
 12. Parse → continuity check (opening + Σ = every printed balance → closing) → dedupe by row hash → classify → post, all-or-nothing in one transaction.
-13. Order: **transfer matcher → rules (client before firm) → memory → financing suggestion → AI → heuristic.** Transfer matching
+13. Order: **transfer matcher → rules (client before firm, unless a matching firm rule's pattern strictly contains the client rule's — a client "PAJAK" never swallows the firm's "PAJAK BUNGA") → memory → financing / tax-payment suggestion → AI → heuristic.** Transfer matching
     needs a textual hint (TRSF/PINDAH BUKU/own entity name) — equal amounts alone are never enough — and pairs within **2 business
     days** (Sat/Sun don't count). Financing text (the sanity control's words, `lib/classify/financing`) gets a balance-sheet
     suggestion (loan → 2210, interest → 7110, fees → 7100, capital → 3100, own-account move → 1199) without an AI call; it is a
@@ -179,8 +179,8 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     INTEREST → 8200, BIAYA TXN / FEE PAYMENT / MATERAI / STAMP DUTY → 7100) are firm **rules** (they post); a new firm rule reaches
     existing firms only through a data migration. The last-resort simple guess depends on the entity (`lib/classify/fallback.ts`):
     company in → 4100 / out → 6190; PERORANGAN in → 4910 / out → 3300 Prive.
-13a. **Tax remittances file to the liability they clear** (firm rules, `lib/classify/rules.ts`): PPh 21 → 2140, PPh 23 → 2141, PPh 4(2) / final → 2145, PPh 29 → 2146, PPN → 2130, PPh 25 → 1180
-    (prepaid, rule 5d), Bea Meterai → 7100. A remittance without the withholding booked leaves that liability **debit**, which the sanity control *Saldo berlawanan dengan sifat akun* raises
+13a. **Tax remittances file to the liability they clear** (firm rules, `lib/classify/rules.ts`, by words or by the KAP-KJS code on the state receipt — 411121, 411124, 411128, 411125-100/-200, 411211): PPh 21 → 2140, PPh 23 → 2141, PPh 4(2) / final → 2145, PPh 29 → 2146, PPN → 2130, PPh 25 → 1180
+    (prepaid, rule 5d), Bea Meterai → 7100. A payment that reads as a state tax payment without naming the tax (MPN, DJP, SSP, KPP, kode billing; regional taxes excluded) gets a HEURISTIC suggestion 2145 for review (`taxPaymentSuggestion`), never an expense and no AI call. A remittance without the withholding booked leaves that liability **debit**, which the sanity control *Saldo berlawanan dengan sifat akun* raises
     — book the withholding (payroll, or rule 5h) rather than moving the remittance. A rule whose account the client's chart lacks is skipped (`matchRule(…, codes)`), never a failed import.
 14. **Only deterministic methods (TRANSFER/RULE/MEMORY, confidence ≥ 0.9) auto-post.** AI and heuristic results
     post to **1999** with `NEEDS_REVIEW` and a prefilled suggestion. Reviewer accept → reclass + Memory upsert.
