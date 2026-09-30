@@ -89,6 +89,8 @@ test("ledger import: checks, mapping, post, Kurs, Gabungan in IDR, client accoun
   await expect(page.getByTestId("next-step")).toContainText("jurnal dicatat");
 
   // Gabungan needs SGD→IDR rates; fill each missing one from the Kurs page.
+  const settings = page.getByRole("button", { name: "Pengaturan klien" });
+  if ((await settings.getAttribute("aria-expanded")) !== "true") await settings.click();
   await page.getByRole("link", { name: "Kurs" }).click();
   await expect(page.getByRole("heading", { name: "Kurs" })).toBeVisible();
   const fileRates = page.getByRole("button", { name: /USD → SGD · 2 kurs dari buku-besar-uji.xlsx/ });

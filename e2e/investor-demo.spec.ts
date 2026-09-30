@@ -67,7 +67,7 @@ test("statement in → reviewed → traceable reports → combined → closed", 
 
   // 6. Adjustments: the depreciation schedule proposes August's installment → Catat; the machine reviewed in step 3 is a
   // fixed-asset candidate → a 48-month schedule from September
-  const setup = page.getByRole("button", { name: "Impor & pengaturan klien" });
+  const setup = page.getByRole("button", { name: "Pengaturan klien" });
   if ((await setup.getAttribute("aria-expanded")) !== "true") await setup.click();
   await page.getByRole("link", { name: "Jurnal Penyesuaian" }).click();
   await expect(page.getByRole("heading", { name: "Jurnal Penyesuaian" })).toBeVisible();
