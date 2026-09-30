@@ -21,6 +21,13 @@ code and the e2e walks (`e2e/real-client.spec.ts`):
 
 Who feels it: any accountant or admin setting up a client for the first time; the investor demo.
 
+6. **Dead end for an owner with no bank** (independent Opus audit, verified). Ringkasan and Saldo Awal require an opening for
+   *every* entity, but `OpeningForm` disables *Simpan* when all amounts are 0 and `postOpening` throws "Isi minimal satu saldo".
+   A Perorangan owner with no account can therefore never satisfy the step; the client page stays on "Isi saldo awal" forever.
+7. **Beranda** puts the Tanya Buku card (primary button + 4 chips) above the only next step, even with zero clients; Close never
+   checks Saldo Awal; the form calls the same thing "entitas" and "perusahaan" and "Pengaturan klien" vs the page "Aturan klasifikasi";
+   the Akuntan sees "Atur kunci & model di Pengaturan" which only an admin can use.
+
 Roles: `FirmMember` ADMIN and AKUNTAN can both create clients, import and post openings; only the AI key page is admin-only and it
 is optional (rules-only works). So there is one journey, not two; we do not add a role fork.
 
@@ -49,12 +56,23 @@ Principle: **one ordered journey, computed once, shown everywhere.** *Unggah dat
       klasifikasi.
 - [ ] **S7 Beranda** tasks for a client still in setup name the step ("Mulai {klien}: unggah rekening koran", "Isi saldo awal
       {entitas}") and link to it; the Beranda/Pekerjaan `NextStep` gets a CTA to the first task.
-- [ ] **S8 Docs + tests.** `ui-rules` gains rule 14 (first-run order = S1; every setup page shows the strip); unit/db test for S1
+- [ ] **S8 No dead end for a bank-less owner.** An entity needs Saldo Awal only if it has a bank account (its opening is then
+      prefilled from the statement); an entity with no bank account and no ledger import is skipped by S1, Ringkasan and the Saldo
+      Awal page (which says "Tidak ada rekening bank — tidak perlu saldo awal").
+- [ ] **S9 Consistent Beranda and Close.** Beranda: the NextStep comes first and Tanya Buku is hidden while there are no clients;
+      Close's NextStep also sends to Saldo Awal when it is missing (from S1) before the missing-statement check.
+- [ ] **S10 Words.** "Entitas" → "Perusahaan / pemilik" in the client form and ledger import form; *Tambah perusahaan* sits above
+      *Simpan klien*; the form's pointer says "Aturan klasifikasi" (the page's real name); the client settings AI hint is role-aware
+      (an Akuntan is told to ask an admin, no dead link).
+- [ ] **S11 Docs + tests.** `ui-rules` gains rule 14 (first-run order = S1; every setup page shows the strip); unit/db test for S1
       across the states; e2e `real-client` walks create → Impor → Saldo Awal → Tutup Buku by following the on-screen CTAs only.
 
 **Non-goals:** no schema migration, no new dependency, no AI use, no accounting-invariant change; no wizard/modal or forced
 gating (every page stays reachable, the order is guidance); no role-specific onboarding; no redesign of Review/Close; no
 change to what Saldo Awal posts. Merging the Beranda and Pekerjaan pages is out of scope (noted for later).
+**Deliberately deferred (flagged, need their own approval):** (a) refusing statement rows dated on or before an existing opening
+(touches `lib/import`, accounting-rules; the import-first order removes the common cause); (b) adding an entity or bank account
+to an existing client (new action, larger); (c) telling *Dokumen* apart from *Impor Mutasi* for new users.
 
 **Assumptions:**
 1. "First steps" = create client → upload → Saldo Awal → review → close (the whole first month), not only the upload.
@@ -72,7 +90,8 @@ change to what Saldo Awal posts. Merging the Beranda and Pekerjaan pages is out 
 - [ ] T5 Saldo Awal "no statement yet" NextStep + strip — accept: fresh client shows Impor CTA; after import shows the fill message. Depends T1, T2.
 - [ ] T6 Sidebar reorder/rename + `investor-demo` selector — accept: Impor Mutasi and Saldo Awal visible without expanding anything.
 - [ ] T7 Beranda tasks + NextStep CTA (`lib/workspace/index.ts`, `page.tsx`, `work/page.tsx`) — accept: fresh client task reads "Mulai …: unggah rekening koran". Depends T1.
-- [ ] T8 `real-client` e2e follows CTAs; `ui-rules` rule 14; README onboarding row — accept: full gate green.
+- [ ] T8 S8–S10: bank-less entity skipped in T1/Ringkasan/Saldo Awal, Beranda order, Close NextStep, copy + role-aware hint — accept: fresh client with an owner and no owner bank reaches Tutup Buku. Depends T1.
+- [ ] T9 `real-client` e2e follows CTAs; `ui-rules` rule 14; README onboarding row — accept: full gate green.
 
 ## Implementation
 ## Verification
