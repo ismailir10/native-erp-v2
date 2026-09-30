@@ -27,10 +27,10 @@ type ColKind = "date" | "desc" | "debit" | "credit" | "amount" | "balance" | "fl
 type Column = { kind: ColKind; x0: number; x1: number };
 
 const HEADER: Record<ColKind, RegExp> = {
-  date: /^(tanggal|tgl\.?|date|tanggal transaksi|posting date|tgl\.? transaksi)$/i,
-  desc: /^(keterangan|uraian|uraian transaksi|deskripsi|description|remark|remarks|transaction description)$/i,
-  debit: /^(debet|debit|mutasi debet|mutasi debit|keluar|withdrawal)$/i,
-  credit: /^(kredit|credit|mutasi kredit|masuk|deposit)$/i,
+  date: /^(tanggal|tgl\.?|date|tanggal transaksi|post(ing)? date|tgl\.? transaksi|trans(action)? date)$/i,
+  desc: /^(keterangan|uraian|uraian transaksi|deskripsi|description|remark|remarks|transaction description|transaction desc|narasi|berita)$/i,
+  debit: /^(debet|debit|mutasi debet|mutasi debit|(uang )?keluar|withdrawal|pengeluaran)$/i,
+  credit: /^(kredit|credit|mutasi kredit|(uang )?masuk|deposit|pemasukan)$/i,
   amount: /^(mutasi|jumlah|nominal|amount)$/i,
   balance: /^(saldo|balance|saldo akhir)$/i,
   flag: /^(db\/cr|d\/k|dk|cr\/db)$/i,
@@ -204,7 +204,8 @@ const lineText = (l: Line) => l.cells.map((c) => c.text).join(" ");
 function headerColumns(line: Line): Column[] | null {
   const cols: Column[] = [];
   for (const c of line.cells) {
-    const t = c.text.replace(/\s+/g, " ").trim();
+    // "Debit (IDR)": the currency in brackets after a label isn't part of it.
+    const t = c.text.replace(/\s+/g, " ").replace(/\s*\((?:idr|rp\.?|rupiah|[a-z]{3})\)$/i, "").trim();
     const kind = (Object.keys(HEADER) as ColKind[]).find((k) => HEADER[k].test(t));
     if (kind) cols.push({ kind, x0: c.x0, x1: c.x1 });
   }

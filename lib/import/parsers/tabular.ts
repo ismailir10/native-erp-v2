@@ -12,13 +12,15 @@ import { periodOf } from "@/lib/import/parsers/pdf";
  * month opening with a SALDO AWAL row, `dd/MM` dates without a year, debet = money in (the books' side), a formula balance.
  */
 const HEADER_PATTERNS = {
-  date: /^(tanggal|tgl|date|posting date)/i,
-  desc: /(keterangan|deskripsi|description|remark|uraian)/i,
-  debit: /^(debet|debit|mutasi debet|keluar)/i,
-  credit: /^(kredit|credit|mutasi kredit|masuk)/i,
+  date: /^(tanggal|tgl|date|post(ing)? date|trans(action)? date)/i,
+  desc: /(keterangan|deskripsi|description|\bdesc\b|remark|uraian|narasi|berita|detail transaksi|transaction detail)/i,
+  debit: /^(debet|debit|mutasi debet|mutasi debit|(uang )?keluar|withdrawal|pengeluaran)/i,
+  credit: /^(kredit|credit|mutasi kredit|(uang )?masuk|deposit|pemasukan)/i,
   amount: /^(jumlah|nominal|amount|mutasi)$/i,
   balance: /^(saldo|balance|sisa saldo)/i,
 };
+/** "Debit (IDR)", "Jumlah (Rp)", "Saldo (IDR)": the currency in brackets after a label isn't part of the label. */
+const withoutUnit = (h: string) => h.replace(/\s*\((?:idr|rp\.?|rupiah|[a-z]{3})\)\s*$/i, "").trim();
 const OPENING_ROW = /^(saldo\s*awal|opening\s*balance|beginning\s*balance|saldo\s*sebelumnya)\b/i;
 const CLOSING_ROW = /^(saldo\s*akhir|closing\s*balance|ending\s*balance)\b/i;
 const TOTAL_ROW = /^(total|jumlah|mutasi\s*(debet|debit|kredit|credit))\b/i;
@@ -122,11 +124,15 @@ function accountIn(line: string): string | null {
 }
 
 export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}): Parsed {
-  const headerIdx = rows.findIndex(
-    (r) => r.some((c) => HEADER_PATTERNS.date.test(c)) && r.some((c) => HEADER_PATTERNS.desc.test(c)),
-  );
+  // A header names the date and the description in two different cells (one unsplit line of a wrongly split file names both in one).
+  const isHeader = (r: string[]) => {
+    const d = r.findIndex((c) => HEADER_PATTERNS.date.test(withoutUnit(c)));
+    return d >= 0 && r.some((c, i) => i !== d && HEADER_PATTERNS.desc.test(withoutUnit(c)));
+  };
+  const headerIdx = rows.findIndex(isHeader);
   if (headerIdx < 0) throw new NoTableError();
-  const header = rows[headerIdx];
+  const rawHeader = rows[headerIdx];
+  const header = rawHeader.map(withoutUnit);
   const find = (re: RegExp) => header.findIndex((c) => re.test(c));
   const cDate = find(HEADER_PATTERNS.date);
   const cDesc = find(HEADER_PATTERNS.desc);

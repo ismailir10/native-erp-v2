@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseStatement } from "@/lib/import/parsers";
-import { briInternetBankingCsv, cimbOctoCsv, expectAugust, titleWithCommasSemicolonCsv, utf16TabCsv } from "../bank-fixture";
+import { BAL, TX, briInternetBankingCsv, cimbOctoCsv, expectAugust, p2, permataCsv, titleWithCommasSemicolonCsv, utf16TabCsv } from "../bank-fixture";
 
 describe("routing: bank CSVs that borrow BCA's words", () => {
   it("reads a BRI internet-banking CSV titled 'Mutasi Rekening' with a 'Tanggal Transaksi' header", async () => {
@@ -56,6 +56,33 @@ describe("text files: delimiter and encoding", () => {
     const be = Buffer.from(le);
     be.swap16();
     const st = await parseStatement("unicode.txt", Buffer.concat([Buffer.from([0xfe, 0xff]), be]));
+    expectAugust(st);
+  });
+});
+
+describe("column headers as banks label them", () => {
+  const dmy = (d: number) => `${p2(d)}/08/2026`;
+  const csv = (header: string[], row: (t: (typeof TX)[number], i: number) => (string | number)[]) =>
+    Buffer.from([header.join(","), ...TX.map((t, i) => row(t, i).join(","))].join("\n"));
+  const debitCredit = (t: (typeof TX)[number]) => [t.amt < 0 ? Math.abs(t.amt) : 0, t.amt > 0 ? t.amt : 0];
+
+  it("reads Permata's 'Posting Date / Eff Date / Transaction Desc'", async () => {
+    expectAugust(await parseStatement("permata.csv", permataCsv()));
+  });
+
+  it.each([
+    [["Post Date", "Transaction Description", "Debit (IDR)", "Credit (IDR)", "Balance (IDR)"]],
+    [["Tgl. Transaksi", "Uraian", "Debet (Rp)", "Kredit (Rp)", "Saldo (Rp)"]],
+    [["Tanggal", "Narasi", "Debet", "Kredit", "Saldo"]],
+    [["Date", "Remarks", "Withdrawal", "Deposit", "Balance"]],
+    [["Tanggal Transaksi", "Transaction Desc", "Uang Keluar", "Uang Masuk", "Saldo Akhir"]],
+  ])("reads the header row %j", async (header) => {
+    const st = await parseStatement("x.csv", csv(header, (t, i) => [dmy(t.d), `"${t.desc.join(" ")}"`, ...debitCredit(t), BAL[i]]));
+    expectAugust(st);
+  });
+
+  it("reads 'Jumlah (IDR)' as one signed amount column", async () => {
+    const st = await parseStatement("x.csv", csv(["Tanggal", "Keterangan", "Jumlah (IDR)", "Saldo (IDR)"], (t, i) => [dmy(t.d), `"${t.desc.join(" ")}"`, t.amt, BAL[i]]));
     expectAugust(st);
   });
 });

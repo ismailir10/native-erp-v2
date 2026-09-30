@@ -59,7 +59,7 @@ new banks' *PDF* layouts beyond the header/date/amount variants above; changing 
 ## Tasks
 - [x] T1 Test fixture builders + routing fix (P1) — accept: `bri-ib.csv` shape parses via the generic reader with continuous balance; BCA CSV tests unchanged.
 - [x] T2 Delimiter by consistency + UTF-16 decoding (P5) — accept: title-row `;` CSV and UTF-16 tab file parse.
-- [ ] T3 Header patterns (P4) — accept: `Post Date` / `Transaction Desc` / `Debit (IDR)` layouts parse (needs T2 for the delimiter cases only where noted).
+- [x] T3 Header patterns (P4) — accept: `Post Date` / `Transaction Desc` / `Debit (IDR)` layouts parse (needs T2 for the delimiter cases only where noted).
 - [ ] T4 Month-name & serial dates in tabular files (P2, part 1) — accept: bni-direct.xlsx, mandiri-livin signed xlsx, cimb `;` csv, serial xlsx.
 - [ ] T5 PDF dates, `+`/`Rp` amounts, no silent zero (P2 part 2, P3) — accept: cimb-dd-Mmm-yyyy.pdf and mandiri-livin-nominal-plus.pdf.
 - [ ] T6 D/K flag column (P6) — accept: bni-mobile-dk-flag.xlsx continuous.
@@ -71,9 +71,11 @@ new banks' *PDF* layouts beyond the header/date/amount variants above; changing 
 - Plan: tasks T1–T9 sequential, done inline (each touches the same parser files; no independent slice worth delegating).
 - T1: `parsers/bca.ts` (sniff needs the KlikBCA `Tanggal Transaksi, Keterangan, Cabang` header), `parsers/index.ts` (a BCA/BRI-specific reader that throws a ParseError falls back to the generic reader; the specific error is kept if both fail, a `YearNeededError` from the generic reader wins), `parsers/tabular.ts` (account number read with hyphen groups, dates excluded), `tests/bank-fixture.ts` (synthetic layouts), `tests/unit/bank-parsers.test.ts`.
 - T2: `parsers/common.ts` (`detectDelimiter`: consistency over the first 12 non-empty lines, quotes ignored; `decodeText`: UTF-16 LE/BE with BOM), `parsers/index.ts` uses both; tests in `tests/unit/bank-parsers.test.ts`.
+- T3: `parsers/tabular.ts` (wider date/desc/debit/credit patterns; a header names date and description in different cells; a bracketed currency after a label — "Debit (IDR)" — is ignored), `parsers/pdf.ts` (same label additions and unit stripping for the PDF header row).
 
 ## Verification
 - T1 gate: lint clean, typecheck clean, `npm test` 95 files / 638 tests passed. New tests failed before the change (BRI IB fixture: "Baris 'Periode' BCA tidak ditemukan").
 - T2 gate: lint, typecheck clean; `npm test` 95 files / 642 tests passed. The 4 new tests failed before ("Kolom debet/kredit atau jumlah tidak ditemukan", UTF-16 not decoded).
+- T3 gate: lint, typecheck clean; `npm test` 95 files / 649 tests passed. The 6 new header tests failed before (NoTableError / missing amount column).
 
 ## Ship Notes
