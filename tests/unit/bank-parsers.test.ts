@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseStatement } from "@/lib/import/parsers";
-import { BAL, TX, briInternetBankingCsv, cimbOctoCsv, expectAugust, p2, permataCsv, titleWithCommasSemicolonCsv, utf16TabCsv } from "../bank-fixture";
+import { checkContinuity } from "@/lib/import/normalize";
+import { BAL, TX, bniDirectCsv, briInternetBankingCsv, mandiriLivinXlsx, serialDateXlsx, cimbOctoCsv, expectAugust, p2, permataCsv, titleWithCommasSemicolonCsv, utf16TabCsv } from "../bank-fixture";
 
 describe("routing: bank CSVs that borrow BCA's words", () => {
   it("reads a BRI internet-banking CSV titled 'Mutasi Rekening' with a 'Tanggal Transaksi' header", async () => {
@@ -84,5 +85,26 @@ describe("column headers as banks label them", () => {
   it("reads 'Jumlah (IDR)' as one signed amount column", async () => {
     const st = await parseStatement("x.csv", csv(["Tanggal", "Keterangan", "Jumlah (IDR)", "Saldo (IDR)"], (t, i) => [dmy(t.d), `"${t.desc.join(" ")}"`, t.amt, BAL[i]]));
     expectAugust(st);
+  });
+});
+
+describe("dates written with month names and Excel serials", () => {
+  it("reads BNI Direct's 'Post Date' with a time and a two-digit year", async () => {
+    expectAugust(await parseStatement("bni.csv", bniDirectCsv()));
+  });
+
+  it("reads CIMB OCTO's ';' CSV with dd-Mmm-yyyy dates", async () => {
+    expectAugust(await parseStatement("cimb.csv", cimbOctoCsv()));
+  });
+
+  it("reads Mandiri Livin's Indonesian month names and a signed '+1.000,00' Nominal", async () => {
+    expectAugust(await parseStatement("livin.xlsx", await mandiriLivinXlsx()));
+  });
+
+  it("reads date cells that hold Excel serial numbers", async () => {
+    const st = await parseStatement("serial.xlsx", await serialDateXlsx());
+    expect(st.rows.map((r) => r.date.toISOString().slice(0, 10))).toEqual(["2026-08-01", "2026-08-02"]);
+    expect(st.rows.map((r) => r.amount)).toEqual([100n, -50n]);
+    expect(checkContinuity(st).ok).toBe(true);
   });
 });

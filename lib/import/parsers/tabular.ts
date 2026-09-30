@@ -3,7 +3,7 @@ import { parseRupiah } from "@/lib/money";
 import { dateOnly } from "@/lib/format";
 import type { BankCode } from "@/lib/generated/prisma/enums";
 import { ParseError, YearNeededError, type ParsedRow, type ParsedStatement } from "@/lib/import/types";
-import { closingFromRows, periodFromText } from "@/lib/import/parsers/common";
+import { closingFromRows, dateParts as baseDateParts, periodFromText, type DateParts } from "@/lib/import/parsers/common";
 import { periodOf } from "@/lib/import/parsers/pdf";
 
 /**
@@ -95,17 +95,7 @@ export function guessYear(fileName: string | undefined): number | null {
   return m ? 2000 + Number(m[2]) : null;
 }
 
-type DateParts = { d: number; m: number; y: number | null };
-
-function dateParts(text: string): DateParts | null {
-  const t = text.replace(/^'/, "").trim();
-  let m = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (m) return { y: Number(m[1]), m: Number(m[2]), d: Number(m[3]) };
-  m = t.match(/^(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2}|\d{4}))?$/);
-  if (!m) return null;
-  const parts = { d: Number(m[1]), m: Number(m[2]), y: m[3] ? Number(m[3].length === 2 ? `20${m[3]}` : m[3]) : null };
-  return parts.m >= 1 && parts.m <= 12 && parts.d >= 1 && parts.d <= 31 ? parts : null;
-}
+const dateParts = (text: string) => baseDateParts(text, { serial: true });
 
 function dateFrom(p: DateParts, cursor: YearCursor): Date {
   const d = dateOnly(p.y ?? cursor.year, p.m, p.d);

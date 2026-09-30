@@ -42,14 +42,59 @@ export function detectDelimiter(text: string): string {
   return best;
 }
 
-/** "31/08/2026", "2026-08-31", "31-08-2026" → UTC date-only. */
+/** Month names as Indonesian and English statements print them, full or abbreviated (lower case). */
+export const MONTHS: Record<string, number> = {
+  jan: 1, januari: 1, january: 1, feb: 2, pebruari: 2, februari: 2, february: 2, mar: 3, maret: 3, march: 3, apr: 4, april: 4,
+  mei: 5, may: 5, jun: 6, juni: 6, june: 6, jul: 7, juli: 7, july: 7, agu: 8, agt: 8, agus: 8, agustus: 8, aug: 8, august: 8,
+  sep: 9, sept: 9, september: 9, okt: 10, oktober: 10, oct: 10, october: 10, nov: 11, nop: 11, nopember: 11, november: 11,
+  des: 12, desember: 12, dec: 12, december: 12,
+};
+
+export type DateParts = { d: number; m: number; y: number | null };
+
+/** Time of day after a date ("10:15:30", "10.15", "2:05 PM"): part of the cell, not of the date. */
+const TIME = String.raw`(?:[ T]+\d{1,2}[:.]\d{2}(?:[:.]\d{2})?(?:\s*[AaPp][Mm])?)?`;
+const year = (y: string) => Number(y.length === 2 ? `20${y}` : y);
+
+/**
+ * The day, month and (when printed) year of a statement date: "31/08/2026", "31-08-26", "2026-08-31", "'31/08" (BCA, no year),
+ * "01-Aug-26", "01 Agu 2026", "3 Mei 2026", "Aug 01, 2026" — with an optional time after it. Two-digit years are 20yy.
+ * `serial` also accepts an Excel serial number (a date cell formatted General). Null when it isn't a date.
+ */
+export function dateParts(text: string, opts: { serial?: boolean } = {}): DateParts | null {
+  const t = text.replace(/^'/, "").trim();
+  let m = t.match(new RegExp(String.raw`^(\d{4})-(\d{1,2})-(\d{1,2})${TIME}$`));
+  if (m) return valid({ y: Number(m[1]), m: Number(m[2]), d: Number(m[3]) });
+  m = t.match(new RegExp(String.raw`^(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2}|\d{4}))?${TIME}$`));
+  if (m) return valid({ d: Number(m[1]), m: Number(m[2]), y: m[3] ? year(m[3]) : null });
+  m = t.match(new RegExp(String.raw`^(\d{1,2})[\s/.-]+([A-Za-z]{3,9})\.?(?:[\s/.,-]+(\d{2}|\d{4}))?${TIME}$`));
+  if (m && MONTHS[m[2].toLowerCase()]) return valid({ d: Number(m[1]), m: MONTHS[m[2].toLowerCase()], y: m[3] ? year(m[3]) : null });
+  m = t.match(new RegExp(String.raw`^([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})${TIME}$`));
+  if (m && MONTHS[m[1].toLowerCase()]) return valid({ d: Number(m[2]), m: MONTHS[m[1].toLowerCase()], y: Number(m[3]) });
+  if (opts.serial && /^\d{5}(?:\.\d+)?$/.test(t)) {
+    const date = excelSerialDate(Number(t));
+    if (date) return { d: date.getUTCDate(), m: date.getUTCMonth() + 1, y: date.getUTCFullYear() };
+  }
+  return null;
+}
+
+function valid(p: DateParts): DateParts | null {
+  return p.m >= 1 && p.m <= 12 && p.d >= 1 && p.d <= 31 ? p : null;
+}
+
+/** An Excel serial day number (1900 system) as a UTC date; null outside 1982–2064, where a bare number is no date. */
+export function excelSerialDate(serial: number): Date | null {
+  if (!(serial >= 30000 && serial < 60000)) return null;
+  return new Date(Date.UTC(1899, 11, 30) + Math.floor(serial) * 86_400_000);
+}
+
+/** "31/08/2026", "2026-08-31", "31-08-2026", "31-Aug-26" → UTC date-only. */
 export function parseDateDMY(s: string): Date {
-  const t = s.replace(/^'/, "").trim();
-  let m = t.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
-  if (m) return dateOnly(Number(m[3]), Number(m[2]), Number(m[1]));
-  m = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (m) return dateOnly(Number(m[1]), Number(m[2]), Number(m[3]));
-  throw new ParseError(`Format tanggal tidak dikenali: "${s}"`);
+  const p = dateParts(s);
+  if (!p || p.y === null) throw new ParseError(`Format tanggal tidak dikenali: "${s}"`);
+  const d = dateOnly(p.y, p.m, p.d);
+  if (d.getUTCMonth() + 1 !== p.m) throw new ParseError(`Tanggal tidak ada di kalender: "${s}"`);
+  return d;
 }
 
 export function periodFromText(s: string): { start: Date; end: Date } | null {
