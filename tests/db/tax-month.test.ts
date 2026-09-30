@@ -6,6 +6,8 @@ import { setTaxMonth } from "@/lib/tax/records";
 import { defaultTaxMonth } from "@/lib/tax/masa";
 import { reviewTransaction } from "@/lib/review";
 import { dateOnly } from "@/lib/format";
+import { taxWorkpaper } from "@/lib/tax/workpaper";
+import ExcelJS from "exceljs";
 
 type G = Awaited<ReturnType<typeof makeGroup>>;
 
@@ -39,6 +41,19 @@ describe("PPh 25 by masa pajak", () => {
     // 2027: nothing (the January payment belongs to 2026).
     expect(await pph25(2027, 1, g)).toHaveLength(0);
     expect(await pph25(2027, 12, g)).toHaveLength(0);
+  });
+
+  it("prints the masa pajak of each PPh 25 instalment in the kertas kerja", async () => {
+    const g = await makeGroup();
+    await instalments(g);
+    const pack = (await taxPack(db, g.client.id, g.pt.entity.id, 2026, 12))!;
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load((await taxWorkpaper(db, pack, { firm: "KJA Uji", client: "Grup Uji", npwp: null })) as unknown as ArrayBuffer);
+    const rows: string[][] = [];
+    wb.getWorksheet("Kredit Pajak")!.eachRow((r) => { if (r.getCell(1).value === "PPh 25") rows.push([String(r.getCell(3).value), String(r.getCell(7).value)]); });
+    expect(rows).toHaveLength(12);
+    expect(rows[0]).toEqual(["SETORAN PPH 25 ANGSURAN 1", "Januari 2026"]); // paid 14 February
+    expect(rows[11]).toEqual(["SETORAN PPH 25 ANGSURAN 12", "Desember 2026"]); // paid 14 January 2027
   });
 
   it("keeps a line booked before tax months existed on its bank date, and lets the accountant set the masa", async () => {
