@@ -56,10 +56,16 @@ real client files break; no gate-reopener (no migration, dependency or AI).
 - Real-file check (kept out of the repo): the FKM Dec 2024 sheet rebuilt from the Drive text → 148 accounts, the file's Total Aset / Total Aktiva / Total Pasiva match the rows
   (Rp 1 of 7190 rounding: the client's own cents), nothing left without a section.
 
+- Review fixes (independent adversarial review of the first push, all reproduced before fixing): loose report titles now need "report/laporan/statement" and no ledger words
+  (a "Buku Besar Akun Laba Rugi" ledger was being skipped); the Neraca date label is exactly Periode/Per/As of/Tanggal/Date ("Tanggal Cetak" no longer wins); a blank `Level`
+  is no level 0; `Value` counts as the amount header only beside a `Level` column; new mapping rules are `strict` (need a known type) and sit after fixed assets/intangibles/prive/retained
+  ("Kendaraan Sewa" stays 1210, "Modal Prive" 3300, wallets/EDC only as an asset without fee/machine/advance words, down payments only with a liability type).
+  Tests: `tests/unit/ledger-read.test.ts`, `tests/db/mapping.test.ts` "keeps specific rules ahead…". Not fixed (same as before this cycle): parent rows with a non-zero subtotal, uncoded right-panel headings printing 0.00, uncoded names repeated in both panels.
+
 ## Verification
 ```
 $ npm run lint / typecheck  → clean
-$ npm test                  → Test Files 108 passed (108); Tests 799 passed (799)
+$ npm test                  → Test Files 108 passed (108); Tests 804 passed (804)
 $ npm run build             → completes
 $ npm run demo:reset && npm run verify:books → ALL PASS — 1717 pemeriksaan saldo cocok dengan ground truth.
 $ npm run test:e2e          → not run here: the sandbox has no Supabase auth keys (SUPABASE_SECRET_KEY); CI runs it.

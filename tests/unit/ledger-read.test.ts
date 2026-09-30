@@ -277,4 +277,36 @@ describe("report exports that aren't a ledger or a Neraca", () => {
     expect(detectTables(sheets).map((c) => [c.sheet, c.mode, c.panels])).toEqual([["GL", "LEDGER", undefined]]);
     expect(sheets.map(reportKind)).toEqual([null, "LABA_RUGI", "ARUS_KAS"]);
   });
+  it("does not take a ledger or Neraca for a P&L / cash-flow report because its title or a row says so", async () => {
+    const buf = await workbook({
+      "GL PL": [["General Ledger - Profit & Loss Accounts"], ["Tanggal", "Kode Akun", "Nama Akun", "Debit", "Kredit"], ["31/01/2026", "4100", "Penjualan", 0, 10], ["31/01/2026", "1110", "Kas", 10, 0]],
+      "Buku Besar": [["Buku Besar Akun Laba Rugi"], ["Tanggal", "Kode Akun", "Nama Akun", "Debit", "Kredit"], ["31/01/2026", "4100", "Penjualan", 0, 10], ["31/01/2026", "1110", "Kas", 10, 0]],
+      "Uncoded": [["Kas", 100], ["Laba Rugi Tahun Berjalan", 60], ["Modal", 40]].length ? [["Kode Akun", "Nama Akun", "Saldo"], ["1110", "Kas", 100], ["3200", "Laba Rugi Tahun Berjalan", -60], ["3100", "Modal", -40]] : [],
+      Sejahtera: [["PT Arus Kas Sejahtera"], ["Kode Akun", "Nama Akun", "Saldo"], ["1110", "Kas", 10], ["3100", "Modal", -10]],
+    });
+    const sheets = await readSheets("x.xlsx", buf);
+    expect(sheets.map(reportKind)).toEqual([null, null, null, null]);
+    expect(detectTables(sheets).map((c) => c.sheet)).toEqual(["GL PL", "Buku Besar", "Uncoded", "Sejahtera"]);
+  });
+
+  it("dates a two-panel Neraca by its Period row, not a print date; a blank Level is not a heading; Value alone is not a Neraca", async () => {
+    const buf = await workbook({
+      BS: [
+        ["Neraca", null, "31/12/2024"], ["Tanggal Cetak", "05/01/2025"], ["Level COA", "All"],
+        ["Account", "Level", "Description", "Value", null, "Account", "Level", "Description", "Value"],
+        ["1101", null, "Kas Transit", "0.00", null, "2101", 2, "Utang Usaha", "100.00"],
+        ["1102", 2, "Kas", "100.00", null, "2102", 2, "Utang Pajak", "20.00"],
+        ["1103", 2, "Bank", "50.00", null, "3101", 2, "Modal", "30.00"],
+      ],
+      Pivot: [["Account", "Value"], ["Kas", 10], ["Bank", 20]],
+    });
+    const sheets = await readSheets("bs.xlsx", buf);
+    const cands = detectTables(sheets);
+    expect(cands.map((c) => c.sheet)).toEqual(["BS"]); // "Account | Value" without a Level column is no Neraca
+    const res = readTable(sheets, cands[0]);
+    if (res.mode !== "NERACA") throw new Error("mode");
+    expect(res.date?.toISOString().slice(0, 10)).toBe("2024-12-31");
+    // The blank Level of 1101 is no level 0: it stays an account and does not turn 1102 into a liability.
+    expect(res.rows.map((r) => [r.code, r.amount])).toEqual([["1101", 0n], ["1102", 10_000n], ["1103", 5_000n], ["2101", 10_000n], ["2102", 2_000n], ["3101", 3_000n]]);
+  });
 });

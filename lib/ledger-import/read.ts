@@ -19,7 +19,7 @@ const HEADERS: Record<ColumnKey, RegExp> = {
   name: /^(nama akun|nama perkiraan|perkiraan|account name|account|akun|nama)$/i,
   debit: /^(debit|debet|dr|mutasi debit|mutasi debet)(\s*\(.*\))?$/i,
   credit: /^(kredit|credit|cr|mutasi kredit)(\s*\(.*\))?$/i,
-  amount: /^(saldo|saldo akhir|jumlah|nilai|value|balance|amount|closing balance|ending balance)$/i,
+  amount: /^(saldo|saldo akhir|jumlah|nilai|balance|amount|closing balance|ending balance)$/i,
   level: /^(level|lvl|tingkat)$/i,
   desc: /^(keterangan|deskripsi|description|uraian|memo|narration|reconstruction logic \/ description)$/i,
   voucher: /^(no\.? bukti|nomor bukti|voucher|no\.? voucher|no\.? jurnal|nomor jurnal|journal no\.?|journal number|transaction no\.?|no\.? transaksi)$/i,
@@ -123,8 +123,14 @@ export function cellDate(c: RawCell | undefined): Date | null {
 
 // ─── Table detection ──────────────────────────────────────────────────────────
 
+/** ERP exports head the amount column "Value"; alone that word says little (pivots), so it counts only beside a "Level" column. */
+const VALUE_HEADER = /^value$/i;
+const hasLevelHeader = (row: RawCell[]) => row.some((c) => HEADERS.level.test(cellText(c).replace(/\s+/g, " ")));
+const headerKey = (t: string, withValue: boolean): ColumnKey | undefined => (Object.keys(HEADERS) as ColumnKey[]).find((k) => HEADERS[k].test(t)) ?? (withValue && VALUE_HEADER.test(t) ? "amount" : undefined);
+
 function headerColumns(row: RawCell[]): Columns {
   const cols: Columns = {};
+  const withValue = hasLevelHeader(row);
   row.forEach((c, i) => {
     const t = cellText(c).replace(/\s+/g, " ");
     if (!t) return;
@@ -134,7 +140,7 @@ function headerColumns(row: RawCell[]): Columns {
         return;
       }
     }
-    if (cols.amount === undefined && DATE_HEADER.test(t)) cols.amount = i;
+    if (cols.amount === undefined && (DATE_HEADER.test(t) || (withValue && VALUE_HEADER.test(t)))) cols.amount = i;
   });
   return cols;
 }
@@ -146,10 +152,11 @@ function headerColumns(row: RawCell[]): Columns {
  */
 function headerPanels(row: RawCell[]): Columns[] {
   const parts: Columns[] = [{}];
+  const withValue = hasLevelHeader(row);
   row.forEach((c, i) => {
     const t = cellText(c).replace(/\s+/g, " ");
     if (!t) return;
-    const key = (Object.keys(HEADERS) as ColumnKey[]).find((k) => HEADERS[k].test(t));
+    const key = headerKey(t, withValue);
     if (!key) return;
     let cur = parts[parts.length - 1];
     if (cur[key] !== undefined) {
@@ -177,7 +184,12 @@ const REPORT_TITLES: [RegExp, "LABA_RUGI" | "ARUS_KAS"][] = [
   [/^(laporan )?(laba rugi|laba\/rugi|profit (&|and) loss|profit and loss statement|income statement|statement of profit or loss)$/i, "LABA_RUGI"],
   [/^(laporan )?(arus kas|cash ?flows?|statement of cash flows?)$/i, "ARUS_KAS"],
 ];
-/** ERP exports prefix or suffix the title ("PnL Profit Loss Report", "All Branch Profit Loss Report"): a short row with at most three cells. */
+/**
+ * ERP exports prefix or suffix the title ("PnL Profit Loss Report", "All Branch Profit Loss Report"): a short row of at most three cells that
+ * calls itself a report/laporan/statement and does not name ledger accounts ("Buku Besar Akun Laba Rugi" is a ledger of P&L accounts).
+ */
+const REPORT_WORD = /\b(report|laporan|statement)\b/i;
+const LEDGER_WORD = /(ledger|buku besar|\bakun\b|accounts?\b|ikhtisar|mutasi)/i;
 const LOOSE_TITLES: [RegExp, "LABA_RUGI" | "ARUS_KAS"][] = [
   [/\b(laba rugi|profit\s*(&|and)?\s*loss|income statement)\b/i, "LABA_RUGI"],
   [/\b(arus kas|cash ?flows?)\b/i, "ARUS_KAS"],
@@ -189,7 +201,7 @@ export function reportKind(sheet: RawSheet): "LABA_RUGI" | "ARUS_KAS" | null {
     const text = cellText((row ?? []).find((c) => !isBlank(c)) ?? null);
     const hit = REPORT_TITLES.find(([re]) => re.test(text));
     if (hit) return hit[1];
-    const short = text.length <= 60 && (row ?? []).filter((c) => !isBlank(c)).length <= 3 && !/\b(balance|neraca|posisi keuangan)\b/i.test(text);
+    const short = text.length <= 60 && (row ?? []).filter((c) => !isBlank(c)).length <= 3 && REPORT_WORD.test(text) && !LEDGER_WORD.test(text) && !/\b(balance|neraca|posisi keuangan)\b/i.test(text);
     const loose = short ? LOOSE_TITLES.find(([re]) => re.test(text)) : undefined;
     if (loose) return loose[1];
   }
@@ -309,7 +321,8 @@ const SECTION_LIAB_EQUITY = /(liabilit.*(equity|ekuitas)|kewajiban.*(ekuitas|mod
 const TERM_NON_CURRENT = /(long.?term|jangka panjang|non.?current|tidak lancar|(fixed|other|intangible|tangible)\s+assets?|aset tetap|aktiva tetap|tak berwujud|tidak berwujud|aset lain|depreciation|penyusutan|amorti)/i;
 const TERM_CURRENT = /(\bcurrent\b|\blancar\b|jangka pendek|short.?term)/i;
 
-const PERIOD_LABEL = /^(period|periode|per|as of|as at|tanggal|date|posisi)\b/i;
+/** "Periode", "Per", "As of", or a bare "Tanggal"/"Date" — not "Tanggal Cetak" / "Date printed". */
+const PERIOD_LABEL = /^(period|periode|per|as of|as at|tanggal|date|posisi)\s*:?$/i;
 
 /** The Neraca date: the amount header when it is a date, else a date beside a "Periode/Period/Per" label, else the first date above the table. */
 function neracaDate(sheet: RawSheet, t: TableCandidate): Date | null {
@@ -355,7 +368,8 @@ export function readNeraca(sheet: RawSheet, t: TableCandidate): { date: Date | n
     let term: NeracaRow["termHint"] = null;
     const body = sheet.rows.slice(t.headerRow + 1);
     const levelOf = (row: RawCell[] | undefined) => {
-      const n = c.level !== undefined ? Number(cellText(row?.[c.level])) : NaN;
+      const text = c.level !== undefined ? cellText(row?.[c.level]) : "";
+      const n = text === "" ? NaN : Number(text);
       return Number.isFinite(n) ? n : null;
     };
     for (let r = t.headerRow + 1; r < sheet.rows.length; r++) {

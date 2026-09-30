@@ -116,6 +116,31 @@ describe("deterministic mapping", () => {
     expect(deterministicSuggestion({ code: "X", name: "Pph 29", typeHint: "LIABILITAS" }, { accounts: old, priorByName: new Map() })?.accountCode).toBe("2145");
   });
 
+  it("keeps specific rules ahead of the ERP-name rules (review of the first version)", () => {
+    const at = (name: string, typeHint: "ASET" | "LIABILITAS" | "EKUITAS" | "BEBAN" | null) => deterministicSuggestion({ code: "99999", name, typeHint }, { accounts: chart, priorByName: new Map() })?.accountCode ?? null;
+    expect(at("Kendaraan Sewa", "ASET")).toBe("1210");
+    expect(at("Kendaraan Sewa Guna Usaha", "ASET")).toBe("1210");
+    expect(at("Software Subscription", "ASET")).toBe("1250");
+    expect(at("Klaim Asuransi", "ASET")).not.toBe("1170");
+    expect(at("Mesin EDC", "ASET")).toBe("1210");
+    expect(at("Uang Muka OVO", "ASET")).toBe("1170");
+    expect(at("Deposit Gopay", "ASET")).toBe("1170");
+    expect(at("Settlement EDC", null)).toBeNull(); // no type known: the wallet rule stays out
+    expect(at("MDR QRIS", "BEBAN")).not.toBe("1120");
+    expect(at("Modal Prive", "EKUITAS")).toBe("3300");
+    expect(at("Dividen Modal", "EKUITAS")).toBe("3300");
+    expect(at("Laba Ditahan Modal", "EKUITAS")).toBe("3200");
+    expect(at("Penarikan Modal", "EKUITAS")).toBe("3300");
+    expect(at("Modal Kerja BCA", "LIABILITAS")).not.toBe("3100");
+    expect(at("Penyertaan Modal", null)).not.toBe("3100");
+    expect(at("Pemakaian Bahan Baku", null)).not.toBe("1160");
+    expect(at("Bahan Baku", null)).not.toBe("1160");
+    expect(at("Bahan Baku", "BEBAN")).toBe("5100");
+    expect(at("Down Payment to Supplier", null)).not.toBe("2160");
+    expect(at("Down Payment Supplier", "ASET")).not.toBe("2160");
+    expect(at("Down Payment Pelanggan", "LIABILITAS")).toBe("2160");
+  });
+
   it("prefers an exact client-account name and prior mappings", () => {
     expect(deterministicSuggestion({ code: "X", name: "Piutang Usaha", typeHint: null }, { accounts: chart, priorByName: new Map() })).toMatchObject({ method: "NAME", accountCode: "1130" });
     expect(deterministicSuggestion({ code: "X", name: "Cloud - AWS", typeHint: null }, { accounts: chart, priorByName: new Map([["cloud aws", "5110"]]) })).toMatchObject({ method: "PRIOR", accountCode: "5110" });
