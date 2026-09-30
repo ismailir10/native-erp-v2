@@ -273,15 +273,15 @@ export async function cashFlow(db: Db, scope: Scope, to: Date): Promise<CashFlow
   }
 
   // Equipment bought on a payable: the bill's journal is non-cash (above), the payment only moves the payable. What the settled bank lines paid
-  // (in the period, by the bill's settlements) of the bill's investing debits is an investing outflow — also for a bill of an earlier year.
+  // (in the period, by the bill's settlements, less the tax they withheld) of the bill's investing debits is an investing outflow — also for a bill of an earlier year.
   const bills = await db.invoice.findMany({
     where: { entityId: { in: scope.entityIds }, direction: "PURCHASE", entryId: { not: null }, settlements: { some: { bankTransaction: { date: { gte: from, lte: to } } } } },
-    select: { total: true, entryId: true, settlements: { select: { amount: true, bankTransaction: { select: { date: true } } } } },
+    select: { total: true, entryId: true, settlements: { select: { amount: true, withheld: true, bankTransaction: { select: { date: true } } } } },
   });
   if (bills.length) {
     const debits = await db.journalLine.findMany({ where: { entryId: { in: bills.map((b) => b.entryId!) }, debit: { gt: 0n } }, select: { entryId: true, debit: true, account: { select: { code: true, type: true, fsLine: true, isIntercompany: true } } } });
     for (const bill of bills) {
-      const paid = bill.settlements.filter((x) => +x.bankTransaction.date >= +from && +x.bankTransaction.date <= +to).reduce((t, x) => t + x.amount, 0n);
+      const paid = bill.settlements.filter((x) => +x.bankTransaction.date >= +from && +x.bankTransaction.date <= +to).reduce((t, x) => t + x.amount - x.withheld, 0n); // cash only: the withheld part of a settlement is tax owed, not paid to the supplier
       for (const l of debits.filter((d) => d.entryId === bill.entryId)) {
         const line = cashLine(l.account);
         if (!line || line.section !== "INVESTING" || bill.total <= 0n) continue;

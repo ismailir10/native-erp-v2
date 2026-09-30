@@ -142,3 +142,17 @@ Code rollback = revert the merge; existing rows keep their defaults, so no data 
 **No env vars, no manual steps, no AI use, no new dependency.** Existing numbers do not change: rules apply to new imports, legacy PPh 25 lines count by bank date, invoices and
 settlements default to nothing withheld, and the cash-flow change only affects disposals and paid capex bills (presentation; totals unchanged).
 **Follow-ups:** inline withholding in the review queue; masa pajak and withheld tax in the Excel kertas kerja; collecting a disposal's proceeds in a later year in investing.
+
+## Review fixes (PR #69, automated review)
+Each finding was reproduced with a failing test first, one commit per finding.
+1. **Settlement double-booked a withholding already on the bank line — real.** `settleTx` added the settlement's tax to `BankTransaction.whtAmount`, so a line already
+   carrying a hand-recorded PPh 23 (Ubah akun) got it twice (400k) while the settlement cleared only 11,1 jt. Now the tax recorded on the line and not yet claimed by
+   a settlement (`whtAmount` − Σ settlement `withheld`) is *adopted*: only the missing difference is added, the kind comes from the line when the invoice names none,
+   and it is also the expected tax for the default shortfall. A different kind is refused ("Mutasi ini sudah mencatat pemotongan PPh 4(2), sedangkan pencocokan ini PPh 23 …").
+   A leftover recorded tax bigger than one settlement needs stays available for the next settlement of the same line. Unsettling removes the adopted tax with the settlement
+   (the line goes back to no withholding; type it again if it should stay). Tests: exactly equal, smaller (topped up), none, incompatible kind.
+2. **Kind of settlement-owned withholding editable — real.** The guard in `reviewTransactionTx` compared the amount only; PPh 23 → PPh 4(2)/21 at the same nominal passed.
+   It now compares kind and amount. Test: the change is refused and the 1180 / 8200 balances do not move.
+3. **Capex paid on a bill counted the withheld part as cash — real.** `cashFlow` took Σ settlement `amount` (gross cleared) as paid; a 50 jt asset bill paid with 45 jt bank + 5 jt
+   PPh 23 showed −50 jt investing and a spurious +5 jt operating. It now uses Σ (`amount` − `withheld`), the cash that left the bank. Test: −45 jt investing, operating 0,
+   still equal to the Neraca cash change.

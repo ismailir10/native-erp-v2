@@ -101,4 +101,18 @@ describe("cash flow: disposal proceeds and capex on a payable in investing", () 
     await reconciles(g, y2, dateOnly(2027, 12, 31));
     await reconciles(g, y1, dateOnly(2026, 12, 31));
   });
+  it("counts only the cash of a bill settled with withholding as investing (50 jt bill: 45 jt bank + 5 jt PPh 23 withheld)", async () => {
+    const g = await makeGroup();
+    await opening(g);
+    const bill = await createInvoice(db, { clientId: g.client.id, entityId: g.pt.entity.id, direction: "PURCHASE", contactName: "CV Mesin Maju", number: "MM-5", issueDate: "2026-03-01", dpp: "50.000.000", counterCode: "1210", whtKind: "PPH_23", whtAmount: "5.000.000" });
+    const csv = ["Tanggal;Keterangan;Debet;Kredit;Saldo", "15/03/2026;TRSF E-BANKING DB CV MESIN MAJU MM-5;45000000;0;55000000", ""].join("\n");
+    await importStatement(db, { bankAccountId: g.pt.banks[0].id, fileName: "bca.csv", data: Buffer.from(csv), provider: null });
+    const s = await settleWithReclass(db, { clientId: g.client.id, invoiceId: bill.id, bankTransactionId: (await db.bankTransaction.findFirstOrThrow({ where: { description: { contains: "MM-5" } } })).id });
+    expect(s).toMatchObject({ amount: 50n * J, withheld: 5n * J });
+    const cf = await cashFlow(db, scope(g), dateOnly(2026, 12, 31));
+    expect(items(cf.investing)).toEqual([["ASET_TETAP", -45n * J]]); // only what left the bank
+    expect(cf.totals).toEqual({ OPERATING: 0n, INVESTING: -45n * J, FINANCING: 0n });
+    expect(cf.net).toBe(-45n * J);
+    await reconciles(g, cf, dateOnly(2026, 12, 31));
+  });
 });
