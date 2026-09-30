@@ -1,10 +1,11 @@
 import type { Db } from "@/lib/db";
-import type { InvoiceDirection } from "@/lib/generated/prisma/enums";
+import type { InvoiceDirection, WithholdingKind } from "@/lib/generated/prisma/enums";
 import { LedgerError, postJournal, type PostLine } from "@/lib/ledger/post";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { dateOnly, formatDate, formatPeriod } from "@/lib/format";
 import { closeLock } from "@/lib/adjust/schedules";
 import { parseMoney, PPN_EFFECTIVE_PERCENT } from "@/lib/money";
+import { checkWithholding, withholdingFor } from "@/lib/tax/withholding";
 
 /**
  * Receivable/payable subledger (accounting-rules 5c). An invoice is recorded by the accountant and posts its journal through
@@ -32,6 +33,13 @@ export type InvoiceInput = {
   ppn?: string | null;
   counterCode: string;
   arApCode?: string | null;
+  /**
+   * Tax the counterparty withholds from the payment (PPh 23, 22, 4(2); PPh 21 on a purchase): a percentage of the DPP or an amount
+   * (major units; the amount wins). Expected only — the receivable/payable and the journal stay gross; it is booked when a settlement closes the invoice.
+   */
+  whtKind?: WithholdingKind | null;
+  whtRate?: string | null;
+  whtAmount?: string | null;
   /** An open item at the opening date: recorded without a journal. */
   opening?: boolean;
   actorId?: string | null;
@@ -67,6 +75,18 @@ export async function createInvoice(db: Db, input: InvoiceInput) {
   if (dpp < 0n || ppn < 0n) throw new LedgerError("DPP dan PPN tidak boleh negatif.");
   const total = dpp + ppn;
   if (total <= 0n) throw new LedgerError("Nilai faktur harus lebih dari nol.");
+
+  let whtKind: WithholdingKind | null = null;
+  let whtAmount = 0n;
+  if (input.whtRate?.trim() || input.whtAmount?.trim()) {
+    if (!input.whtKind) throw new LedgerError("Pilih jenis pajak yang dipotong.");
+    whtAmount = input.whtAmount?.trim() ? parseMoney(input.whtAmount, cur) : withholdingFor(dpp, input.whtRate!);
+    if (whtAmount > dpp) throw new LedgerError("Pemotongan pajak melebihi DPP.");
+    if (whtAmount > 0n) {
+      checkWithholding({ kind: input.whtKind, amount: whtAmount }, sales ? "IN" : "OUT");
+      whtKind = input.whtKind;
+    }
+  }
 
   const accounts = await db.account.findMany({ where: { clientId: input.clientId } });
   const byCode = (code: string) => accounts.find((a) => a.code === code);
@@ -125,6 +145,8 @@ export async function createInvoice(db: Db, input: InvoiceInput) {
           dpp,
           ppn,
           total,
+          whtKind,
+          whtAmount,
           counterAccountId: counter!.id,
           arApAccountId: arAp.id,
           opening: !!input.opening,

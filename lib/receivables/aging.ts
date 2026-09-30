@@ -118,9 +118,9 @@ export async function subledgerVsLedger(db: Db, clientId: string, direction: Inv
     const net = (s._sum.debit ?? 0n) - (s._sum.credit ?? 0n);
     const lines = await db.bankTransaction.findMany({
       where: { entityId, date: { lte: asOf }, accountCode: { in: codes }, status: { not: "NEEDS_REVIEW" } },
-      select: { amount: true, settlements: { select: { amount: true } } },
+      select: { amount: true, settlements: { select: { amount: true, withheld: true } } },
     });
-    const unsettledLines = lines.filter((t) => (t.amount < 0n ? -t.amount : t.amount) > t.settlements.reduce((u, x) => u + x.amount, 0n)).length;
+    const unsettledLines = lines.filter((t) => (t.amount < 0n ? -t.amount : t.amount) > t.settlements.reduce((u, x) => u + x.amount - x.withheld, 0n)).length;
     const subledger = mine.reduce((t, i) => t + i.open, 0n);
     const ledger = direction === "SALES" ? net : -net;
     out.push({ entityId, direction, accounts: codes, subledger, ledger, unsettledLines, equal: subledger === ledger });

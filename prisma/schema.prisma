@@ -1050,6 +1050,9 @@ model Invoice {
   dpp              BigInt
   ppn              BigInt              @default(0)
   total            BigInt
+  /// Tax the counterparty withholds from the payment (expected, on the DPP); the receivable/payable and total stay gross.
+  whtKind          WithholdingKind?
+  whtAmount        BigInt              @default(0)
   counterAccountId String
   counterAccount   Account             @relation("InvoiceCounter", fields: [counterAccountId], references: [id])
   arApAccountId    String
@@ -1075,7 +1078,10 @@ model InvoiceSettlement {
   invoice           Invoice         @relation(fields: [invoiceId], references: [id])
   bankTransactionId String
   bankTransaction   BankTransaction @relation(fields: [bankTransactionId], references: [id])
+  /// What this settlement clears on the invoice (gross): the cash from the bank line plus `withheld`.
   amount            BigInt
+  /// The part of `amount` paid as withheld tax, not cash (booked on the bank line's classification side).
+  withheld          BigInt          @default(0)
   createdById       String?
   createdBy         FirmMember?     @relation("SettlementCreatedBy", fields: [createdById], references: [id])
   createdAt         DateTime        @default(now())
