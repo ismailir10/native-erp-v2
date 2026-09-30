@@ -105,7 +105,7 @@ it("includes undated company context with an explicit non-historical label", asy
   expect(answer.citations[0].href).toContain(`answer=${answer.id}`);
   expect(answer.citations[0].href).toContain("#cited-source");
   const empty = await getWorkspaceOverview(db, g.firm.id, { period: "2026-08" });
-  expect(empty.tasks.some(task => task.id === `statement:${g.client.id}` && task.href.includes("/import?"))).toBe(true);
+  expect(empty.tasks.some(task => task.id === `setup:${g.client.id}` && task.href.includes("/import?"))).toBe(true);
 });
 
 it("answers who was paid: bank lines by counterparty in the month, totals, accounts and ledger links", async () => {
@@ -144,4 +144,20 @@ it("lists what to ask the client: bank lines still in Review up to the month, wi
   expect(a.citations.map((c) => c.href.split("?")[0])).toEqual([`/clients/${g.client.id}/review`]);
   const before = await askWorkspace(db, g.firm.id, { scope: `client:${g.client.id}`, period: "2026-04", question });
   expect(before.text).toBe("Tidak ada transaksi yang menunggu review sampai April 2026 di cakupan ini.");
+});
+
+it("a client still in setup gets one task naming the step: upload first, then Saldo Awal", async () => {
+  const g = await makeGroup();
+  const setupTasks = async () => (await getWorkspaceOverview(db, g.firm.id, { period: "2026-08" })).tasks.filter(t => t.clientId === g.client.id);
+  let tasks = await setupTasks();
+  expect(tasks).toHaveLength(1);
+  expect(tasks[0]).toMatchObject({ title: "Mulai Grup Uji: unggah rekening koran" });
+  expect(new URL(tasks[0].href, "https://buku.example").pathname).toBe(`/clients/${g.client.id}/import`);
+
+  const bank = await db.bankAccount.findFirstOrThrow({ where: { entityId: g.pt.entity.id } });
+  await db.statementImport.create({ data: { firmId: g.firm.id, bankAccountId: bank.id, fileName: "bca.csv", format: "BCA", periodStart: dateOnly(2026, 8, 1), periodEnd: dateOnly(2026, 8, 31), openingBalance: 100n, closingBalance: 100n, rowCount: 0, continuityOk: true } });
+  tasks = await setupTasks();
+  expect(tasks).toHaveLength(1);
+  expect(tasks[0].title).toBe("Isi saldo awal PT Uji dan Andi");
+  expect(new URL(tasks[0].href, "https://buku.example").pathname).toBe(`/clients/${g.client.id}/opening`);
 });
