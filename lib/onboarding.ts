@@ -19,7 +19,7 @@ export class OnboardingError extends Error {
 
 const KINDS = ["PT", "CV", "BADAN_USAHA_ASING", "PERORANGAN"] as const;
 const BANKS = ["BCA", "MANDIRI", "BRI", "SMBC", "GENERIC"] as const;
-const BANK_NAME: Record<(typeof BANKS)[number], string> = { BCA: "BCA", MANDIRI: "Mandiri", BRI: "BRI", SMBC: "SMBC", GENERIC: "Bank" };
+export const BANK_NAME: Record<(typeof BANKS)[number], string> = { BCA: "BCA", MANDIRI: "Mandiri", BRI: "BRI", SMBC: "SMBC", GENERIC: "Bank" };
 
 export type NewClientInput = {
   name: string;
@@ -27,11 +27,11 @@ export type NewClientInput = {
   entities: { name: string; shortName: string; kind: (typeof KINDS)[number]; npwp: string; currency?: string; reportingFramework?: Framework; banks: { bank: (typeof BANKS)[number]; number: string; label: string; isOverdraft?: boolean }[] }[];
 };
 
-type EntityInput = NewClientInput["entities"][number];
-type BankInput = EntityInput["banks"][number];
+export type EntityInput = NewClientInput["entities"][number];
+export type BankInput = EntityInput["banks"][number];
 
 /** One bank row: a blank row is skipped (null); otherwise the cleaned account, with problems keyed under `bt`. `seen` holds the numbers already taken. */
-function cleanBank(b: BankInput, bt: string, fields: Record<string, string>, seen: Map<string, string>, duplicate = "Nomor ini sudah dimasukkan di atas.") {
+export function cleanBank(b: BankInput, bt: string, fields: Record<string, string>, seen: Map<string, string>, duplicate = "Nomor ini sudah dimasukkan di atas.") {
   if (isBlankBankRow(b)) return null;
   if (!BANKS.includes(b.bank)) fields[`${bt}.bank`] = "Pilih bank.";
   const number = b.number.replace(/[\s.\-]/g, "");
@@ -87,10 +87,10 @@ const limitReached = (field: string) => (e: unknown): never => {
   throw e;
 };
 
-const TAKEN = "Nomor ini sudah dipakai rekening lain di klien ini.";
+export const TAKEN = "Nomor ini sudah dipakai rekening lain di klien ini.";
 
 /** Bank numbers of the client, so an added account can't repeat one (the form rule for a new client is the same). */
-async function takenNumbers(db: Db, clientId: string) {
+export async function takenNumbers(db: Db, clientId: string) {
   const banks = await db.bankAccount.findMany({ where: { entity: { clientId } }, select: { number: true } });
   return new Map(banks.map((b) => [b.number, "bank"] as const));
 }
@@ -112,6 +112,9 @@ export async function addEntity(db: Db, firmId: string, clientId: string, input:
   if (!client) throw new OnboardingError({ entity: "Klien tidak ditemukan." });
   const fields: Record<string, string> = {};
   const spec = cleanEntity(input, "entity", fields, await takenNumbers(db, clientId), TAKEN);
+  // The ledger import matches file rows to entities by short name, so it stays unique on the client (renaming checks the same).
+  const shorts = (await db.entity.findMany({ where: { clientId }, select: { shortName: true } })).map((e) => e.shortName.trim().toLowerCase());
+  if (shorts.includes(spec.shortName.toLowerCase())) fields["entity.shortName"] = "Nama singkat ini sudah dipakai perusahaan lain di klien ini.";
   if (Object.keys(fields).length) throw new OnboardingError(fields);
   return db.$transaction(async (tx) => (await createEntity(tx, firmId, clientId, spec, await freeGlCodes(tx, clientId))).entity).catch(limitReached("entity"));
 }

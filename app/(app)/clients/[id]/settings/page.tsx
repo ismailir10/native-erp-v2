@@ -13,6 +13,7 @@ import { ChevronRight } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { isGenericKey } from "@/lib/import/normalize";
+import { bankAccountUsage, blockedReason, entityUsage } from "@/lib/clients/entities";
 import { EntitiesCard } from "@/components/app/entities-card";
 import { requireWorkspaceSession } from "@/lib/auth/session";
 import { DeleteClientCard } from "@/components/app/delete-client";
@@ -33,6 +34,15 @@ export default async function SettingsPage({ params, searchParams }: { params: P
   const clientRules = rules.filter((r) => r.clientId);
   const firmRules = rules.filter((r) => !r.clientId);
   const live = Boolean(cfg.apiKey && cfg.model);
+  // Why a company or account can't be removed, from the same checks the removal action runs.
+  const entityViews = await Promise.all(client.entities.map(async (e) => ({
+    id: e.id, name: e.name, shortName: e.shortName, npwp: e.npwp ?? "", kind: e.kind,
+    blocked: client.entities.length < 2 ? "Klien harus punya minimal satu perusahaan atau pemilik. Kalau seluruh klien salah dimasukkan, hapus kliennya di bawah." : blockedReason("entity", await entityUsage(prisma, e.id)),
+    banks: await Promise.all(e.bankAccounts.map(async (b) => {
+      const usage = await bankAccountUsage(prisma, b.id);
+      return { id: b.id, label: b.label, bank: b.bank, number: b.number, code: b.account.code, isOverdraft: b.isOverdraft, blocked: blockedReason("bank", usage), identityLocked: usage.some((u) => u.label === "impor rekening koran" || u.label === "mutasi bank") };
+    })),
+  })));
   const lastMonth = auto[auto.length - 1];
   const aiLines = auto.reduce((s, a) => s + a.ai, 0);
   const total = auto.reduce((s, a) => s + a.total, 0);
@@ -47,7 +57,7 @@ export default async function SettingsPage({ params, searchParams }: { params: P
         <Stat label="Panggilan AI (total)" value={usage._sum.calls ?? 0} hint={`${((usage._sum.promptTokens ?? 0) + (usage._sum.completionTokens ?? 0)).toLocaleString("id-ID")} token`} />
         <Stat label="Jawaban AI tersimpan" value={cacheSize} hint="Penerima atau pengirim yang sama tidak ditanyakan lagi" />
       </div>
-      <EntitiesCard clientId={client.id} entities={client.entities.map((e) => ({ id: e.id, name: e.name, kind: e.kind, banks: e.bankAccounts.map((b) => ({ id: b.id, label: b.label, number: b.number, code: b.account.code, isOverdraft: b.isOverdraft })) }))} />
+      <EntitiesCard clientId={client.id} canRemove={member.role === "ADMIN"} entities={entityViews} />
       <FrameworkCard clientId={client.id} entities={client.entities.map((e) => ({ id: e.id, name: e.name, framework: e.reportingFramework }))} />
       <Card>
         <CardHeader>

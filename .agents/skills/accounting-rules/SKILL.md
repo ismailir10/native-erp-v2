@@ -27,6 +27,7 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
    line moving that entity's balance on the account toward zero); close control `bank-entity:` (REVIEW) shows such leftovers.
 3. **Posted entries are immutable.** Corrections = new entry. Bank lines change via `postBankTransaction()`,
    which posts a **RECLASS of the difference** on the classification side only; the bank side never changes.
+   The same holds for what the books hang on: a company or bank account is **renamed freely** (labels; the bank GL account name `label (shortName)` follows, no figure or period is touched) but **removed only when nothing points to it** (`lib/clients/entities.ts`: any journal incl. Saldo Awal, bank row, statement import, mapping, register or tax record blocks it; admin only). A bank account's number and bank are fixed once a statement was imported (files are matched by number); the PRK flag never changes (it decides the GL account type).
 4. **Locked periods reject every write** — imports, reclasses, adjustments. Closing goes in order: a month can't be locked while an earlier
    month with entries other than the Saldo Awal is open (`lockPeriod`, checked again under the client lock). Unlock (`unlockPeriod`) is
    explicit, **ADMIN only**, needs a reason (≥ 5 characters), runs in reverse order (refused while a later month is locked) and writes a
