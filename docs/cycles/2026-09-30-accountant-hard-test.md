@@ -55,7 +55,7 @@ Their findings, confirmed against the code, that this cycle fixes:
 - [x] **S5 PP 55/2022 final tax.** Under the final regime the pack proposes a journal like the current-tax one: Dr 8200 / Cr 2145 for 0,5 % of
       year-to-date turnover, the difference from earlier postings of that kind; remittances already file to 2145. Text: PT 3 tahun pajak,
       CV/firma/koperasi 4 (PP 55/2022 Pasal 59).
-- [ ] **S6 Reports say what they are.** A status line on Laporan Keuangan (and a *DRAF* mark in the Excel title rows) — *Final — ditutup
+- [x] **S6 Reports say what they are.** A status line on Laporan Keuangan (and a *DRAF* mark in the Excel title rows) — *Final — ditutup
       oleh X, tanggal* or *Draf* with what makes it one: n transactions in review, Belum Terklasifikasi (1999) balance, missing statements,
       due unposted schedules, month open. Comparative columns (last month / 31 December / same months last year) are shown only when those
       dates hold entries; the YTD label starts at the books' start when the Saldo Awal falls in the year ("1 Maret – 31 Agustus 2026").
@@ -98,7 +98,7 @@ print styles; a fuller CALK (akta, pihak berelasi); PPh 23 at accrual instead of
 - [x] T4 S4 tax rules + migration + tax-payment suggestion + rule specificity — accept: unit + DB tests.
 - [x] T5 S5 PP 55 journal + text — accept: DB test posts 0,5 % difference once.
 - [x] T6 S3 review: tax labels, withholding with gross-up, guess safety, search/filter/bulk — accept: unit test for gross-up, DB test for no-learn, e2e filter.
-- [ ] T7 S6 reports status, comparatives, labels, signs, Excel draft mark — accept: page shows *Draf* with reasons; no empty columns.
+- [x] T7 S6 reports status, comparatives, labels, signs, Excel draft mark — accept: page shows *Draf* with reasons; no empty columns.
 - [ ] T8 S7 import guard + TRF — accept: DB test refuses the wrong-year file; unit test pairs TRF.
 - [ ] T9 S8 Beranda, menu, locked journal form — accept: unit/DB test for ordering; screenshot.
 - [ ] T10 S9 reverse manual journal — accept: DB test (mirror, once, locked refused).
@@ -138,6 +138,16 @@ print styles; a fuller CALK (akta, pihak berelasi); PPh 23 at accrual instead of
   *Terima N usulan AI yakin (≥ 80%)*; the rule checkbox has a name), `nativeButton={false}` on the three Link buttons (Base UI error),
   `tests/unit/withholding.test.ts`, `tests/db/review-scope.test.ts`, `e2e/review-safety.spec.ts`. Driven on a rules-only client (33 lines):
   Enter on a guess stays, PPh 23 on Rp 1.000.000 received shows bruto Rp 1.020.408 · PPh 23 Rp 20.408, filters and search narrow the list.
+- T7: `lib/reports/status.ts` (`reportStatus`: locked by whom/when, else the reasons — lines in Review, 1999 balance, missing statements,
+  due schedules, missing stock count), `lib/controls/coverage.ts` (statement coverage shared with the bank control, which now calls it),
+  `components/app/report-status.tsx` (*Final* / *Draf · belum final: …* with a link per reason), reports page (subtitle "dari buku besar";
+  comparative columns only where the books hold entries by then — the Saldo Awal position stands in for an empty 31 December; the YTD label
+  starts at the books' start, "1 Maret – akhir Agustus 2026"; *Jumlah aset lancar / tidak lancar / liabilitas jangka pendek / panjang /
+  ekuitas* subtotals, shown only when the section has lines; "Dinyatakan dalam Rupiah"), `lib/format.ts` (`formatDateLong`),
+  `components/app/fs-table.tsx` (`subtotal`), Excel title rows carry "DRAF — …" in red until the month is closed (`workbook.ts`, export
+  route), CALK tax note says when PPh kini isn't journaled, client overview footer no longer says "basis kas", `tests/db/report-status.test.ts`,
+  `e2e/statements.spec.ts`. Decision: *Pendapatan (beban) lain-lain* keeps expenses in parentheses — it is a net section, the usual SAK EP
+  presentation — rather than splitting it.
 ## Verification
 - After T2: `npm test` → `Test Files 113 passed (113)`, `Tests 840 passed (840)`.
 ## Ship Notes

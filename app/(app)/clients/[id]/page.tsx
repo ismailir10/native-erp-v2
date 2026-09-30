@@ -186,7 +186,7 @@ export default async function ClientOverview({ params, searchParams }: { params:
         </Card>
       </div>
       <p className="text-xs text-muted-foreground">
-        Laporan disusun dari mutasi bank (basis kas) + jurnal penyesuaian. <Link className="text-primary hover:underline" href={withParams(`${base}/reports`, q)}>Lihat laporan keuangan <ArrowRight className="inline size-3" /></Link>
+        Laporan disusun dari buku besar: mutasi bank, faktur dan jurnal penyesuaian. <Link className="text-primary hover:underline" href={withParams(`${base}/reports`, q)}>Lihat laporan keuangan <ArrowRight className="inline size-3" /></Link>
       </p>
     </div>
   );

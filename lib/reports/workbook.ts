@@ -16,7 +16,8 @@ import { frameworkLabel, scopeFramework, signatoryOf, statementNames } from "@/l
 const NUM = '#,##0;(#,##0);"–"';
 const n = (v: bigint) => (v <= BigInt(Number.MAX_SAFE_INTEGER) && v >= -BigInt(Number.MAX_SAFE_INTEGER) ? Number(v) : v.toString());
 
-export async function financialStatementsWorkbook(db: Db, scope: Scope, year: number, month: number, meta: { firm: string; title: string }): Promise<Buffer> {
+/** `meta.draft`: why the statements are not final yet (lib/reports/status.ts); printed in red under every sheet's title. Absent = final. */
+export async function financialStatementsWorkbook(db: Db, scope: Scope, year: number, month: number, meta: { firm: string; title: string; draft?: string }): Promise<Buffer> {
   const asOf = periodBounds(year, month).end;
   const lastYearEnd = dateOnly(year - 1, 12, 31);
   const priorTo = periodBounds(year - 1, month).end;
@@ -40,6 +41,7 @@ export async function financialStatementsWorkbook(db: Db, scope: Scope, year: nu
     ws.addRow([title]).font = { bold: true };
     ws.addRow([subtitle]);
     ws.addRow([`${meta.firm} · dibuat ${formatDateTime(new Date())}`]).font = { italic: true, color: { argb: "FF4B5768" } };
+    if (meta.draft) ws.addRow([`DRAF — ${meta.draft}`]).font = { bold: true, color: { argb: "FFC4213A" } };
     ws.addRow([]);
     widths.forEach((w, i) => {
       ws.getColumn(i + 1).width = w;

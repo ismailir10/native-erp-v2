@@ -15,6 +15,7 @@ import { ckpn, settingAt } from "@/lib/receivables/ckpn";
 import { leasesVsLedger } from "@/lib/leases/register";
 import { valuation } from "@/lib/benefits/valuation";
 import { inventoryRows } from "@/lib/inventory";
+import { openingDate, statementCoverage } from "@/lib/controls/coverage";
 import { packApplies, taxPack } from "@/lib/tax/pack";
 
 /**
@@ -90,28 +91,26 @@ async function collectControls(db: Db, clientId: string, year: number, month: nu
 
     let statementMissing = false;
     // Books start at the entity's Saldo Awal (else the account's first statement): a month ending before that needs no statement.
-    const opening = await db.journalEntry.findFirst({ where: { entityId: e.id, kind: "OPENING" }, orderBy: { date: "asc" }, select: { date: true } });
+    const opening = await openingDate(db, e.id);
     for (const ba of e.bankAccounts) {
       const lastTx = await db.bankTransaction.findFirst({
         where: { bankAccountId: ba.id, date: { lte: end }, balance: { not: null } },
         orderBy: [{ date: "desc" }, { rowNumber: "desc" }],
       });
-      const coverage = await db.statementImport.findMany({ where: { bankAccountId: ba.id, periodStart: { lte: end }, periodEnd: { gte: start } } });
+      const cover = await statementCoverage(db, ba.id, opening, start, end);
       const glRow = tb.find((r) => r.account.id === ba.accountId);
       const gl = glRow?.net ?? 0n;
       const key = `bank:${ba.id}`;
-      if (coverage.length === 0) {
-        const first = opening ? null : await db.statementImport.findFirst({ where: { bankAccountId: ba.id }, orderBy: { periodStart: "asc" }, select: { periodStart: true } });
-        const startsAfter = opening ? end.getTime() <= opening.date.getTime() : !!first && end.getTime() < first.periodStart.getTime();
-        if (startsAfter) {
-          const from = opening ? new Date(opening.date.getTime() + 86_400_000) : first!.periodStart;
-          controls.push({ key, title: `Rekonsiliasi ${ba.label}`, scope: e.shortName, status: "PASS", detail: `Pembukuan rekening ini mulai ${formatDate(from)}` });
-          continue;
-        }
+      if (cover.state === "before") {
+        controls.push({ key, title: `Rekonsiliasi ${ba.label}`, scope: e.shortName, status: "PASS", detail: `Pembukuan rekening ini mulai ${formatDate(cover.from)}` });
+        continue;
+      }
+      if (cover.state === "missing") {
         statementMissing = true;
         controls.push({ key, title: `Rekonsiliasi ${ba.label}`, scope: e.shortName, status: "REVIEW", detail: "Mutasi bulan ini belum diimpor", href: `${base}/import`, ack: acks.get(key) });
         continue;
       }
+      const { coverage } = cover;
       const stmt = lastTx?.balance ?? coverage[coverage.length - 1].closingBalance;
       const ok = stmt === gl;
       controls.push({

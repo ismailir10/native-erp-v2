@@ -3,7 +3,7 @@ import ExcelJS from "exceljs";
 import { readFile } from "node:fs/promises";
 
 /**
- * The full statements on the demo agency (PT Jasa Kreatif Digital, closed through August 2026): Laba Rugi with last year's column,
+ * The full statements on the demo agency (PT Jasa Kreatif Digital, closed through August 2026): marked final, no empty last-year column,
  * Neraca, Perubahan Ekuitas and Arus Kas reconcile, CALK drafted, and the whole set downloads as one workbook.
  */
 test("financial statements: comparatives, equity, cash flow, notes, download", async ({ page }) => {
@@ -13,7 +13,10 @@ test("financial statements: comparatives, equity, cash flow, notes, download", a
   const base = page.url().match(/^.*\/clients\/[^/?]+/)![0];
   await page.goto(`${base}/reports?period=2026-08`);
   await expect(page.getByRole("heading", { name: "Laporan Keuangan" })).toBeVisible();
-  await expect(page.getByRole("columnheader", { name: "S.d. Agustus 2025" })).toBeVisible();
+  await expect(page.getByTestId("report-status")).toContainText("Final");
+  await expect(page.getByRole("columnheader", { name: "S.d. Agustus 2026" })).toBeVisible();
+  // The demo books start in 2026: no column of dashes for last year.
+  await expect(page.getByRole("columnheader", { name: "S.d. Agustus 2025" })).toHaveCount(0);
 
   await page.getByRole("tab", { name: "Neraca" }).click();
   await expect(page.getByText("Seimbang")).toBeVisible();

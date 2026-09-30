@@ -255,7 +255,13 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
       continue;
     }
     const deferred = await deferredRows(e.id, p.deferred?.amount ?? null);
-    add(`Pajak penghasilan${entities.length > 1 ? ` · ${e.shortName}` : ""}`, [`Rekonsiliasi laba komersial ke laba fiskal ${year} s.d. ${cur} (estimasi, bukan SPT).`, ...(emkm && deferred.length ? [EMKM_DEFERRED_REVIEW] : [])], [
+    // The note computes the tax; the statements carry only what is journaled. Say so while they differ.
+    const unbooked = p.proposals.CURRENT.length > 0 && !p.laterPosting.CURRENT;
+    add(`Pajak penghasilan${entities.length > 1 ? ` · ${e.shortName}` : ""}`, [
+      `Rekonsiliasi laba komersial ke laba fiskal ${year} s.d. ${cur} (estimasi, bukan SPT).`,
+      ...(unbooked ? [`Pajak penghasilan kini ini belum dijurnal, jadi Laba Rugi dan Neraca belum memuatnya. Catat jurnalnya di Pajak Badan sebelum laporan ini final.`] : []),
+      ...(emkm && deferred.length ? [EMKM_DEFERRED_REVIEW] : []),
+    ], [
       {
         columns: ["Uraian", "Jumlah"],
         rows: [
