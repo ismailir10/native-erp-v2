@@ -14,7 +14,7 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
    of the PKL equity lines), the changes in equity and the indirect cash flow (`lib/reports/statements.ts`: every balance-sheet account's
    movement, classified by FS line — leases, employee benefits and deferred tax by code; single-currency scopes), whose opening is 31
    December plus the year's Saldo Awal (kind OPENING) entries — never a flow — and each is checked against the Neraca. CALK and the Excel
-   set (`lib/reports/notes.ts`, `workbook.ts`) reuse those functions and the registers; notes are never stored. In the cash flow a register disposal's **collected** proceeds and the paid part
+   set (`lib/reports/notes.ts`, `workbook.ts`) reuse those functions and the registers; notes are never stored. In the cash flow a register disposal's **collected** proceeds (nothing links a receipt to a disposal, so the proceeds account is read first-in-first-out: cash credits clear its older debits first, later debits never take from it — conservative, an older unrelated receivable delays the disposal's inflow) and the paid part
    of a purchase bill's investing debit (by the cash of its settlements, i.e. less the tax they withheld; any year) are investing; the rest of those entries is a non-cash operating line, so the sections still add up to the Neraca's change in cash.
    `Entity.reportingFramework` (SAK EMKM / EP / Umum, default EP; a group takes the most demanding) decides **wording only** — the standard the CALK
    names, statement titles, which policies are described (EMKM has no PSAK 109 matrix, right-of-use, deferred tax or OCI wording) and
