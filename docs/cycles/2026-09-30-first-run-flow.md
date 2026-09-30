@@ -87,7 +87,7 @@ to an existing client (new action, larger); (c) telling *Dokumen* apart from *Im
 - [x] T2 Ringkasan strip + NextStep from T1 (`components/app/setup-steps.tsx`, `clients/[id]/page.tsx`) — accept: chain deleted, strip renders 4 steps. Depends T1.
 - [x] T3 New client → Impor; copy; update the six e2e specs — accept: `npm run test:e2e` specs pass. Depends T1.
 - [x] T4 Impor page strip + NextStep + result CTA + tab labels + ledger-posted CTA — accept: result CTA order pending-opening → review → close. Depends T1, T2.
-- [ ] T5 Saldo Awal "no statement yet" NextStep + strip — accept: fresh client shows Impor CTA; after import shows the fill message. Depends T1, T2.
+- [x] T5 Saldo Awal "no statement yet" NextStep + strip — accept: fresh client shows Impor CTA; after import shows the fill message. Depends T1, T2.
 - [ ] T6 Sidebar reorder/rename + `investor-demo` selector — accept: Impor Mutasi and Saldo Awal visible without expanding anything.
 - [ ] T7 Beranda tasks + NextStep CTA (`lib/workspace/index.ts`, `page.tsx`, `work/page.tsx`) — accept: fresh client task reads "Mulai …: unggah rekening koran". Depends T1.
 - [ ] T8 S8–S10: bank-less entity skipped in T1/Ringkasan/Saldo Awal, Beranda order, Close NextStep, copy + role-aware hint — accept: fresh client with an owner and no owner bank reaches Tutup Buku. Depends T1.
@@ -99,6 +99,7 @@ to an existing client (new action, larger); (c) telling *Dokumen* apart from *Im
 - T2: `components/app/setup-steps.tsx`, `app/(app)/clients/[id]/page.tsx` — 4-step strip (number/check, label, detail, current step marked with `aria-current`) and the NextStep from `setupProgress`; the hand-rolled opening/import/review/close chain and its two queries are gone.
 - T3: `components/app/client-form.tsx`, `app/(app)/clients/new/page.tsx`, 7 e2e specs (benefits, ckpn, leases, receivables, import-xls, opening-deposit, real-client) — a saved client lands on Impor; specs wait for `/import` instead of `/opening`.
 - T4: `app/(app)/clients/[id]/import/page.tsx`, `components/app/import-form.tsx`, `import/ledger/[importId]/page.tsx`, `e2e/{real-client,opening-deposit}` — strip + NextStep from `setupProgress` (a plain instruction while the upload is the current step, a CTA to the next step afterwards); tabs \"Rekening koran bank\" / \"Neraca atau buku besar dari sistem lama\"; the result's one primary button follows the journey (Isi saldo awal → Review → Tutup Buku); a posted ledger import ends with a CTA to its next step.
+- T5: `app/(app)/clients/[id]/opening/page.tsx` — with nothing imported the NextStep says \"Unggah rekening koran dulu\" (CTA to Impor, form still usable); afterwards \"Isi saldo awal …\" from `setupProgress`; when all are recorded the CTA goes to the next step (Review or Tutup buku). Bank-less entities are no longer counted as missing and say Saldo Awal is optional for them (S8, page side).
 
 ## Verification
 - T1 gate: `npm run lint && npm run typecheck && npm test` → Test Files 109 passed (109), Tests 820 passed (820). (Sandbox note: `xlsx` is served from cdn.sheetjs.com, blocked by the session's network policy; a local-only `xlsx@0.18.5` stand-in from npm was installed for node_modules and is not committed.)
