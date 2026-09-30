@@ -80,10 +80,10 @@ test("rename and remove companies and bank accounts", async ({ page }) => {
   // With books, the company and its BCA account can't be removed, and the reason is right there.
   const pt = card.getByTestId(/^entity-/).filter({ hasText: "PT Ubah Hapus" });
   await expect(pt.getByRole("button", { name: "Hapus" }).first()).toBeDisabled();
-  await expect(pt.getByTestId("remove-blocked").first()).toContainText(/Sudah ada .*1 impor rekening koran, 1 mutasi bank/);
+  await expect(pt.getByTestId("remove-blocked").first()).toContainText(/Sudah ada .*1 mutasi bank, 1 impor rekening koran/);
   await expect(pt.getByTestId("remove-blocked").first()).toContainText("koreksi lewat Jurnal Penyesuaian");
   const bca = card.getByTestId(/^bank-/).filter({ hasText: "BCA Giro" });
-  await expect(bca.getByTestId("remove-blocked")).toContainText("Rekening yang sudah dipakai tidak bisa dihapus.");
+  await expect(bca.getByTestId("remove-blocked")).toContainText(/Sudah ada 1 impor rekening koran, 1 mutasi bank.*Rekening yang sudah dipakai tidak bisa dihapus\./);
 
   // Its number is locked (statements are matched against it), its name is not.
   await bca.getByRole("button", { name: "Ubah BCA Giro" }).click();
