@@ -221,9 +221,9 @@ function nearest(cols: Column[], cell: Cell, kinds: ColKind[]): Column | null {
 }
 
 /**
- * The bank a statement's heading names. Read only from the preamble (the lines above the first table), never from transactions,
- * and by the bank's own names — "Bank Mandiri", "Livin'", "BRImo", "BCA" in capitals — because account holders are often called
- * "… Mandiri …" or "… Bri …" too. Anything else (CIMB, BNI, Permata …) has no code: GENERIC.
+ * The bank a statement's heading names. Read only from the preamble (the lines above the first table), never from transactions.
+ * Mandiri needs the bank's own names ("Bank Mandiri", Livin', Kopra …) because account holders are so often called "… Mandiri …".
+ * Anything else (CIMB, BNI, Permata …) has no code: GENERIC.
  */
 export function detectFormat(headerText: string): BankCode {
   // BCA e-statements print their notes letter-spaced ("B C A b e r h a k …"), which loses the word breaks: collapsed, the
@@ -231,8 +231,8 @@ export function detectFormat(headerText: string): BankCode {
   const collapsed = headerText.replace(/(\p{L}) (?=\p{L}(?: |$))/gmu, "$1");
   if (/\bSMBC\b|bank smbc indonesia|jenius|\bBTPN\b/i.test(headerText)) return "SMBC";
   if (/bank\s+mandiri|livin|kopra|mandiri\s+(online|cash|cms|direct)|\bMCM\b/i.test(headerText)) return "MANDIRI";
-  if (/\bBRI\b/.test(headerText) || /bank rakyat|brimo/i.test(headerText)) return "BRI";
-  if (/(?<![A-Z])BCA(?![A-Z])/.test(headerText) || /bank central asia|klikbca/i.test(headerText) || /(?<![A-Z])BCA(?![A-Z])/.test(collapsed)) return "BCA";
+  if (/\bBRI\b|bank rakyat|\bbrimo\b/i.test(headerText)) return "BRI";
+  if (/\bBCA\b|bank central asia|klikbca/i.test(headerText) || /(?<![A-Z])BCA(?![A-Z])/.test(collapsed)) return "BCA";
   return "GENERIC";
 }
 
@@ -366,7 +366,7 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
         flag = /^(DB|DR|D)$/i.test(c.text) ? "DB" : "CR";
         continue;
       }
-      if (c.x0 > descCol.x0 && looksLikeAmount(c.text) && nearest(cols, c, moneyKinds)) unreadable ??= c.text;
+      if (c.x0 > descCol.x0 && looksLikeAmount(c.text) && !dateParts(c.text) && nearest(cols, c, moneyKinds)) unreadable ??= c.text;
       if (c.x0 >= dateCol.x1 - 1 || date) descParts.push(c.text);
     }
 
