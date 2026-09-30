@@ -15,7 +15,7 @@ cycle is spec'd for the record and built straight through, with the design decis
 4. **Beranda and Pekerjaan show the same task list** (Beranda: 3 tasks + "Lihat semua"; Pekerjaan: all). Two menu items, one purpose.
 
 ## Spec
-- [ ] **F1 Opening guard (accounting-rules area, invariant kept: opening precedes activity).** `importStatement` refuses a file whose *new*
+- [x] **F1 Opening guard (accounting-rules area, invariant kept: opening precedes activity).** `importStatement` refuses a file whose *new*
       rows (after de-duplication) are dated on or before the entity's OPENING date, with a Bahasa message that names the entity, the
       opening date, the first offending date and the row count, and says what to do (pick a file that starts after that date, or correct
       via Jurnal Penyesuaian). Already-imported rows never trigger it. Same place and error type as the locked-period check.
@@ -43,7 +43,7 @@ Saldo Awal posts; no import of statements *before* an opening (refused, not re-b
 4. F4 keeps `/work` as a redirect so bookmarks and the e2e route list keep working.
 
 ## Tasks
-- [ ] T1 F1 guard in `lib/import/pipeline.ts` + `tests/db/import-opening-guard.test.ts` — accept: import before the opening is refused with the message, after it succeeds, re-import of an existing statement unaffected.
+- [x] T1 F1 guard in `lib/import/pipeline.ts` + `tests/db/import-opening-guard.test.ts` — accept: import before the opening is refused with the message, after it succeeds, re-import of an existing statement unaffected.
 - [ ] T2 F2 domain: `addEntity`, `addBankAccount` in `lib/onboarding.ts` + `tests/db/onboarding-add.test.ts` — accept: codes 1101…/2201…, limits, duplicates, foreign client refused.
 - [ ] T3 F2 UI: server actions + `components/app/entities-card.tsx` on client settings — accept: add a bank and an owner from the page; bank shows in Impor's account list.
 - [ ] T4 F3 copy on Impor and Dokumen — accept: both sentences render with a link.
@@ -51,5 +51,7 @@ Saldo Awal posts; no import of statements *before* an opening (refused, not re-b
 - [ ] T6 F5 docs (README rows, cycle doc), full gate.
 
 ## Implementation
+- Plan: tasks T1–T6 sequential, inline (small, each independent but sharing files with the shipped cycle).
+- T1: `lib/import/pipeline.ts`, `tests/db/import-opening-guard.test.ts`, `accounting-rules` §5 — `importStatement` refuses a file whose not-yet-imported rows are dated on/before the entity's OPENING date (whole file, nothing written), message names the entity, the opening date, the row count and the earliest row, and what to do. Re-importing an already-imported statement is unaffected; an entity with no opening is unguarded.
 ## Verification
 ## Ship Notes
