@@ -1,7 +1,7 @@
-import type { Db } from "@/lib/db";
+import type { Db, Tx } from "@/lib/db";
 import { sourceSuspenseNet } from "@/lib/controls/suspense-net";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
-import { formatDate, periodBounds } from "@/lib/format";
+import { formatDate, formatPeriod, periodBounds } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
 import { FxMissingError } from "@/lib/reports/fx";
 import { revaluationProposals } from "@/lib/fx/revalue";
@@ -399,7 +399,30 @@ export function closeReadiness(controls: Control[], signoffs: string[]) {
   return { ready: fails.length === 0 && unacked.length === 0 && missing.length === 0, fails, unacked, missing };
 }
 
+/**
+ * Closing goes in order: the earliest month of the client that is still open and holds entries (other than a Saldo Awal, which is
+ * an opening, not a month of activity) before the one being closed. Empty months never block.
+ */
+export async function earlierOpenMonth(db: Db | Tx, clientId: string, year: number, month: number) {
+  return db.period.findFirst({
+    where: { clientId, status: "OPEN", OR: [{ year: { lt: year } }, { year, month: { lt: month } }], entries: { some: { kind: { not: "OPENING" } } } },
+    orderBy: [{ year: "asc" }, { month: "asc" }],
+    select: { year: true, month: true },
+  });
+}
+/** The latest closed month after this one: reopening goes in reverse order of closing. */
+export async function laterLockedMonth(db: Db | Tx, clientId: string, year: number, month: number) {
+  return db.period.findFirst({
+    where: { clientId, status: "LOCKED", OR: [{ year: { gt: year } }, { year, month: { gt: month } }] },
+    orderBy: [{ year: "desc" }, { month: "desc" }],
+    select: { year: true, month: true },
+  });
+}
+const mustCloseFirst = (p: { year: number; month: number }) => new CloseError(`Tutup buku ${formatPeriod(p.year, p.month)} dulu: bulan sebelumnya yang berisi transaksi harus ditutup lebih dulu.`);
+
 export async function lockPeriod(db: Db, clientId: string, year: number, month: number, note: string, actorId?: string | null) {
+  const before = await earlierOpenMonth(db, clientId, year, month);
+  if (before) throw mustCloseFirst(before);
   // Schedules due by this month known before the controls run: one created meanwhile was never checked, so the lock refuses (rule 5a).
   const known = new Set(await schedulesDueBy(db, clientId, year, month));
   const controls = await runControls(db, clientId, year, month);
@@ -420,9 +443,32 @@ export async function lockPeriod(db: Db, clientId: string, year: number, month: 
   }
   return db.$transaction(async (tx) => {
     await closeLock(tx, clientId);
+    const raced = await earlierOpenMonth(tx, clientId, year, month);
+    if (raced) throw mustCloseFirst(raced);
     if ((await schedulesDueBy(tx, clientId, year, month)).some((id) => !known.has(id))) {
       throw new CloseError("Jadwal penyesuaian baru yang jatuh tempo sampai bulan ini ditambahkan saat tutup buku berjalan. Muat ulang halaman, periksa kontrolnya, lalu tutup lagi.");
     }
     return tx.period.update({ where: { id: period.id }, data: { status: "LOCKED", lockedAt: new Date(), lockNote: note, lockedById: actorId ?? null } });
+  });
+}
+
+export const UNLOCK_REASON_MIN = 5;
+
+/**
+ * Reopens a closed month: admin only, in reverse order of closing (never under a later closed month), with the reason typed by the
+ * admin. The status change and the audit row (`PeriodUnlockLog`) are one transaction, under the same client lock as closing.
+ */
+export async function unlockPeriod(db: Db, clientId: string, year: number, month: number, actor: { id: string; role: "ADMIN" | "AKUNTAN" }, reason: string) {
+  if (actor.role !== "ADMIN") throw new CloseError("Hanya admin kantor yang dapat membuka kembali periode.");
+  const why = reason.trim();
+  if (why.length < UNLOCK_REASON_MIN) throw new CloseError(`Tulis alasan membuka kembali periode (min. ${UNLOCK_REASON_MIN} karakter).`);
+  return db.$transaction(async (tx) => {
+    await closeLock(tx, clientId);
+    const period = await tx.period.findUnique({ where: { clientId_year_month: { clientId, year, month } } });
+    if (!period || period.status !== "LOCKED") throw new CloseError(`Periode ${formatPeriod(year, month)} belum ditutup.`);
+    const later = await laterLockedMonth(tx, clientId, year, month);
+    if (later) throw new CloseError(`Buka kembali ${formatPeriod(later.year, later.month)} dulu: bulan setelahnya masih ditutup.`);
+    await tx.periodUnlockLog.create({ data: { firmId: period.firmId, clientId, year, month, unlockedById: actor.id, reason: why } });
+    return tx.period.update({ where: { id: period.id }, data: { status: "OPEN", lockedAt: null, lockedById: null } });
   });
 }

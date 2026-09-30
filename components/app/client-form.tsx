@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { addClientAction, createEvidenceClientAction } from "@/app/actions";
 import { CURRENCIES, CURRENCY_CODES } from "@/lib/fx/currency";
+import { FRAMEWORK_OPTIONS, type Framework } from "@/lib/reports/framework";
 import { isBlankBankRow } from "@/lib/blank-bank";
 
 import type { NewClientInput } from "@/lib/onboarding";
@@ -19,18 +20,18 @@ import type { NewClientInput } from "@/lib/onboarding";
 type Kind = "PT" | "CV" | "BADAN_USAHA_ASING" | "PERORANGAN";
 type Bank = "BCA" | "MANDIRI" | "BRI" | "SMBC" | "GENERIC";
 type BankRow = { bank: Bank; number: string; label: string; isOverdraft: boolean };
-type EntityRow = { name: string; shortName: string; kind: Kind; npwp: string; currency: string; banks: BankRow[] };
+type EntityRow = { name: string; shortName: string; kind: Kind; npwp: string; currency: string; reportingFramework: Framework; banks: BankRow[] };
 
 const KIND_LABEL: Record<Kind, string> = { PT: "PT", CV: "CV", BADAN_USAHA_ASING: "Badan usaha asing", PERORANGAN: "Perorangan (pemilik)" };
 const BANK_LABEL: Record<Bank, string> = { BCA: "BCA", MANDIRI: "Mandiri", BRI: "BRI", SMBC: "SMBC / Jenius", GENERIC: "Bank lain" };
 const newBank = (): BankRow => ({ bank: "BCA", number: "", label: "", isOverdraft: false });
-const newEntity = (kind: Kind): EntityRow => ({ name: "", shortName: "", kind, npwp: "", currency: "IDR", banks: [newBank()] });
+const newEntity = (kind: Kind): EntityRow => ({ name: "", shortName: "", kind, npwp: "", currency: "IDR", reportingFramework: "SAK_EP", banks: [newBank()] });
 
 export function ClientForm({ initial, evidenceIntakeId, onCreated }: { initial?: NewClientInput; evidenceIntakeId?: string; onCreated?: () => void } = {}) {
   const router = useRouter();
   const [name, setName] = useState(initial?.name ?? "");
   const [industry, setIndustry] = useState(initial?.industry ?? "");
-  const [entities, setEntities] = useState<EntityRow[]>(initial?.entities.map(e => ({ ...e, currency: e.currency ?? "IDR", banks: e.banks.map(b => ({ ...b, isOverdraft: b.isOverdraft ?? false })) })) ?? [newEntity("PT")]);
+  const [entities, setEntities] = useState<EntityRow[]>(initial?.entities.map(e => ({ ...e, currency: e.currency ?? "IDR", reportingFramework: e.reportingFramework ?? "SAK_EP", banks: e.banks.map(b => ({ ...b, isOverdraft: b.isOverdraft ?? false })) })) ?? [newEntity("PT")]);
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   // The first entity's name follows the client name until the user types their own (the common case is one PT).
@@ -170,6 +171,16 @@ export function ClientForm({ initial, evidenceIntakeId, onCreated }: { initial?:
                 </Field>
               )}
             </div>
+
+            <Field>
+              <FieldLabel>Kerangka pelaporan</FieldLabel>
+              <Select value={e.reportingFramework} onValueChange={(v) => setEntity(i, { reportingFramework: v as Framework })}>
+                <SelectTrigger className="w-full sm:w-64" aria-label="Kerangka pelaporan"><SelectValue>{FRAMEWORK_OPTIONS.find((o) => o.value === e.reportingFramework)?.label}</SelectValue></SelectTrigger>
+                <SelectContent>{FRAMEWORK_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+              </Select>
+              <FieldDescription>{FRAMEWORK_OPTIONS.find((o) => o.value === e.reportingFramework)?.help} Menentukan bunyi CALK dan nama laporan, bukan angkanya. Bisa diubah nanti di Pengaturan klien.</FieldDescription>
+              <FieldError>{err(`entities.${i}.reportingFramework`)}</FieldError>
+            </Field>
 
             <div className="space-y-2">
               <div className="text-sm font-medium">Rekening bank</div>

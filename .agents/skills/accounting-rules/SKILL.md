@@ -15,6 +15,9 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
    movement, classified by FS line — leases, employee benefits and deferred tax by code; single-currency scopes), whose opening is 31
    December plus the year's Saldo Awal (kind OPENING) entries — never a flow — and each is checked against the Neraca. CALK and the Excel
    set (`lib/reports/notes.ts`, `workbook.ts`) reuse those functions and the registers; notes are never stored.
+   `Entity.reportingFramework` (SAK EMKM / EP / Umum, default EP; a group takes the most demanding) decides **wording only** — the standard the CALK
+   names, statement titles, which policies are described (EMKM has no PSAK 109 matrix, right-of-use, deferred tax or OCI wording) and
+   who signs (Direksi for PT / foreign, Pemilik/Pengurus for CV / individual) — through `lib/reports/framework.ts`; no figure may depend on it.
 2. **`postJournal()` (`lib/ledger/post.ts`) is the only writer.** It enforces Σdebit = Σcredit, ≥2 lines,
    one positive side per line, open period, accounts in the entity's client COA. The DB also CHECKs
    `debit>=0, credit>=0, (debit=0) <> (credit=0)` (init migration). Never `prisma.journalLine.create` elsewhere.
@@ -23,7 +26,10 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
    line moving that entity's balance on the account toward zero); close control `bank-entity:` (REVIEW) shows such leftovers.
 3. **Posted entries are immutable.** Corrections = new entry. Bank lines change via `postBankTransaction()`,
    which posts a **RECLASS of the difference** on the classification side only; the bank side never changes.
-4. **Locked periods reject every write** — imports, reclasses, adjustments. Unlock is explicit (`unlockAction`).
+4. **Locked periods reject every write** — imports, reclasses, adjustments. Closing goes in order: a month can't be locked while an earlier
+   month with entries other than the Saldo Awal is open (`lockPeriod`, checked again under the client lock). Unlock (`unlockPeriod`) is
+   explicit, **ADMIN only**, needs a reason (≥ 5 characters), runs in reverse order (refused while a later month is locked) and writes a
+   `PeriodUnlockLog` row in the same transaction.
 5. **Opening balances** are `OPENING` entries; the plug goes to 3200 Saldo Laba. Prior-year P&L folds into 3200 in the TB.
    Saldo Awal prefills bank lines from the first statement and proposes (never posts) time deposits the statements list
    (`StatementImport.deposits`, on 1260, changeable); loan rows in the statements prompt for the loan balance.

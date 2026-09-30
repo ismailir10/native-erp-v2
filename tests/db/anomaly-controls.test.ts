@@ -135,6 +135,8 @@ describe("ledger anomaly controls", () => {
     for (const x of (await runControls(db, c, 2026, 8)).filter((x) => x.status === "REVIEW" && !x.key.startsWith("dup:"))) {
       await db.controlAck.create({ data: { periodId: period.id, controlKey: x.key, note: "wajar" } });
     }
+    // Earlier months (their own closing is not what this test is about) are closed, as closing goes in order.
+    await db.period.updateMany({ where: { clientId: c, OR: [{ year: { lt: 2026 } }, { year: 2026, month: { lt: 8 } }] }, data: { status: "LOCKED" } });
     await expect(lockPeriod(db, c, 2026, 8, "uji")).rejects.toThrow("1 kontrol Perlu dicek belum diberi catatan");
     await db.controlAck.create({ data: { periodId: period.id, controlKey: `dup:${pt}`, note: "Dua tagihan berbeda, faktur ada" } });
     expect((await lockPeriod(db, c, 2026, 8, "uji")).status).toBe("LOCKED");

@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/db";
 import { loadClientPage } from "@/lib/client-page";
 import type { SearchParams } from "@/lib/scope";
-import { CLOSE_SIGNOFFS, closeReadiness, runControls } from "@/lib/controls";
+import { CLOSE_SIGNOFFS, closeReadiness, earlierOpenMonth, laterLockedMonth, runControls } from "@/lib/controls";
+import { requireWorkspaceSession } from "@/lib/auth/session";
 import { formatDateTime, formatPeriod } from "@/lib/format";
 import { NextStep, PageHeader } from "@/components/app/page-header";
 import { ScopeBar } from "@/components/app/scope-bar";
@@ -30,6 +31,14 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
     r.missing.length ? `${r.missing.length} checklist belum dicentang` : "",
   ].filter(Boolean);
   const label = formatPeriod(period.year, period.month);
+  // Closing goes in order, reopening in reverse; only an admin reopens, with a reason that stays in the log.
+  const [before, after, { member }, unlockRows] = await Promise.all([
+    earlierOpenMonth(prisma, client.id, period.year, period.month),
+    laterLockedMonth(prisma, client.id, period.year, period.month),
+    requireWorkspaceSession(),
+    prisma.periodUnlockLog.findMany({ where: { clientId: client.id }, orderBy: { createdAt: "desc" }, take: 5, include: { unlockedBy: { select: { name: true } } } }),
+  ]);
+  if (before) blockers.unshift(`Tutup buku ${formatPeriod(before.year, before.month)} dulu, bulan sebelumnya masih terbuka`);
   const open = controls.find((c) => c.key === "suspense" && c.status === "REVIEW");
   const missing = controls.find((c) => c.key.startsWith("bank:") && c.detail.includes("belum diimpor"));
   const locked = p?.status === "LOCKED";
@@ -44,11 +53,14 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
   const reviewKey = createHash("sha1").update(controls.filter((c) => c.status !== "PASS").map((c) => `${c.key}|${c.detail}`).join("\n")).digest("hex");
   const review = !locked && flagged ? await cachedCloseReview(prisma, client.firmId, client.id, period.year, period.month, aiModel, controls) : null;
 
+  const monthKey = (m: { year: number; month: number }) => `${m.year}-${String(m.month).padStart(2, "0")}`;
   return (
     <div className="space-y-6">
       <PageHeader title="Tutup Buku" description={`${client.name} · ${label}`} actions={<ScopeBar entities={[]} periods={periodOptions} period={period.key} />} />
       {locked ? (
         <NextStep tone="done">Buku {label} sudah ditutup. Laporan siap dikirim ke klien.</NextStep>
+      ) : before ? (
+        <NextStep href={`${base}/close?period=${monthKey(before)}`} cta={`Buka ${formatPeriod(before.year, before.month)}`}>Tutup buku {formatPeriod(before.year, before.month)} dulu. Penutupan berurutan dari bulan paling awal.</NextStep>
       ) : missing ? (
         <NextStep href={`${base}/import`} cta="Impor mutasi">{missing.title.replace("Rekonsiliasi", "Mutasi")} belum diimpor. Beberapa kontrol baru bisa lolos setelah mutasinya masuk.</NextStep>
       ) : open ? (
@@ -90,6 +102,9 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
         lockedAt={p?.lockedAt ? `${formatDateTime(p.lockedAt)} oleh ${p.lockedBy?.name ?? "Sistem"}` : null}
         blockers={blockers}
         aiReady={aiModel !== null}
+        isAdmin={member.role === "ADMIN"}
+        unlockBlocker={after ? `Buka kembali ${formatPeriod(after.year, after.month)} dulu: bulan setelahnya masih ditutup.` : null}
+        unlocks={unlockRows.map((u) => ({ label: `${formatPeriod(u.year, u.month)} dibuka kembali`, reason: u.reason, by: `${u.unlockedBy.name} · ${formatDateTime(u.createdAt)}` }))}
       />
     </div>
   );

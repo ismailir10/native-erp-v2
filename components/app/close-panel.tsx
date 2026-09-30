@@ -8,6 +8,7 @@ import { Loader2, Lock, LockOpen, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { StatusPill } from "@/components/app/status";
@@ -29,6 +30,12 @@ export function ClosePanel(props: {
   blockers: string[];
   /** AI configured: each flagged row offers "Jelaskan" (accounting-rules 20b). */
   aiReady?: boolean;
+  /** Only an admin reopens a closed month (with a reason); the others see who can. */
+  isAdmin: boolean;
+  /** Why reopening is refused right now (a later month is still closed), or null. */
+  unlockBlocker: string | null;
+  /** The last reopenings of this client, newest first. */
+  unlocks: { label: string; reason: string; by: string }[];
 }) {
   const { clientId, year, month } = props;
   const router = useRouter();
@@ -39,6 +46,8 @@ export function ClosePanel(props: {
   const [explaining, setExplaining] = useState<string | null>(null);
   // Locking and reopening change what every import and journal may do: both are confirmed first.
   const [confirm, setConfirm] = useState<"lock" | "unlock" | null>(null);
+  const [reason, setReason] = useState("");
+  const reasonOk = reason.trim().length >= 5;
   const explain = async (c: Control) => {
     setExplaining(c.key);
     const r = await explainControlAction(clientId, year, month, c.key);
@@ -154,9 +163,16 @@ export function ClosePanel(props: {
               </ul>
             )}
             {props.locked ? (
-              <Button variant="outline" className="w-full" disabled={pending} onClick={() => setConfirm("unlock")}>
-                <LockOpen /> Buka kembali periode
-              </Button>
+              props.isAdmin ? (
+                <>
+                  <Button variant="outline" className="w-full" disabled={pending || props.unlockBlocker !== null} onClick={() => { setReason(""); setConfirm("unlock"); }} data-testid="unlock">
+                    <LockOpen /> Buka kembali periode
+                  </Button>
+                  {props.unlockBlocker && <p className="text-sm text-muted-foreground">{props.unlockBlocker}</p>}
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">Hanya admin kantor yang dapat membuka kembali periode yang sudah ditutup.</p>
+              )
             ) : (
               <Button className="w-full" disabled={pending || props.blockers.length > 0} onClick={() => setConfirm("lock")} data-testid="lock">
                 {pending ? <Loader2 className="animate-spin" /> : <Lock />} Tutup buku {props.periodLabel}
@@ -164,6 +180,23 @@ export function ClosePanel(props: {
             )}
           </CardContent>
         </Card>
+        {props.unlocks.length > 0 && (
+          <Card data-testid="unlock-history">
+            <CardHeader>
+              <CardTitle>Riwayat buka kembali</CardTitle>
+              <CardDescription>Periode yang pernah dibuka setelah ditutup, terbaru di atas.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {props.unlocks.map((u, i) => (
+                <div key={i} className="text-sm">
+                  <div className="font-medium">{u.label}</div>
+                  <div className="text-muted-foreground">{u.reason}</div>
+                  <div className="text-xs text-muted-foreground">{u.by}</div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       <Dialog open={confirm !== null} onOpenChange={(o) => !o && setConfirm(null)}>
@@ -176,16 +209,23 @@ export function ClosePanel(props: {
                 : `Periode ${props.periodLabel} bisa diubah lagi. Laporan yang sudah dikirim ke klien bisa berbeda setelah ada perubahan.`}
             </DialogDescription>
           </DialogHeader>
+          {confirm === "unlock" && (
+            <Field>
+              <FieldLabel htmlFor="unlock-reason">Alasan membuka kembali</FieldLabel>
+              <Textarea id="unlock-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="mis. Faktur pajak Agustus terlambat masuk" rows={3} data-testid="unlock-reason" />
+              <FieldDescription>Wajib diisi (min. 5 karakter). Alasan dan nama Anda tersimpan di riwayat.</FieldDescription>
+            </Field>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirm(null)}>Batal</Button>
             <Button
-              disabled={pending}
+              disabled={pending || (confirm === "unlock" && !reasonOk)}
               data-testid="confirm-lock"
               onClick={() => {
                 const which = confirm;
                 setConfirm(null);
                 if (which === "lock") run(() => lockAction(clientId, year, month), `Buku ${props.periodLabel} ditutup`);
-                else run(() => unlockAction(clientId, year, month), "Periode dibuka kembali");
+                else run(() => unlockAction(clientId, year, month, reason), "Periode dibuka kembali");
               }}
             >
               {confirm === "lock" ? `Tutup buku ${props.periodLabel}` : "Buka kembali"}
