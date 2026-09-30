@@ -74,7 +74,7 @@ to numbers of existing bank lines or entries; no new dependency.
 
 ## Tasks
 - [x] T1 Tax payment rules + skip a rule with no account in the client's chart + data migration + demo truth — accept: unit + DB tests, ALL PASS
-- [ ] T2 Withholding on the bank split (schema, `postBankTransaction`, review) — accept: scenario (b) and lease test
+- [x] T2 Withholding on the bank split (schema, `postBankTransaction`, review) — accept: scenario (b) and lease test
 - [ ] T3 Withholding on invoices and settlements (schema, create, settle, unsettle, free amounts) — accept: scenario (a), `ar:`/`ap:` PASS
 - [ ] T4 UI for withholding (invoice form, settle dialog, review) — accept: typecheck, lint, screenshot of the settle dialog
 - [ ] T5 PPh 25 masa pajak (schema, default at classification, pack query, edit in the pack) — accept: 12-instalment test
@@ -87,5 +87,9 @@ to numbers of existing bank lines or entries; no new dependency.
   migration `20260930050000_tax_payment_rules` (repoints the untouched seed `PPH 21` rule to 2140, inserts the rest per firm where absent),
   `lib/demo/scenario.ts` (PPh 21 truth → 2140; opening 2140 payable so the liability is not debit), tests `tests/unit/import.test.ts`,
   `tests/db/tax-rules.test.ts` (import fallback + the migration SQL run twice).
+- T2: migration `20260930050100_bank_withholding` (enum `WithholdingKind`, `BankTransaction.whtKind/whtAmount` + CHECK), `lib/tax/withholding.ts`
+  (accounts per kind and direction, rate → amount half up), `lib/ledger/bank.ts` (`classificationNets` with the tax leg; the leg's account is created
+  on first use through `templateAccounts`), `lib/review.ts` (`withholding` arg: undefined keeps, null removes; kept through a change of account),
+  `lib/coa/template.ts` (`FINAL_TAX` 8200), tests `tests/unit/withholding.test.ts`, `tests/db/withholding.test.ts` (rent, reclass, receipts, lease control).
 ## Verification
 ## Ship Notes

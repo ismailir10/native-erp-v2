@@ -45,6 +45,14 @@ enum TaxTag {
   PPH_25
 }
 
+/// Tax a payer withholds from a payment (PPh 21, 22, 23, 4(2)); the receiver books it as a credit (or final tax), the payer as a liability.
+enum WithholdingKind {
+  PPH_21
+  PPH_22
+  PPH_23
+  PPH_4_2
+}
+
 enum BankCode {
   BCA
   MANDIRI
@@ -320,6 +328,9 @@ model BankTransaction {
   accountCode   String?
   suggestedCode String?
   taxTag        TaxTag?
+  /// Tax withheld from this payment (the part not in the bank amount): on the classification side of the line's journal.
+  whtKind       WithholdingKind?
+  whtAmount     BigInt              @default(0)
   matchedTxId   String?
   entries       JournalEntry[]
   proposals     ProposedEntry[]

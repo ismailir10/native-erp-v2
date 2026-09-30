@@ -3,6 +3,8 @@ import type { TaxTag } from "@/lib/generated/prisma/enums";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { splitPpn } from "@/lib/money";
 import { postJournal, type PostLine } from "@/lib/ledger/post";
+import { templateAccounts } from "@/lib/coa/ensure";
+import { withholdingAccountCode, type Withholding } from "@/lib/tax/withholding";
 
 /**
  * Posting for bank transactions. The bank side is posted once and never changes.
@@ -10,14 +12,18 @@ import { postJournal, type PostLine } from "@/lib/ledger/post";
  * by a RECLASS entry that posts only the difference — so drill-down from any account
  * still lands on the same bank row (entries keep bankTransactionId).
  */
-type Target = { accountCode: string; taxTag?: TaxTag | null };
+type Target = { accountCode: string; taxTag?: TaxTag | null; /** Tax withheld from the payment: not in the bank amount, on the classification side (accounting-rules 5h). */ withholding?: Withholding | null };
 
 /** Desired non-bank side as signed nets per account code (debit positive). */
 export function classificationNets(amount: bigint, target: Target): Map<string, bigint> {
   const nets = new Map<string, bigint>();
   const add = (code: string, v: bigint) => nets.set(code, (nets.get(code) ?? 0n) + v);
   // Money in → bank debit, so classification side is credit (negative); money out → debit.
-  const side = -amount;
+  // A withheld part is a tax leg on the same side as the bank amount's opposite: money in, the customer paid net, so the counterparty
+  // (receivable) is credited gross and the prepaid tax debited; money out, the counterparty is debited gross and the liability credited.
+  const w = target.withholding && target.withholding.amount > 0n ? target.withholding : null;
+  const taxNet = w ? (amount > 0n ? w.amount : -w.amount) : 0n;
+  const side = -amount - taxNet;
   if (amount > 0n && target.taxTag === "PPN_KELUARAN") {
     const { dpp, ppn } = splitPpn(side);
     add(target.accountCode, dpp);
@@ -29,6 +35,7 @@ export function classificationNets(amount: bigint, target: Target): Map<string, 
   } else {
     add(target.accountCode, side);
   }
+  if (w) add(withholdingAccountCode(w.kind, amount > 0n ? "IN" : "OUT"), taxNet);
   return nets;
 }
 
@@ -48,7 +55,12 @@ export async function postBankTransaction(
     include: { bankAccount: { include: { entity: true } } },
   });
   const clientId = bankTx.bankAccount.entity.clientId;
-  const codeToId = opts.codeToId ?? (await accountIdMap(tx, clientId));
+  const codeToId = new Map(opts.codeToId ?? (await accountIdMap(tx, clientId)));
+  // The tax leg's account may be a template account this (older) chart lacks: created on first use when the code is free.
+  if (target.withholding && target.withholding.amount > 0n) {
+    const code = withholdingAccountCode(target.withholding.kind, bankTx.amount > 0n ? "IN" : "OUT");
+    if (!codeToId.has(code)) codeToId.set(code, (await templateAccounts(tx, clientId, [code])).get(code)!);
+  }
   const bankGlId = bankTx.bankAccount.accountId;
   const idOf = (code: string) => {
     const id = codeToId.get(code);

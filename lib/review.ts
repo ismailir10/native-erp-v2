@@ -4,6 +4,8 @@ import type { TaxTag } from "@/lib/generated/prisma/enums";
 import { postBankTransaction } from "@/lib/ledger/bank";
 import { LedgerError } from "@/lib/ledger/post";
 import { isGenericKey } from "@/lib/import/normalize";
+import { ACCOUNT_CODES } from "@/lib/coa/template";
+import { checkWithholding, type Withholding } from "@/lib/tax/withholding";
 
 type ReviewArgs = {
   bankTxId: string;
@@ -13,6 +15,11 @@ type ReviewArgs = {
   actorId?: string | null;
   /** false: a provisional decision (the line goes back to Review) — Memory learns only from the final one. */
   learn?: boolean;
+  /**
+   * Tax withheld from this payment or receipt (rent, services, a customer's PPh 23): the part not in the bank amount, posted on the
+   * classification side (accounting-rules 5h). undefined keeps what the line has; null removes it.
+   */
+  withholding?: Withholding | null;
 };
 
 /**
@@ -40,7 +47,10 @@ export async function reviewTransactionTx(tx: Tx, args: ReviewArgs) {
   if (away.length) {
     throw new LedgerError(`Mutasi ini melunasi ${away.map((s) => s.invoice.number).join(", ")} di akun ${away[0].invoice.arApAccount.code}. Hapus pencocokannya dulu di Piutang & Utang sebelum mengubah akunnya.`);
   }
-  await postBankTransaction(tx, t.id, { accountCode: args.accountCode, taxTag: args.taxTag }, { actorId: args.actorId });
+  // The withholding stays with the line through a change of account (the tax was withheld whichever account it files to), except in Review.
+  const held = t.whtKind && t.whtAmount > 0n ? { kind: t.whtKind, amount: t.whtAmount } : null;
+  const withholding = args.withholding === undefined ? (args.accountCode === ACCOUNT_CODES.SUSPENSE ? null : held) : args.withholding && checkWithholding(args.withholding, t.direction);
+  await postBankTransaction(tx, t.id, { accountCode: args.accountCode, taxTag: args.taxTag, withholding }, { actorId: args.actorId });
   const changed = args.accountCode !== t.suggestedCode || args.taxTag !== t.taxTag;
   await tx.bankTransaction.update({
     where: { id: t.id },
@@ -48,6 +58,8 @@ export async function reviewTransactionTx(tx: Tx, args: ReviewArgs) {
       status: "REVIEWED",
       accountCode: args.accountCode,
       taxTag: args.taxTag,
+      whtKind: withholding?.kind ?? null,
+      whtAmount: withholding?.amount ?? 0n,
       method: changed ? "MANUAL" : t.method,
       reason: changed ? "Diubah oleh reviewer" : t.reason,
     },
