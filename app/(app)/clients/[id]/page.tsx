@@ -16,6 +16,7 @@ import { setupProgress } from "@/lib/setup-progress";
 import { ScopeBar } from "@/components/app/scope-bar";
 import { StatusPill } from "@/components/app/status";
 import { Money } from "@/components/app/money";
+import { CountUp } from "@/components/motion/count-up";
 import { AutomationChart, CashChart, RevenueExpenseChart } from "@/components/app/charts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -67,10 +68,10 @@ export default async function ClientOverview({ params, searchParams }: { params:
         <FxMissing error={fxMissing!} base={base} compact />
       ) : (
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        <Stat label="Saldo kas & bank" value={money(last.cash)} hint={prev ? `${last.cash >= prev.cash ? "Naik" : "Turun"} ${money(last.cash >= prev.cash ? last.cash - prev.cash : prev.cash - last.cash)} dari bulan lalu` : undefined} />
-        <Stat label={`Pendapatan ${formatPeriod(period.year, period.month)}`} value={money(is.totals.revenue)} hint="Tanpa PPN" />
-        <Stat label="Laba bersih bulan ini" value={money(is.totals.netProfit)} hint={is.totals.revenue ? `Margin ${Math.round((Number(is.totals.netProfit) / Number(is.totals.revenue)) * 100)}%` : undefined} />
-        <Stat label="Kontrol tutup buku" value={`${counts.PASS}/${controls.length}`} hint={counts.FAIL ? `${counts.FAIL} gagal` : counts.REVIEW ? `${counts.REVIEW} perlu dicek` : "Semua lolos"} />
+        <Stat label="Saldo kas & bank" value={<CountUp value={last.cash} currency={currency} />} hint={prev ? `${last.cash >= prev.cash ? "Naik" : "Turun"} ${money(last.cash >= prev.cash ? last.cash - prev.cash : prev.cash - last.cash)} dari bulan lalu` : undefined} />
+        <Stat label={`Pendapatan ${formatPeriod(period.year, period.month)}`} value={<CountUp value={is.totals.revenue} currency={currency} />} hint="Tanpa PPN" />
+        <Stat label="Laba bersih bulan ini" value={<CountUp value={is.totals.netProfit} currency={currency} />} hint={is.totals.revenue ? `Margin ${Math.round((Number(is.totals.netProfit) / Number(is.totals.revenue)) * 100)}%` : undefined} />
+        <Stat label="Kontrol tutup buku" value={<CountUp value={counts.PASS} suffix={`/${controls.length}`} />} hint={counts.FAIL ? `${counts.FAIL} gagal` : counts.REVIEW ? `${counts.REVIEW} perlu dicek` : "Semua lolos"} />
       </div>
       )}
 

@@ -1,9 +1,11 @@
 import { BrandMark } from "@/components/app/brand-mark";
+import { DotGrid } from "@/components/motion/dot-grid";
 
 /** Shared frame for the public pages: login, forgot password, set password. */
 export function AuthShell({ title, description, children, footer }: { title: string; description: string; children: React.ReactNode; footer?: React.ReactNode }) {
-  return <main className="flex min-h-dvh items-center justify-center bg-background px-5 py-12">
-    <section className="w-full max-w-md rounded-lg border bg-card p-6 sm:p-8" aria-labelledby="auth-title">
+  return <main className="relative flex min-h-dvh items-center justify-center bg-background px-5 py-12">
+    <DotGrid />
+    <section className="page-settle relative w-full max-w-md rounded-lg border bg-card p-6 sm:p-8" aria-labelledby="auth-title">
       <div className="mb-8 flex items-center gap-2 text-xl font-semibold"><BrandMark className="size-8 text-base" />Buku</div>
       <h1 id="auth-title" className="text-2xl font-semibold">{title}</h1>
       <p className="mb-6 mt-2 text-sm text-muted-foreground">{description}</p>

@@ -83,6 +83,7 @@ app/(app)/                 pages (Beranda + /clients/[id]/{import,review,ledger,
 app/actions.ts             server actions — the only UI write path
 components/ui/             shadcn (base-nova on @base-ui/react), vendored — edit sparingly
 components/app/            product components (Money, StatusPill, NextStep, charts, forms)
+components/motion/         the few approved motions (CountUp, CheckDraw, DotGrid, ProgressFill), ported from React Bits
 lib/ledger/                postJournal, bank posting + reclass
 lib/import/                parsers (BCA/Mandiri/BRI/SMBC/generic, combined PDFs), normalize (merchant key, continuity), pipeline
 lib/ledger-import/         ledger/Neraca files: read → check → map (source accounts) → post
