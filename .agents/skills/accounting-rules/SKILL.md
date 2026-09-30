@@ -190,6 +190,9 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     and posted only while the entity's 1999 balance (bank lines waiting in Review left out) still holds that difference — never
     reversed twice, e.g. after a manual fix; when no single line fits what is left (offsetting differences, a partial fix), the entity
     gets one correction for the remaining balance, so the FAIL always has a way out.
+    A Neraca printed as **two panels side by side** (Aset | Kewajiban + Ekuitas, an ERP "Balance Sheet Report") is one table: every panel
+    is read in turn and its rows keep the panel's column in the ref (`BS!A12`, `BS!F12`), so no row loses its source cell. With a `Level`
+    column a coded row with zero value and a deeper row after it is a *group heading* (it sets the section and term), never an account.
 16. Parsers detect format from **content**, not file name, and raise `ParseError` with a Bahasa message the UI shows verbatim.
 
 ## AI (credit is limited — treat every call as money)
