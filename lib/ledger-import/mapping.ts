@@ -103,7 +103,8 @@ export const newFsLineOf = (code: string | null | undefined): FsLine | null =>
   code?.startsWith(NEW_PREFIX) && (code.slice(NEW_PREFIX.length) as FsLine) in FS_LINES ? (code.slice(NEW_PREFIX.length) as FsLine) : null;
 const CATCH_ALL_NAME = /(lain ?lain|lainnya|\bother\b|others|misc|sundry|\bumum\b|general|serba ?serbi)/;
 
-const KEYWORDS: { re: RegExp; code: string; types?: AccountType[]; not?: RegExp; generic?: FsLine; template?: boolean }[] = [
+/** `strict`: the name alone is ambiguous ("Bahan Baku" is stock or a purchase), so the rule needs the account's type to be known and in `types`. */
+const KEYWORDS: { re: RegExp; code: string; types?: AccountType[]; not?: RegExp; generic?: FsLine; template?: boolean; strict?: boolean }[] = [
   { re: /(akumulasi|accumulated|accumulation).*(penyusutan|depreciation|amortization|amortisasi)/, code: "1219" },
   { re: /(penyusutan|depreciation|amortisasi|amortization)/, code: "6180", types: ["BEBAN"] },
   { re: /(rounding|pembulatan)/, code: ACCOUNT_CODES.ROUNDING },
@@ -116,7 +117,7 @@ const KEYWORDS: { re: RegExp; code: string; types?: AccountType[]; not?: RegExp;
   { re: /(interest expense|beban bunga|bunga pinjaman|interest p2p)/, code: "7110", types: ["BEBAN"] },
   { re: /(bank charge|admin(istrasi)? bank|biaya bank|bank administration|bank admin|provisi|biaya transfer)/, code: "7100", types: ["BEBAN"] },
   { re: /(petty cash|kas kecil|cash in transit|\bkas\b|cash on hand)/, code: "1110", types: ["ASET"], not: /bank/ },
-  { re: /\b(bank|giro|tabungan|deposito|time deposits?|call a ?c|ocbc|bca|bri|bni|mandiri|cimb|dbs|uob|citibank|permata|doku|flip|xendit|midtrans)\b/, code: "1120", types: ["ASET"], not: /(non ?bank|payable|utang|hutang|loan|pinjaman)/ },
+  { re: /\b(bank|giro|tabungan|deposito|time deposits?|call a ?c|ocbc|bca|bri|bni|mandiri|cimb|dbs|uob|citibank|permata|bjb|bsi|btn|maybank|panin|danamon|doku|flip|xendit|midtrans)\b/, code: "1120", types: ["ASET"], not: /(non ?bank|payable|utang|hutang|loan|pinjaman)/ },
   // The allowance always goes to its contra account 1135 (created from the template on posting if the client predates it): netted into
   // 1130 it would reduce receivables a second time once CKPN posts to 1135.
   { re: /(allowance|penyisihan|cadangan kerugian|\becl\b|ckpn)/, code: "1135", types: ["ASET"], template: true },
@@ -126,27 +127,36 @@ const KEYWORDS: { re: RegExp; code: string; types?: AccountType[]; not?: RegExp;
   // Loans to staff and related parties are other receivables, not trade (1140 below).
   { re: /(trade receivable|piutang usaha|accounts? receivable)/, code: "1130", types: ["ASET"], not: /(employee|karyawan|pegawai|staff|related|berelasi|afiliasi|affiliat|\bloan\b|pinjaman)/ },
   { re: /(persediaan|inventory|supplies|perlengkapan|finished goods|barang jadi|raw material)/, code: "1160", types: ["ASET"] },
+  { re: /(bahan baku|bahan kemasan|bahan pendukung|bahan habis pakai|barang dagang|merchandise|seragam|apparel)/, code: "1160", types: ["ASET"], strict: true, not: /(pemakaian|penggunaan|pembelian|usage|consumption|purchase|hpp|beban|biaya)/ },
   { re: /(prepaid|dibayar di ?muka|uang muka|advance|deposit|jaminan|guarantee|deferred (expense|charge|cost)|(beban|biaya) ditangguhkan)/, code: "1170", types: ["ASET"] },
   { re: /(piutang|receivable|loan to)/, code: "1140", types: ["ASET"], generic: "PIUTANG_LAIN" },
-  { re: /(intangible|tak berwujud|software|right of use|hak guna|goodwill)/, code: "1250", types: ["ASET"] },
+  { re: /(intangible|tak berwujud|tidak berwujud|lisensi|licen[cs]e|merk\b|trademark|software|right of use|hak guna|goodwill)/, code: "1250", types: ["ASET"] },
   { re: /(investment|investasi|penyertaan|placement|penempatan)/, code: "1260", types: ["ASET"] },
   { re: /(fixed asset|asset in progress|aset dalam penyelesaian|construction in progress|aset tetap|equipment|peralatan|kendaraan|vehicle|building|bangunan|renovation|renovasi|furniture|machine|mesin|\bland\b|tanah|inventaris|\bppe\b|\biot\b)/, code: "1210", types: ["ASET"] },
+  // After fixed assets and intangibles: "Kendaraan Sewa" is equipment and "Software Subscription" an intangible; a bare asset-side "Sewa …" / "Asuransi …" is a prepayment.
+  { re: /(\bsewa\b|\brent\b|asuransi|insurance|langganan|subscription)/, code: "1170", types: ["ASET"], strict: true, not: /(hak guna|sewa guna|right of use|pembiayaan|akumulasi|accumulated|penyusutan|depreciation|piutang|receivable|pendapatan|revenue|income|klaim|claim|kendaraan|peralatan|mesin|bangunan)/ },
+  // Payment settlements in transit (EDC/QRIS/e-wallets) are bank-like balances, not the machines, fees or advances that carry the same word.
+  { re: /\b(gopay|ovo|shopeepay|linkaja|qris|edc)\b/, code: "1120", types: ["ASET"], strict: true, not: /(mesin|peralatan|machine|equipment|mdr|komisi|commission|fee|biaya|beban|uang muka|deposit|jaminan)/ },
   { re: /(ppn keluaran|vat[- ]?out\b|output vat)/, code: "2130", types: ["LIABILITAS"] },
   { re: /(pph ?21|article 21|pasal 21)/, code: "2140", types: ["LIABILITAS"] },
   { re: /(pph ?23|article 23|pasal 23)/, code: "2141", types: ["LIABILITAS"] },
-  { re: /(tax payable|utang pajak|hutang pajak|article 4|article 25|article 29|pasal 4|pasal 25|pasal 29|\bpph\b)/, code: "2145", types: ["LIABILITAS"] },
+  { re: /(pph ?29|article 29|pasal 29)/, code: "2146", types: ["LIABILITAS"] },
+  { re: /(tax payable|utang pajak|hutang pajak|article 4|article 25|pasal 4|pasal 25|\bpph\b|\bpb ?1\b|pajak (restoran|hotel|hiburan|reklame|parkir|daerah))/, code: "2145", types: ["LIABILITAS"] },
   { re: /(imbalan kerja|employee benefit|post.?employment|pesangon)/, code: "2310", types: ["LIABILITAS"] },
-  { re: /(accrued|accured|masih harus dibayar|accrual)/, code: "2150", types: ["LIABILITAS"] },
-  { re: /(unearned|diterima di muka|deferred revenue|customer deposit|uang muka pelanggan)/, code: "2160", types: ["LIABILITAS"] },
+  { re: /(accrued|accured|masih harus dibayar|accrual|akrual)/, code: "2150", types: ["LIABILITAS"] },
+  { re: /(unearned|diterima di muka|deferred revenue|customer deposit|uang muka (pelanggan|penjualan|customer|sales)|advance (from|received)|customer advance)/, code: "2160", types: ["LIABILITAS"] },
+  { re: /down ?payment/, code: "2160", types: ["LIABILITAS"], strict: true, not: /(supplier|vendor|pemasok|pembelian|purchase|to |ke )/ },
   { re: /(bank loan|utang bank|hutang bank|pinjaman bank|short term bank|kredit modal|credit card|kartu kredit|\bcc\b)/, code: "2210", types: ["LIABILITAS"] },
   { re: /(short ?term|jangka pendek)/, code: "2120", types: ["LIABILITAS"] },
   { re: /(long ?term|jangka panjang|non ?bank|lease|sewa pembiayaan|loan payable|\bloan\b|pinjaman)/, code: "2300", types: ["LIABILITAS"] },
   { re: /(trade payable|utang usaha|hutang usaha|accounts? payable)/, code: "2110", types: ["LIABILITAS"] },
   { re: /(payable|\butang\b|\bhutang\b|current liabilit|kewajiban lancar)/, code: "2120", types: ["LIABILITAS"], generic: "UTANG_LAIN" },
-  { re: /(additional paid|agio|premium|tambahan modal|\bapic\b)/, code: "3110", types: ["EKUITAS"] },
+  { re: /(additional paid|agio|premium|tambahan modal|modal tambahan|\bapic\b)/, code: "3110", types: ["EKUITAS"] },
   { re: /(share capital|modal saham|modal disetor|ordinary shares?|pref+er+ed shares?|paid ?up|capital stock)/, code: "3100", types: ["EKUITAS"] },
-  { re: /(retained|saldo laba|laba ditahan|accumulated (loss|deficit)|earnings|laba tahun berjalan)/, code: ACCOUNT_CODES.RETAINED, types: ["EKUITAS"] },
-  { re: /(prive|dividen|dividend|drawing)/, code: "3300", types: ["EKUITAS"] },
+  { re: /(retained|saldo laba|laba ditahan|saldo awal|opening balance|accumulated (loss|deficit)|earnings|laba tahun berjalan)/, code: ACCOUNT_CODES.RETAINED, types: ["EKUITAS"] },
+  { re: /(prive|dividen|dividend|drawing|penarikan (modal|pemilik))/, code: "3300", types: ["EKUITAS"] },
+  // "Modal - <pemegang saham>", "Setoran Modal": paid-in capital, unless the words say otherwise.
+  { re: /(\bmodal\b|setoran modal)/, code: "3100", types: ["EKUITAS"], strict: true, not: /(kerja|penyertaan|prive|dividen|drawing|penarikan|ditahan)/ },
   { re: /(income tax expense|beban pajak|pph badan|tax expense|corporate tax)/, code: "8100", types: ["BEBAN"], not: /final/ },
   { re: /(final tax|pph final|4\(2\))/, code: "8200", types: ["BEBAN"] },
   { re: /(other income|pendapatan lain|other revenue|\bgain\b|miscellaneous income)/, code: "4910", types: ["PENDAPATAN"], generic: "PENDAPATAN_LAIN" },
@@ -205,7 +215,7 @@ function keywordSuggestion(
   for (const k of KEYWORDS) {
     if (!k.re.test(n)) continue;
     if (k.not?.test(n)) continue;
-    if (k.types && type && !k.types.includes(type)) continue;
+    if (k.types && (type ? !k.types.includes(type) : k.strict)) continue;
     const acc = ctx.accounts.find((a) => a.code === k.code) ?? (k.template ? COA_TEMPLATE.find((a) => a.code === k.code) : undefined);
     if (!acc) continue;
     if (k.generic && !CATCH_ALL_NAME.test(n) && RANGES[k.generic]) {

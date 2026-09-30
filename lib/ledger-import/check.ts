@@ -58,24 +58,36 @@ const MAX_REFS = 50;
 const cap = (refs: string[]) => (refs.length > MAX_REFS ? [...refs.slice(0, MAX_REFS), `… +${refs.length - MAX_REFS} baris`] : refs);
 export const accountKey = (entityKey: string, code: string) => `${entityKey}|${code}`;
 
-/** Compress "S!5, S!6, S!7" → "S!5-7" for entry refs. */
+/** Compress "S!5, S!6, S!7" → "S!5-7" for entry refs. A side-by-side file's refs carry a column ("S!A5", "S!F5") and are grouped per column. */
 export function rangeRef(refs: string[]): string {
   if (!refs.length) return "";
-  const [sheet] = refs[0].split("!");
-  const nums = refs.map((r) => Number(r.split("!")[1])).sort((a, b) => a - b);
-  const parts: string[] = [];
-  let start = nums[0];
-  let prev = nums[0];
-  for (const n of [...nums.slice(1), NaN]) {
-    if (n === prev + 1) {
-      prev = n;
-      continue;
-    }
-    parts.push(start === prev ? `${start}` : `${start}-${prev}`);
-    start = n;
-    prev = n;
+  const sheet = refs[0].slice(0, refs[0].lastIndexOf("!"));
+  const byColumn = new Map<string, number[]>();
+  for (const r of refs) {
+    const m = r.slice(r.lastIndexOf("!") + 1).match(/^([A-Z]*)(\d+)$/);
+    if (!m) continue;
+    const list = byColumn.get(m[1]);
+    if (list) list.push(Number(m[2]));
+    else byColumn.set(m[1], [Number(m[2])]);
   }
-  return `${sheet}!${parts.join(",")}`.slice(0, 500);
+  const groups: string[] = [];
+  for (const [col, list] of byColumn) {
+    const nums = list.sort((a, b) => a - b);
+    const parts: string[] = [];
+    let start = nums[0];
+    let prev = nums[0];
+    for (const n of [...nums.slice(1), NaN]) {
+      if (n === prev + 1) {
+        prev = n;
+        continue;
+      }
+      parts.push(start === prev ? `${col}${start}` : `${col}${start}-${prev}`);
+      start = n;
+      prev = n;
+    }
+    groups.push(parts.join(","));
+  }
+  return `${sheet}!${groups.join(",")}`.slice(0, 500);
 }
 
 /** Names compare after case, spacing, dash and punctuation are normalised; a name equal to its code is "no name". */

@@ -96,10 +96,11 @@ export async function taxWorkpaper(db: Db, pack: TaxPack, meta: { firm: string; 
   const bankRows = new Map((await db.bankTransaction.findMany({ where: { id: { in: bankIds } }, select: { id: true, rowNumber: true, sourceSheet: true, import: { select: { fileName: true } } } })).map((t) => [t.id, `${t.import.fileName}${t.sourceSheet ? ` · ${t.sourceSheet}` : ""} baris ${t.rowNumber}`]));
   table(
     cr,
-    ["Jenis", "Tanggal", "Keterangan / bukti potong", "Akun", "Sumber", "Jumlah (Rp)"],
-    pack.credits.map((c) => [CREDIT[c.type], formatDate(c.date), c.label, c.accountCode, c.source.type === "BANK" ? (bankRows.get(c.source.bankTransactionId) ?? "Rekening koran") : "Bukti potong (diisi akuntan)", n(c.amount)]),
+    ["Jenis", "Tanggal", "Keterangan / bukti potong", "Akun", "Sumber", "Jumlah (Rp)", "Masa pajak"],
+    // Masa pajak: the month a PPh 25 instalment is for (December paid in January still belongs to December); a line without one counts by its date.
+    pack.credits.map((c) => [CREDIT[c.type], formatDate(c.date), c.label, c.accountCode, c.source.type === "BANK" ? (bankRows.get(c.source.bankTransactionId) ?? "Rekening koran") : "Bukti potong (diisi akuntan)", n(c.amount), c.masa ? formatPeriod(c.masa.getUTCFullYear(), c.masa.getUTCMonth() + 1) : c.type === "PPH_25" ? "Menurut tanggal bayar" : null]),
     [6],
-    [10, 14, 50, 10, 40, 18],
+    [10, 14, 50, 10, 40, 18, 22],
   );
 
   // 6. Pajak Tangguhan.

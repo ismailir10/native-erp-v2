@@ -206,4 +206,107 @@ describe("report exports that aren't a ledger or a Neraca", () => {
     expect(sheets.map(reportKind)).toEqual(["LABA_RUGI", "ARUS_KAS"]);
     expect(detectTables(sheets)).toEqual([]);
   });
+  /** An ERP "Balance Sheet Report": Aset on the left, Kewajiban + Ekuitas on the right, spaced 4-level codes, group rows at 0.00. */
+  const PANEL_HEADER = ["Account", "Level", "Description", "Value", null, "Account", "Level", "Description", "Value"];
+  const left: unknown[][] = [
+    ["1 0 00 00", 1, "Aset", "0.00"],
+    ["1 1 00 00", 2, "Aset Lancar", "0.00"],
+    ["1 1 01 00", 3, "Kas", "0.00"],
+    ["1 1 01 01", 4, "Kas Kecil", "1,000,000.00"],
+    ["1 1 01 02", 4, "BCA 1234", "9,000,000.00"],
+    [null, null, "Total Kas", "10,000,000.00"],
+    ["1 2 00 00", 2, "Aset Tidak Lancar", "0.00"],
+    ["1 2 01 00", 3, "Aset Tetap", "0.00"],
+    ["1 2 01 01", 4, "Inventaris", "5,000,000.00"],
+    ["1 2 02 01", 4, "Akumulasi Penyusutan - Inventaris", "-2,000,000.00"],
+    [null, null, "Total Aset", "13,000,000.00"],
+  ];
+  const right: unknown[][] = [
+    ["2 0 00 00", 1, "Kewajiban", "0.00"],
+    ["2 1 00 00", 2, "Kewajiban Lancar", "0.00"],
+    ["2 1 03 00", 3, "Hutang Pajak", "0.00"],
+    ["2 1 03 03", 4, "Pph 21", "-200,000.00"],
+    ["2 1 03 04", 4, "Ppn Keluaran", "500,000.00"],
+    [null, null, "Total Hutang Pajak", "300,000.00"],
+    ["3 0 00 00", 1, "Ekuitas", "0.00"],
+    ["3 1 01 00", 3, "Modal Disetor", "0.00"],
+    ["3 1 01 01", 4, "Modal Disetor", "8,000,000.00"],
+    ["3 1 05 01", 4, "Laba Ditahan", "4,700,000.00"],
+    [null, null, "Total Pasiva", "13,000,000.00"],
+  ];
+  const panelRows = [...left.map((l, i) => [...l, null, ...(right[i] ?? [])].slice(0, 9)), ...right.slice(left.length).map((r) => [null, null, null, null, null, ...r])];
+  const panelBook = () =>
+    workbook({
+      BS: [["BS Balance Sheet Report"], ["PT Uji Kopi"], ["Generated", "14-04-2025 09:45:24"], ["Period", "31-12-2024"], ["Level COA", "All"], [], PANEL_HEADER, ...panelRows],
+      PnL: [["PnL Profit Loss Report", null, null, "PT Uji Kopi"], ["Account", "Description", "December"], ["4 1 01 01", "Penjualan", "1,000.00"]],
+    });
+
+  it("reads an ERP Neraca printed as two panels: one table, codes with spaces, groups as headings, refs carry the panel column", async () => {
+    const sheets = await readSheets("bs.xlsx", await panelBook());
+    const cands = detectTables(sheets);
+    expect(cands.map((c) => [c.sheet, c.mode, c.panels?.length])).toEqual([["BS", "NERACA", 2]]);
+    const res = readTable(sheets, cands[0]);
+    if (res.mode !== "NERACA") throw new Error("mode");
+    expect(res.date?.toISOString().slice(0, 10)).toBe("2024-12-31"); // the Period row, not "Generated 14-04-2025 …"
+    expect(res.rows.map((r) => [r.ref, r.code, r.name, r.amount, r.typeHint, r.termHint])).toEqual([
+      ["BS!A11", "1 1 01 01", "Kas Kecil", 100_000_000n, "ASET", "CURRENT"],
+      ["BS!A12", "1 1 01 02", "BCA 1234", 900_000_000n, "ASET", "CURRENT"],
+      ["BS!A16", "1 2 01 01", "Inventaris", 500_000_000n, "ASET", "NON_CURRENT"],
+      ["BS!A17", "1 2 02 01", "Akumulasi Penyusutan - Inventaris", -200_000_000n, "ASET", "NON_CURRENT"],
+      ["BS!F11", "2 1 03 03", "Pph 21", 20_000_000n, "LIABILITAS", "CURRENT"],
+      ["BS!F12", "2 1 03 04", "Ppn Keluaran", -50_000_000n, "LIABILITAS", "CURRENT"],
+      ["BS!F16", "3 1 01 01", "Modal Disetor", -800_000_000n, "EKUITAS", null],
+      ["BS!F17", "3 1 05 01", "Laba Ditahan", -470_000_000n, "EKUITAS", null],
+    ]);
+    expect(res.rows.reduce((s, r) => s + r.amount, 0n)).toBe(0n);
+    expect(res.totals.map((t) => [t.label, t.kind, t.amount])).toEqual([
+      ["Total Kas", "OTHER", 1_000_000_000n],
+      ["Total Aset", "ASSETS", 1_300_000_000n],
+      ["Total Hutang Pajak", "OTHER", 30_000_000n],
+      ["Total Pasiva", "LIAB_EQUITY", 1_300_000_000n],
+    ]);
+  });
+
+  it("does not split a header that only repeats a word, and skips report sheets titled with a prefix", async () => {
+    const buf = await workbook({
+      GL: [["Tanggal", "Tanggal Transaksi", "Kode Akun", "Nama Akun", "Debit", "Kredit"], ["31/01/2026", "31/01/2026", "1110", "Kas", 10, 0], ["31/01/2026", "31/01/2026", "3100", "Modal", 0, 10]],
+      Report: [["All Branch Profit Loss Report"], ["Account", "Description", "Desember"], ["4 1", "Penjualan", 10]],
+      Arus: [["Cash Flow Report", null, null], ["Account", "Value"], ["Operating", 5]],
+    });
+    const sheets = await readSheets("mixed.xlsx", buf);
+    expect(detectTables(sheets).map((c) => [c.sheet, c.mode, c.panels])).toEqual([["GL", "LEDGER", undefined]]);
+    expect(sheets.map(reportKind)).toEqual([null, "LABA_RUGI", "ARUS_KAS"]);
+  });
+  it("does not take a ledger or Neraca for a P&L / cash-flow report because its title or a row says so", async () => {
+    const buf = await workbook({
+      "GL PL": [["General Ledger - Profit & Loss Accounts"], ["Tanggal", "Kode Akun", "Nama Akun", "Debit", "Kredit"], ["31/01/2026", "4100", "Penjualan", 0, 10], ["31/01/2026", "1110", "Kas", 10, 0]],
+      "Buku Besar": [["Buku Besar Akun Laba Rugi"], ["Tanggal", "Kode Akun", "Nama Akun", "Debit", "Kredit"], ["31/01/2026", "4100", "Penjualan", 0, 10], ["31/01/2026", "1110", "Kas", 10, 0]],
+      "Uncoded": [["Kas", 100], ["Laba Rugi Tahun Berjalan", 60], ["Modal", 40]].length ? [["Kode Akun", "Nama Akun", "Saldo"], ["1110", "Kas", 100], ["3200", "Laba Rugi Tahun Berjalan", -60], ["3100", "Modal", -40]] : [],
+      Sejahtera: [["PT Arus Kas Sejahtera"], ["Kode Akun", "Nama Akun", "Saldo"], ["1110", "Kas", 10], ["3100", "Modal", -10]],
+    });
+    const sheets = await readSheets("x.xlsx", buf);
+    expect(sheets.map(reportKind)).toEqual([null, null, null, null]);
+    expect(detectTables(sheets).map((c) => c.sheet)).toEqual(["GL PL", "Buku Besar", "Uncoded", "Sejahtera"]);
+  });
+
+  it("dates a two-panel Neraca by its Period row, not a print date; a blank Level is not a heading; Value alone is not a Neraca", async () => {
+    const buf = await workbook({
+      BS: [
+        ["Neraca", null, "31/12/2024"], ["Tanggal Cetak", "05/01/2025"], ["Level COA", "All"],
+        ["Account", "Level", "Description", "Value", null, "Account", "Level", "Description", "Value"],
+        ["1101", null, "Kas Transit", "0.00", null, "2101", 2, "Utang Usaha", "100.00"],
+        ["1102", 2, "Kas", "100.00", null, "2102", 2, "Utang Pajak", "20.00"],
+        ["1103", 2, "Bank", "50.00", null, "3101", 2, "Modal", "30.00"],
+      ],
+      Pivot: [["Account", "Value"], ["Kas", 10], ["Bank", 20]],
+    });
+    const sheets = await readSheets("bs.xlsx", buf);
+    const cands = detectTables(sheets);
+    expect(cands.map((c) => c.sheet)).toEqual(["BS"]); // "Account | Value" without a Level column is no Neraca
+    const res = readTable(sheets, cands[0]);
+    if (res.mode !== "NERACA") throw new Error("mode");
+    expect(res.date?.toISOString().slice(0, 10)).toBe("2024-12-31");
+    // The blank Level of 1101 is no level 0: it stays an account and does not turn 1102 into a liability.
+    expect(res.rows.map((r) => [r.code, r.amount])).toEqual([["1101", 0n], ["1102", 10_000n], ["1103", 5_000n], ["2101", 10_000n], ["2102", 2_000n], ["3101", 3_000n]]);
+  });
 });
