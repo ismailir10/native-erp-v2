@@ -159,7 +159,7 @@ export function EntitiesCard({ clientId, entities }: { clientId: string; entitie
     <Card data-testid="entities-card">
       <CardHeader>
         <CardTitle>Perusahaan & rekening</CardTitle>
-        <CardDescription>Ada perusahaan, pemilik atau rekening bank yang belum dimasukkan? Tambahkan di sini. Yang sudah ada tidak berubah.</CardDescription>
+        <CardDescription>Ada perusahaan, pemilik atau rekening bank yang belum dimasukkan? Tambahkan di sini. Yang sudah ada tidak berubah. Rekening yang ditambahkan setelah Saldo Awal dicatat: saldo awalnya diisi lewat Jurnal Penyesuaian.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
         {entities.map((e) => (

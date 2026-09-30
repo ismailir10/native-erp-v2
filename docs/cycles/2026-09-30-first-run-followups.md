@@ -29,7 +29,7 @@ cycle is spec'd for the record and built straight through, with the design decis
       dipakai untuk bertanya pada berkas, bukan untuk membuat jurnal"; Dokumen: "Untuk membukukan rekening koran, pakai Impor Mutasi").
 - [x] **F4 One page for the task list.** Beranda is the page. It shows every task when `?tugas=semua` (else the first 3 with a
       "Lihat semua (N)" link); `/work` redirects to `/?tugas=semua` keeping scope and period; the "Pekerjaan" menu item is removed.
-- [ ] **F5 Docs + tests.** DB tests for F1 and F2 (incl. tenant and limits), workspace/e2e updates for F4 (investor demo and workspace
+- [x] **F5 Docs + tests.** DB tests for F1 and F2 (incl. tenant and limits), workspace/e2e updates for F4 (investor demo and workspace
       specs), README rows, `ui-rules` unchanged.
 
 **Non-goals:** no schema migration, no new dependency, no AI use; no deleting/renaming an entity or bank account; no change to what
@@ -48,7 +48,7 @@ Saldo Awal posts; no import of statements *before* an opening (refused, not re-b
 - [x] T3 F2 UI: server actions + `components/app/entities-card.tsx` on client settings — accept: add a bank and an owner from the page; bank shows in Impor's account list.
 - [x] T4 F3 copy on Impor and Dokumen — accept: both sentences render with a link.
 - [x] T5 F4 Beranda tasks page: `?tugas=semua`, `/work` redirect, sidebar item removed, e2e updated — accept: `/work?scope=…` lands on `/?tugas=semua&scope=…`.
-- [ ] T6 F5 docs (README rows, cycle doc), full gate.
+- [x] T6 F5 docs (README rows, cycle doc), full gate.
 
 ## Implementation
 - Plan: tasks T1–T6 sequential, inline (small, each independent but sharing files with the shipped cycle).
@@ -56,6 +56,13 @@ Saldo Awal posts; no import of statements *before* an opening (refused, not re-b
 - T3: `app/actions.ts` (`addBankAccountAction`, `addEntityAction`: tenant via `getClientForFirm`, domain errors as `{ok:false, error, fields}`), `components/app/entities-card.tsx` on the client settings page (entities with their accounts and GL codes, inline *Tambah rekening*, *Tambah perusahaan atau pemilik* with an optional first account), a pointer under the account picker on Impor (\"Tambahkan di Aturan klasifikasi\"), `e2e/add-entity.spec.ts`. The 9-account limit shows as a field message.
 - T4: `components/app/evidence-workspace.tsx` (Dokumen: \"tidak otomatis menjadi jurnal; rekening koran bank dibukukan lewat Impor Mutasi di klien\"), `app/(app)/clients/[id]/import/page.tsx` (when Dokumen is enabled: a line saying what Dokumen is for, with a link, and that Impor becomes journals), `e2e/add-entity.spec.ts` asserts it.
 - T5: `components/app/workspace-overview.tsx` (`WorkspaceTasks` gets `expanded`: \"Semua pekerjaan (N)\" ↔ \"Tampilkan 3 teratas\"), `app/(app)/page.tsx` (`?tugas=semua`), `app/(app)/work/page.tsx` (redirect keeping scope and period), sidebar without \"Pekerjaan\", `e2e/investor-demo.spec.ts` + `docs/demo/investor-demo.md`, `tests/unit/work-redirect.test.ts`.
+- T6: `README.md` (Onboarding row), `components/app/entities-card.tsx` (card says an account added after Saldo Awal gets its opening balance through Jurnal Penyesuaian — a known limit of one opening per entity), this doc.
 
-## Verification
+## Verification- Full gate on the last code commit (each run just now in this sandbox): `npm run lint` clean · `npm run typecheck` clean · `npm test` → `Test Files 112 passed (112)`, `Tests 832 passed (832)` (new: import-opening-guard 3, onboarding-add 6, work-redirect 2) · `npm run build` compiled · `npm run demo:reset && npm run verify:books` → `ALL PASS — 1717 pemeriksaan saldo cocok dengan ground truth.`
+- `npm run test:e2e` is not runnable in this sandbox (Supabase Auth and cdn.sheetjs.com are blocked by the network policy; `xlsx@0.18.5` stands in locally, untracked). CI runs it. New/changed e2e: `add-entity.spec.ts` (new), `investor-demo.spec.ts` (/work → Beranda). Nobody has looked at the new *Perusahaan & rekening* card in a browser.
+
 ## Ship Notes
+- Migrations: none. Env vars: none. New dependency: none. No AI calls. Accounting invariant *extended, not changed* (F1: opening precedes activity from the import side too); `verify:books` ALL PASS.
+- Behaviour change to know: a statement with new rows on/before an entity's Saldo Awal is now refused with a message (before: silently double-counted).
+- Known limit: a bank account added *after* Saldo Awal has no opening line (one opening per entity); its balance goes through Jurnal Penyesuaian. The card says so.
+- Rollback: revert the merge commit; no data changes.
