@@ -84,7 +84,7 @@ export function ClientForm({ initial, evidenceIntakeId, onCreated }: { initial?:
       <Card>
         <CardHeader>
           <CardTitle>Klien</CardTitle>
-          <CardDescription>Satu klien bisa berisi beberapa entitas, misalnya PT dan pemiliknya, yang dilaporkan sebagai gabungan.</CardDescription>
+          <CardDescription>Satu klien bisa berisi beberapa perusahaan, misalnya PT dan pemiliknya, yang dilaporkan sebagai gabungan.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <Field>
@@ -114,12 +114,12 @@ export function ClientForm({ initial, evidenceIntakeId, onCreated }: { initial?:
         <Card key={i}>
           <CardHeader className="flex flex-row items-start justify-between gap-2">
             <div>
-              <CardTitle>Entitas {i + 1}</CardTitle>
+              <CardTitle>Perusahaan atau pemilik {i + 1}</CardTitle>
               <CardDescription>Badan usaha atau orang yang punya pembukuan sendiri.</CardDescription>
             </div>
             {entities.length > 1 && (
               <Button variant="ghost" size="sm" onClick={() => { setErrors({}); setEntities((es) => es.filter((_, j) => j !== i)); }}>
-                <Trash2 /> Hapus entitas
+                <Trash2 /> Hapus
               </Button>
             )}
           </CardHeader>
@@ -178,14 +178,14 @@ export function ClientForm({ initial, evidenceIntakeId, onCreated }: { initial?:
                 <SelectTrigger className="w-full sm:w-64" aria-label="Kerangka pelaporan"><SelectValue>{FRAMEWORK_OPTIONS.find((o) => o.value === e.reportingFramework)?.label}</SelectValue></SelectTrigger>
                 <SelectContent>{FRAMEWORK_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
               </Select>
-              <FieldDescription>{FRAMEWORK_OPTIONS.find((o) => o.value === e.reportingFramework)?.help} Menentukan bunyi CALK dan nama laporan, bukan angkanya. Bisa diubah nanti di Pengaturan klien.</FieldDescription>
+              <FieldDescription>{FRAMEWORK_OPTIONS.find((o) => o.value === e.reportingFramework)?.help} Menentukan bunyi CALK dan nama laporan, bukan angkanya. Bisa diubah nanti di Aturan klasifikasi.</FieldDescription>
               <FieldError>{err(`entities.${i}.reportingFramework`)}</FieldError>
             </Field>
 
             <div className="space-y-2">
               <div className="text-sm font-medium">Rekening bank</div>
               {e.banks.length === 0 && (
-                <p className="text-sm text-muted-foreground">Tanpa rekening bank. Buku entitas ini diisi dari file buku besar atau neraca.</p>
+                <p className="text-sm text-muted-foreground">Tanpa rekening bank. Buku ini diisi dari file buku besar atau neraca.</p>
               )}
               {e.banks.map((b, k) => (
                 <div key={k} className="grid gap-2 sm:grid-cols-[10rem_1fr_1fr_auto] sm:items-start">
@@ -226,12 +226,13 @@ export function ClientForm({ initial, evidenceIntakeId, onCreated }: { initial?:
       ))}
 
       <FieldError>{err("entities")}</FieldError>
+      {/* Above Simpan: an owner added after saving can't be added from the UI yet. */}
+      <Button variant="outline" onClick={() => { setErrors({}); setEntities((es) => [...es, newEntity(es.some((x) => x.kind === "PERORANGAN") ? "PT" : "PERORANGAN")]); }}>
+        <Plus /> Tambah perusahaan atau pemilik
+      </Button>
       <div className="flex flex-wrap items-center gap-2">
         <Button variant={evidenceIntakeId ? "outline" : "default"} onClick={submit} disabled={busy}>
           {busy ? "Menyimpan…" : "Simpan klien"}
-        </Button>
-        <Button variant="outline" onClick={() => { setErrors({}); setEntities((es) => [...es, newEntity(es.some((x) => x.kind === "PERORANGAN") ? "PT" : "PERORANGAN")]); }}>
-          <Plus /> Tambah entitas
         </Button>
         {Object.keys(errors).length > 1 && <span className="text-sm text-destructive">Periksa {Object.keys(errors).length} isian yang ditandai.</span>}
       </div>

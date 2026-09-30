@@ -90,8 +90,8 @@ to an existing client (new action, larger); (c) telling *Dokumen* apart from *Im
 - [x] T5 Saldo Awal "no statement yet" NextStep + strip — accept: fresh client shows Impor CTA; after import shows the fill message. Depends T1, T2.
 - [x] T6 Sidebar reorder/rename + `investor-demo` selector — accept: Impor Mutasi and Saldo Awal visible without expanding anything.
 - [x] T7 Beranda tasks + NextStep CTA (`lib/workspace/index.ts`, `page.tsx`, `work/page.tsx`) — accept: fresh client task reads "Mulai …: unggah rekening koran". Depends T1.
-- [ ] T8 S8–S10: bank-less entity skipped in T1/Ringkasan/Saldo Awal, Beranda order, Close NextStep, copy + role-aware hint — accept: fresh client with an owner and no owner bank reaches Tutup Buku. Depends T1.
-- [ ] T9 `real-client` e2e follows CTAs; `ui-rules` rule 14; README onboarding row — accept: full gate green.
+- [x] T8 S8–S10: bank-less entity skipped in T1/Ringkasan/Saldo Awal, Beranda order, Close NextStep, copy + role-aware hint — accept: fresh client with an owner and no owner bank reaches Tutup Buku. Depends T1.
+- [x] T9 `real-client` e2e follows CTAs; `ui-rules` rule 14; README onboarding row — accept: full gate green.
 
 ## Implementation
 - Plan: tasks T1–T9 sequential, done inline (each builds on the T1 helper and touches shared pages; an independent audit already ran during /spec).
@@ -102,6 +102,8 @@ to an existing client (new action, larger); (c) telling *Dokumen* apart from *Im
 - T5: `app/(app)/clients/[id]/opening/page.tsx` — with nothing imported the NextStep says \"Unggah rekening koran dulu\" (CTA to Impor, form still usable); afterwards \"Isi saldo awal …\" from `setupProgress`; when all are recorded the CTA goes to the next step (Review or Tutup buku). Bank-less entities are no longer counted as missing and say Saldo Awal is optional for them (S8, page side).
 - T6: `components/app/app-sidebar.tsx`, `e2e/{investor-demo,ledger-import}` — under the client: Ringkasan, Impor Mutasi, Saldo Awal, Review transaksi, … Tutup Buku, with no group to expand; the collapsed group is now \"Pengaturan klien\" (Jurnal Penyesuaian, Kurs, Aturan klasifikasi). Tambah klien stays visible when a client is selected (it sat inside the closed client list). The two specs that use the collapsed group expand it first.
 - T7: `lib/workspace/index.ts`, `app/(app)/page.tsx`, `tests/db/workspace.test.ts` — a client still in setup has ONE task (\"Mulai {klien}: unggah rekening koran\", then \"Isi saldo awal …\") instead of the generic \"Lengkapi …\" pair; Beranda's NextStep is first, names the first task and links to it; Tanya Buku is hidden until there is a client (S9, Beranda side). /work already linked its first task.
+- T8: `clients/[id]/close/page.tsx`, `clients/[id]/settings/page.tsx`, `components/app/{client-form,ledger-import-form}.tsx`, `e2e/ledger-import` — Close sends to Saldo Awal when it's missing (before the missing-statement check); \"Entitas\" → \"Perusahaan atau pemilik\" in the client form and ledger-import picker; *Tambah perusahaan atau pemilik* sits above *Simpan klien*; the form points at \"Aturan klasifikasi\"; the AI hint on that page tells an Akuntan to ask an admin. (The bank-less-owner rule itself is in T1/T5.)
+- T9: `e2e/real-client.spec.ts`, `.agents/skills/ui-rules/SKILL.md` (rule 14), `README.md` — the real-client walk asserts the strip and follows the on-screen buttons: create → Impor → Isi saldo awal (prefilled) → banner → Tutup Buku.
 
 ## Verification
 - T1 gate: `npm run lint && npm run typecheck && npm test` → Test Files 109 passed (109), Tests 820 passed (820). (Sandbox note: `xlsx` is served from cdn.sheetjs.com, blocked by the session's network policy; a local-only `xlsx@0.18.5` stand-in from npm was installed for node_modules and is not committed.)

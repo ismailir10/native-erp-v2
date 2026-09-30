@@ -42,7 +42,7 @@ test("ledger import: checks, mapping, post, Kurs, Gabungan in IDR, client accoun
   await page.getByRole("button", { name: "Hapus rekening" }).click();
   await expect(page.getByText("Tanpa rekening bank.")).toBeVisible();
 
-  await page.getByRole("button", { name: "Tambah entitas" }).click();
+  await page.getByRole("button", { name: "Tambah perusahaan atau pemilik" }).click();
   await page.getByRole("combobox", { name: "Jenis entitas" }).nth(1).click();
   await page.getByRole("option", { name: "PT", exact: true }).click();
   await page.getByLabel("Nama lengkap").nth(1).fill("Dua Holdings Pte Ltd");
