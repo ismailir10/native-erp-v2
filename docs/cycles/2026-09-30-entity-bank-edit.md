@@ -14,21 +14,21 @@ What an accountant needs to be true:
 - The ledger import matches file rows to entities by short name: duplicates would make that ambiguous.
 
 ## Spec
-- [ ] **E1 Rename a company/owner:** name, short name (unique per client, case-insensitive), NPWP (same check as creation, blank clears, not for a
+- [x] **E1 Rename a company/owner:** name, short name (unique per client, case-insensitive), NPWP (same check as creation, blank clears, not for a
       foreign entity). Kind, currency and reporting framework are not editable here. Allowed in any period state (labels only; no journal, period
       or figure is touched). The GL names of that entity's bank accounts (`label (shortName)`) are renamed in the same transaction.
-- [ ] **E2 Edit a bank account:** label always (its GL account name follows). Bank and number only while it has no statement import and no bank
+- [x] **E2 Edit a bank account:** label always (its GL account name follows). Bank and number only while it has no statement import and no bank
       row (same number rules as creation, unique on the client); afterwards the message says why. The PRK flag is never editable (it decides the GL account type).
-- [ ] **E3 Remove a bank account** only when nothing points to it: no statement import, no bank row, no journal line on its GL account, no
+- [x] **E3 Remove a bank account** only when nothing points to it: no statement import, no bank row, no journal line on its GL account, no
       ledger source-account mapping, tax credit/correction, invoice or schedule using that GL account, no bank row classified to its code.
       Deletes the account and its GL account. **Admin only.** Freed codes are reused by the next add.
-- [ ] **E4 Remove a company/owner** only when nothing at all points to it (journals including Saldo Awal, bank rows and imports, source accounts,
+- [x] **E4 Remove a company/owner** only when nothing at all points to it (journals including Saldo Awal, bank rows and imports, source accounts,
       invoices, fixed assets, leases, employees and benefit records, adjustment schedules and proposals, tax years, CKPN settings, evidence
       selections) and only if the client keeps at least one entity. Deletes its (empty) bank accounts with their GL accounts. **Admin only.**
-- [ ] **E5 UI on *Perusahaan & rekening*:** *Ubah* on each company and account (inline form), *Hapus* with a two-step confirm. When removal is not
+- [x] **E5 UI on *Perusahaan & rekening*:** *Ubah* on each company and account (inline form), *Hapus* with a two-step confirm. When removal is not
       possible the button is disabled and the **reason is written next to it** ("Sudah ada 12 jurnal dan 3 mutasi bank. Koreksi lewat Jurnal
       Penyesuaian."), computed on the server from the same checks the action re-runs. Akuntan sees Ubah, not Hapus.
-- [ ] **E6 Hard tests (DB, action, e2e):** every refusal leaves every row count unchanged; a rename leaves trial balance, Laba Rugi, Neraca and
+- [x] **E6 Hard tests (DB, action, e2e):** every refusal leaves every row count unchanged; a rename leaves trial balance, Laba Rugi, Neraca and
       close controls identical (including in a locked period); tenant isolation; role gate; FK backstop; and `verify:books` still ALL PASS after
       renaming every entity and account of the demo firm.
 
@@ -43,12 +43,18 @@ between entities; no deletion of anything with posted entries (correct by Jurnal
 4. The database foreign keys are the last line of defence: a delete that races a concurrent import fails and says so instead of cascading.
 
 ## Tasks
-- [ ] T1 `lib/clients/entities.ts`: usage checks + rename/edit/remove domain + `tests/db/entity-edit.test.ts` — accept: every rule above, incl. refusals leave data untouched.
-- [ ] T2 Server actions (admin gate, tenant) + `tests/db/entity-edit-action.test.ts` — accept: akuntan can rename, cannot remove; foreign firm refused.
-- [ ] T3 UI in `entities-card.tsx` + settings page wiring (reasons computed server-side) — accept: buttons and reasons render for each state.
-- [ ] T4 e2e (`add-entity.spec.ts` extended) and the demo-firm rename check with `verify:books` — accept: recorded in Verification.
-- [ ] T5 Docs (README, cycle doc), full gate, PR.
+- [x] T1 `lib/clients/entities.ts`: usage checks + rename/edit/remove domain + `tests/db/entity-edit.test.ts` — accept: every rule above, incl. refusals leave data untouched.
+- [x] T2 Server actions (admin gate, tenant) + `tests/db/entity-edit-action.test.ts` — accept: akuntan can rename, cannot remove; foreign firm refused.
+- [x] T3 UI in `entities-card.tsx` + settings page wiring (reasons computed server-side) — accept: buttons and reasons render for each state.
+- [x] T4 e2e (`add-entity.spec.ts` extended) and the demo-firm rename check with `verify:books` — accept: recorded in Verification.
+- [x] T5 Docs (README, cycle doc), full gate, PR.
 
 ## Implementation
+- Plan: T1–T5 sequential, inline (each builds on `lib/clients/entities.ts`).
+- T1: `lib/clients/entities.ts` (`bankAccountUsage`, `entityUsage`, `blockedReason`, `renameEntity`, `updateBankAccount`, `removeBankAccount`, `removeEntity`), `lib/onboarding.ts` (cleaning helpers exported; adding an entity now also keeps short names unique), `tests/db/entity-edit.test.ts` (22 tests).
+- T2: `app/actions.ts` (`renameEntityAction`, `updateBankAccountAction` any member; `removeBankAccountAction`, `removeEntityAction` admin only, logged like *Hapus klien*; "client not found" is a plain message), `tests/db/entity-edit-action.test.ts`.
+- T3: `components/app/entities-card.tsx` (Ubah on companies and accounts, Hapus with a second click; a blocked Hapus is disabled and the reason is text beside it; bank/number fields disabled with the reason once statements exist), `app/(app)/clients/[id]/settings/page.tsx` (reasons from the same functions the action re-runs; Akuntan gets no Hapus).
+- T4: `e2e/add-entity.spec.ts` second test (books present → both blocked with reasons, number locked, renames, the two empty things removed); demo-firm check below.
+- T5: README, `accounting-rules` §3, this doc.
 ## Verification
 ## Ship Notes
