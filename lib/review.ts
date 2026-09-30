@@ -1,4 +1,4 @@
-import { simpleGuess } from "@/lib/classify/fallback";
+import { isSimpleGuess, simpleGuess } from "@/lib/classify/fallback";
 import type { Db, Tx } from "@/lib/db";
 import type { TaxTag } from "@/lib/generated/prisma/enums";
 import { postBankTransaction } from "@/lib/ledger/bank";
@@ -14,7 +14,10 @@ type ReviewArgs = {
   taxTag: TaxTag | null;
   createRule?: boolean;
   actorId?: string | null;
-  /** false: a provisional decision (the line goes back to Review) — Memory learns only from the final one. */
+  /**
+   * false: a provisional decision (the line goes back to Review) — Memory learns only from the final one. Unset: learns, except a simple
+   * guess accepted unchanged (fallback.ts `isSimpleGuess`), which is no one's decision yet. true: learns anyway (the seed's ground truth).
+   */
   learn?: boolean;
   /**
    * Tax withheld from this payment or receipt (rent, services, a customer's PPh 23): the part not in the bank amount, posted on the
@@ -73,7 +76,8 @@ export async function reviewTransactionTx(tx: Tx, args: ReviewArgs) {
     },
   });
   // A key without a counterparty covers unrelated payments: never learned (normalize.ts, isGenericKey).
-  if (args.learn !== false && !generic) await tx.memory.upsert({
+  const learn = args.learn ?? !(isSimpleGuess(t) && !changed && !args.createRule);
+  if (learn && !generic) await tx.memory.upsert({
     where: { clientId_merchantKey_direction: { clientId, merchantKey: t.merchantKey, direction: t.direction } },
     create: { clientId, merchantKey: t.merchantKey, direction: t.direction, accountCode: args.accountCode, taxTag: args.taxTag },
     update: { accountCode: args.accountCode, taxTag: args.taxTag, hits: { increment: 1 } },
@@ -83,7 +87,7 @@ export async function reviewTransactionTx(tx: Tx, args: ReviewArgs) {
       data: { firmId: t.firmId, clientId, pattern: t.merchantKey, direction: t.direction, accountCode: args.accountCode, taxTag: args.taxTag, priority: 60, source: "USER" },
     });
   }
-  return t.id;
+  return { id: t.id, learned: learn && !generic };
 }
 
 /**

@@ -1,7 +1,7 @@
 import type { Db } from "@/lib/db";
 import type { AiProvider } from "@/lib/ai/provider";
 import { suggestWithAi } from "@/lib/ai/classify";
-import { financingSuggestion, taxPaymentSuggestion } from "@/lib/classify/financing";
+import { isSimpleGuess } from "@/lib/classify/fallback";
 
 /**
  * Lines still in review that only got the simple guess (the AI call failed, was capped or off at import). Financing text and tax payments are
@@ -12,7 +12,7 @@ export async function simpleGuessRows(db: Db, args: { clientId: string; entityId
     where: { entityId: { in: args.entityIds }, bankAccount: { entity: { clientId: args.clientId } }, status: "NEEDS_REVIEW", method: "HEURISTIC", date: { lte: args.through } },
     orderBy: [{ date: "asc" }, { rowNumber: "asc" }],
   });
-  return rows.filter((r) => !financingSuggestion(r.description, r.direction) && !taxPaymentSuggestion(r.description, r.direction));
+  return rows.filter(isSimpleGuess);
 }
 
 /**

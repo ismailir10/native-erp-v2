@@ -38,7 +38,7 @@ Their findings, confirmed against the code, that this cycle fixes:
 - [x] **S2 Close notes and reopening.** A control note stores the control's detail at the time of the note; when the detail changes the note
       no longer clears the control (shown "Catatan lama: …, kondisinya berubah"). Legacy notes (no stored detail) keep working. Reopening a
       month removes its sign-offs in the same transaction as the unlock log.
-- [ ] **S3 Review safety and speed.**
+- [x] **S3 Review safety and speed.**
       - A *Tebakan* (HEURISTIC, no counterparty rule/memory/AI behind it) is not accepted by Enter: Enter moves focus to its account picker
         and says so; the button still accepts. Accepting a guess unchanged never writes Memory.
       - Tax options say what they do: *Setoran PPh 21 / 23 / 4(2)*, *Angsuran PPh 25* (a remittance), PPN split unchanged; plus a
@@ -97,7 +97,7 @@ print styles; a fuller CALK (akta, pihak berelasi); PPh 23 at accrual instead of
 - [x] T3 S1 UI: *Persediaan* page + menu — accept: record a count in the browser, Laba Rugi shows 5190, control passes.
 - [x] T4 S4 tax rules + migration + tax-payment suggestion + rule specificity — accept: unit + DB tests.
 - [x] T5 S5 PP 55 journal + text — accept: DB test posts 0,5 % difference once.
-- [ ] T6 S3 review: tax labels, withholding with gross-up, guess safety, search/filter/bulk — accept: unit test for gross-up, DB test for no-learn, e2e filter.
+- [x] T6 S3 review: tax labels, withholding with gross-up, guess safety, search/filter/bulk — accept: unit test for gross-up, DB test for no-learn, e2e filter.
 - [ ] T7 S6 reports status, comparatives, labels, signs, Excel draft mark — accept: page shows *Draf* with reasons; no empty columns.
 - [ ] T8 S7 import guard + TRF — accept: DB test refuses the wrong-year file; unit test pairs TRF.
 - [ ] T9 S8 Beranda, menu, locked journal form — accept: unit/DB test for ordering; screenshot.
@@ -129,6 +129,15 @@ print styles; a fuller CALK (akta, pihak berelasi); PPh 23 at accrual instead of
   difference from earlier postings — a normal-regime posting is reversed in the same entry), `lib/tax/post.ts` (memo), `lib/controls/index.ts`
   (December control titled *PPh final*), `components/app/tax-pack.tsx` (*Jurnal PPh final* card; Pasal 59 limits: PT 3, CV/firma/koperasi 4,
   orang pribadi 7 tahun), accounting-rules 5d, `tests/db/tax-post.test.ts`, `tests/db/tax-pack.test.ts`.
+- T6: `lib/classify/fallback.ts` (`isSimpleGuess`, shared with `lib/ai/retry.ts`), `lib/review.ts` (an unchanged simple guess is not learned
+  unless `learn: true`; returns `{ id, learned }`), `lib/demo/seed.ts` (the scenario's truth passes `learn: true`, so the demo books don't
+  move), `lib/tax/withholding.ts` (`grossUpWithholding` on the DPP, with PPN when split; `DEFAULT_RATE`), `app/actions.ts`,
+  `components/app/review-queue.tsx` (tags renamed *Setoran PPh 21 / 23 / 4(2)*, *Angsuran PPh 25*; a *Pemotongan PPh* select per line —
+  "Kita potong …" on payments, "Dipotong … oleh pelanggan" on receipts — with an editable rate and "bruto · PPh" shown before saving;
+  Enter on a *Tebakan* focuses its account with a toast; search, *Semua / Uang masuk / Uang keluar / Tebakan* filters with counts,
+  *Terima N usulan AI yakin (≥ 80%)*; the rule checkbox has a name), `nativeButton={false}` on the three Link buttons (Base UI error),
+  `tests/unit/withholding.test.ts`, `tests/db/review-scope.test.ts`, `e2e/review-safety.spec.ts`. Driven on a rules-only client (33 lines):
+  Enter on a guess stays, PPh 23 on Rp 1.000.000 received shows bruto Rp 1.020.408 · PPh 23 Rp 20.408, filters and search narrow the list.
 ## Verification
 - After T2: `npm test` → `Test Files 113 passed (113)`, `Tests 840 passed (840)`.
 ## Ship Notes

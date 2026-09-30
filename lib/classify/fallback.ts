@@ -1,5 +1,6 @@
 import type { Direction, EntityKind } from "@/lib/generated/prisma/enums";
 import type { Classification } from "@/lib/classify/types";
+import { financingSuggestion, taxPaymentSuggestion } from "@/lib/classify/financing";
 
 /**
  * The simple guess when nothing else suggests an account (last in rule 13's order): low confidence, always to review.
@@ -16,4 +17,13 @@ export function simpleGuess(direction: Direction, kind: EntityKind): Classificat
   return direction === "IN"
     ? guess("4100", "Tebakan sederhana: uang masuk dianggap penjualan")
     : guess("6190", "Tebakan sederhana: uang keluar dianggap beban umum");
+}
+
+/**
+ * A line whose suggestion is only the simple guess above (no rule, memory, AI, financing or tax-payment text behind it). Review never
+ * accepts it with Enter alone, and accepting it unchanged teaches Memory nothing (lib/review.ts): "uang keluar dianggap beban umum"
+ * learned once would auto-post that counterparty to 6190 on every later import.
+ */
+export function isSimpleGuess(t: { method: string; description: string; direction: Direction }): boolean {
+  return t.method === "HEURISTIC" && !financingSuggestion(t.description, t.direction) && !taxPaymentSuggestion(t.description, t.direction);
 }

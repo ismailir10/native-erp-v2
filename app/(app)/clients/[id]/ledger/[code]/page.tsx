@@ -36,7 +36,7 @@ export default async function AccountLedger({ params, searchParams }: { params: 
         <ul className="flex flex-wrap gap-2">
           {scoped.map((e) => (
             <li key={e.id}>
-              <Button variant="outline" render={<Link href={withParams(`${base}/ledger/${code}`, { period: period.key, entity: e.id })} />}>
+              <Button variant="outline" nativeButton={false} render={<Link href={withParams(`${base}/ledger/${code}`, { period: period.key, entity: e.id })} />}>
                 {e.shortName} · {e.functionalCurrency} <ChevronRight />
               </Button>
             </li>

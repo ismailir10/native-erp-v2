@@ -12,7 +12,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AccountPicker } from "@/components/app/account-picker";
 import { MethodBadge } from "@/components/app/status";
 import { acceptSimilarAction, reviewAction, suggestAgainAction } from "@/app/actions";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, PPN_EFFECTIVE_PERCENT } from "@/lib/money";
+import { DEFAULT_RATE, grossUpWithholding, WITHHOLDING_LABEL } from "@/lib/tax/withholding";
+import type { WithholdingKind } from "@/lib/generated/prisma/enums";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 export type ReviewItem = {
@@ -29,19 +32,39 @@ export type ReviewItem = {
   suggestedCode: string | null;
   taxTag: string | null;
   similar: number;
+  /** Only the simple guess stands behind the suggestion: Enter doesn't accept it, and accepting it unchanged isn't learned. */
+  guess: boolean;
 };
 export type AccountOption = { code: string; name: string; group: string };
-type Choice = { code: string; tax: string; rule: boolean };
+/** `wht`: tax the counterparty or we withheld ("none" or a kind) at `rate` %, added to the net bank amount (accounting-rules 5h). */
+type Choice = { code: string; tax: string; rule: boolean; wht?: string; rate?: string };
 
+// What the tag does to the journal: PPN splits the amount; the PPh tags mark a payment of that tax to the state (a remittance).
 const TAX = [
   { value: "none", label: "Tanpa pajak" },
   { value: "PPN_KELUARAN", label: "PPN Keluaran (pisah 11%)" },
   { value: "PPN_MASUKAN", label: "PPN Masukan (pisah 11%)" },
-  { value: "PPH_21", label: "PPh 21" },
-  { value: "PPH_23", label: "PPh 23" },
-  { value: "PPH_4_2", label: "PPh 4(2)" },
-  { value: "PPH_25", label: "PPh 25" },
+  { value: "PPH_21", label: "Setoran PPh 21" },
+  { value: "PPH_23", label: "Setoran PPh 23" },
+  { value: "PPH_4_2", label: "Setoran PPh 4(2) / final" },
+  { value: "PPH_25", label: "Angsuran PPh 25" },
 ];
+const WHT: Record<"IN" | "OUT", { value: string; label: string }[]> = {
+  OUT: [
+    { value: "none", label: "Tanpa potongan" },
+    { value: "PPH_23", label: "Kita potong PPh 23" },
+    { value: "PPH_4_2", label: "Kita potong PPh 4(2)" },
+    { value: "PPH_21", label: "Kita potong PPh 21" },
+    { value: "PPH_22", label: "Kita potong PPh 22" },
+  ],
+  IN: [
+    { value: "none", label: "Tanpa potongan" },
+    { value: "PPH_23", label: "Dipotong PPh 23 oleh pelanggan" },
+    { value: "PPH_4_2", label: "Dipotong PPh 4(2) oleh pelanggan" },
+    { value: "PPH_22", label: "Dipungut PPh 22 oleh pelanggan" },
+  ],
+};
+type Filter = "all" | "in" | "out" | "guess";
 
 /**
  * Unsaved choices per bank line id, kept in sessionStorage: they survive refreshes, remounts and a reload of the tab, so a
@@ -72,6 +95,17 @@ const subscribe = (l: () => void) => {
   listeners.add(l);
   return () => void listeners.delete(l);
 };
+
+/** The withheld tax for a choice, or null (none / an unreadable rate). The PPN split, when chosen, is part of the gross. */
+function withheld(i: ReviewItem, c: Choice): bigint | null {
+  if (!c.wht || c.wht === "none") return null;
+  const ppn = (i.amount.startsWith("-") ? c.tax === "PPN_MASUKAN" : c.tax === "PPN_KELUARAN") ? PPN_EFFECTIVE_PERCENT : 0n;
+  try {
+    return grossUpWithholding(BigInt(i.amount), c.rate ?? DEFAULT_RATE[c.wht as WithholdingKind], ppn);
+  } catch {
+    return null;
+  }
+}
 
 export function ReviewQueue({
   items,
@@ -105,7 +139,21 @@ export function ReviewQueue({
   // Saves run one after another in acceptance order: the last decision on a merchant key is the one Memory keeps.
   const queue = useRef<Promise<void>>(Promise.resolve());
   const [saving, setSaving] = useState(0);
-  const visible = useMemo(() => items.filter((i) => !done.has(i.id)), [items, done]);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<Filter>("all");
+  const open = useMemo(() => items.filter((i) => !done.has(i.id)), [items, done]);
+  const counts = useMemo(() => ({ all: open.length, in: open.filter((i) => !i.amount.startsWith("-")).length, out: open.filter((i) => i.amount.startsWith("-")).length, guess: open.filter((i) => i.guess).length }), [open]);
+  const visible = useMemo(() => {
+    const q = query.trim().toUpperCase();
+    const digits = q.replace(/[.,\s]/g, "");
+    return open.filter((i) => {
+      if (filter === "in" && i.amount.startsWith("-")) return false;
+      if (filter === "out" && !i.amount.startsWith("-")) return false;
+      if (filter === "guess" && !i.guess) return false;
+      if (!q) return true;
+      return i.description.toUpperCase().includes(q) || (/^\d+$/.test(digits) && i.amount.replace("-", "").includes(digits));
+    });
+  }, [open, query, filter]);
   const active = Math.max(0, visible.findIndex((i) => i.id === activeId));
   const focus = (idx: number) => {
     const next = visible[Math.max(0, Math.min(idx, visible.length - 1))];
@@ -119,7 +167,7 @@ export function ReviewQueue({
 
   const suggestion = (i: ReviewItem): Choice => ({ code: i.suggestedCode ?? "", tax: i.taxTag ?? "none", rule: false });
   const get = (i: ReviewItem) => choice[i.id] ?? suggestion(i);
-  const isChanged = (i: ReviewItem, c: Choice) => c.code !== (i.suggestedCode ?? "") || c.tax !== (i.taxTag ?? "none");
+  const isChanged = (i: ReviewItem, c: Choice) => c.code !== (i.suggestedCode ?? "") || c.tax !== (i.taxTag ?? "none") || (!!c.wht && c.wht !== "none");
   const unsaved = (i: ReviewItem) => !!choice[i.id] && (isChanged(i, choice[i.id]) || choice[i.id].rule);
 
   const set = (i: ReviewItem, patch: Partial<Choice>) => {
@@ -150,6 +198,8 @@ export function ReviewQueue({
   const accept = (i: ReviewItem) => {
     const c = get(i);
     if (!c.code) return void toast.error("Pilih akun dulu");
+    const tax = withheld(i, c);
+    if (c.wht && c.wht !== "none" && tax === null) return void toast.error("Tarif pemotongan tidak terbaca. Tulis persen, mis. 2 atau 1,5.");
     // Optimistic: the next card is active at once, so Enter keeps working while this one saves.
     setDone((d) => new Set(d).add(i.id));
     // Accepting the active card moves to the next one (or the previous at the end); accepting another card keeps the active one.
@@ -157,7 +207,8 @@ export function ReviewQueue({
     if (at === active) setActiveId((visible[at + 1] ?? visible[at - 1])?.id ?? null);
     inFlight.current += 1;
     setSaving(inFlight.current);
-    const save = () => reviewAction({ bankTxId: i.id, accountCode: c.code, taxTag: c.tax === "none" ? null : (c.tax as never), createRule: c.rule }).then((r) => {
+    const withholding = tax !== null ? { kind: c.wht as WithholdingKind, amount: formatMoney(tax, i.currency, { bare: true }) } : undefined;
+    const save = () => reviewAction({ bankTxId: i.id, accountCode: c.code, taxTag: c.tax === "none" ? null : (c.tax as never), createRule: c.rule, withholding }).then((r) => {
       if (!r.ok) {
         setDone((d) => {
           const n = new Set(d);
@@ -172,7 +223,9 @@ export function ReviewQueue({
             ? "Aturan baru dibuat"
             : r.learned
               ? "Buku Besar diperbarui · pilihan ini dipakai lagi di impor berikutnya"
-              : "Buku Besar diperbarui · keterangannya tidak menyebut pengirim atau penerima, jadi tidak diingat",
+              : i.guess && !isChanged(i, c)
+                ? "Buku Besar diperbarui · tebakan tidak diingat; centang Selalu gunakan akun ini bila memang begitu"
+                : "Buku Besar diperbarui · keterangannya tidak menyebut pengirim atau penerima, jadi tidak diingat",
         });
       }
       settle();
@@ -197,6 +250,13 @@ export function ReviewQueue({
     router.refresh();
   };
 
+  // Confident suggestions the reviewer hasn't touched: accepted in one click, in order, through the same saves as Enter.
+  const confident = visible.filter((i) => i.method === "AI" && i.confidence >= 0.8 && !unsaved(i) && i.suggestedCode);
+  const acceptConfident = () => {
+    for (const i of confident) accept(i);
+    toast.success(`${confident.length} usulan diterima`);
+  };
+
   const [asking, setAsking] = useState(false);
   const askAi = async () => {
     if (!clientId) return;
@@ -217,7 +277,17 @@ export function ReviewQueue({
       if (e.key === "Enter" && el?.closest?.("button, a, [role=button], [role=checkbox], [role=option], select")) return;
       if (e.key === "ArrowDown" || e.key === "j") { e.preventDefault(); focus(active + 1); }
       if (e.key === "ArrowUp" || e.key === "k") { e.preventDefault(); focus(active - 1); }
-      if (e.key === "Enter" && visible[active] && busy === null) { e.preventDefault(); accept(visible[active]); }
+      if (e.key === "Enter" && visible[active] && busy === null) {
+        e.preventDefault();
+        const i = visible[active];
+        // A simple guess is nobody's decision: Enter opens its account instead of posting it (the button still accepts).
+        if (i.guess && !unsaved(i)) {
+          toast.info("Ini hanya tebakan. Pilih akunnya, atau klik Terima bila memang benar.");
+          document.querySelector<HTMLElement>(`[data-review-id="${i.id}"] [aria-label="Akun"]`)?.focus();
+          return;
+        }
+        accept(i);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -229,7 +299,25 @@ export function ReviewQueue({
     </span>
   );
 
-  if (visible.length === 0) {
+  const toolbar = (
+    <div className="flex flex-wrap items-center gap-2" data-testid="review-toolbar">
+      <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Cari keterangan atau nominal" aria-label="Cari transaksi" className="h-8 w-64 max-w-full" />
+      <div className="flex flex-wrap gap-1" role="group" aria-label="Saring transaksi">
+        {([["all", "Semua"], ["in", "Uang masuk"], ["out", "Uang keluar"], ["guess", "Tebakan"]] as const).map(([key, label]) => (
+          <Button key={key} size="sm" variant={filter === key ? "default" : "outline"} aria-pressed={filter === key} onClick={() => setFilter(key)} disabled={key !== "all" && counts[key] === 0}>
+            {label} <span className="num text-xs opacity-80">{counts[key]}</span>
+          </Button>
+        ))}
+      </div>
+      {confident.length > 1 && (
+        <Button size="sm" variant="outline" className="ml-auto" disabled={busy !== null} onClick={acceptConfident} data-testid="accept-confident">
+          <CheckCheck /> Terima {confident.length} usulan AI yakin (≥ 80%)
+        </Button>
+      )}
+    </div>
+  );
+
+  if (open.length === 0) {
     return (
       <div className="rounded-lg border bg-card px-6 py-12 text-center">
         <CheckCheck className="mx-auto size-8 text-pass" />
@@ -243,7 +331,7 @@ export function ReviewQueue({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-        <span className="num font-medium text-foreground" data-testid="review-count">{visible.length} menunggu</span>
+        <span className="num font-medium text-foreground" data-testid="review-count">{open.length} menunggu</span>
         <span><Kbd>↑</Kbd> <Kbd>↓</Kbd> pindah</span>
         <span><Kbd>Enter</Kbd> terima usulan</span>
         {savingNote}
@@ -261,7 +349,7 @@ export function ReviewQueue({
             <>
               <span>{simpleGuesses} transaksi hanya punya tebakan sederhana karena AI belum diatur. Pilih akunnya langsung{canSetUpAi ? ", atau atur AI dulu." : "; admin bisa mengisi kunci AI di Pengaturan."}</span>
               {canSetUpAi && (
-                <Button variant="outline" size="sm" render={<Link href="/settings" />}>
+                <Button variant="outline" size="sm" nativeButton={false} render={<Link href="/settings" />}>
                   Atur AI di Pengaturan
                 </Button>
               )}
@@ -269,11 +357,14 @@ export function ReviewQueue({
           )}
         </div>
       )}
+      {toolbar}
+      {visible.length === 0 && <p className="rounded-lg border bg-card px-4 py-6 text-center text-sm text-muted-foreground">Tidak ada transaksi yang cocok dengan pencarian atau saringan ini.</p>}
       <ul className="space-y-2" data-testid="review-list">
         {visible.map((i, idx) => {
           const c = get(i);
           const amt = BigInt(i.amount);
           const changed = isChanged(i, c);
+          const tax = withheld(i, c);
           return (
             <li
               key={i.id}
@@ -313,13 +404,31 @@ export function ReviewQueue({
                     {TAX.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
+                <Select modal={false} value={c.wht ?? "none"} onValueChange={(v) => set(i, { wht: v as string, rate: v === "none" ? undefined : DEFAULT_RATE[v as WithholdingKind] })}>
+                  <SelectTrigger className="w-60" aria-label="Pemotongan PPh">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {WHT[amt > 0n ? "IN" : "OUT"].map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                {c.wht && c.wht !== "none" && (
+                  <span className="inline-flex items-center gap-1 text-sm text-muted-foreground" data-testid="withholding">
+                    <Input aria-label="Tarif pemotongan (%)" value={c.rate ?? ""} onChange={(e) => set(i, { rate: e.target.value })} inputMode="decimal" className="h-8 w-14 text-right" />%
+                    {tax !== null && (
+                      <span className="num text-xs">
+                        · bruto {formatMoney((amt < 0n ? -amt : amt) + tax, i.currency)} · {WITHHOLDING_LABEL[c.wht as WithholdingKind]} {formatMoney(tax, i.currency)}
+                      </span>
+                    )}
+                  </span>
+                )}
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Checkbox id={`rule-${i.id}`} checked={c.rule} onCheckedChange={(v) => set(i, { rule: Boolean(v) })} />
+                  <Checkbox id={`rule-${i.id}`} aria-label="Selalu gunakan akun ini" checked={c.rule} onCheckedChange={(v) => set(i, { rule: Boolean(v) })} />
                   <label htmlFor={`rule-${i.id}`} className="cursor-pointer">Selalu gunakan akun ini</label>
                 </div>
                 <div className="ml-auto flex flex-wrap items-center gap-2">
                   {unsaved(i) && <span className="text-xs font-medium text-review" data-testid="unsaved">Belum disimpan</span>}
-                  {i.similar > 1 && (
+                  {i.similar > 1 && !(c.wht && c.wht !== "none") && (
                     <Button variant="outline" size="sm" disabled={busy !== null} onClick={() => acceptSimilar(i)}>
                       {busy === i.id && <Loader2 className="animate-spin" />}
                       {changed ? `Simpan untuk ${i.similar} serupa` : `Terima ${i.similar} serupa`}

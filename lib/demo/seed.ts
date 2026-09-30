@@ -83,7 +83,7 @@ export async function seedDemo(db: Db, opts: { log?: (s: string) => void; liveAi
         if (openKeys.has(key) && !closed) continue;
         const tr = truth.get(key);
         if (!tr) throw new Error(`Seed: tidak ada truth untuk ${key}`);
-        await reviewTransaction(db, { bankTxId: t.id, accountCode: tr.accountCode, taxTag: tr.taxTag });
+        await reviewTransaction(db, { bankTxId: t.id, accountCode: tr.accountCode, taxTag: tr.taxTag, learn: true }); // the scenario's truth is the accountant's decision
       }
       // Closed months: the accountant already clicked Catat on that month's installment.
       if (depreciation && closed) await postInstallment(db, { clientId: client.id, scheduleId: depreciation.id, k: (year - first.year) * 12 + month - first.month + 1 });

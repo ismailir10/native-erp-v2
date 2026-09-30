@@ -35,3 +35,21 @@ export function checkWithholding(w: Withholding, direction: Direction): Withhold
   if (direction === "IN" && !RECEIPT_KINDS.includes(w.kind)) throw new LedgerError("Uang masuk hanya bisa dipotong PPh 23, PPh 22 atau PPh 4(2) oleh pelanggan.");
   return w;
 }
+
+/**
+ * The tax withheld from a payment whose bank amount is the net: the rate applies to the DPP, and the counterparty was due DPP (+ PPN when
+ * the line splits PPN), so net = DPP × (1 + PPN − rate) and tax = net × rate ÷ (1 + PPN − rate), half up to whole minor units.
+ * `rate` is a percentage ("2", "1,5"); `ppnPercent` the effective PPN (11) or 0.
+ */
+export function grossUpWithholding(net: bigint, rate: string, ppnPercent = 0n): bigint {
+  const m = rate.trim().match(/^(\d{1,2})(?:[.,](\d{1,2}))?$/);
+  if (!m) throw new LedgerError("Tarif harus berupa persen, mis. 2 atau 1,5.");
+  const r = BigInt(m[1]) * 100n + BigInt((m[2] ?? "").padEnd(2, "0") || "0");
+  if (r <= 0n || r >= 10_000n) throw new LedgerError("Tarif harus berupa persen antara 0 dan 100.");
+  const abs = net < 0n ? -net : net;
+  const denominator = 10_000n + ppnPercent * 100n - r;
+  return (abs * r * 2n + denominator) / (denominator * 2n);
+}
+
+/** Usual rates, prefilled in Review (the accountant changes them: PPh 23 without NPWP 4 %, PPh 4(2) construction 1,75 %, …). */
+export const DEFAULT_RATE: Record<WithholdingKind, string> = { PPH_23: "2", PPH_4_2: "10", PPH_21: "5", PPH_22: "1,5" };

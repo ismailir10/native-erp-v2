@@ -1,6 +1,5 @@
 "use server";
 
-import { isGenericKey } from "@/lib/import/normalize";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { getClientForFirm, getCurrentFirm, getCurrentMember } from "@/lib/tenant";
@@ -129,11 +128,10 @@ export async function reviewAction(input: { bankTxId: string; accountCode: strin
       const t = await prisma.bankTransaction.findUniqueOrThrow({ where: { id: input.bankTxId }, select: { bankAccount: { select: { entity: { select: { functionalCurrency: true } } } } } });
       parsed = { kind: withholding.kind, amount: parseMoney(withholding.amount, t.bankAccount.entity.functionalCurrency) };
     } else parsed = withholding;
-    await reviewTransaction(prisma, { ...rest, withholding: parsed, actorId: (await getCurrentMember()).id });
+    // Memory learns only keys that name a counterparty, and never an unchanged simple guess (lib/review.ts): the toast must not promise more.
+    const { learned } = await reviewTransaction(prisma, { ...rest, withholding: parsed, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${clientId}`, "layout");
-    // Memory learns only keys that name a counterparty (lib/review.ts): the toast must not promise more.
-    const { merchantKey } = await prisma.bankTransaction.findUniqueOrThrow({ where: { id: input.bankTxId }, select: { merchantKey: true } });
-    return { ok: true, learned: !isGenericKey(merchantKey) };
+    return { ok: true, learned };
   } catch (e) {
     return fail(e);
   }
