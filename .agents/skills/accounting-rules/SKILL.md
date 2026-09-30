@@ -80,7 +80,7 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     **suggestions only**; an accepted one follows its account's year-to-date balance × its % (1–100, changeable). **Kompensasi kerugian**:
     losses typed per origin year as left at 1 January (at most five years back), used oldest first up to fiscal profit, expired ones
     skipped; last year's December fiscal loss from the books is only suggested. The **Excel kertas kerja** is built from the same pack. Normal regime 22 %, Pasal 31E (turnover = usaha revenue ≤ Rp 50 M: PKP × 4,8 M ÷ turnover at
-    11 %), each part rounded down; PP 55/2022 final 0,5 % of turnover when the accountant chooses it (no corrections, credits or journal).
+    11 %), each part rounded down; PP 55/2022 final 0,5 % of turnover when the accountant chooses it (no corrections or credits; its current journal books the year-to-date final tax Dr 8200 / Cr 2145 as the difference from earlier postings — the monthly payments, filed to 2145 by the tax rules, clear it — and reverses a normal-regime posting made before the switch).
     Credits = PPh 25 bank lines (tag PPH_25, wherever they sit; by **masa pajak** `BankTransaction.taxMonth` — the month before payment when the line is classified, editable in the pack; a line without one counts by its bank date) + bukti potong typed with the account they sit on → PPh 29 (2146) or 28A (1181);
     next year's PPh 25 = (terutang − PPh 22/23/24) ÷ 12. Deferred tax = 22 % × (fiscal − book value of the register + the CKPN allowance, 5e). **Journals by click only**
     (`ADJUSTMENT`, dated the period end): each books the **difference** from earlier postings of its kind (deferred balances across years) under a

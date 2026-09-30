@@ -57,12 +57,12 @@ describe("tax pack", () => {
     expect(lines(p.proposals.CURRENT)).toEqual([["2146", -35_450_000n], ["8100", 35_450_000n]]);
   });
 
-  it("computes the final 0,5 % regime without corrections, credits or a journal", async () => {
+  it("computes the final 0,5 % regime without corrections or credits; its journal is the final tax on 8200 / 2145", async () => {
     const g = await makeGroup();
     await year(g);
     await db.taxYear.create({ data: { firmId: g.firm.id, clientId: g.client.id, entityId: g.pt.entity.id, year: 2026, regime: "FINAL_UMKM" } });
     const p = (await taxPack(db, g.client.id, g.pt.entity.id, 2026, 9))!;
-    expect(p).toMatchObject({ regime: "FINAL_UMKM", positive: 0n, negative: 0n, settlement: null, proposals: { CURRENT: [], DEFERRED: [] } });
+    expect(p).toMatchObject({ regime: "FINAL_UMKM", positive: 0n, negative: 0n, settlement: null, proposals: { CURRENT: [{ code: "2145", amount: -5_000_000n }, { code: "8200", amount: 5_000_000n }], DEFERRED: [] } });
     expect(p.tax.due).toBe(5_000_000n);
   });
 

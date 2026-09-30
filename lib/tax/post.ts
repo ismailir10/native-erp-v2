@@ -2,6 +2,7 @@ import type { Db } from "@/lib/db";
 import type { TaxPostingKind } from "@/lib/generated/prisma/enums";
 import { LedgerError, postJournal, type PostLine } from "@/lib/ledger/post";
 import { templateAccounts } from "@/lib/coa/ensure";
+import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { formatDate, formatPeriod } from "@/lib/format";
 import { postedLines, postingAfter, taxPack } from "@/lib/tax/pack";
 
@@ -36,11 +37,20 @@ export async function postTax(db: Db, input: { clientId: string; entityId: strin
       entityId: input.entityId,
       date: pack.through,
       kind: "ADJUSTMENT",
-      memo: input.kind === "CURRENT" ? (pack.regime === "FINAL_UMKM" ? `Pembalikan PPh badan ${input.year}: skema final PP 55/2022` : `PPh badan ${input.year} (estimasi s.d. ${label})`) : `Pajak tangguhan ${input.year} (s.d. ${label})`,
+      memo: input.kind === "CURRENT" ? (pack.regime === "FINAL_UMKM" ? finalMemo(input.year, label, lines) : `PPh badan ${input.year} (estimasi s.d. ${label})`) : `Pajak tangguhan ${input.year} (s.d. ${label})`,
       lines: post,
       actorId: input.actorId,
     });
     await tx.taxPosting.create({ data: { firmId: entity.firmId, taxYearId: taxYear.id, kind: input.kind, entryId: entry.id, createdById: input.actorId ?? null } });
     return entry;
   });
+}
+
+/** The final regime's journal: its own tax, and the reversal of a normal-regime posting when the year switched. */
+function finalMemo(year: number, label: string, lines: { code: string; amount: bigint }[]) {
+  const own = lines.some((l) => l.code === ACCOUNT_CODES.FINAL_TAX);
+  const reversal = lines.some((l) => l.code === ACCOUNT_CODES.CURRENT_TAX);
+  if (own && reversal) return `PPh final PP 55/2022 ${year} (0,5% × peredaran bruto s.d. ${label}); membalik jurnal PPh badan skema normal`;
+  if (reversal) return `Pembalikan PPh badan ${year}: skema final PP 55/2022`;
+  return `PPh final PP 55/2022 ${year} (0,5% × peredaran bruto s.d. ${label})`;
 }

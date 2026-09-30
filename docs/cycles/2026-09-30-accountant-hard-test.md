@@ -52,7 +52,7 @@ Their findings, confirmed against the code, that this cycle fixes:
       firms, like `20260930050000_tax_payment_rules`). A payment reading as a tax payment without a code (MPN, DJP, SSP, "PAJAK", billing
       code) gets a review suggestion 2145 *Utang Pajak Lainnya* with the reason "setoran pajak — pilih utang pajaknya", never an expense.
       Rule order: a firm rule whose pattern contains a matching client rule's pattern (strictly more specific) wins over it.
-- [ ] **S5 PP 55/2022 final tax.** Under the final regime the pack proposes a journal like the current-tax one: Dr 8200 / Cr 2145 for 0,5 % of
+- [x] **S5 PP 55/2022 final tax.** Under the final regime the pack proposes a journal like the current-tax one: Dr 8200 / Cr 2145 for 0,5 % of
       year-to-date turnover, the difference from earlier postings of that kind; remittances already file to 2145. Text: PT 3 tahun pajak,
       CV/firma/koperasi 4 (PP 55/2022 Pasal 59).
 - [ ] **S6 Reports say what they are.** A status line on Laporan Keuangan (and a *DRAF* mark in the Excel title rows) — *Final — ditutup
@@ -96,7 +96,7 @@ print styles; a fuller CALK (akta, pihak berelasi); PPh 23 at accrual instead of
 - [x] T2 S1 domain: `InventoryCount`, `lib/inventory`, control, CALK note, client delete — accept: DB test for increase/decrease/equal/locked/recount.
 - [x] T3 S1 UI: *Persediaan* page + menu — accept: record a count in the browser, Laba Rugi shows 5190, control passes.
 - [x] T4 S4 tax rules + migration + tax-payment suggestion + rule specificity — accept: unit + DB tests.
-- [ ] T5 S5 PP 55 journal + text — accept: DB test posts 0,5 % difference once.
+- [x] T5 S5 PP 55 journal + text — accept: DB test posts 0,5 % difference once.
 - [ ] T6 S3 review: tax labels, withholding with gross-up, guess safety, search/filter/bulk — accept: unit test for gross-up, DB test for no-learn, e2e filter.
 - [ ] T7 S6 reports status, comparatives, labels, signs, Excel draft mark — accept: page shows *Draf* with reasons; no empty columns.
 - [ ] T8 S7 import guard + TRF — accept: DB test refuses the wrong-year file; unit test pairs TRF.
@@ -125,6 +125,10 @@ print styles; a fuller CALK (akta, pihak berelasi); PPh 23 at accrual instead of
   client rule), `20260930060200_tax_code_rules` (data migration, idempotent), `lib/classify/financing.ts` (`taxPaymentSuggestion`:
   MPN / DJP / SSP / KPP / kode billing / NTPN / "PAJAK" out, regional taxes excluded → 2145 for review), `lib/import/pipeline.ts`,
   `lib/ai/retry.ts` (not sent to AI), accounting-rules 13 / 13a, `tests/unit/import.test.ts`, `tests/db/tax-rules.test.ts`.
+- T5: `lib/tax/pack.ts` (`finalTarget`: under FINAL_UMKM the current proposal is Dr 8200 / Cr 2145 for the year-to-date final tax, the
+  difference from earlier postings — a normal-regime posting is reversed in the same entry), `lib/tax/post.ts` (memo), `lib/controls/index.ts`
+  (December control titled *PPh final*), `components/app/tax-pack.tsx` (*Jurnal PPh final* card; Pasal 59 limits: PT 3, CV/firma/koperasi 4,
+  orang pribadi 7 tahun), accounting-rules 5d, `tests/db/tax-post.test.ts`, `tests/db/tax-pack.test.ts`.
 ## Verification
 - After T2: `npm test` → `Test Files 113 passed (113)`, `Tests 840 passed (840)`.
 ## Ship Notes

@@ -94,14 +94,31 @@ describe("tax postings", () => {
     await books(g);
     await post(g, 9, "CURRENT");
     await setRegime(db, { clientId: g.client.id, entityId: g.pt.entity.id, year: 2026, regime: "FINAL_UMKM" });
-    expect((await pack(g, 9)).proposals.CURRENT.map((l) => [l.code, l.amount])).toEqual([["1180", 30_000_000n], ["2146", 36_000_000n], ["8100", -66_000_000n]]);
+    // The normal journal is reversed and the final tax (0,5 % × 1 M turnover) booked in the same entry.
+    expect((await pack(g, 9)).proposals.CURRENT.map((l) => [l.code, l.amount])).toEqual([["1180", 30_000_000n], ["2145", -5_000_000n], ["2146", 36_000_000n], ["8100", -66_000_000n], ["8200", 5_000_000n]]);
     const back = await post(g, 9, "CURRENT");
-    expect(back.memo).toBe("Pembalikan PPh badan 2026: skema final PP 55/2022");
+    expect(back.memo).toBe("PPh final PP 55/2022 2026 (0,5% × peredaran bruto s.d. September 2026); membalik jurnal PPh badan skema normal");
     for (const code of ["8100", "2146"]) {
       const s = await db.journalLine.aggregate({ where: { account: { clientId: g.client.id, code }, entry: { taxPosting: { isNot: null } } }, _sum: { debit: true, credit: true } });
       expect((s._sum.debit ?? 0n) - (s._sum.credit ?? 0n), code).toBe(0n);
     }
     expect((await pack(g, 9)).proposals.CURRENT).toEqual([]);
+  });
+
+  it("books the PP 55/2022 final tax as an expense against 2145, month by month as the difference; payments clear 2145", async () => {
+    const g = await makeGroup();
+    await setRegime(db, { clientId: g.client.id, entityId: g.pt.entity.id, year: 2026, regime: "FINAL_UMKM" });
+    await journal(g, dateOnly(2026, 1, 20), "1130", "4100", 200_000_000n);
+    const jan = await post(g, 1, "CURRENT");
+    expect(jan.memo).toBe("PPh final PP 55/2022 2026 (0,5% × peredaran bruto s.d. Januari 2026)");
+    expect(await entryLines(jan.id)).toEqual([["2145", 0n, 1_000_000n], ["8200", 1_000_000n, 0n]]);
+    // February: 100 jt more turnover → 500.000 more; January's payment (filed to 2145 by the tax rules) clears January's part.
+    await journal(g, dateOnly(2026, 2, 10), "1130", "4100", 100_000_000n);
+    await journal(g, dateOnly(2026, 2, 15), "2145", "1110", 1_000_000n);
+    expect(await entryLines((await post(g, 2, "CURRENT")).id)).toEqual([["2145", 0n, 500_000n], ["8200", 500_000n, 0n]]);
+    const payable = await db.journalLine.aggregate({ where: { account: { clientId: g.client.id, code: "2145" } }, _sum: { credit: true, debit: true } });
+    expect((payable._sum.credit ?? 0n) - (payable._sum.debit ?? 0n)).toBe(500_000n);
+    expect((await pack(g, 2)).proposals.CURRENT).toEqual([]);
   });
 
   it("counts only postings up to the chosen month and refuses to post before a later one", async () => {

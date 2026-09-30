@@ -315,12 +315,13 @@ async function collectControls(db: Db, clientId: string, year: number, month: nu
     // Tax pack (rule 5d): in December, a company's PPh badan for the year should be booked.
     if (month === 12 && packApplies(e)) {
       const pack = await taxPack(db, clientId, e.id, year, month);
-      const expense = pack?.proposals.CURRENT.find((l) => l.code === ACCOUNT_CODES.CURRENT_TAX)?.amount ?? 0n;
+      const final = pack?.regime === "FINAL_UMKM";
+      const expense = pack?.proposals.CURRENT.find((l) => l.code === (final ? ACCOUNT_CODES.FINAL_TAX : ACCOUNT_CODES.CURRENT_TAX))?.amount ?? 0n;
       if (pack && pack.proposals.CURRENT.length) {
         const tKey = `tax:${e.id}`;
         controls.push({
           key: tKey,
-          title: `PPh badan ${year} belum dijurnal`,
+          title: final ? `PPh final ${year} belum dijurnal` : `PPh badan ${year} belum dijurnal`,
           scope: e.shortName,
           status: "REVIEW",
           detail: `Estimasi PPh terutang ${fmt(pack.tax.due)}; jurnal pajak kini yang belum dicatat ${expense >= 0n ? "" : "mengurangi beban "}${fmt(expense < 0n ? -expense : expense)}`,

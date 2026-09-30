@@ -200,8 +200,9 @@ export async function taxPack(db: Db, clientId: string, entityId: string, year: 
   const applicable = packApplies(entity);
   const proposals: Record<TaxPostingKind, ProposalLine[]> = { CURRENT: [], DEFERRED: [] };
   if (applicable && !laterPosting.CURRENT) {
-    // The final regime has no current-tax journal: a normal-regime posting made before the switch is reversed.
-    const target = settled ? currentTarget(tax.due, credits, settled.balance) : new Map<string, bigint>();
+    // The final regime books its own tax (0,5 % of the year's turnover to 8200 against 2145, which the monthly payments clear); a
+    // normal-regime posting made before the switch is reversed in the same difference.
+    const target = settled ? currentTarget(tax.due, credits, settled.balance) : finalTarget(tax.due);
     proposals.CURRENT = diff(target, postedCurrent);
   }
   if (applicable && deferred && !laterPosting.DEFERRED) proposals.DEFERRED = deferredDiff(deferred.amount, postedDeferred, deferred.oci);
@@ -224,6 +225,15 @@ export function currentTarget(due: bigint, credits: { amount: bigint; accountCod
   if (balance < 0n) add(ACCOUNT_CODES.TAX_OVERPAID, -balance);
   return t;
 }
+
+/**
+ * PP 55/2022: the final tax on the year's turnover to date is an expense (8200) and a liability (2145) that the monthly payments —
+ * filed to 2145 by the tax rules — clear; what is left on 2145 is the month not yet paid. Signed: debit +, credit −.
+ */
+export function finalTarget(due: bigint): Map<string, bigint> {
+  return due > 0n ? new Map([[ACCOUNT_CODES.FINAL_TAX, due], [FINAL_TAX_PAYABLE, -due]]) : new Map();
+}
+export const FINAL_TAX_PAYABLE = "2145";
 
 /**
  * Lines booked by the entity's tax postings of a kind dated by `through`: of that year, or — for deferred balances — of every year up to
