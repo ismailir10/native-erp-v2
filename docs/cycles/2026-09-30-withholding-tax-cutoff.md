@@ -79,7 +79,7 @@ to numbers of existing bank lines or entries; no new dependency.
 - [x] T4 UI for withholding (invoice form, settle dialog, review) — accept: typecheck, lint, screenshot of the settle dialog
 - [x] T5 PPh 25 masa pajak (schema, default at classification, pack query, edit in the pack) — accept: 12-instalment test
 - [x] T6 Cash flow: disposal proceeds and capex on payable in investing — accept: 120/90/40 test, Neraca reconciliation holds
-- [ ] T7 Docs (accounting-rules, README) and end-of-cycle gates — accept: gates pasted below
+- [x] T7 Docs (accounting-rules, README) and end-of-cycle gates — accept: gates pasted below
 
 ## Implementation
 - Plan: tasks T1–T7 sequential, done inline (each touches files the next reads; no independent slice worth a subagent).
@@ -109,5 +109,36 @@ to numbers of existing bank lines or entries; no new dependency.
   operating line; proceeds still on the receivable at the period end are not investing yet; a purchase bill's paid part (settlements dated in the period, also for an earlier
   year's bill) moves from operating to investing; both are zero-sum reclassifications, so the total is still the Neraca cash change). Test `tests/db/cashflow-investing.test.ts`
   (120/90/40, partial collection, early period, capex paid in the year and the year after; each checks the reconciliation with the Neraca).
+- T7: `.agents/skills/accounting-rules/SKILL.md` (5h, 13a, updates to 1 and 5d), `README.md`.
+- Findings against the advisor's list: all four defects were real (see Context). Deviations: PPh 4(2) on our own income goes to 8200 (final), not 1180; the
+  review queue has no inline withholding (it is on *Ubah akun* and in the settle dialog); a disposal's proceeds collected in a later year, and capex on a payable
+  without an invoice, stay in operating (no link to follow).
+
 ## Verification
+End-of-cycle gates on branch `task/withholding-tax-cutoff` (dev and test databases migrated with `prisma migrate deploy`):
+
+```
+$ npm run lint            → eslint: no output (clean)
+$ npm run typecheck       → ✔ Generated Prisma Client (7.10.0) … ; tsc --noEmit: no errors
+$ npm test                →  Test Files  100 passed (100)
+                              Tests  659 passed (659)
+$ npm run build           → next build completes (route table printed, no errors)
+$ npm run demo:reset      → Demo admin siap: dev@buku.local (ADMIN, KJA Demo & Rekan)
+$ npm run verify:books    → ALL PASS — 1717 pemeriksaan saldo cocok dengan ground truth.
+$ npm run test:e2e        →  24 passed (1.1m)
+```
+New tests: `tests/unit/import.test.ts` (tax payment rules), `tests/unit/withholding.test.ts`, `tests/db/tax-rules.test.ts`, `tests/db/withholding.test.ts`,
+`tests/db/invoice-withholding.test.ts`, `tests/db/tax-month.test.ts`, `tests/db/cashflow-investing.test.ts`, and a PPh 23 invoice step in `e2e/receivables.spec.ts`.
+
 ## Ship Notes
+**Migrations (all additive, applied to production by the deploy; timestamps after the reporting-framework PR's 20260930030000 / 20260930040000):**
+- `20260930050000_tax_payment_rules` — data: inserts the new firm rules per firm where absent; repoints an untouched SEED `PPH 21` rule 6100 → 2140. Applies to new imports only.
+  Rollback: `DELETE FROM "Rule" WHERE "source"='SEED' AND "pattern" IN (…the new patterns…)` and `UPDATE "Rule" SET "accountCode"='6100' WHERE "source"='SEED' AND upper("pattern")='PPH 21' AND "accountCode"='2140'`.
+- `20260930050100_bank_withholding` — enum `WithholdingKind`; `BankTransaction.whtKind` (null), `whtAmount` (0) + CHECK. Rollback: drop the two columns and the constraint, then the enum.
+- `20260930050200_invoice_withholding` — `Invoice.whtKind`/`whtAmount`, `InvoiceSettlement.withheld` (0) + CHECKs. Rollback: drop those columns and constraints.
+- `20260930050300_tax_month` — `BankTransaction.taxMonth` (null, no backfill). Rollback: drop the column.
+Code rollback = revert the merge; existing rows keep their defaults, so no data depends on the columns until a user enters a withholding or a masa.
+
+**No env vars, no manual steps, no AI use, no new dependency.** Existing numbers do not change: rules apply to new imports, legacy PPh 25 lines count by bank date, invoices and
+settlements default to nothing withheld, and the cash-flow change only affects disposals and paid capex bills (presentation; totals unchanged).
+**Follow-ups:** inline withholding in the review queue; masa pajak and withheld tax in the Excel kertas kerja; collecting a disposal's proceeds in a later year in investing.
