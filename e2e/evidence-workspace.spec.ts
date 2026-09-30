@@ -190,7 +190,7 @@ test.describe("document evidence workspace", () => {
     for (let i = 0; i < GROUP_ENTITIES.length; i++) {
       if (i > 0) {
         // New entities start as the owner with a bank row; these companies keep books from the ledger file.
-        await page.getByRole("button", { name: "Tambah entitas" }).click();
+        await page.getByRole("button", { name: "Tambah perusahaan atau pemilik" }).click();
         await page.getByRole("combobox", { name: "Jenis entitas" }).nth(i).click();
         await page.getByRole("option", { name: "PT", exact: true }).click();
         await page.getByRole("button", { name: "Hapus rekening" }).first().click();

@@ -113,6 +113,7 @@ to an existing client (new action, larger); (c) telling *Dokumen* apart from *Im
   - `npm run demo:reset && npm run verify:books` → `ALL PASS — 1717 pemeriksaan saldo cocok dengan ground truth.` (no report number changed).
   - **`npm run test:e2e` was NOT run here.** The sandbox's network policy blocks `oexirgohnltkgigcteyp.supabase.co` (login needs Supabase Auth), so the Playwright suite (and any screenshot of the pages) could not be produced; CI runs it against a local Supabase stack. The nine e2e specs touched by this cycle were checked by reading for strict-mode collisions with the new strip/CTAs (`.first()` / scoped locators where the same link name now appears twice) — CI is the first real run.
   - `xlsx` is served from `cdn.sheetjs.com`, also blocked, so `npm ci` fails here; a local-only `xlsx@0.18.5` stand-in was put in `node_modules` (package.json and the lockfile are untouched and were restored). CI installs the real 0.20.3.
+- CI e2e on the first push: 24 of 25 passed; `evidence-workspace.spec.ts:193` failed because it still clicked the renamed \"Tambah entitas\" (my grep had covered only some specs). Fixed by using the new name; `grep -rn "Tambah entitas|Hapus entitas|Entitas [0-9]"` over e2e/tests/app/components/lib now finds nothing.
 
 ## Ship Notes
 - Migrations: none. Env vars: none. New dependency: none. No AI calls. No accounting invariant touched (no report number moves; `verify:books` ALL PASS).
