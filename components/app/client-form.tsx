@@ -72,8 +72,8 @@ export function ClientForm({ initial, evidenceIntakeId, onCreated }: { initial?:
         return;
       }
       toast.success(`${name} ditambahkan`);
-      // Ledger-only clients start with the ledger import; clients with bank accounts with Saldo Awal.
-      router.push(entities.some((e) => e.banks.some((b) => !isBlankBankRow(b))) ? `/clients/${r.clientId}/opening` : `/clients/${r.clientId}/import?tab=ledger`);
+      // The first step is the upload (Saldo Awal is prefilled from the statement afterwards); ledger-only clients start with the ledger tab.
+      router.push(entities.some((e) => e.banks.some((b) => !isBlankBankRow(b))) ? `/clients/${r.clientId}/import` : `/clients/${r.clientId}/import?tab=ledger`);
     } finally {
       setBusy(false);
     }

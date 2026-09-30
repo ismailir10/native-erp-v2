@@ -35,8 +35,8 @@ test("CKPN: roll-rate matrix from the aging, allowance journal, close control", 
   await page.getByLabel("Nama singkat").fill("CKP");
   await page.getByLabel("Nomor rekening").fill("7788990011");
   await page.getByRole("button", { name: "Simpan klien" }).click();
-  await page.waitForURL(/\/clients\/[^/]+\/opening/);
-  const base = page.url().replace(/\/opening.*$/, "");
+  await page.waitForURL(/\/clients\/[^/]+\/import/);
+  const base = page.url().replace(/\/import.*$/, "");
   await page.goto(`${base}/import`);
   await page.getByTestId("file-input").setInputFiles({ name: "bca.csv", mimeType: "text/csv", buffer: Buffer.from(CSV) });
   await page.getByRole("button", { name: "Proses mutasi" }).click();

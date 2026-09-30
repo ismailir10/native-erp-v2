@@ -20,8 +20,8 @@ test("Saldo Awal proposes the deposit a statement lists, with its source", async
   await page.getByLabel("Nama rekening").fill("SMBC Giro");
   await page.getByRole("button", { name: "Simpan klien" }).click();
 
-  await expect(page.getByRole("heading", { name: "Saldo Awal" })).toBeVisible();
-  await page.getByRole("link", { name: "Impor Mutasi" }).click();
+  // A new client lands on the upload: Saldo Awal is prefilled from the statement afterwards.
+  await expect(page.getByRole("heading", { name: "Impor Mutasi" })).toBeVisible();
   await page.getByTestId("file-input").setInputFiles({ name: "smbc-mei-2026.pdf", mimeType: "application/pdf", buffer: smbcGiroDepositPdf() });
   await page.getByRole("button", { name: "Proses mutasi" }).click();
   await expect(page.getByTestId("import-result")).toContainText("Nyambung");

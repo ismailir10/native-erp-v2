@@ -34,9 +34,8 @@ test("add a client, set opening balance, import a locked PDF, bank reconciles", 
   await page.getByLabel("Nama rekening").fill("Mandiri Giro");
   await page.getByRole("button", { name: "Simpan klien" }).click();
 
-  // Import first so Saldo Awal can prefill from the statement.
-  await expect(page.getByRole("heading", { name: "Saldo Awal" })).toBeVisible();
-  await page.getByRole("link", { name: "Impor Mutasi" }).click();
+  // A new client lands on the upload: Saldo Awal is prefilled from the statement afterwards.
+  await expect(page.getByRole("heading", { name: "Impor Mutasi" })).toBeVisible();
   await page.getByTestId("file-input").setInputFiles({ name: "mandiri-agustus.pdf", mimeType: "application/pdf", buffer: pdf });
   await page.getByRole("button", { name: "Proses mutasi" }).click();
   await expect(page.getByLabel("Kata sandi PDF")).toBeVisible();

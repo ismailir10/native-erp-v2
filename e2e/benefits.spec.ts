@@ -13,8 +13,8 @@ test("employee benefits: table, assumptions, census, valuation, journal", async 
   await page.getByLabel("Nama singkat").fill("IMB");
   await page.getByLabel("Nomor rekening").fill("4433221100");
   await page.getByRole("button", { name: "Simpan klien" }).click();
-  await page.waitForURL(/\/clients\/[^/]+\/opening/);
-  const base = page.url().replace(/\/opening.*$/, "");
+  await page.waitForURL(/\/clients\/[^/]+\/import/);
+  const base = page.url().replace(/\/import.*$/, "");
 
   await page.goto(`${base}/benefits?period=2026-08`);
   await expect(page.getByRole("heading", { name: "Imbalan Kerja (PSAK 24)" })).toBeVisible();

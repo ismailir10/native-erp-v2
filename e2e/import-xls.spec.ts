@@ -23,8 +23,7 @@ test("statement .xls: year question, three months in one import, how the file wa
   await page.getByLabel("Nama singkat").fill("XLS");
   await page.getByLabel("Nomor rekening").fill("7766554433");
   await page.getByRole("button", { name: "Simpan klien" }).click();
-  await page.waitForURL(/\/clients\/[^/]+\/opening/);
-  await page.goto(page.url().replace(/\/opening.*$/, "/import"));
+  await page.waitForURL(/\/clients\/[^/]+\/import/);
 
   await page.getByTestId("file-input").setInputFiles({ name: "BCA_GIRO_MAY_26-JUL_26.xls", mimeType: "application/vnd.ms-excel", buffer: xls });
   await page.getByRole("button", { name: "Proses mutasi" }).click();
