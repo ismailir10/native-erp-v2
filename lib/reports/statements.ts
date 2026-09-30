@@ -189,9 +189,11 @@ export function cashLine(a: Pick<Account, "code" | "fsLine" | "isIntercompany">)
 /**
  * Cash collected by `to` against each proceeds line of a disposal entry (line id → amount). Nothing links a receipt to a disposal — the bank line is
  * just classified to the same account — so the account is read as a first-in-first-out queue of open debits (its opening balance and every later debit,
- * disposals included): each credit clears the oldest open debit first, and only a credit that is cash (its entry has a bank row or a cash-account
- * debit) counts as collected. Conservative by construction: a collection is credited to the disposal only after every older debit in the account
- * has been cleared, and later debits never take from it.
+ * disposals included): each credit clears the oldest open debit first, and only the cash part of a credit counts as collected. The cash part is what
+ * reached the bank — a bank line's amount (a withheld tax leg on the same credit is not cash), or the cash debit of a typed entry — and is spent once per
+ * bank line or entry however many rows credit the account. A later debit posted for the same bank line (a reclass away from the account) takes its
+ * earlier clearing back, so the receivable is open again. Conservative by construction: a collection is credited to the disposal only after every older
+ * debit in the account has been cleared, and later debits never take from it.
  */
 async function collectedProceeds(db: Db, entityIds: string[], to: Date, proceedsLines: { id: string; entryId: string; account: { code: string } }[]) {
   const collected = new Map<string, bigint>();
@@ -204,14 +206,43 @@ async function collectedProceeds(db: Db, entityIds: string[], to: Date, proceeds
   });
   const tagged = new Set(proceedsLines.map((l) => l.id));
   const creditEntries = [...new Set(rows.filter((r) => r.credit > r.debit).map((r) => r.entryId))];
-  const cashEntries = new Set((await db.journalLine.findMany({ where: { entryId: { in: creditEntries }, debit: { gt: 0n }, account: { fsLine: "KAS_SETARA_KAS" } }, select: { entryId: true } })).map((r) => r.entryId));
+  const bankIds = [...new Set(rows.map((r) => r.entry.bankTransactionId).filter((x): x is string => x !== null))];
+  // Cash available to credits, spent once: a bank line by its amount, any other entry by the debits it posts to cash accounts.
+  const cash = new Map<string, bigint>();
+  for (const b of await db.bankTransaction.findMany({ where: { id: { in: bankIds } }, select: { id: true, amount: true } })) cash.set(`b:${b.id}`, b.amount < 0n ? -b.amount : b.amount);
+  for (const c of await db.journalLine.findMany({ where: { entryId: { in: creditEntries }, debit: { gt: 0n }, account: { fsLine: "KAS_SETARA_KAS" }, entry: { bankTransactionId: null } }, select: { entryId: true, debit: true } })) {
+    cash.set(`e:${c.entryId}`, (cash.get(`e:${c.entryId}`) ?? 0n) + c.debit);
+  }
   const queues = new Map<string, { tag: string | null; left: bigint }[]>();
   const surplus = new Map<string, bigint>(); // credits with nothing open yet (an advance): they absorb the next debit
+  const cleared = new Map<string, { key: string; tag: string | null; amount: bigint; cash: bigint; advance: boolean }[]>(); // per bank line, to take back
   for (const r of rows) {
     const key = `${r.entityId}:${r.account.code}`;
+    const bankId = r.entry.bankTransactionId;
     const q = queues.get(key) ?? [];
     queues.set(key, q);
     let net = r.debit - r.credit;
+    if (net > 0n && bankId) {
+      // A reclass away from this account: what this bank line cleared here is open again (latest clearing first).
+      const trail = cleared.get(bankId) ?? [];
+      for (let i = trail.length - 1; i >= 0 && net > 0n; i--) {
+        const c = trail[i];
+        if (c.key !== key) continue;
+        const undo = c.amount < net ? c.amount : net;
+        const nonCash = c.amount - c.cash;
+        const cashBack = undo > nonCash ? undo - nonCash : 0n;
+        if (c.advance) surplus.set(key, (surplus.get(key) ?? 0n) - undo);
+        else {
+          q.unshift({ tag: c.tag, left: undo });
+          if (c.tag && cashBack > 0n) collected.set(c.tag, (collected.get(c.tag) ?? 0n) - cashBack);
+        }
+        cash.set(`b:${bankId}`, (cash.get(`b:${bankId}`) ?? 0n) + cashBack);
+        c.amount -= undo;
+        c.cash -= cashBack;
+        net -= undo;
+        if (c.amount === 0n) trail.splice(i, 1);
+      }
+    }
     if (net > 0n) {
       const adv = surplus.get(key) ?? 0n;
       const absorbed = adv < net ? adv : net;
@@ -220,16 +251,31 @@ async function collectedProceeds(db: Db, entityIds: string[], to: Date, proceeds
       if (net > 0n) q.push({ tag: tagged.has(r.id) ? r.id : null, left: net });
     } else if (net < 0n) {
       let credit = -net;
-      const cash = r.entry.bankTransactionId !== null || cashEntries.has(r.entryId);
+      const cashKey = bankId ? `b:${bankId}` : `e:${r.entryId}`;
+      let cashLeft = cash.get(cashKey) ?? 0n;
+      if (cashLeft > credit) cashLeft = credit;
+      cash.set(cashKey, (cash.get(cashKey) ?? 0n) - cashLeft);
+      const note = (tag: string | null, amount: bigint, cashPart: bigint, advance: boolean) => {
+        if (!bankId) return;
+        const trail = cleared.get(bankId) ?? [];
+        trail.push({ key, tag, amount, cash: cashPart, advance });
+        cleared.set(bankId, trail);
+      };
       while (credit > 0n && q.length) {
         const head = q[0];
         const take = head.left < credit ? head.left : credit;
+        const cashTake = take < cashLeft ? take : cashLeft;
         head.left -= take;
         credit -= take;
-        if (head.tag && cash) collected.set(head.tag, (collected.get(head.tag) ?? 0n) + take);
+        cashLeft -= cashTake;
+        if (head.tag && cashTake > 0n) collected.set(head.tag, (collected.get(head.tag) ?? 0n) + cashTake);
+        note(head.tag, take, cashTake, false);
         if (head.left === 0n) q.shift();
       }
-      if (credit > 0n) surplus.set(key, (surplus.get(key) ?? 0n) + credit);
+      if (credit > 0n) {
+        surplus.set(key, (surplus.get(key) ?? 0n) + credit);
+        note(null, credit, cashLeft, true);
+      }
     }
   }
   return collected;

@@ -164,3 +164,9 @@ Each finding was reproduced with a failing test first, one commit per finding.
    open (an advance) absorbs the next debit. **Limit (conservative):** an unrelated receivable older than the disposal in the same account is assumed to be paid first, so
    the disposal's inflow shows later than it may have happened; the sections are zero-sum, so the total is still the Neraca cash change. Tests: 100 jt receivable created
    in the account, older 30 jt receivable collected, both with the Neraca reconciliation.
+5. **Disposal collection counted the withheld tax as cash (PR #70 review) — real.** A receipt with a tax leg (Dr bank 90 + Dr 1180 10 / Cr proceeds 100, one RECLASS
+   entry with the bank row) was read as 100 of cash. The cash a credit can count is now spent once per bank line (its amount) or per typed entry (its cash debits), so 90 is
+   investing and the 10 clears the receivable without being an inflow.
+6. **A reclass away from the proceeds account left the collection in place (PR #70 review) — real.** The reversing debit was queued as an unrelated open debit, so the
+   inflow stayed although the GL had the receivable unpaid again. A debit posted for the same bank line now takes that line's earlier clearing of the account back
+   (queue and collected amount), and the cash it used is available again. Tests: both cases in `tests/db/cashflow-investing.test.ts`, each with the Neraca reconciliation.
