@@ -55,6 +55,14 @@ enum TaxTag {
   PPH_25
 }
 
+/// Tax a payer withholds from a payment (PPh 21, 22, 23, 4(2)); the receiver books it as a credit (or final tax), the payer as a liability.
+enum WithholdingKind {
+  PPH_21
+  PPH_22
+  PPH_23
+  PPH_4_2
+}
+
 enum BankCode {
   BCA
   MANDIRI
@@ -348,6 +356,11 @@ model BankTransaction {
   accountCode   String?
   suggestedCode String?
   taxTag        TaxTag?
+  /// Tax withheld from this payment (the part not in the bank amount): on the classification side of the line's journal.
+  whtKind       WithholdingKind?
+  whtAmount     BigInt              @default(0)
+  /// Masa pajak of a PPh 25 instalment (first day of the month it is for); set when the line is classified, editable. Null = counted by bank date.
+  taxMonth      DateTime?           @db.Date
   matchedTxId   String?
   entries       JournalEntry[]
   proposals     ProposedEntry[]
@@ -1068,6 +1081,9 @@ model Invoice {
   dpp              BigInt
   ppn              BigInt              @default(0)
   total            BigInt
+  /// Tax the counterparty withholds from the payment (expected, on the DPP); the receivable/payable and total stay gross.
+  whtKind          WithholdingKind?
+  whtAmount        BigInt              @default(0)
   counterAccountId String
   counterAccount   Account             @relation("InvoiceCounter", fields: [counterAccountId], references: [id])
   arApAccountId    String
@@ -1093,7 +1109,10 @@ model InvoiceSettlement {
   invoice           Invoice         @relation(fields: [invoiceId], references: [id])
   bankTransactionId String
   bankTransaction   BankTransaction @relation(fields: [bankTransactionId], references: [id])
+  /// What this settlement clears on the invoice (gross): the cash from the bank line plus `withheld`.
   amount            BigInt
+  /// The part of `amount` paid as withheld tax, not cash (booked on the bank line's classification side).
+  withheld          BigInt          @default(0)
   createdById       String?
   createdBy         FirmMember?     @relation("SettlementCreatedBy", fields: [createdById], references: [id])
   createdAt         DateTime        @default(now())

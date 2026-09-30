@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SimpleSelect } from "@/components/app/simple-select";
 import { Money } from "@/components/app/money";
-import { acceptSuggestionAction, addCorrectionAction, addCreditAction, deleteCorrectionAction, deleteCreditAction, deleteLossAction, dismissSuggestionAction, postTaxAction, setCorrectionPercentAction, setLossAction, setRegimeAction } from "@/app/actions";
+import { acceptSuggestionAction, addCorrectionAction, addCreditAction, deleteCorrectionAction, deleteCreditAction, deleteLossAction, dismissSuggestionAction, postTaxAction, setCorrectionPercentAction, setLossAction, setRegimeAction, setTaxMonthAction } from "@/app/actions";
 import { formatMoney } from "@/lib/money";
 import type { TaxPackView } from "@/lib/tax/view";
 
@@ -224,6 +224,13 @@ export function TaxPackPanel(props: { clientId: string; periodKey: string; perio
                   <div className="min-w-0">
                     {CREDIT[c.type]} · <Link href={ledger(c.accountCode, c.month)} className="hover:text-primary">{c.date}</Link> <span className="text-xs text-muted-foreground">{c.label} · {c.accountCode}</span>
                     {c.source.type === "MANUAL" && <Button variant="ghost" size="sm" className="ml-1 h-6 px-2 text-xs" disabled={busy} onClick={() => run(() => deleteCreditAction(props.clientId, (c.source as { id: string }).id), "Kredit pajak dihapus")}>Hapus</Button>}
+                    {c.type === "PPH_25" && c.source.type === "BANK" && (
+                      <span className="ml-2 inline-flex items-center gap-1 text-xs text-muted-foreground">
+                        Masa pajak
+                        <Input type="month" aria-label={`Masa pajak ${c.label}`} className="h-6 w-36 px-2 text-xs" disabled={busy} defaultValue={c.masa ?? ""} key={`${c.key}:${c.masa}`} onChange={(e) => { const value = e.target.value; const id = (c.source as { bankTransactionId: string }).bankTransactionId; if (/^\d{4}-\d{2}$/.test(value)) void run(() => setTaxMonthAction(props.clientId, id, value), "Masa pajak diubah"); }} />
+                        {!c.masa && "belum diisi: dihitung dari tanggal bayar"}
+                      </span>
+                    )}
                   </div>
                   <Money className="shrink-0" value={-BigInt(c.amount)} currency={cur} />
                 </div>

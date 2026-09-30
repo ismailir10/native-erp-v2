@@ -97,6 +97,43 @@ describe("rules", () => {
   });
 });
 
+describe("tax payment rules", () => {
+  const rules = sortRules(FIRM_RULES.map((r) => ({ ...r, clientId: null })));
+  const code = (text: string, dir: "IN" | "OUT" = "OUT", codes?: Set<string>) => {
+    const m = matchRule(rules, text, dir, codes);
+    return m && [m.accountCode, m.taxTag];
+  };
+
+  it("files a remittance to the liability it clears, not to an expense", () => {
+    expect(code("SETORAN PAJAK PPH 21 DJP")).toEqual(["2140", "PPH_21"]);
+    expect(code("TRSF E-BANKING DB PPH21 MASA DES")).toEqual(["2140", "PPH_21"]);
+    expect(code("SETORAN PPH 23 JASA")).toEqual(["2141", "PPH_23"]);
+    expect(code("BAYAR PPH 4(2) SEWA GEDUNG")).toEqual(["2145", "PPH_4_2"]);
+    expect(code("SETOR PPH 4 AYAT 2 SEWA")).toEqual(["2145", "PPH_4_2"]);
+    expect(code("PEMBAYARAN PPH FINAL UMKM")).toEqual(["2145", "PPH_4_2"]);
+    expect(code("PEMBAYARAN PPH 29 TAHUN 2025")).toEqual(["2146", null]);
+    expect(code("SETORAN PPN MASA JUL")).toEqual(["2130", "PPN_KELUARAN"]);
+    expect(code("SETOR PPN AGUSTUS")).toEqual(["2130", "PPN_KELUARAN"]);
+  });
+
+  it("keeps PPh 25 a prepayment and the tax on interest final", () => {
+    expect(code("SETORAN PPH 25 ANGSURAN")).toEqual(["1180", "PPH_25"]);
+    expect(code("Pajak Bunga - Tax on Interest")).toEqual(["8200", "PPH_4_2"]);
+    expect(code("SETORAN PPH 21", "IN")).toBeNull(); // only money out is a remittance
+  });
+
+  it("files Bea Meterai (the correct spelling) with the bank charges", () => {
+    expect(code("Bea Meterai - Stamp Duty")).toEqual(["7100", null]);
+    expect(code("BEA METERAI 10000")).toEqual(["7100", null]);
+  });
+
+  it("skips a rule whose account the client's chart lacks", () => {
+    const chart = new Set(["2140", "1180", "7100"]);
+    expect(code("SETORAN PPH 23 JASA", "OUT", chart)).toBeNull();
+    expect(code("SETORAN PPH 21", "OUT", chart)).toEqual(["2140", "PPH_21"]);
+  });
+});
+
 describe("transfer matcher", () => {
   const base = { merchantKey: "", direction: "OUT" as const };
   const d = (s: string) => new Date(`${s}T00:00:00Z`);

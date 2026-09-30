@@ -114,6 +114,25 @@ export async function deleteLoss(db: Db, input: { clientId: string; lossId: stri
   await db.taxLossCarryforward.delete({ where: { id: l.id } });
 }
 
+/**
+ * The masa pajak of a PPh 25 instalment on a bank line (accounting-rules 5d): "YYYY-MM", not after the month it was paid. It moves the
+ * instalment between years' credits, so a year whose December is locked (the one it leaves or the one it joins) refuses.
+ */
+export async function setTaxMonth(db: Db, input: { clientId: string; bankTransactionId: string; month: string }) {
+  const t = await db.bankTransaction.findFirst({ where: { id: input.bankTransactionId, bankAccount: { entity: { clientId: input.clientId } } } });
+  if (!t) throw new LedgerError("Mutasi tidak ditemukan.");
+  if (t.taxTag !== "PPH_25" || t.status === "NEEDS_REVIEW") throw new LedgerError("Masa pajak hanya untuk mutasi PPh 25 yang sudah diklasifikasikan.");
+  const m = input.month.match(/^(\d{4})-(\d{2})$/);
+  if (!m || Number(m[2]) < 1 || Number(m[2]) > 12 || Number(m[1]) < 2000 || Number(m[1]) > 2100) throw new LedgerError("Masa pajak tidak valid; pilih bulan dan tahun.");
+  const taxMonth = dateOnly(Number(m[1]), Number(m[2]), 1);
+  if (+taxMonth > +dateOnly(t.date.getUTCFullYear(), t.date.getUTCMonth() + 1, 1)) throw new LedgerError("Masa pajak tidak boleh setelah bulan pembayaran.");
+  for (const year of new Set([taxMonth.getUTCFullYear(), (t.taxMonth ?? t.date).getUTCFullYear()])) {
+    const december = await db.period.findUnique({ where: { clientId_year_month: { clientId: input.clientId, year, month: 12 } } });
+    if (december?.status === "LOCKED") throw new LedgerError(`Desember ${year} sudah dikunci; kredit PPh 25 ${year} tidak bisa diubah. Buka kunci Desember dulu.`);
+  }
+  return db.bankTransaction.update({ where: { id: t.id }, data: { taxMonth } });
+}
+
 export type CreditInput = { clientId: string; entityId: string; year: number; type: TaxCreditType; reference: string; date: string; amount: string; accountCode: string; actorId?: string | null };
 
 export async function addCredit(db: Db, input: CreditInput) {

@@ -60,7 +60,7 @@ export async function accountLedger(
       balance: balances[idx].toString(),
       entry: { lines: l.entry.lines.map((x) => ({ code: x.account.code, name: x.account.name, debit: x.debit.toString(), credit: x.credit.toString() })) },
       source: t
-        ? { bankTxId: t.id, accountCode: t.accountCode, taxTag: t.taxTag, fileName: t.import.fileName, sheet: t.sourceSheet, rowNumber: t.rowNumber, rawRow: t.rawRow, description: t.description, amount: t.amount.toString(), bank: `${t.bankAccount.label} · ${t.bankAccount.number}`, method: t.method, reason: t.reason, status: t.status }
+        ? { bankTxId: t.id, accountCode: t.accountCode, taxTag: t.taxTag, whtKind: t.whtKind, whtAmount: t.whtAmount.toString(), fileName: t.import.fileName, sheet: t.sourceSheet, rowNumber: t.rowNumber, rawRow: t.rawRow, description: t.description, amount: t.amount.toString(), bank: `${t.bankAccount.label} · ${t.bankAccount.number}`, method: t.method, reason: t.reason, status: t.status }
         : null,
       fileSource: l.entry.ledgerImport
         ? {

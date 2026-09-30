@@ -4,6 +4,9 @@ import type { TaxTag } from "@/lib/generated/prisma/enums";
 import { postBankTransaction } from "@/lib/ledger/bank";
 import { LedgerError } from "@/lib/ledger/post";
 import { isGenericKey } from "@/lib/import/normalize";
+import { ACCOUNT_CODES } from "@/lib/coa/template";
+import { defaultTaxMonth } from "@/lib/tax/masa";
+import { checkWithholding, type Withholding } from "@/lib/tax/withholding";
 
 type ReviewArgs = {
   bankTxId: string;
@@ -13,6 +16,11 @@ type ReviewArgs = {
   actorId?: string | null;
   /** false: a provisional decision (the line goes back to Review) — Memory learns only from the final one. */
   learn?: boolean;
+  /**
+   * Tax withheld from this payment or receipt (rent, services, a customer's PPh 23): the part not in the bank amount, posted on the
+   * classification side (accounting-rules 5h). undefined keeps what the line has; null removes it.
+   */
+  withholding?: Withholding | null;
 };
 
 /**
@@ -27,7 +35,7 @@ export async function reviewTransaction(db: Db, args: ReviewArgs) {
 export async function reviewTransactionTx(tx: Tx, args: ReviewArgs) {
   const t = await tx.bankTransaction.findUniqueOrThrow({
     where: { id: args.bankTxId },
-    include: { bankAccount: { include: { entity: true } }, settlements: { select: { invoice: { select: { number: true, arApAccount: { select: { code: true } } } } } } },
+    include: { bankAccount: { include: { entity: true } }, settlements: { select: { withheld: true, invoice: { select: { number: true, arApAccount: { select: { code: true } } } } } } },
   });
   const clientId = t.bankAccount.entity.clientId;
   const generic = isGenericKey(t.merchantKey);
@@ -40,7 +48,15 @@ export async function reviewTransactionTx(tx: Tx, args: ReviewArgs) {
   if (away.length) {
     throw new LedgerError(`Mutasi ini melunasi ${away.map((s) => s.invoice.number).join(", ")} di akun ${away[0].invoice.arApAccount.code}. Hapus pencocokannya dulu di Piutang & Utang sebelum mengubah akunnya.`);
   }
-  await postBankTransaction(tx, t.id, { accountCode: args.accountCode, taxTag: args.taxTag }, { actorId: args.actorId });
+  // Withholding that comes from settlements is changed by (un)settling, not by hand: the invoice's amounts would no longer add up.
+  const settledWht = t.settlements.reduce((sum, x) => sum + x.withheld, 0n);
+  if (settledWht > 0n && args.withholding !== undefined && (args.withholding?.amount ?? 0n) !== t.whtAmount) {
+    throw new LedgerError("Pemotongan pajak pada mutasi ini berasal dari pencocokan faktur. Ubah lewat pencocokan (hapus, lalu cocokkan lagi).");
+  }
+  // The withholding stays with the line through a change of account (the tax was withheld whichever account it files to), except in Review.
+  const held = t.whtKind && t.whtAmount > 0n ? { kind: t.whtKind, amount: t.whtAmount } : null;
+  const withholding = args.withholding === undefined ? (args.accountCode === ACCOUNT_CODES.SUSPENSE ? null : held) : args.withholding && checkWithholding(args.withholding, t.direction);
+  await postBankTransaction(tx, t.id, { accountCode: args.accountCode, taxTag: args.taxTag, withholding }, { actorId: args.actorId });
   const changed = args.accountCode !== t.suggestedCode || args.taxTag !== t.taxTag;
   await tx.bankTransaction.update({
     where: { id: t.id },
@@ -48,6 +64,10 @@ export async function reviewTransactionTx(tx: Tx, args: ReviewArgs) {
       status: "REVIEWED",
       accountCode: args.accountCode,
       taxTag: args.taxTag,
+      // The masa pajak of a PPh 25 instalment: the month before payment unless the accountant set one; none once it isn't PPh 25.
+      taxMonth: args.taxTag === "PPH_25" ? (t.taxMonth ?? defaultTaxMonth(t.date)) : null,
+      whtKind: withholding?.kind ?? null,
+      whtAmount: withholding?.amount ?? 0n,
       method: changed ? "MANUAL" : t.method,
       reason: changed ? "Diubah oleh reviewer" : t.reason,
     },
@@ -64,6 +84,18 @@ export async function reviewTransactionTx(tx: Tx, args: ReviewArgs) {
     });
   }
   return t.id;
+}
+
+/**
+ * Sets the tax withheld on a settled bank line (its classification stays): posts the RECLASS of the difference. Used by (un)settling an
+ * invoice, which owns the amount; null removes it.
+ */
+export async function setWithholdingTx(tx: Tx, bankTxId: string, withholding: Withholding | null, actorId?: string | null) {
+  const t = await tx.bankTransaction.findUniqueOrThrow({ where: { id: bankTxId } });
+  if (t.status === "NEEDS_REVIEW" || !t.accountCode) throw new LedgerError("Klasifikasikan mutasi ini dulu sebelum mencatat pemotongan pajak.");
+  if (withholding) checkWithholding(withholding, t.direction);
+  await postBankTransaction(tx, t.id, { accountCode: t.accountCode, taxTag: t.taxTag, withholding }, { actorId });
+  await tx.bankTransaction.update({ where: { id: t.id }, data: { whtKind: withholding?.kind ?? null, whtAmount: withholding?.amount ?? 0n } });
 }
 
 /**

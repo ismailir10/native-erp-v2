@@ -1,5 +1,5 @@
 import type { Db, Tx } from "@/lib/db";
-import type { InvoiceDirection } from "@/lib/generated/prisma/enums";
+import type { InvoiceDirection, WithholdingKind } from "@/lib/generated/prisma/enums";
 
 /**
  * Open items and aging at a date (accounting-rules 5c): an invoice issued by then, less its settlements by bank lines dated by then.
@@ -33,6 +33,9 @@ export type OpenItem = {
   opening: boolean;
   entryId: string | null;
   arApCode: string;
+  /** The tax the counterparty is expected to withhold, and what is still expected (after the settlements' withheld part). */
+  whtKind: WithholdingKind | null;
+  whtExpected: bigint;
 };
 
 const DAY = 86_400_000;
@@ -57,7 +60,7 @@ export function subledgerFrom(i: { entityId: string; issueDate: Date; opening: b
 export async function invoicesAt(db: Db, clientId: string, direction: InvoiceDirection, asOf: Date, entityIds?: string[]): Promise<OpenItem[]> {
   const found = await db.invoice.findMany({
     where: { clientId, direction, issueDate: { lte: asOf }, ...(entityIds ? { entityId: { in: entityIds } } : {}) },
-    include: { contact: { select: { id: true, name: true } }, arApAccount: { select: { code: true } }, settlements: { select: { amount: true, bankTransaction: { select: { date: true } } } } },
+    include: { contact: { select: { id: true, name: true } }, arApAccount: { select: { code: true } }, settlements: { select: { amount: true, withheld: true, bankTransaction: { select: { date: true } } } } },
     orderBy: [{ dueDate: "asc" }, { number: "asc" }],
   });
   const openings = await openingDates(db, [...new Set(found.filter((i) => i.opening).map((i) => i.entityId))]);
@@ -81,6 +84,8 @@ export async function invoicesAt(db: Db, clientId: string, direction: InvoiceDir
       opening: i.opening,
       entryId: i.entryId,
       arApCode: i.arApAccount.code,
+      whtKind: i.whtKind,
+      whtExpected: i.whtAmount - i.settlements.filter((s) => +s.bankTransaction.date <= +asOf).reduce((t, s) => t + s.withheld, 0n),
     };
   });
 }
@@ -118,9 +123,9 @@ export async function subledgerVsLedger(db: Db, clientId: string, direction: Inv
     const net = (s._sum.debit ?? 0n) - (s._sum.credit ?? 0n);
     const lines = await db.bankTransaction.findMany({
       where: { entityId, date: { lte: asOf }, accountCode: { in: codes }, status: { not: "NEEDS_REVIEW" } },
-      select: { amount: true, settlements: { select: { amount: true } } },
+      select: { amount: true, settlements: { select: { amount: true, withheld: true } } },
     });
-    const unsettledLines = lines.filter((t) => (t.amount < 0n ? -t.amount : t.amount) > t.settlements.reduce((u, x) => u + x.amount, 0n)).length;
+    const unsettledLines = lines.filter((t) => (t.amount < 0n ? -t.amount : t.amount) > t.settlements.reduce((u, x) => u + x.amount - x.withheld, 0n)).length;
     const subledger = mine.reduce((t, i) => t + i.open, 0n);
     const ledger = direction === "SALES" ? net : -net;
     out.push({ entityId, direction, accounts: codes, subledger, ledger, unsettledLines, equal: subledger === ledger });

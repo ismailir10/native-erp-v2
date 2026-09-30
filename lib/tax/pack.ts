@@ -30,7 +30,7 @@ export type Correction = {
 };
 /** A correction category matched by an expense account's name (lib/tax/categories.ts); `amount` is the account, `corrected` its share. */
 export type Suggestion = { key: string; code: string; name: string; amount: bigint; category: string; label: string; percent: number; direction: CorrectionDirection; kind: CorrectionKind; corrected: bigint };
-export type Credit = { key: string; type: TaxCreditType | "PPH_25"; label: string; date: Date; amount: bigint; accountCode: string; source: { type: "BANK"; bankTransactionId: string } | { type: "MANUAL"; id: string } };
+export type Credit = { key: string; type: TaxCreditType | "PPH_25"; label: string; date: Date; /** PPh 25: the month the instalment is for (null: not set, counted by its bank date). */ masa: Date | null; amount: bigint; accountCode: string; source: { type: "BANK"; bankTransactionId: string } | { type: "MANUAL"; id: string } };
 export type ProposalLine = { code: string; amount: bigint };
 
 export type TaxPack = {
@@ -158,10 +158,15 @@ export async function taxPack(db: Db, clientId: string, entityId: string, year: 
   }
 
   // ---- kredit pajak ----
-  const instalments = await db.bankTransaction.findMany({ where: { entityId, taxTag: "PPH_25", direction: "OUT", date: { gte: from, lte: through }, status: { not: "NEEDS_REVIEW" } }, orderBy: [{ date: "asc" }, { rowNumber: "asc" }] });
+  // By masa pajak: December's instalment, paid by 15 January, is a credit of the year that ended. A line without a masa (booked before
+  // it existed) still counts by its bank date.
+  const instalments = await db.bankTransaction.findMany({
+    where: { entityId, taxTag: "PPH_25", direction: "OUT", status: { not: "NEEDS_REVIEW" }, OR: [{ taxMonth: { gte: from, lte: through } }, { taxMonth: null, date: { gte: from, lte: through } }] },
+    orderBy: [{ date: "asc" }, { rowNumber: "asc" }],
+  });
   const credits: Credit[] = [
-    ...instalments.map((t) => ({ key: `bank:${t.id}`, type: "PPH_25" as const, label: t.description, date: t.date, amount: -t.amount, accountCode: t.accountCode ?? "", source: { type: "BANK" as const, bankTransactionId: t.id } })),
-    ...(taxYear?.credits ?? []).filter((c) => +c.date <= +through).map((c) => ({ key: `manual:${c.id}`, type: c.type, label: c.reference, date: c.date, amount: c.amount, accountCode: c.account.code, source: { type: "MANUAL" as const, id: c.id } })),
+    ...instalments.map((t) => ({ key: `bank:${t.id}`, type: "PPH_25" as const, label: t.description, date: t.date, masa: t.taxMonth, amount: -t.amount, accountCode: t.accountCode ?? "", source: { type: "BANK" as const, bankTransactionId: t.id } })),
+    ...(taxYear?.credits ?? []).filter((c) => +c.date <= +through).map((c) => ({ key: `manual:${c.id}`, type: c.type, label: c.reference, date: c.date, masa: null, amount: c.amount, accountCode: c.account.code, source: { type: "MANUAL" as const, id: c.id } })),
   ];
   const sum = (xs: Credit[]) => xs.reduce((t, c) => t + c.amount, 0n);
   const settled = final

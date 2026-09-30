@@ -24,7 +24,10 @@ export type InvoiceView = {
   opening: boolean;
   entryId: string | null;
   arApCode: string;
-  settlements: { id: string; amount: string; date: string; description: string }[];
+  /** Tax the counterparty withholds, and the part still expected (major-unit strings via bigint). */
+  whtKind: string | null;
+  whtExpected: string;
+  settlements: { id: string; amount: string; withheld: string; date: string; description: string }[];
 };
 export type AgingView = { entityId: string; entity: string; currency: string; rows: { contact: string; buckets: Record<Bucket, string>; total: string; count: number }[]; totals: Record<Bucket, string> & { total: string } };
 export type ComparisonView = { entityId: string; entity: string; currency: string; accounts: string[]; subledger: string; ledger: string; unsettledLines: number; equal: boolean };
@@ -59,7 +62,9 @@ export async function receivablesView(db: Db, clientId: string, direction: Invoi
       opening: i.opening,
       entryId: i.entryId,
       arApCode: i.arApCode,
-      settlements: settlements.filter((s) => s.invoiceId === i.id).map((s) => ({ id: s.id, amount: s.amount.toString(), date: formatDate(s.bankTransaction.date), description: s.bankTransaction.description })),
+      whtKind: i.whtKind,
+      whtExpected: (i.whtExpected > 0n ? i.whtExpected : 0n).toString(),
+      settlements: settlements.filter((s) => s.invoiceId === i.id).map((s) => ({ id: s.id, amount: s.amount.toString(), withheld: s.withheld.toString(), date: formatDate(s.bankTransaction.date), description: s.bankTransaction.description })),
     }))
     // Open first (oldest due first), then paid (latest first).
     .sort((a, b) => Number(BigInt(b.open) > 0n) - Number(BigInt(a.open) > 0n) || (BigInt(a.open) > 0n ? b.daysPastDue - a.daysPastDue : 0));
@@ -83,11 +88,11 @@ export async function receivablesView(db: Db, clientId: string, direction: Invoi
   const codes = [...new Set([...comparisons.flatMap((c) => c.accounts), direction === "SALES" ? "1130" : "2110"])];
   const lines = await db.bankTransaction.findMany({
     where: { entityId: { in: ids }, direction: direction === "SALES" ? "IN" : "OUT", date: { lte: asOf }, accountCode: { in: codes }, status: { not: "NEEDS_REVIEW" } },
-    include: { settlements: { select: { amount: true } } },
+    include: { settlements: { select: { amount: true, withheld: true } } },
     orderBy: [{ date: "asc" }, { rowNumber: "asc" }],
   });
   const unsettled: UnsettledLineView[] = lines
-    .map((t) => ({ t, free: (t.amount < 0n ? -t.amount : t.amount) - t.settlements.reduce((u, x) => u + x.amount, 0n) }))
+    .map((t) => ({ t, free: (t.amount < 0n ? -t.amount : t.amount) - t.settlements.reduce((u, x) => u + x.amount - x.withheld, 0n) }))
     .filter((x) => x.free > 0n)
     .map(({ t, free }) => ({ id: t.id, entity: ent.get(t.entityId)!.shortName, currency: ent.get(t.entityId)!.functionalCurrency, date: formatDate(t.date), description: t.description, free: free.toString(), accountCode: t.accountCode ?? "" }));
   const contacts = (await db.contact.findMany({ where: { clientId }, select: { name: true }, orderBy: { name: "asc" } })).map((c) => c.name);

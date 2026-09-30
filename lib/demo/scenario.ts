@@ -142,7 +142,7 @@ function grupAyam(): ClientScenario {
     lines.push({ bankKey: "pt-bca", date: d(y, m, 18), description: "META PLATFORMS IRELAND ADS", amount: -jt(6, 12), truth: T("6150"), ai: AI("6150", "Iklan digital", 0.9) });
     // taxes
     lines.push({ bankKey: "pt-bca", date: d(y, m, 15), description: "SETORAN PPN MASA DJP", amount: -jt(40, 60), truth: T("2130", "PPN_KELUARAN") });
-    lines.push({ bankKey: "pt-bca", date: d(y, m, 10), description: "SETORAN PAJAK PPH 21 DJP", amount: -jt(7, 9), truth: T("6100", "PPH_21") });
+    lines.push({ bankKey: "pt-bca", date: d(y, m, 10), description: "SETORAN PAJAK PPH 21 DJP", amount: -jt(7, 9), truth: T("2140", "PPH_21") });
     // bank items
     lines.push({ bankKey: "pt-bca", date: d(y, m, 28), description: "BIAYA ADM", amount: -30_000n, truth: T("7100") });
     lines.push({ bankKey: "pt-bca", date: d(y, m, 28), description: "BUNGA JASA GIRO", amount: 850_000n, truth: T("4900") });
@@ -268,6 +268,8 @@ function grupAyam(): ClientScenario {
         { code: "1210", amount: 1_150_000_000n },
         { code: "1219", amount: -310_000_000n },
         { code: "2110", amount: -240_000_000n },
+        // PPh 21 withheld from payroll and not yet paid in (the remittances file to this liability, not to salary expense).
+        { code: "2140", amount: -60_000_000n },
         { code: "2210", amount: -600_000_000n },
         { code: "3100", amount: -2_000_000_000n },
       ],

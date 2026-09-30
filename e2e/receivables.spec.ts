@@ -3,12 +3,14 @@ import { expect, test, type Page } from "@playwright/test";
 /**
  * Receivables and payables, end to end (synthetic): a fresh client imports August's statement → a sales invoice with PPN → its
  * receipt (still in review) is suggested first and settled in one click → paid, the subledger equals 1130 → a purchase bill paid in
- * part → the rest ages in 1–30 hari and equals 2110.
+ * part → the rest ages in 1–30 hari and equals 2110. A second invoice whose customer withholds PPh 23 (2 %) is paid net: the settlement
+ * books the tax and the invoice closes at gross.
  */
 const CSV = [
   "Tanggal;Keterangan;Debet;Kredit;Saldo",
   "20/08/2026;TRSF E-BANKING CR PT MITRA UNGGAS INV-100;0;11100000;111100000",
   "25/08/2026;TRSF E-BANKING DB CV SUMBER MESIN;10000000;0;101100000",
+  "27/08/2026;TRSF E-BANKING CR PT JASA BINTANG INV-200;0;10900000;112000000",
   "",
 ].join("\n");
 
@@ -52,6 +54,25 @@ test("receivables and payables: invoice, settle from the statement, aging equals
   await first.getByRole("button", { name: "Cocokkan" }).click();
   await expect(page.getByText("INV-100 dicocokkan dengan penerimaan 20 Agu 2026")).toBeVisible();
   await expect(page.getByTestId("invoices-paid")).toContainText("INV-100");
+  await expect(page.getByTestId("next-step")).toContainText("Daftar piutang per Agustus 2026 cocok dengan buku besar");
+
+  // Piutang with PPh 23: 10.000.000 + PPN 1.100.000, the customer pays 10.900.000 net of 200.000.
+  await newInvoice(page, "Faktur baru", { party: "PT Jasa Bintang", number: "INV-200", date: "2026-08-06", due: "2026-09-05", dpp: "10.000.000" });
+  await page.getByRole("combobox", { name: "Pajak yang dipotong" }).click();
+  await page.getByRole("option", { name: "PPh 23" }).click();
+  await page.getByLabel("Tarif atau nominal").fill("2");
+  await expect(page.getByText("= Rp 200.000 dari DPP")).toBeVisible();
+  await page.getByRole("button", { name: "Simpan faktur" }).click();
+  await expect(page.getByText("Faktur INV-200 dicatat")).toBeVisible();
+  await page.getByTestId("invoice-INV-200").getByRole("button", { name: "Cocokkan" }).click();
+  const net = page.getByTestId("settle-candidates").locator("> div").first();
+  await expect(net).toContainText("PT JASA BINTANG INV-200");
+  await expect(net.getByLabel(/^Dipotong /)).toHaveValue("200.000");
+  await net.getByRole("button", { name: "Cocokkan" }).click();
+  await expect(page.getByText("INV-200 dicocokkan dengan penerimaan 27 Agu 2026")).toBeVisible();
+  await expect(page.getByTestId("invoices-paid")).toContainText("INV-200");
+  await page.getByRole("button", { name: "Pelunasan INV-200" }).click();
+  await expect(page.getByText("termasuk pajak dipotong")).toContainText("200.000");
   await expect(page.getByTestId("next-step")).toContainText("Daftar piutang per Agustus 2026 cocok dengan buku besar");
 
   // Utang: a purchase bill paid in part.
