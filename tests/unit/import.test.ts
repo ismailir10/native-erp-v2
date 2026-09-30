@@ -210,7 +210,8 @@ describe("tax payments as banks print them", () => {
     for (const text of ["MPN G2 PENERIMAAN NEGARA 123456789012345", "BAYAR PAJAK KPP PRATAMA", "DJP ONLINE KODE BILLING 012345678901234"]) {
       expect(taxPaymentSuggestion(text, "OUT")).toMatchObject({ method: "HEURISTIC", accountCode: "2145" });
     }
-    for (const text of ["PAJAK KENDARAAN SAMSAT B 1234 XY", "PBB 2026 KANTOR", "PEMBAYARAN BILLING TELKOMSEL"]) {
+    expect(taxPaymentSuggestion("PAJAK", "OUT")).toMatchObject({ accountCode: "2145" });
+    for (const text of ["PAJAK KENDARAAN SAMSAT B 1234 XY", "PBB 2026 KANTOR", "PEMBAYARAN BILLING TELKOMSEL", "TRSF E-BANKING DB 2108/FTSCY KANTOR KONSULTAN PAJAK HARAPAN", "PAJAK RESTORAN"]) {
       expect(taxPaymentSuggestion(text, "OUT")).toBeNull();
     }
     expect(taxPaymentSuggestion("RESTITUSI PAJAK DJP", "IN")).toBeNull();

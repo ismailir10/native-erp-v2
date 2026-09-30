@@ -89,13 +89,19 @@ test("statement in → reviewed → traceable reports → combined → closed", 
   await expect(page.getByTestId("schedule-candidates")).toHaveCount(0);
 
   // 7. Close: arithmetic passes; the ledger scan flags the machine bought in August (Aset Tetap moves for the first time
-  // since its opening balance) → the accountant notes why → sign-offs → lock
+  // since its opening balance), and PT Ayam holds stock with no August count → the accountant notes why → sign-offs → lock
   await page.getByRole("link", { name: "Tutup Buku" }).click();
   await expect(page.getByRole("heading", { name: "Tutup Buku" })).toBeVisible();
   await expect(page.getByText("Lolos").first()).toBeVisible();
   await expect(page.getByText("Gagal")).toHaveCount(0);
   const flagged = page.locator('[data-testid^="control-"]').filter({ hasText: "Perlu dicek" });
-  await expect(flagged).toHaveCount(1);
+  await expect(flagged).toHaveCount(2);
+  const stock = page.getByTestId("control-inv");
+  await expect(stock).toContainText("Persediaan akhir Agustus 2026 belum dicatat");
+  await stock.getByRole("button", { name: "Beri catatan" }).click();
+  await page.getByRole("dialog").getByRole("textbox").fill("Klien menghitung stok hanya di akhir tahun; nilai pakan di gudang stabil.");
+  await page.getByRole("button", { name: "Simpan catatan" }).click();
+  await expect(stock).toContainText("akhir tahun");
   const capex = page.getByTestId("control-dormant");
   await expect(capex).toContainText("1210 Aset Tetap");
   await capex.getByRole("button", { name: "Beri catatan" }).click();

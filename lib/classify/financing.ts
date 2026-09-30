@@ -40,13 +40,14 @@ export function financingSuggestion(description: string, direction: Direction): 
 }
 
 /**
- * A tax payment printed without a known code (MPN, DJP, SSP, "BAYAR PAJAK KPP", a billing code): it clears a tax liability, never an
+ * A tax payment printed without a known code (MPN, DJP, SSP, "BAYAR PAJAK KPP", a billing code, a bare "PAJAK"): it clears a tax liability, never an
  * expense (rule 13a). Which one the text doesn't say, so the suggestion is 2145 for review with the reason naming the choices; the KAP
  * code rules and the "PPH 21 / 23 / 25 / PPN" words (rules.ts) catch the ones that do say. Regional taxes (vehicle, land and building,
  * hotel, restaurant, advertising) are costs and left alone.
  */
-const TAX_PAYMENT = /\b(MPN|DJP|SSP|PAJAK|KODE BILLING|PENERIMAAN NEGARA|KPP|NTPN)\b/i;
-const REGIONAL_TAX = /\b(KENDARAAN|PKB|PBB|BPHTB|REKLAME|HOTEL|RESTORAN|SAMSAT|BBNKB|AIR TANAH|PARKIR|DAERAH|BAPENDA|BAPPEDA)\b/i;
+// "PAJAK" alone is too broad ("KANTOR KONSULTAN PAJAK" is a fee): only with a paying verb, or as the whole description.
+const TAX_PAYMENT = /\b(MPN|DJP|SSP|KPP|NTPN|KODE BILLING|PENERIMAAN NEGARA|(?:BAYAR|SETOR|SETORAN|PEMBAYARAN) PAJAK)\b|^\s*PAJAK\s*$/i;
+const REGIONAL_TAX = /\b(KONSULTAN|KENDARAAN|PKB|PBB|BPHTB|REKLAME|HOTEL|RESTORAN|SAMSAT|BBNKB|AIR TANAH|PARKIR|DAERAH|BAPENDA|BAPPEDA)\b/i;
 
 export function taxPaymentSuggestion(description: string, direction: Direction): Classification | null {
   if (direction !== "OUT" || !TAX_PAYMENT.test(description) || REGIONAL_TAX.test(description)) return null;

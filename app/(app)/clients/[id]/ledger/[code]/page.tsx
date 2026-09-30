@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { prisma } from "@/lib/db";
 import { loadClientPage } from "@/lib/client-page";
 import { type SearchParams, withParams } from "@/lib/scope";
@@ -36,9 +36,9 @@ export default async function AccountLedger({ params, searchParams }: { params: 
         <ul className="flex flex-wrap gap-2">
           {scoped.map((e) => (
             <li key={e.id}>
-              <Button variant="outline" nativeButton={false} render={<Link href={withParams(`${base}/ledger/${code}`, { period: period.key, entity: e.id })} />}>
+              <Link href={withParams(`${base}/ledger/${code}`, { period: period.key, entity: e.id })} className={buttonVariants({ variant: "outline" })}>
                 {e.shortName} · {e.functionalCurrency} <ChevronRight />
-              </Button>
+              </Link>
             </li>
           ))}
         </ul>

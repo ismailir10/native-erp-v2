@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Check, CheckCheck, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Kbd } from "@/components/ui/kbd";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -349,9 +349,9 @@ export function ReviewQueue({
             <>
               <span>{simpleGuesses} transaksi hanya punya tebakan sederhana karena AI belum diatur. Pilih akunnya langsung{canSetUpAi ? ", atau atur AI dulu." : "; admin bisa mengisi kunci AI di Pengaturan."}</span>
               {canSetUpAi && (
-                <Button variant="outline" size="sm" nativeButton={false} render={<Link href="/settings" />}>
+                <Link href="/settings" className={buttonVariants({ variant: "outline", size: "sm" })}>
                   Atur AI di Pengaturan
-                </Button>
+                </Link>
               )}
             </>
           )}

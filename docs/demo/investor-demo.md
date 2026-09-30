@@ -51,9 +51,12 @@ Automated end to end by `e2e/investor-demo.spec.ts` — if you change this scrip
 ### 6. Tutup Buku — the controlled close (60 s)
 - **Arithmetic all Lolos**: TB balanced, A = L + E, each bank reconciled to the statement, continuity,
   clearing 1199 = 0, nothing in suspense, intercompany eliminated.
-- **One Perlu dicek from the ledger scan**: *Akun baru atau aktif lagi — 1210 Aset Tetap* — the machine reviewed in step 3
+- **Two Perlu dicek.** From the ledger scan: *Akun baru atau aktif lagi — 1210 Aset Tetap* — the machine reviewed in step 3
   is the first movement on fixed assets since the opening balance. Click **Beri catatan** → "Pembelian mesin pakan otomatis,
   faktur ada. Penyusutan mulai September." → Simpan.
+- **Persediaan akhir (stock opname)**: PT Ayam holds Rp 260 jt of feed and no August count is recorded. Either type the count on
+  *Persediaan* (the difference is journaled to 5190, so HPP = awal + pembelian − akhir) or note it: "Klien menghitung stok hanya di
+  akhir tahun" → Simpan.
 
 > Talking point: *the close doesn't only check that the books add up — it reads the ledger like a reviewer would (swings
 > against the last 3 months, accounts that wake up, P&L running backwards, double entries) and asks for a one-line note.*
