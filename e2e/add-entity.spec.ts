@@ -18,7 +18,7 @@ test("add a bank account and an owner to an existing client", async ({ page }) =
   await expect(card).toContainText("5550009999 · 1101");
 
   // A second account for the PT, then a wrong number says what to fix.
-  await card.getByRole("button", { name: "Tambah rekening" }).click();
+  await card.getByRole("button", { name: "Tambah rekening", exact: true }).click();
   const addBank = card.getByTestId(/^add-bank-/);
   await addBank.getByLabel("Nomor rekening").fill("12");
   await addBank.getByRole("button", { name: "Simpan rekening" }).click();
@@ -65,7 +65,7 @@ test("rename and remove companies and bank accounts", async ({ page }) => {
   // Two things entered by mistake: an empty second account and an empty owner.
   await page.goto(`${base}/settings`);
   const card = page.getByTestId("entities-card");
-  await card.getByRole("button", { name: "Tambah rekening" }).click();
+  await card.getByRole("button", { name: "Tambah rekening", exact: true }).click();
   const addBank = card.getByTestId(/^add-bank-/);
   await addBank.getByLabel("Nomor rekening").fill("5551119999");
   await addBank.getByLabel("Nama rekening").fill("Mandiri Kosong");
@@ -79,7 +79,7 @@ test("rename and remove companies and bank accounts", async ({ page }) => {
 
   // With books, the company and its BCA account can't be removed, and the reason is right there.
   const pt = card.getByTestId(/^entity-/).filter({ hasText: "PT Ubah Hapus" });
-  await expect(pt.getByRole("button", { name: "Hapus" }).first()).toBeDisabled();
+  await expect(pt.getByRole("button", { name: "Hapus", exact: true }).first()).toBeDisabled();
   await expect(pt.getByTestId("remove-blocked").first()).toContainText(/Sudah ada .*1 mutasi bank, 1 impor rekening koran/);
   await expect(pt.getByTestId("remove-blocked").first()).toContainText("koreksi lewat Jurnal Penyesuaian");
   const bca = card.getByTestId(/^bank-/).filter({ hasText: "BCA Giro" });
@@ -103,11 +103,11 @@ test("rename and remove companies and bank accounts", async ({ page }) => {
 
   // The empty account and the empty owner can go, after a second click.
   const empty = card.getByTestId(/^bank-/).filter({ hasText: "Mandiri Kosong" });
-  await empty.getByRole("button", { name: "Hapus" }).click();
+  await empty.getByRole("button", { name: "Hapus", exact: true }).click();
   await empty.getByRole("button", { name: "Ya, hapus" }).click();
   await expect(card).not.toContainText("Mandiri Kosong");
   const owner = card.getByTestId(/^entity-/).filter({ hasText: "Pemilik Kosong" });
-  await owner.getByRole("button", { name: "Hapus" }).click();
+  await owner.getByRole("button", { name: "Hapus", exact: true }).click();
   await expect(owner).toContainText("Hapus Pemilik Kosong dan rekeningnya? Tidak bisa dibatalkan.");
   await owner.getByRole("button", { name: "Ya, hapus" }).click();
   await expect(card).not.toContainText("Pemilik Kosong");
