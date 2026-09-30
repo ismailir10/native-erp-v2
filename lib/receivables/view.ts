@@ -24,6 +24,9 @@ export type InvoiceView = {
   opening: boolean;
   entryId: string | null;
   arApCode: string;
+  /** Tax the counterparty withholds, and the part still expected (major-unit strings via bigint). */
+  whtKind: string | null;
+  whtExpected: string;
   settlements: { id: string; amount: string; withheld: string; date: string; description: string }[];
 };
 export type AgingView = { entityId: string; entity: string; currency: string; rows: { contact: string; buckets: Record<Bucket, string>; total: string; count: number }[]; totals: Record<Bucket, string> & { total: string } };
@@ -59,6 +62,8 @@ export async function receivablesView(db: Db, clientId: string, direction: Invoi
       opening: i.opening,
       entryId: i.entryId,
       arApCode: i.arApCode,
+      whtKind: i.whtKind,
+      whtExpected: (i.whtExpected > 0n ? i.whtExpected : 0n).toString(),
       settlements: settlements.filter((s) => s.invoiceId === i.id).map((s) => ({ id: s.id, amount: s.amount.toString(), withheld: s.withheld.toString(), date: formatDate(s.bankTransaction.date), description: s.bankTransaction.description })),
     }))
     // Open first (oldest due first), then paid (latest first).

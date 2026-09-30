@@ -26,12 +26,12 @@ import { acceptSuggestion, addCorrection, addCredit, deleteCorrection, deleteCre
 import type { TaxPostingKind, TaxRegime } from "@/lib/generated/prisma/enums";
 import { AccountMismatchError, ParseError, YearNeededError } from "@/lib/import/types";
 import { PdfPasswordError } from "@/lib/import/parsers/pdf";
-import { MoneyError } from "@/lib/money";
+import { MoneyError, parseMoney } from "@/lib/money";
 import { dateOnly } from "@/lib/format";
 import { liveUploadFile } from "@/lib/demo/seed";
 import { addClient, OnboardingError, type NewClientInput } from "@/lib/onboarding";
 import { OpeningError, postOpening, type OpeningLineInput } from "@/lib/opening";
-import type { TaxTag } from "@/lib/generated/prisma/enums";
+import type { TaxTag, WithholdingKind } from "@/lib/generated/prisma/enums";
 import { RateError, upsertRate, validateRateInput } from "@/lib/fx/rates";
 import { postRevaluation, RevaluationError } from "@/lib/fx/revalue";
 import { reviewClose, type CloseReviewView } from "@/lib/controls/ai-review";
@@ -118,10 +118,16 @@ async function assertTxInFirm(bankTxId: string) {
   return t.bankAccount.entity.clientId;
 }
 
-export async function reviewAction(input: { bankTxId: string; accountCode: string; taxTag: TaxTag | null; createRule?: boolean }): Promise<Result<{ learned: boolean }>> {
+export async function reviewAction(input: { bankTxId: string; accountCode: string; taxTag: TaxTag | null; createRule?: boolean; /** Tax withheld (major units); undefined keeps the line's, null removes it. */ withholding?: { kind: WithholdingKind; amount: string } | null }): Promise<Result<{ learned: boolean }>> {
   try {
     const clientId = await assertTxInFirm(input.bankTxId);
-    await reviewTransaction(prisma, { ...input, actorId: (await getCurrentMember()).id });
+    const { withholding, ...rest } = input;
+    let parsed: { kind: WithholdingKind; amount: bigint } | null | undefined;
+    if (withholding) {
+      const t = await prisma.bankTransaction.findUniqueOrThrow({ where: { id: input.bankTxId }, select: { bankAccount: { select: { entity: { select: { functionalCurrency: true } } } } } });
+      parsed = { kind: withholding.kind, amount: parseMoney(withholding.amount, t.bankAccount.entity.functionalCurrency) };
+    } else parsed = withholding;
+    await reviewTransaction(prisma, { ...rest, withholding: parsed, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${clientId}`, "layout");
     // Memory learns only keys that name a counterparty (lib/review.ts): the toast must not promise more.
     const { merchantKey } = await prisma.bankTransaction.findUniqueOrThrow({ where: { id: input.bankTxId }, select: { merchantKey: true } });
@@ -354,7 +360,7 @@ export async function settleCandidatesAction(clientId: string, invoiceId: string
 }
 
 /** Settle an invoice with a bank line; a line not on the invoice's account is classified to it first (reviewer's writer). */
-export async function settleAction(input: { clientId: string; invoiceId: string; bankTransactionId: string; amount?: string | null }): Promise<Result> {
+export async function settleAction(input: { clientId: string; invoiceId: string; bankTransactionId: string; amount?: string | null; withheld?: string | null; whtKind?: WithholdingKind | null }): Promise<Result> {
   try {
     const client = await getClientForFirm(input.clientId);
     await settleWithReclass(prisma, { ...input, clientId: client.id, actorId: (await getCurrentMember()).id });

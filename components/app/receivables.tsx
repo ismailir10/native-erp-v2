@@ -18,11 +18,13 @@ import { StatusPill } from "@/components/app/status";
 import { createInvoiceAction, settleAction, settleCandidatesAction, unsettleAction } from "@/app/actions";
 import { BUCKETS, BUCKET_LABEL } from "@/lib/receivables/aging";
 import { formatMoney, parseMoney, PPN_EFFECTIVE_PERCENT } from "@/lib/money";
+import { RECEIPT_KINDS, WITHHOLDING_KINDS, WITHHOLDING_LABEL, withholdingFor } from "@/lib/tax/withholding";
+import type { WithholdingKind } from "@/lib/generated/prisma/enums";
 import type { AgingView, CandidateView, ComparisonView, InvoiceView, UnsettledLineView } from "@/lib/receivables/view";
 
 type Account = { code: string; name: string };
 type Direction = "SALES" | "PURCHASE";
-type InvoiceForm = { entityId: string; contactName: string; number: string; issueDate: string; dueDate: string; description: string; dpp: string; ppn: string; counterCode: string; arApCode: string; opening: boolean };
+type InvoiceForm = { entityId: string; contactName: string; number: string; issueDate: string; dueDate: string; description: string; dpp: string; ppn: string; counterCode: string; arApCode: string; opening: boolean; whtKind: string; whtRate: string; whtAmount: string };
 
 const WORDS = {
   SALES: { party: "Pelanggan", doc: "Faktur", docLower: "faktur", newDoc: "Faktur baru", counter: "Akun pendapatan", arAp: "Akun piutang", money: "penerimaan", lines: "Penerimaan di akun piutang belum dicocokkan" },
@@ -49,6 +51,9 @@ export function Receivables(props: {
   const [form, setForm] = useState<InvoiceForm | null>(null);
   const [matching, setMatching] = useState<{ invoice: InvoiceView; candidates: CandidateView[] | null } | null>(null);
   const [amounts, setAmounts] = useState<Record<string, string>>({});
+  // Tax withheld per candidate (major units, "" = none) and the tax's kind for the dialog (the invoice's own, else chosen here).
+  const [withheld, setWithheld] = useState<Record<string, string>>({});
+  const [settleKind, setSettleKind] = useState("");
   const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const set = (patch: Partial<InvoiceForm>) => setForm((f) => (f ? { ...f, ...patch } : f));
@@ -66,6 +71,9 @@ export function Receivables(props: {
     counterCode: props.accounts.counter.find((a) => a.code === (props.direction === "SALES" ? "4100" : "6190"))?.code ?? props.accounts.counter[0]?.code ?? "",
     arApCode: props.accounts.arAp[0]?.code ?? "",
     opening: false,
+    whtKind: "",
+    whtRate: "",
+    whtAmount: "",
   });
 
   let total = "";
@@ -77,6 +85,15 @@ export function Receivables(props: {
   } catch (e) {
     amountError = (e as Error).message;
   }
+  let whtHint = "";
+  if (form?.whtKind && !form.whtAmount.trim() && form.whtRate.trim()) {
+    try {
+      whtHint = `= ${formatMoney(withholdingFor(parseMoney(form.dpp, currency), form.whtRate), currency)} dari DPP`;
+    } catch (e) {
+      whtHint = (e as Error).message;
+    }
+  }
+  const whtKinds = props.direction === "SALES" ? RECEIPT_KINDS : WITHHOLDING_KINDS;
   const ppnFromDpp = () => {
     try {
       const dpp = parseMoney(form?.dpp ?? "", currency);
@@ -89,7 +106,8 @@ export function Receivables(props: {
   const submit = async () => {
     if (!form) return;
     setBusy(true);
-    const r = await createInvoiceAction({ clientId: props.clientId, direction: props.direction, ...form, dueDate: form.dueDate || null, ppn: form.ppn || null });
+    const { whtKind, whtRate, whtAmount, ...rest } = form;
+    const r = await createInvoiceAction({ clientId: props.clientId, direction: props.direction, ...rest, dueDate: form.dueDate || null, ppn: form.ppn || null, ...(whtKind ? { whtKind: whtKind as WithholdingKind, whtRate: whtRate || null, whtAmount: whtAmount || null } : {}) });
     setBusy(false);
     if (!r.ok) return void toast.error(r.error);
     toast.success(`${w.doc} ${form.number} dicatat`);
@@ -99,16 +117,22 @@ export function Receivables(props: {
 
   const openMatching = async (invoice: InvoiceView) => {
     setMatching({ invoice, candidates: null });
+    setSettleKind(invoice.whtKind ?? "");
     const r = await settleCandidatesAction(props.clientId, invoice.id);
     if (!r.ok) return void toast.error(r.error);
-    setAmounts(Object.fromEntries(r.candidates.map((c) => [c.bankTransactionId, formatMoney(BigInt(c.free) < BigInt(invoice.open) ? BigInt(c.free) : BigInt(invoice.open), invoice.currency, { bare: true })])));
+    const open = BigInt(invoice.open);
+    const expected = BigInt(invoice.whtExpected);
+    const amountOf = (c: CandidateView) => (BigInt(c.free) < open ? BigInt(c.free) : open);
+    setAmounts(Object.fromEntries(r.candidates.map((c) => [c.bankTransactionId, formatMoney(amountOf(c), invoice.currency, { bare: true })])));
+    // A receipt short of the invoice by no more than the expected tax is that tax (the server applies the same rule).
+    setWithheld(Object.fromEntries(r.candidates.flatMap((c) => { const short = open - amountOf(c); return short > 0n && short <= expected ? [[c.bankTransactionId, formatMoney(short, invoice.currency, { bare: true })]] : []; })));
     setMatching({ invoice, candidates: r.candidates });
   };
 
   const doSettle = async (c: CandidateView) => {
     if (!matching) return;
     setBusy(true);
-    const r = await settleAction({ clientId: props.clientId, invoiceId: matching.invoice.id, bankTransactionId: c.bankTransactionId, amount: amounts[c.bankTransactionId] || null });
+    const r = await settleAction({ clientId: props.clientId, invoiceId: matching.invoice.id, bankTransactionId: c.bankTransactionId, amount: amounts[c.bankTransactionId] || null, ...(settleKind ? { whtKind: settleKind as WithholdingKind, withheld: withheld[c.bankTransactionId] || "0" } : { withheld: "0" }) });
     setBusy(false);
     if (!r.ok) return void toast.error(r.error);
     toast.success(`${matching.invoice.number} dicocokkan dengan ${w.money} ${c.date}`);
@@ -306,6 +330,21 @@ export function Receivables(props: {
                 <FieldLabel>{w.arAp}</FieldLabel>
                 <SimpleSelect label={w.arAp} value={form.arApCode} onChange={(v) => set({ arApCode: v })} options={props.accounts.arAp.map((a) => ({ value: a.code, label: `${a.code} ${a.name}` }))} />
               </Field>
+              <Field>
+                <FieldLabel>Pajak yang dipotong (opsional)</FieldLabel>
+                <SimpleSelect label="Pajak yang dipotong" value={form.whtKind || "none"} onChange={(v) => set({ whtKind: v === "none" ? "" : v })} options={[{ value: "none", label: "Tidak ada" }, ...whtKinds.map((k) => ({ value: k, label: WITHHOLDING_LABEL[k] }))]} />
+                <FieldDescription>{props.direction === "SALES" ? "Pelanggan membayar setelah dipotong pajak (mis. PPh 23 2 %)." : "Anda membayar setelah memotong pajak (mis. PPh 23 2 %, PPh 21)."} Piutang/utang tetap dijurnal bruto; pemotongan dicatat saat pelunasan.</FieldDescription>
+              </Field>
+              {form.whtKind && (
+                <Field>
+                  <FieldLabel htmlFor="inv-wht-rate">Tarif atau nominal</FieldLabel>
+                  <div className="flex gap-2">
+                    <Input id="inv-wht-rate" inputMode="decimal" className="num text-right" placeholder="Tarif %, mis. 2" value={form.whtRate} onChange={(e) => set({ whtRate: e.target.value })} />
+                    <Input aria-label="Nominal pajak dipotong" inputMode="decimal" className="num text-right" placeholder="atau nominal" value={form.whtAmount} onChange={(e) => set({ whtAmount: e.target.value })} />
+                  </div>
+                  <FieldDescription>{whtHint || "Tarif dihitung dari DPP; nominal, bila diisi, dipakai apa adanya."}</FieldDescription>
+                </Field>
+              )}
               <div className="flex items-center gap-2 text-sm sm:col-span-2">
                 <Checkbox id="inv-opening" checked={form.opening} onCheckedChange={(v) => set({ opening: v === true })} />
                 <label htmlFor="inv-opening">{w.doc} saldo awal (sudah termasuk di Saldo Awal, tidak dijurnal)</label>
@@ -328,6 +367,13 @@ export function Receivables(props: {
               Sisa {matching ? formatMoney(BigInt(matching.invoice.open), matching.invoice.currency) : ""} dari {matching?.invoice.contact}. Yang nominalnya sama dan menyebut nama atau nomornya di atas. Mutasi yang belum dicatat ke akun {matching?.invoice.arApCode} diklasifikasikan ke sana sekalian.
             </DialogDescription>
           </DialogHeader>
+          {matching && (
+            <div className="flex flex-wrap items-center gap-2 text-sm" data-testid="settle-withholding">
+              <span className="text-muted-foreground">Pajak dipotong:</span>
+              <SimpleSelect label="Pajak yang dipotong" className="w-56" value={settleKind || "none"} onChange={(v) => setSettleKind(v === "none" ? "" : v)} options={[{ value: "none", label: "Tidak ada" }, ...(props.direction === "SALES" ? RECEIPT_KINDS : WITHHOLDING_KINDS).map((k) => ({ value: k, label: WITHHOLDING_LABEL[k] }))]} />
+              {settleKind && <span className="text-xs text-muted-foreground">Nominal yang dipotong ikut melunasi {w.docLower}; sisanya kas dari mutasi bank.</span>}
+            </div>
+          )}
           {matching?.candidates === null ? (
             <p className="text-sm text-muted-foreground">Mencari mutasi…</p>
           ) : matching?.candidates.length === 0 ? (
@@ -344,6 +390,7 @@ export function Receivables(props: {
                     </div>
                   </div>
                   <Input aria-label={`Nominal ${c.date}`} inputMode="decimal" className="num w-36 text-right" value={amounts[c.bankTransactionId] ?? ""} onChange={(e) => setAmounts({ ...amounts, [c.bankTransactionId]: e.target.value })} />
+                  {settleKind && <Input aria-label={`Dipotong ${c.date}`} inputMode="decimal" placeholder="Dipotong" className="num w-32 text-right" value={withheld[c.bankTransactionId] ?? ""} onChange={(e) => setWithheld({ ...withheld, [c.bankTransactionId]: e.target.value })} />}
                   <Button size="sm" variant={c.exact && c.named ? "default" : "outline"} disabled={busy} onClick={() => doSettle(c)}>Cocokkan</Button>
                 </div>
               ))}
@@ -393,6 +440,11 @@ function InvoiceTable(props: { rows: InvoiceView[]; w: (typeof WORDS)[Direction]
             {props.open === i.id && (
               <TableRow className="bg-muted/40 hover:bg-muted/40">
                 <TableCell colSpan={5} className="px-6 py-3 whitespace-normal">
+                  {i.whtKind && (
+                    <p className="mb-2 text-xs text-muted-foreground" data-testid="invoice-wht">
+                      Dipotong {WITHHOLDING_LABEL[i.whtKind as WithholdingKind]}: diharapkan sisa <Money value={BigInt(i.whtExpected)} currency={i.currency} />, dicatat saat pelunasan.
+                    </p>
+                  )}
                   {i.settlements.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Belum ada pelunasan.</p>
                   ) : (
@@ -401,6 +453,7 @@ function InvoiceTable(props: { rows: InvoiceView[]; w: (typeof WORDS)[Direction]
                         <li key={s.id} className="flex flex-wrap items-center gap-x-3">
                           <span className="text-muted-foreground">{s.date}</span>
                           <span className="min-w-0 flex-1 truncate">{s.description}</span>
+                          {BigInt(s.withheld) > 0n && <span className="text-xs text-muted-foreground">termasuk pajak dipotong <Money value={BigInt(s.withheld)} currency={i.currency} /></span>}
                           <Money value={BigInt(s.amount)} currency={i.currency} />
                           <Button variant="ghost" size="sm" disabled={props.busy} onClick={() => props.onUnsettle(s.id)}>Hapus</Button>
                         </li>

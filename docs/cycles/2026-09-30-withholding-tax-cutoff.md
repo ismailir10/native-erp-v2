@@ -76,7 +76,7 @@ to numbers of existing bank lines or entries; no new dependency.
 - [x] T1 Tax payment rules + skip a rule with no account in the client's chart + data migration + demo truth — accept: unit + DB tests, ALL PASS
 - [x] T2 Withholding on the bank split (schema, `postBankTransaction`, review) — accept: scenario (b) and lease test
 - [x] T3 Withholding on invoices and settlements (schema, create, settle, unsettle, free amounts) — accept: scenario (a), `ar:`/`ap:` PASS
-- [ ] T4 UI for withholding (invoice form, settle dialog, review) — accept: typecheck, lint, screenshot of the settle dialog
+- [x] T4 UI for withholding (invoice form, settle dialog, review) — accept: typecheck, lint, screenshot of the settle dialog
 - [ ] T5 PPh 25 masa pajak (schema, default at classification, pack query, edit in the pack) — accept: 12-instalment test
 - [ ] T6 Cash flow: disposal proceeds and capex on payable in investing — accept: 120/90/40 test, Neraca reconciliation holds
 - [ ] T7 Docs (accounting-rules, README) and end-of-cycle gates — accept: gates pasted below
@@ -96,5 +96,10 @@ to numbers of existing bank lines or entries; no new dependency.
   invoice within the expected tax; tax leg posted through `setWithholdingTx` on the bank line; unsettle takes it back; a bank line's free amount = |amount| − Σ cash),
   `lib/review.ts` (`setWithholdingTx`; a line's settlement-owned withholding can't be edited by hand), `aging.ts`/`view.ts` (free amounts). Open amount, aging and CKPN
   keep Σ `amount`, now gross, so they and `ar:`/`ap:` needed no change. Test `tests/db/invoice-withholding.test.ts` (scenario (a), purchase side, partial/unsettle, checks).
+- T4: `components/app/receivables.tsx` (invoice form: kind + rate or amount with the computed tax; settle dialog: kind + per-receipt "Dipotong", prefilled with the shortfall
+  when it is within the expected tax; invoice detail shows expected tax and each settlement's tax part), `components/app/ledger-table.tsx` (drawer *Ubah akun*: "Pajak yang dipotong"
+  + amount for any bank line — rent, services; this is where a payment without an invoice gets the option), `app/actions.ts` (`reviewAction` withholding, `settleAction`),
+  `lib/receivables/{aging,view}.ts`, `lib/reports/account-ledger.ts`, `e2e/receivables.spec.ts` (a PPh 23 invoice on the fresh e2e client). The review queue itself is unchanged:
+  its keyboard flow stays one decision per card; the option is one *Ubah akun* away (a follow-up if accountants want it inline).
 ## Verification
 ## Ship Notes
