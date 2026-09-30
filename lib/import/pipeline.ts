@@ -157,7 +157,7 @@ export async function importStatement(
     const financing = financingSuggestion(it.description, it.direction);
     const c =
       transfers.get(it.id) ??
-      matchRule(rules, it.description, it.direction) ??
+      matchRule(rules, it.description, it.direction, codes) ??
       (() => {
         const m = memoryMap.get(`${it.merchantKey}|${it.direction}`);
         return m
