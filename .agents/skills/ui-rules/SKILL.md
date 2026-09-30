@@ -42,6 +42,9 @@ description: Buku UI standard — 9fin look on a light background (navy ink, one
 11. No hidden affordances — nothing that only appears on hover. Rows link via their name + a visible chevron.
 12. Empty states say what's true ("Tidak ada transaksi pajak terdeteksi bulan ini"), never a column of dashes.
 13. Companies before individuals (PT/CV, then the owner) everywhere entities are listed.
+14. **One first-run order, computed once:** Unggah data → Saldo awal → Review → Tutup buku (`lib/setup-progress.ts`). Every page that says
+    what to do next reads it — never a hand-rolled if/else chain. Setup pages (client Ringkasan, Impor, Saldo Awal) show `SetupSteps`
+    ("Langkah n dari 4"); the client menu lists the steps in that order and never hides them in a collapsed group.
 
 ## No AI-slop
 - No sparkles/magic-wand icons, no gradients-as-decoration, no glassmorphism, no emoji in UI.

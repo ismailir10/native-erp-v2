@@ -3,6 +3,8 @@ import { loadClientPage } from "@/lib/client-page";
 import type { SearchParams } from "@/lib/scope";
 import { formatDate } from "@/lib/format";
 import { liveUploadFile } from "@/lib/demo/seed";
+import { setupProgress } from "@/lib/setup-progress";
+import { SetupSteps } from "@/components/app/setup-steps";
 import { NextStep, PageHeader } from "@/components/app/page-header";
 import { ImportForm } from "@/components/app/import-form";
 import { StatusPill } from "@/components/app/status";
@@ -14,7 +16,8 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 
 export default async function ImportPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
-  const { client, sp } = await loadClientPage(params, searchParams);
+  const { client, sp, period } = await loadClientPage(params, searchParams);
+  const setup = await setupProgress(prisma, client.id, { period });
   const banks = client.entities.flatMap((e) => e.bankAccounts.map((b) => ({ id: b.id, label: b.label, entity: e.name, bank: b.bank, number: b.number })));
   const imports = await prisma.statementImport.findMany({
     where: { bankAccountId: { in: banks.map((b) => b.id) } },
@@ -91,17 +94,22 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
         title={hasBanks ? "Impor Mutasi" : "Impor Buku Besar"}
         description={`${client.name} · ${hasBanks ? "rekening koran, buku besar atau neraca" : "buku besar atau neraca dari sistem lama"}; setiap angka tetap bisa ditelusuri ke baris file aslinya`}
       />
-      <NextStep>{hasBanks ? "Pilih rekening, unggah rekening koran, lalu periksa hasilnya di Review transaksi." : "Unggah buku besar atau neraca, periksa file, petakan akun, lalu catat."}</NextStep>
+      {setup.current === "import" ? (
+        <NextStep>{setup.next?.text}</NextStep>
+      ) : (
+        <NextStep href={setup.next?.href} cta={setup.next?.cta}>{setup.next?.text}</NextStep>
+      )}
+      <SetupSteps progress={setup} />
       {!hasBanks ? (
         ledger
       ) : (
         <Tabs defaultValue={tab}>
           <TabsList>
-            <TabsTrigger value="statement">Rekening koran</TabsTrigger>
-            <TabsTrigger value="ledger">Buku besar / neraca</TabsTrigger>
+            <TabsTrigger value="statement">Rekening koran bank</TabsTrigger>
+            <TabsTrigger value="ledger">Neraca atau buku besar dari sistem lama</TabsTrigger>
           </TabsList>
           <TabsContent value="statement" className="space-y-6">
-      <ImportForm clientId={client.id} banks={banks} sample={sample} />
+      <ImportForm clientId={client.id} banks={banks} sample={sample} openingPending={setup.needsOpening.map((e) => e.shortName)} />
       <Card>
         <CardHeader>
           <CardTitle>Riwayat impor</CardTitle>

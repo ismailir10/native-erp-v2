@@ -5,6 +5,7 @@ import { CLOSE_SIGNOFFS, closeReadiness, earlierOpenMonth, laterLockedMonth, run
 import { requireWorkspaceSession } from "@/lib/auth/session";
 import { formatDateTime, formatPeriod } from "@/lib/format";
 import { NextStep, PageHeader } from "@/components/app/page-header";
+import { setupProgress } from "@/lib/setup-progress";
 import { ScopeBar } from "@/components/app/scope-bar";
 import { ClosePanel } from "@/components/app/close-panel";
 import { RevaluationCard } from "@/components/app/revaluation-card";
@@ -21,6 +22,7 @@ import { createHash } from "node:crypto";
 export default async function ClosePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, period, periodOptions, base } = await loadClientPage(params, searchParams);
   const controls = await runControls(prisma, client.id, period.year, period.month);
+  const setup = await setupProgress(prisma, client.id);
   const p = await prisma.period.findUnique({ where: { clientId_year_month: { clientId: client.id, year: period.year, month: period.month } }, include: { signoffs: { include: { doneBy: { select: { name: true } } } }, lockedBy: { select: { name: true } } } });
   const done = p?.signoffs.map((s) => s.key) ?? [];
   const r = closeReadiness(controls, done);
@@ -61,6 +63,8 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
         <NextStep tone="done">Buku {label} sudah ditutup. Laporan siap dikirim ke klien.</NextStep>
       ) : before ? (
         <NextStep href={`${base}/close?period=${monthKey(before)}`} cta={`Buka ${formatPeriod(before.year, before.month)}`}>Tutup buku {formatPeriod(before.year, before.month)} dulu. Penutupan berurutan dari bulan paling awal.</NextStep>
+      ) : setup.current === "opening" && setup.next ? (
+        <NextStep href={setup.next.href} cta={setup.next.cta}>{setup.next.text}</NextStep>
       ) : missing ? (
         <NextStep href={`${base}/import`} cta="Impor mutasi">{missing.title.replace("Rekonsiliasi", "Mutasi")} belum diimpor. Beberapa kontrol baru bisa lolos setelah mutasinya masuk.</NextStep>
       ) : open ? (

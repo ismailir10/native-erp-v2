@@ -42,7 +42,7 @@ test("ledger import: checks, mapping, post, Kurs, Gabungan in IDR, client accoun
   await page.getByRole("button", { name: "Hapus rekening" }).click();
   await expect(page.getByText("Tanpa rekening bank.")).toBeVisible();
 
-  await page.getByRole("button", { name: "Tambah entitas" }).click();
+  await page.getByRole("button", { name: "Tambah perusahaan atau pemilik" }).click();
   await page.getByRole("combobox", { name: "Jenis entitas" }).nth(1).click();
   await page.getByRole("option", { name: "PT", exact: true }).click();
   await page.getByLabel("Nama lengkap").nth(1).fill("Dua Holdings Pte Ltd");
@@ -89,6 +89,8 @@ test("ledger import: checks, mapping, post, Kurs, Gabungan in IDR, client accoun
   await expect(page.getByTestId("next-step")).toContainText("jurnal dicatat");
 
   // Gabungan needs SGD→IDR rates; fill each missing one from the Kurs page.
+  const settings = page.getByRole("button", { name: "Pengaturan klien" });
+  if ((await settings.getAttribute("aria-expanded")) !== "true") await settings.click();
   await page.getByRole("link", { name: "Kurs" }).click();
   await expect(page.getByRole("heading", { name: "Kurs" })).toBeVisible();
   const fileRates = page.getByRole("button", { name: /USD → SGD · 2 kurs dari buku-besar-uji.xlsx/ });

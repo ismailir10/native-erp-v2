@@ -114,9 +114,9 @@ export function LedgerImportForm({ clientId, entities }: { clientId: string; ent
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Field>
-            <FieldLabel>2. Entitas</FieldLabel>
+            <FieldLabel>2. Perusahaan atau pemilik</FieldLabel>
             <Select value={entityId} onValueChange={(v) => setEntityId(v as string)}>
-              <SelectTrigger className="w-full" aria-label="Entitas">
+              <SelectTrigger className="w-full" aria-label="Perusahaan atau pemilik">
                 <SelectValue>{entityId === FROM_FILE ? "Sesuai kolom entitas di file" : entities.find((e) => e.id === entityId)?.name}</SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -128,16 +128,16 @@ export function LedgerImportForm({ clientId, entities }: { clientId: string; ent
                 ))}
               </SelectContent>
             </Select>
-            <FieldDescription>Nilai di kolom entitas dicocokkan dengan nama singkat entitas. Neraca selalu untuk satu entitas.</FieldDescription>
+            <FieldDescription>Nilai di kolom entitas dicocokkan dengan nama singkat perusahaan. Neraca selalu untuk satu entitas.</FieldDescription>
           </Field>
           <Field>
             <FieldLabel>3. Baris valas</FieldLabel>
             <Select value={currencyMode} onValueChange={(v) => setCurrencyMode(v as "FUNCTIONAL" | "CONVERT")}>
               <SelectTrigger className="w-full" aria-label="Baris valas">
-                <SelectValue>{currencyMode === "FUNCTIONAL" ? "Jumlah sudah dalam mata uang entitas" : "Konversi dengan kurs"}</SelectValue>
+                <SelectValue>{currencyMode === "FUNCTIONAL" ? "Jumlah sudah dalam mata uang perusahaan" : "Konversi dengan kurs"}</SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="FUNCTIONAL">Jumlah sudah dalam mata uang entitas</SelectItem>
+                <SelectItem value="FUNCTIONAL">Jumlah sudah dalam mata uang perusahaan</SelectItem>
                 <SelectItem value="CONVERT">Konversi dengan kurs</SelectItem>
               </SelectContent>
             </Select>

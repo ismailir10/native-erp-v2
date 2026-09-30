@@ -20,8 +20,8 @@ test("leases: register, commencement, monthly journals, payments, control", asyn
   await page.getByLabel("Nama singkat").fill("SWU");
   await page.getByLabel("Nomor rekening").fill("5544332211");
   await page.getByRole("button", { name: "Simpan klien" }).click();
-  await page.waitForURL(/\/clients\/[^/]+\/opening/);
-  const base = page.url().replace(/\/opening.*$/, "");
+  await page.waitForURL(/\/clients\/[^/]+\/import/);
+  const base = page.url().replace(/\/import.*$/, "");
   await page.goto(`${base}/import`);
   await page.getByTestId("file-input").setInputFiles({ name: "bca.csv", mimeType: "text/csv", buffer: Buffer.from(CSV) });
   await page.getByRole("button", { name: "Proses mutasi" }).click();

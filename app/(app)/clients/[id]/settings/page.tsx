@@ -41,7 +41,7 @@ export default async function SettingsPage({ params, searchParams }: { params: P
       <PageHeader title="Aturan klasifikasi" description="Urutan: transfer antar rekening sendiri, aturan, pilihan yang diingat, lalu usulan AI untuk yang belum pernah dilihat." />
       <NextStep>Tambahkan aturan untuk transaksi yang selalu masuk ke akun yang sama. Aturan dipakai sebelum AI.</NextStep>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Status AI" value={<StatusPill status={live ? "PASS" : "REVIEW"} label={live ? "Aktif" : "Aturan saja"} />} hint={live ? `Model ${cfg.model}` : <>Atur kunci & model di <Link href="/settings" className="text-primary hover:underline">Pengaturan</Link></>} />
+        <Stat label="Status AI" value={<StatusPill status={live ? "PASS" : "REVIEW"} label={live ? "Aktif" : "Aturan saja"} />} hint={live ? `Model ${cfg.model}` : member.role === "ADMIN" ? <>Atur kunci & model di <Link href="/settings" className="text-primary hover:underline">Pengaturan</Link></> : "Minta admin kantor mengatur kunci & model"} />
         <Stat label="Dikode tanpa AI" value={`${total ? Math.round(((total - aiLines) / total) * 100) : 0}%`} hint={`${total} baris sejak awal`} />
         <Stat label="Panggilan AI (total)" value={usage._sum.calls ?? 0} hint={`${((usage._sum.promptTokens ?? 0) + (usage._sum.completionTokens ?? 0)).toLocaleString("id-ID")} token`} />
         <Stat label="Jawaban AI tersimpan" value={cacheSize} hint="Penerima atau pengirim yang sama tidak ditanyakan lagi" />

@@ -20,7 +20,8 @@ type BankOption = { id: string; label: string; entity: string; bank: string; num
 
 const METHOD_LABEL: Record<string, string> = { TRANSFER: "Transfer antar rekening", RULE: "Aturan", MEMORY: "Pilihan yang diingat", AI: "Usulan AI", HEURISTIC: "Tebakan sederhana", MANUAL: "Manual" };
 
-export function ImportForm({ clientId, banks, sample }: { clientId: string; banks: BankOption[]; sample?: { bankAccountId: string; fileName: string } }) {
+/** `openingPending`: short names of the entities whose Saldo Awal is still missing; the result then leads with it (the bank balance is prefilled from this upload). */
+export function ImportForm({ clientId, banks, sample, openingPending = [] }: { clientId: string; banks: BankOption[]; sample?: { bankAccountId: string; fileName: string }; openingPending?: string[] }) {
   const router = useRouter();
   const [bankId, setBankId] = useState<string>(sample?.bankAccountId ?? banks[0]?.id ?? "");
   const [file, setFileState] = useState<File | null>(null);
@@ -256,15 +257,7 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
                   )}
                 </div>
               )}
-              {result.needsReview > 0 || result.pendingReview > 0 ? (
-                <Link href={`/clients/${clientId}/review`} className={buttonVariants({ className: "w-full" })}>
-                  Review {result.needsReview || result.pendingReview} transaksi
-                </Link>
-              ) : (
-                <Link href={`/clients/${clientId}/close`} className={buttonVariants({ variant: "outline", className: "w-full" })}>
-                  Buka Tutup Buku
-                </Link>
-              )}
+              <NextAfterImport clientId={clientId} toReview={result.needsReview || result.pendingReview} openingPending={openingPending.length > 0} />
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">Belum ada file yang diproses di sesi ini.</p>
@@ -273,4 +266,20 @@ export function ImportForm({ clientId, banks, sample }: { clientId: string; bank
       </Card>
     </div>
   );
+}
+
+/** One primary button: the next first-run step. Saldo Awal leads while it's missing (its bank lines are prefilled from this file). */
+function NextAfterImport({ clientId, toReview, openingPending }: { clientId: string; toReview: number; openingPending: boolean }) {
+  const review = { href: `/clients/${clientId}/review`, label: `Review ${toReview} transaksi` };
+  if (openingPending) {
+    return (
+      <>
+        <Link href={`/clients/${clientId}/opening`} className={buttonVariants({ className: "w-full" })}>Isi saldo awal</Link>
+        {toReview > 0 && <Link href={review.href} className={buttonVariants({ variant: "outline", className: "w-full" })}>{review.label}</Link>}
+      </>
+    );
+  }
+  return toReview > 0
+    ? <Link href={review.href} className={buttonVariants({ className: "w-full" })}>{review.label}</Link>
+    : <Link href={`/clients/${clientId}/close`} className={buttonVariants({ variant: "outline", className: "w-full" })}>Buka Tutup Buku</Link>;
 }

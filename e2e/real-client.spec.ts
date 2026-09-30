@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { makePdf, table } from "../tests/pdf-fixture";
 
 /**
- * First real client, end to end: Tambah klien → Saldo Awal → password-protected PDF e-statement → bank reconciles.
+ * First real client, end to end: Tambah klien → password-protected PDF e-statement → Saldo Awal (prefilled) → bank reconciles.
  * Runs after the investor walk (files run alphabetically, one worker). The PDF is synthetic.
  */
 const pdf = makePdf(
@@ -34,9 +34,10 @@ test("add a client, set opening balance, import a locked PDF, bank reconciles", 
   await page.getByLabel("Nama rekening").fill("Mandiri Giro");
   await page.getByRole("button", { name: "Simpan klien" }).click();
 
-  // Import first so Saldo Awal can prefill from the statement.
-  await expect(page.getByRole("heading", { name: "Saldo Awal" })).toBeVisible();
-  await page.getByRole("link", { name: "Impor Mutasi" }).click();
+  // A new client lands on the upload: Saldo Awal is prefilled from the statement afterwards.
+  await expect(page.getByRole("heading", { name: "Impor Mutasi" })).toBeVisible();
+  await expect(page.getByTestId("setup-steps")).toContainText("Langkah 1 dari 4");
+  await expect(page.getByTestId("next-step")).toContainText("Unggah rekening koran pertama");
   await page.getByTestId("file-input").setInputFiles({ name: "mandiri-agustus.pdf", mimeType: "application/pdf", buffer: pdf });
   await page.getByRole("button", { name: "Proses mutasi" }).click();
   await expect(page.getByLabel("Kata sandi PDF")).toBeVisible();
@@ -45,12 +46,16 @@ test("add a client, set opening balance, import a locked PDF, bank reconciles", 
   const result = page.getByTestId("import-result");
   await expect(result).toContainText("Nyambung");
 
-  await page.getByRole("link", { name: "Saldo Awal" }).click();
+  // The result and the banner both lead to the next step: Saldo Awal, then the form is prefilled.
+  await page.getByRole("link", { name: "Isi saldo awal" }).first().click();
+  await expect(page.getByTestId("setup-steps")).toContainText("Langkah 2 dari 4");
   await expect(page.getByLabel(/^Saldo Mandiri Giro/)).toHaveValue("80.000.000");
   await page.getByRole("button", { name: "Simpan saldo awal" }).click();
   await expect(page.getByText("Saldo awal semua entitas sudah dicatat.")).toBeVisible();
 
-  await page.getByRole("link", { name: "Tutup Buku" }).click();
+  // The banner now points on (review or close); the reconciliation is checked on the close page.
+  await expect(page.getByTestId("next-step")).toContainText("Saldo awal semua entitas sudah dicatat.");
+  await page.getByRole("link", { name: "Tutup Buku" }).first().click();
   const recon = page.getByTestId("control-bank").filter({ hasText: "Rekonsiliasi Mandiri Giro" });
   await expect(recon).toContainText("Lolos");
 });
