@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FRAMEWORK_OPTIONS, isFramework, scopeFramework, signatoryOf, standardOf, statementNames } from "@/lib/reports/framework";
+import { FRAMEWORK_OPTIONS, frameworkLabel, isFramework, scopeFramework, signatoryOf, standardOf, statementNames } from "@/lib/reports/framework";
 
 describe("reporting framework helpers", () => {
   it("knows exactly the three frameworks", () => {
@@ -32,5 +32,14 @@ describe("reporting framework helpers", () => {
     expect(signatoryOf([{ kind: "CV" }]).body).toBe("Pemilik/Pengurus");
     expect(signatoryOf([{ kind: "PERORANGAN" }]).body).toBe("Pemilik/Pengurus");
     expect(signatoryOf([{ kind: "CV" }, { kind: "PERORANGAN" }]).body).toBe("Pemilik/Pengurus");
+  });
+});
+
+describe("frameworkLabel", () => {
+  it("drops 'komprehensif' wording from SAK EMKM rows and leaves the others", () => {
+    expect(frameworkLabel("SAK_EMKM", "Penghasilan komprehensif lain")).toBe("Pos ekuitas lain");
+    expect(frameworkLabel("SAK_EMKM", "Penghasilan komprehensif lain (non-kas)")).toBe("Pos ekuitas lain (non-kas)");
+    expect(frameworkLabel("SAK_EP", "Penghasilan komprehensif lain")).toBe("Penghasilan komprehensif lain");
+    expect(frameworkLabel("SAK_EMKM", "Prive")).toBe("Prive");
   });
 });

@@ -131,7 +131,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
         <TabsContent value="pl">
           <Card>
             <CardHeader>
-              <CardTitle>{emkm ? names.income : "Laporan Laba Rugi"}</CardTitle>
+              <CardTitle>{names.income}</CardTitle>
               <CardDescription>{monthName(period.month)} {period.year} dan 1 Januari – akhir {formatPeriod(period.year, period.month)}{isPrior ? `, dibandingkan periode yang sama tahun ${period.year - 1}` : ""}</CardDescription>
             </CardHeader>
             <CardContent className="px-0">
@@ -196,7 +196,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
               <CardDescription>1 Januari – akhir {formatPeriod(period.year, period.month)}</CardDescription>
             </CardHeader>
             <CardContent className="px-0">
-              {equity ? <EquityTable data={equity} currency={currency} accountHref={href} /> : <p className="px-6 text-sm text-muted-foreground">Laporan ini hanya untuk cakupan satu mata uang.</p>}
+              {equity ? <EquityTable data={equity} currency={currency} accountHref={href} framework={framework} /> : <p className="px-6 text-sm text-muted-foreground">Laporan ini hanya untuk cakupan satu mata uang.</p>}
             </CardContent>
           </Card>
         </TabsContent>
@@ -211,7 +211,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
               <CardDescription>Metode tidak langsung, dari perubahan pos neraca · 1 Januari – akhir {formatPeriod(period.year, period.month)}</CardDescription>
             </CardHeader>
             <CardContent className="px-0">
-              {cash ? <CashFlowTable data={cash} currency={currency} accountHref={href} /> : <p className="px-6 text-sm text-muted-foreground">Laporan ini hanya untuk cakupan satu mata uang.</p>}
+              {cash ? <CashFlowTable data={cash} currency={currency} accountHref={href} framework={framework} /> : <p className="px-6 text-sm text-muted-foreground">Laporan ini hanya untuk cakupan satu mata uang.</p>}
             </CardContent>
           </Card>
         </TabsContent>

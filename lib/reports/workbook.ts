@@ -5,7 +5,7 @@ import { balanceSheet, incomeStatement, type BalanceSheet, type FsItem, type Inc
 import { cashFlow, equityChanges, otherComprehensiveIncome, EQUITY_ROWS, EQUITY_ROW_LABEL } from "@/lib/reports/statements";
 import { financialNotes, type NoteCell } from "@/lib/reports/notes";
 import { isMixed, scopeEntities } from "@/lib/reports/fx";
-import { scopeFramework, signatoryOf, statementNames } from "@/lib/reports/framework";
+import { frameworkLabel, scopeFramework, signatoryOf, statementNames } from "@/lib/reports/framework";
 
 /**
  * The financial statements as one Excel workbook (accounting-rules 12): Neraca, Laba Rugi (with other comprehensive income unless SAK EMKM), Perubahan
@@ -119,7 +119,7 @@ export async function financialStatementsWorkbook(db: Db, scope: Scope, year: nu
   head(pe, ["", ...eq.columns.map((c) => c.label), "Jumlah"]);
   for (const r of EQUITY_ROWS) {
     if (r !== "opening" && r !== "closing" && eq.totals[r] === 0n) continue;
-    const label = r === "opening" ? `Saldo ${formatDate(eq.openedAt)}` : r === "closing" ? `Saldo ${cur}` : EQUITY_ROW_LABEL[r];
+    const label = r === "opening" ? `Saldo ${formatDate(eq.openedAt)}` : r === "closing" ? `Saldo ${cur}` : frameworkLabel(framework, EQUITY_ROW_LABEL[r]);
     line(pe, label, [...eq.values[r], eq.totals[r]], { bold: r === "opening" || r === "closing" });
   }
 
@@ -128,13 +128,13 @@ export async function financialStatementsWorkbook(db: Db, scope: Scope, year: nu
   const ak = sheet("Arus Kas", names.cashFlow, `Untuk periode 1 Januari – ${cur}`, [56, 20]);
   line(ak, "ARUS KAS DARI AKTIVITAS OPERASI", [], { bold: true });
   line(ak, "Laba bersih", [cf.netProfit], { indent: 1 });
-  for (const i of cf.operating) line(ak, `${i.label} (${i.codes.join(", ")})`, [i.amount], { indent: 1 });
+  for (const i of cf.operating) line(ak, `${frameworkLabel(framework, i.label)} (${i.codes.join(", ")})`, [i.amount], { indent: 1 });
   line(ak, "Kas bersih dari aktivitas operasi", [cf.totals.OPERATING], { bold: true });
   line(ak, "ARUS KAS DARI AKTIVITAS INVESTASI", [], { bold: true });
-  for (const i of cf.investing) line(ak, `${i.label} (${i.codes.join(", ")})`, [i.amount], { indent: 1 });
+  for (const i of cf.investing) line(ak, `${frameworkLabel(framework, i.label)} (${i.codes.join(", ")})`, [i.amount], { indent: 1 });
   line(ak, "Kas bersih dari aktivitas investasi", [cf.totals.INVESTING], { bold: true });
   line(ak, "ARUS KAS DARI AKTIVITAS PENDANAAN", [], { bold: true });
-  for (const i of cf.financing) line(ak, `${i.label} (${i.codes.join(", ")})`, [i.amount], { indent: 1 });
+  for (const i of cf.financing) line(ak, `${frameworkLabel(framework, i.label)} (${i.codes.join(", ")})`, [i.amount], { indent: 1 });
   line(ak, "Kas bersih dari aktivitas pendanaan", [cf.totals.FINANCING], { bold: true });
   line(ak, "Kenaikan (penurunan) bersih kas dan setara kas", [cf.net], { bold: true });
   line(ak, `Kas dan setara kas ${formatDate(cf.openedAt)}`, [cf.openingCash]);

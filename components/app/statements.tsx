@@ -3,6 +3,7 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Money } from "@/components/app/money";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { frameworkLabel, type Framework } from "@/lib/reports/framework";
 import { EQUITY_ROWS, EQUITY_ROW_LABEL, type CashFlow, type EquityChanges } from "@/lib/reports/statements";
 import { formatDate } from "@/lib/format";
 import type { NoteCell, Notes } from "@/lib/reports/notes";
@@ -22,7 +23,7 @@ function Codes({ codes, accountHref }: { codes: string[]; accountHref: (code: st
 }
 
 /** Laporan Perubahan Ekuitas: one column per equity line, a total column; rows from the opening balance to the closing one. */
-export function EquityTable({ data, currency, accountHref }: { data: EquityChanges; currency: string; accountHref: (code: string) => string }) {
+export function EquityTable({ data, currency, accountHref, framework = "SAK_EP" }: { data: EquityChanges; currency: string; accountHref: (code: string) => string; framework?: Framework }) {
   const rows = EQUITY_ROWS.filter((r) => r === "opening" || r === "closing" || data.totals[r] !== 0n || data.values[r].some((v) => v !== 0n));
   return (
     <div className="overflow-x-auto">
@@ -42,7 +43,7 @@ export function EquityTable({ data, currency, accountHref }: { data: EquityChang
         <TableBody>
           {rows.map((r) => {
             const edge = r === "opening" || r === "closing";
-            const label = r === "opening" ? `Saldo ${formatDate(data.openedAt)}` : r === "closing" ? `Saldo ${formatDate(data.to)}` : EQUITY_ROW_LABEL[r];
+            const label = r === "opening" ? `Saldo ${formatDate(data.openedAt)}` : r === "closing" ? `Saldo ${formatDate(data.to)}` : frameworkLabel(framework, EQUITY_ROW_LABEL[r]);
             return (
               <TableRow key={r} className={cn(edge && "font-medium", r === "closing" && "border-t-2 border-foreground/15")} data-testid={`equity-${r}`}>
                 <TableCell className="py-1.5 pl-6 whitespace-normal">{label}</TableCell>
@@ -61,7 +62,7 @@ export function EquityTable({ data, currency, accountHref }: { data: EquityChang
 }
 
 /** Laporan Arus Kas (indirect): operating from net profit, investing, financing, then the change and the cash balances. */
-export function CashFlowTable({ data, currency, accountHref }: { data: CashFlow; currency: string; accountHref: (code: string) => string }) {
+export function CashFlowTable({ data, currency, accountHref, framework = "SAK_EP" }: { data: CashFlow; currency: string; accountHref: (code: string) => string; framework?: Framework }) {
   const section = (title: string, items: CashFlow["operating"], total: bigint, totalLabel: string, lead?: { label: string; amount: bigint }) => (
     <Fragment>
       <TableRow className="border-b-0 hover:bg-transparent">
@@ -69,13 +70,13 @@ export function CashFlowTable({ data, currency, accountHref }: { data: CashFlow;
       </TableRow>
       {lead && (
         <TableRow className="border-b-0">
-          <TableCell className="py-1.5 pl-6 whitespace-normal">{lead.label}</TableCell>
+          <TableCell className="py-1.5 pl-6 whitespace-normal">{frameworkLabel(framework, lead.label)}</TableCell>
           <TableCell className="py-1.5 pr-6 text-right"><Money value={lead.amount} currency={currency} /></TableCell>
         </TableRow>
       )}
       {items.map((i) => (
         <TableRow key={i.key} className="border-b-0 text-muted-foreground">
-          <TableCell className="py-1 pl-10 whitespace-normal">{i.label} <span className="text-xs">(<Codes codes={i.codes} accountHref={accountHref} />)</span></TableCell>
+          <TableCell className="py-1 pl-10 whitespace-normal">{frameworkLabel(framework, i.label)} <span className="text-xs">(<Codes codes={i.codes} accountHref={accountHref} />)</span></TableCell>
           <TableCell className="py-1 pr-6 text-right"><Money value={i.amount} currency={currency} /></TableCell>
         </TableRow>
       ))}

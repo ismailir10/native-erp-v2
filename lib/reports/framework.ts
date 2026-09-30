@@ -33,6 +33,11 @@ export function statementNames(f: Framework) {
   };
 }
 
+/** SAK EMKM has no other comprehensive income: its equity and cash-flow rows for those movements say "pos ekuitas lain". Amounts never change. */
+export function frameworkLabel(f: Framework, label: string) {
+  return f === "SAK_EMKM" ? label.replace("Penghasilan komprehensif lain", "Pos ekuitas lain") : label;
+}
+
 const RANK: Record<Framework, number> = { SAK_EMKM: 0, SAK_EP: 1, SAK_UMUM: 2 };
 
 /** A group's report set follows the most demanding framework among its entities; no entities = the default. */
