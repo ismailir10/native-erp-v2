@@ -56,6 +56,10 @@ IDs match [results.json](./results.json). "Basis" is the accounting/tax rule the
 
 Real Supabase Auth flows (invite e-mail, reset link, token refresh against GoTrue) · real AI model behaviour · Google Drive OAuth · scanned/real bank PDFs and password-protected PDFs (covered only by the repo's own tests) · production environment · load/performance beyond page timings · browsers other than Chromium · penetration testing beyond tenant/role/XSS/injection probes.
 
-## 5. Exit criteria
+## 5. Regression specs
+
+The scenarios behind the bug findings, the tax-split oracles and the access checks live on as `e2e/qa-*.spec.ts` (see [report.md §8](./report.md)).
+
+## 6. Exit criteria
 
 Zero open Blocker; every High/Medium has a reproducible bug report; repo gates green after any fix; every number-producing page reconciled to an independent oracle.

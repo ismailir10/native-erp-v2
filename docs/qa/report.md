@@ -116,28 +116,19 @@ Gates after the fix: lint ✅ typecheck ✅ Vitest 868/868 ✅ `verify:books` AL
 
 Real Supabase Auth (invite/reset e-mail, token refresh) · real AI behaviour · Google Drive OAuth · scanned/real/password PDFs and SMBC multi-currency PDFs (only the repo's own tests) · production · load testing · non-Chromium browsers · benefits (PSAK 24) and documents workspace beyond the repo's own e2e specs (both pass) · stress testing of the lock/post race.
 
-## 8. Reproducing
+## 8. Reproducing, and the regression specs
 
-`bash scripts/session-start.sh` → `npm run build` → run a local Auth endpoint or point `.env` at the staging project → drive the scenarios in [test-plan.md](./test-plan.md). The generated edge-case files, the local-Auth stand-in and the Playwright scripts were kept outside the repo; ask if you want them added under `e2e/` as permanent regression specs for the open bugs.
+The edge-case scenarios are now permanent Playwright specs in `e2e/` (`qa-*.spec.ts`, helpers in `e2e/qa-helpers.ts`); they run with the rest of `npm run test:e2e` and in CI. Synthetic data only, every file built in memory, one fresh client per test.
 
-## 9. Fix round — all 13 bugs fixed
+| Spec | Guards |
+|---|---|
+| `qa-import-edge-cases` | BUG-001 identical same-day lines · 002 XLSX ISO date cells · 004 newest-first · 008 oversize upload · 009 zero-amount line · 010 impossible amount |
+| `qa-amount-input` | BUG-003/010 journal `250,000` and 20-digit amounts · 005 rates by currency pair · 011 NPWP · journal decimals/negatives/imbalance |
+| `qa-urls-and-layout` | BUG-007 month 13 · 012 mobile overflow · 013 page titles · 014 long text and the "Sewa Sewa" toast |
+| `qa-tax-split` | PPN 11 % split and PPh 23 gross-up (payment and receipt) posted to the exact amounts; Neraca Saldo and Neraca balance |
+| `qa-access` | another firm's ADMIN reaches nothing (17 routes, both exports, forged scope); AKUNTAN limits; identical sign-in messages; HTML in names stays inert |
 
-Requested after the report; done on `task/fix-qa-bugs` (stacked on this PR). Every fix has a regression test or a browser re-verification, listed in each bug file under *Fix applied* and as `VF-*` cases in [results-table.md](./results-table.md).
+`scripts/e2e-setup.ts` now also creates an AKUNTAN member and a second firm with its own ADMIN (real accounts through the Supabase admin API, signed in through the form).
+**Proof they guard something:** run against the code before the QA fixes (`99d9351`), 13 of the 19 new specs fail — one or more for each of BUG-001, 002, 003, 004, 005, 007, 008, 009, 010, 011, 012, 013, 014; the other 6 guard behaviour that was already right. BUG-006 (ledger-file text rate) is covered by a unit test only.
 
-| Bug | Fix in one line | Guard |
-|---|---|---|
-| 002 | XLSX with ISO date cells rewritten through SheetJS first; statement dates outside 2000–2100 refused with the row | unit + DB tests, browser |
-| 003 | `250,000` refused with “tulis ribuan dengan titik” (Indonesian notation unchanged) | unit, browser |
-| 004 | Newest-first tables are read from the oldest row (opening/closing/period correct) | unit, browser |
-| 005 | Rate parsing knows the currency pair (`0.745`, `1.085`, `105.234`, `16.250` all right) | unit, browser |
-| 006 | Ledger-file text rate `15.750,50` → 15750.50 | unit, probe |
-| 007 | `parsePeriod` validates month 1–12 / year window | unit, browser |
-| 008 | Upload forms check the 5 MB limit before sending | browser |
-| 009 | Zero-amount rows skipped with a note naming the row | DB test, browser |
-| 010 | Typed amounts > 15 digits and statement amounts > 10^15 refused with a clear message (evidence extraction deliberately stays uncapped) | unit + DB tests, browser |
-| 011 | NPWP must be 15/16 digits; stored normalised | unit, browser |
-| 012–014 | Mobile tab strip scrolls; per-page `<title>` (`%s · Buku`); long text wraps; no “Sewa Sewa” | browser |
-
-A first version capped file amounts in the shared `parseRupiah`/`parseCents`; the full suite caught that the evidence extractor intentionally reads 19-digit source figures, so the cap was moved to the statement pipeline.
-
-Gates after the fixes: lint ✅ · typecheck ✅ · Vitest **910/910** ✅ · `verify:books` ALL PASS (1,741) ✅ · e2e **28/28** ✅.
+To reproduce the whole run by hand: `bash scripts/session-start.sh` → `npm run build` → local Auth or the staging project in `.env` → `npm run test:e2e`.
