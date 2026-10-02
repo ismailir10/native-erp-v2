@@ -76,6 +76,16 @@ enum PeriodStatus {
   LOCKED
 }
 
+enum FindingKind {
+  /// Saldo Awal lines that don't balance: the difference sits on 3290 Selisih Saldo Awal until the accountant decides (ADR 0012).
+  OPENING_DIFFERENCE
+}
+
+enum FindingStatus {
+  OPEN
+  RESOLVED
+}
+
 enum TxStatus {
   POSTED
   NEEDS_REVIEW
@@ -179,6 +189,7 @@ model Client {
   taxYears        TaxYear[]
   leases          Lease[]
   periodUnlocks   PeriodUnlockLog[]
+  findings        Finding[]
   coaVersion      Int                  @default(1)
 
   @@index([firmId])
@@ -210,6 +221,7 @@ model Entity {
   employees          Employee[]
   benefitSetting     BenefitSetting?
   benefitPostings    BenefitPosting[]
+  findings           Finding[]
 
   @@index([clientId])
 }
@@ -283,6 +295,40 @@ model Period {
   signoffs   CloseSignoff[]
 
   @@unique([clientId, year, month])
+}
+
+/// Temuan (ADR 0012): a difference Buku does not plug. Opened by the posting that finds it, in the same transaction; resolved once by the
+/// accountant's written decision and the entry that carries it. Never edited otherwise, never deleted (except with its client). The close
+/// controls read the GL, not this row: a resolution reversed later shows as a failing control again.
+model Finding {
+  id              String        @id @default(cuid())
+  firmId          String
+  clientId        String
+  client          Client        @relation(fields: [clientId], references: [id])
+  entityId        String
+  entity          Entity        @relation(fields: [entityId], references: [id])
+  /// T-<number>, per client.
+  number          Int
+  kind            FindingKind
+  status          FindingStatus @default(OPEN)
+  date            DateTime      @db.Date
+  /// Signed minor units of the entity's currency as the difference sits on its account: debit +, credit −.
+  amount          BigInt
+  question        String
+  sourceEntryId   String?
+  sourceEntry     JournalEntry? @relation("FindingSource", fields: [sourceEntryId], references: [id])
+  openedById      String?
+  openedBy        FirmMember?   @relation("FindingOpenedBy", fields: [openedById], references: [id])
+  createdAt       DateTime      @default(now())
+  resolution      String?
+  resolvedEntryId String?       @unique
+  resolvedEntry   JournalEntry? @relation("FindingResolution", fields: [resolvedEntryId], references: [id])
+  resolvedById    String?
+  resolvedBy      FirmMember?   @relation("FindingResolvedBy", fields: [resolvedById], references: [id])
+  resolvedAt      DateTime?
+
+  @@unique([clientId, number])
+  @@index([entityId, status])
 }
 
 /// Audit trail of reopening a closed month: admin only, with the reason typed at the time. Never edited; kept when the period is locked again.
@@ -419,6 +465,9 @@ model JournalEntry {
   reversesId        String?              @unique
   reverses          JournalEntry?        @relation("Reversal", fields: [reversesId], references: [id], onDelete: Restrict)
   reversedBy        JournalEntry?        @relation("Reversal")
+  /// Temuan this entry raised (its Saldo Awal difference) or resolved (ADR 0012).
+  findingsRaised    Finding[]            @relation("FindingSource")
+  findingResolved   Finding?             @relation("FindingResolution")
   /// Member who posted it; null for seeds and system postings ("Sistem").
   postedById        String?
   postedBy          FirmMember?          @relation("EntryPostedBy", fields: [postedById], references: [id])
@@ -889,6 +938,8 @@ model FirmMember {
   taxCredits       TaxCredit[]
   taxPostings      TaxPosting[]
   taxLosses        TaxLossCarryforward[]
+  findingsOpened   Finding[]             @relation("FindingOpenedBy")
+  findingsResolved Finding[]             @relation("FindingResolvedBy")
   proposalsDecided ProposedEntry[]       @relation("ProposalDecidedBy")
 
   @@index([firmId])

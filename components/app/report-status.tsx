@@ -19,7 +19,8 @@ export function ReportStatusBar({ status, base, q }: { status: ReportStatus; bas
     );
   }
   const href = (r: ReportReason) =>
-    r.kind === "review" ? withParams(`${base}/review`, q)
+    r.kind === "findings" ? `${withParams(`${base}/close`, { period: q.period })}#temuan`
+    : r.kind === "review" ? withParams(`${base}/review`, q)
     : r.kind === "suspense" ? withParams(`${base}/ledger/1999`, q)
     : r.kind === "statements" ? `${base}/import`
     : r.kind === "schedules" ? withParams(`${base}/journals/new`, { period: q.period })

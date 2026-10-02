@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { StatusPill } from "@/components/app/status";
 
 type Answer = {
   id: string;
@@ -18,6 +19,7 @@ type Answer = {
   rows: { label: string; value: string; source: string }[];
   citations: { label: string; href: string }[];
   limitations: string[];
+  preliminary: string | null;
 };
 const HistoryContext = createContext<{ answers: Answer[]; addAnswer: (answer: Answer) => void } | null>(null);
 
@@ -31,6 +33,7 @@ function AnswerCard({ answer }: { answer: Answer }) {
   return (
     <article className="space-y-4 rounded-lg border bg-background p-4" aria-label={`Jawaban: ${answer.question}`}>
       <div><p className="text-xs text-muted-foreground">{answer.scope.label} · {answer.scope.periodLabel}</p><h3 className="mt-1 font-semibold break-words [overflow-wrap:anywhere]">{answer.question}</h3></div>
+      {answer.preliminary && <p className="flex flex-wrap items-center gap-2 text-sm" data-testid="answer-preliminary"><StatusPill status="REVIEW" label="Sementara" /><span className="text-muted-foreground">{answer.preliminary.replace(/^Sementara: /, "")}</span></p>}
       <p className="whitespace-pre-line text-sm leading-relaxed">{answer.text}</p>
       {answer.rows.length > 0 && <dl className="divide-y rounded-lg border bg-card px-3">{answer.rows.map((row, index) => <div key={index} className="flex flex-wrap justify-between gap-x-4 gap-y-1 py-3 text-sm"><dt className="min-w-0 flex-1">{row.label}<span className="mt-0.5 block text-xs text-muted-foreground">{row.source.startsWith("/") ? "Dihitung dari buku dan kontrol Buku" : row.source}</span></dt><dd className="num max-w-full break-words text-right font-medium">{row.value}</dd></div>)}</dl>}
       {answer.citations.length > 0 && <div className="space-y-2"><h4 className="text-xs font-semibold text-muted-foreground">Periksa sumber</h4><ul className="space-y-2">{answer.citations.map((citation, index) => <li key={`${citation.href}-${index}`}><Link href={citation.href} className="text-sm text-primary underline underline-offset-4">[{index + 1}] {citation.label}</Link></li>)}</ul></div>}

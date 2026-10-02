@@ -1,3 +1,4 @@
+import { isClassifiable } from "@/lib/coa/template";
 import type { Db } from "@/lib/db";
 import type { AiProvider } from "@/lib/ai/provider";
 import { suggestWithAi } from "@/lib/ai/classify";
@@ -24,7 +25,7 @@ export async function suggestAgainWithAi(db: Db, args: { clientId: string; entit
   const rows = await simpleGuessRows(db, args);
   if (!rows.length) return { rows: 0, updated: 0, calls: 0, cacheHits: 0, note: undefined as string | undefined };
   const client = await db.client.findUniqueOrThrow({ where: { id: args.clientId } });
-  const accounts = await db.account.findMany({ where: { clientId: client.id, isBank: false, isSuspense: false, isRetained: false }, orderBy: { code: "asc" } });
+  const accounts = (await db.account.findMany({ where: { clientId: client.id }, orderBy: { code: "asc" } })).filter(isClassifiable);
   const ai = await suggestWithAi(db, {
     firmId: client.firmId,
     clientId: client.id,

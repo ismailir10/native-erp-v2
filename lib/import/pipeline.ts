@@ -1,6 +1,6 @@
 import type { Db, Tx } from "@/lib/db";
 import type { ClassifyMethod, Direction } from "@/lib/generated/prisma/enums";
-import { ACCOUNT_CODES } from "@/lib/coa/template";
+import { ACCOUNT_CODES, isClassifiable } from "@/lib/coa/template";
 import { parseStatementSections } from "@/lib/import/parsers";
 import { checkContinuity, isGenericKey, merchantKey, rowHashes } from "@/lib/import/normalize";
 import { AccountMismatchError, ParseError, type ParsedStatement } from "@/lib/import/types";
@@ -205,7 +205,7 @@ export async function importStatement(
     else pendingAi.push({ key: it.merchantKey, direction: it.direction, sample: it.description });
   }
 
-  const postable = accounts.filter((a) => !a.isBank && !a.isSuspense && !a.isRetained).map((a) => ({ code: a.code, name: a.name }));
+  const postable = accounts.filter(isClassifiable).map((a) => ({ code: a.code, name: a.name }));
   const ai = await suggestWithAi(db, {
     firmId: client.firmId,
     clientId: client.id,

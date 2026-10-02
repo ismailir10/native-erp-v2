@@ -82,9 +82,9 @@ export const EQUITY_ROW_LABEL: Record<EquityRow, string> = {
   retained: "Dividen dan koreksi saldo laba",
   closing: "Saldo akhir",
 };
-const EQUITY_LINES: FsLine[] = ["MODAL", "SALDO_LABA", "PRIVE", "SELISIH_PENJABARAN", "PKL_IMBALAN_KERJA"];
+const EQUITY_LINES: FsLine[] = ["MODAL", "SALDO_LABA", "SELISIH_SALDO_AWAL", "PRIVE", "SELISIH_PENJABARAN", "PKL_IMBALAN_KERJA"];
 /** The row a year's movement of an equity line goes to (profit itself comes from the income statement). */
-const ROW_OF: Record<string, EquityRow> = { MODAL: "capital", SALDO_LABA: "retained", PRIVE: "prive", SELISIH_PENJABARAN: "oci", PKL_IMBALAN_KERJA: "oci" };
+const ROW_OF: Record<string, EquityRow> = { MODAL: "capital", SALDO_LABA: "retained", SELISIH_SALDO_AWAL: "retained", PRIVE: "prive", SELISIH_PENJABARAN: "oci", PKL_IMBALAN_KERJA: "oci" };
 
 export type EquityChanges = {
   from: Date;
@@ -177,7 +177,8 @@ export function cashLine(a: Pick<Account, "code" | "fsLine" | "isIntercompany">)
     case "PRIVE":
       return { section: "FINANCING", key: fs, label: "Prive" };
     case "SALDO_LABA":
-      return { section: "FINANCING", key: fs, label: "Dividen dan koreksi saldo laba" };
+    case "SELISIH_SALDO_AWAL":
+      return { section: "FINANCING", key: "SALDO_LABA", label: "Dividen dan koreksi saldo laba" };
     case "PKL_IMBALAN_KERJA":
     case "SELISIH_PENJABARAN":
       return { section: "OPERATING", key: "OCI", label: "Penghasilan komprehensif lain (non-kas)" };

@@ -422,7 +422,8 @@ export async function assetDetail(db: Db, clientId: string, assetId: string) {
   });
   if (!a) return null;
   const ym = (d: Date) => ({ year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 });
-  const opening = await db.journalEntry.findFirst({ where: { entityId: a.entityId, kind: "OPENING" }, orderBy: { date: "asc" }, select: { id: true, date: true } });
+  // The Saldo Awal itself, not a Temuan resolution posted later on the same date (ADR 0012).
+  const opening = await db.journalEntry.findFirst({ where: { entityId: a.entityId, kind: "OPENING" }, orderBy: [{ date: "asc" }, { createdAt: "asc" }], select: { id: true, date: true } });
   const moves: AssetMovement[] = [];
   const fromOpening = opening && +a.acquiredOn < +opening.date;
   if (a.sourceEntry) {

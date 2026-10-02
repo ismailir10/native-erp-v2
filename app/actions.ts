@@ -33,6 +33,7 @@ import { liveUploadFile } from "@/lib/demo/seed";
 import { addBankAccount, addClient, addEntity, OnboardingError, type NewClientInput } from "@/lib/onboarding";
 import { EntitySettingsError, setReportingFramework } from "@/lib/entity-settings";
 import { OpeningError, postOpening, type OpeningLineInput } from "@/lib/opening";
+import { FindingError, resolveOpeningFinding } from "@/lib/findings";
 import type { TaxTag, WithholdingKind } from "@/lib/generated/prisma/enums";
 import { RateError, upsertRate, validateRateInput } from "@/lib/fx/rates";
 import { MAX_UPLOAD_BYTES } from "@/lib/upload";
@@ -62,7 +63,7 @@ function fail(e: unknown): { ok: false; error: string; needsPassword?: boolean; 
   if (e instanceof PdfPasswordError) return { ok: false, error: e.message, needsPassword: true };
   if (e instanceof YearNeededError) return { ok: false, error: e.message, needsYear: true, yearGuess: e.guess };
   if (e instanceof DeleteClientError) return { ok: false, error: e.message };
-  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError || e instanceof MoneyError || e instanceof RateError || e instanceof RevaluationError || e instanceof LedgerImportError || e instanceof MappingError || e instanceof EntitySettingsError) return { ok: false, error: e.message };
+  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError || e instanceof FindingError || e instanceof MoneyError || e instanceof RateError || e instanceof RevaluationError || e instanceof LedgerImportError || e instanceof MappingError || e instanceof EntitySettingsError) return { ok: false, error: e.message };
   const infra = infraErrorMessage(e);
   console.error(e);
   return { ok: false, error: infra ?? "Terjadi kesalahan tak terduga. Coba lagi." };
@@ -573,12 +574,24 @@ export async function saveReportingFrameworkAction(clientId: string, entityId: s
   }
 }
 
-export async function openingAction(input: { clientId: string; entityId: string; date: string; lines: OpeningLineInput[] }): Promise<Result> {
+export async function openingAction(input: { clientId: string; entityId: string; date: string; lines: OpeningLineInput[] }): Promise<Result<{ finding: string | null }>> {
   try {
     const client = await getClientForFirm(input.clientId);
     const m = input.date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (!m) return { ok: false, error: "Isi tanggal saldo awal." };
-    await postOpening(prisma, { clientId: client.id, entityId: input.entityId, date: dateOnly(Number(m[1]), Number(m[2]), Number(m[3])), lines: input.lines, actorId: (await getCurrentMember()).id });
+    const { finding } = await postOpening(prisma, { clientId: client.id, entityId: input.entityId, date: dateOnly(Number(m[1]), Number(m[2]), Number(m[3])), lines: input.lines, actorId: (await getCurrentMember()).id });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, finding: finding?.label ?? null };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Resolves a Temuan with the accountant's written decision (ADR 0012). */
+export async function resolveFindingAction(input: { clientId: string; findingId: string; accountCode: string; decision: string }): Promise<Result> {
+  try {
+    const client = await getClientForFirm(input.clientId);
+    await resolveOpeningFinding(prisma, { clientId: client.id, findingId: input.findingId, accountCode: input.accountCode, decision: input.decision, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
   } catch (e) {

@@ -20,6 +20,15 @@ describe("shared workspace context", () => {
     expect(workspaceQuestionIntent("Berapa total transfer BCA PT ke ALFI YANDRA bulan Juni dan dicatat ke akun apa?")).toBe("transactions");
     expect(workspaceQuestionIntent("Pembayaran dari DINA PUSPITA?")).toBe("transactions");
     expect(workspaceQuestionIntent("Berapa saldo bank?")).toBe("balances");
+    // Asking Buku to act is refused (UC-X5); asking about the same words is not.
+    expect(workspaceQuestionIntent("Tolong ubah akun transaksi PLN ke 6100")).toBe("change");
+    expect(workspaceQuestionIntent("Hapus impor bulan Juni")).toBe("change");
+    expect(workspaceQuestionIntent("bisakah reklasifikasi beban sewa ke 1170")).toBe("change");
+    expect(workspaceQuestionIntent("Koreksi fiskal berapa tahun ini?")).not.toBe("change");
+    expect(workspaceQuestionIntent("Catatan apa yang perlu ditanyakan ke klien?")).toBe("unclear");
+    expect(workspaceQuestionIntent("Posting apa saja ke 6100 bulan ini?")).not.toBe("change");
+    expect(workspaceQuestionIntent("Ganti rugi dibayar ke siapa")).not.toBe("change");
+    expect(workspaceQuestionIntent("Koreksi mana yang dibuat bulan ini")).not.toBe("change");
   });
 
   it("reads the counterparty named in a question", () => {

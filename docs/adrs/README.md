@@ -15,3 +15,4 @@ One file per decision: context → decision → consequences. Supersede, don't e
 | [0009](0009-ai-in-the-close.md) | AI in the close: deterministic sanity controls first; AI explains and proposes with citations, never posts |
 | [0010](0010-supabase-platform.md) | Supabase platform: email + password login, members with roles, who-did-what |
 | [0011](0011-main-only-releases.md) | Merge to main directly; Vercel builds production only; staging frozen (supersedes part of 0008) |
+| [0012](0012-no-plug-findings.md) | No plug: a Saldo Awal difference waits on 3290 as a Temuan (finding) the accountant resolves in writing; the close FAILs until then |

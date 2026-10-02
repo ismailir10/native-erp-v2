@@ -1,3 +1,4 @@
+import { isClassifiable } from "@/lib/coa/template";
 import type { Db } from "@/lib/db";
 import { createClient, createFirm } from "@/lib/setup";
 import { importStatement } from "@/lib/import/pipeline";
@@ -106,7 +107,7 @@ export async function seedDemo(db: Db, opts: { log?: (s: string) => void; liveAi
     // or credit. Set DEMO_LIVE_AI=1 (with AI_API_KEY) to leave them uncached and see a real call.
     if (sc.liveUpload && !opts.liveAi) {
       const lu = sc.liveUpload;
-      const chart = (await db.account.findMany({ where: { clientId: client.id }, orderBy: { code: "asc" } })).filter(a => !a.isBank && !a.isSuspense && !a.isRetained).map(a => ({ code: a.code, name: a.name }));
+      const chart = (await db.account.findMany({ where: { clientId: client.id }, orderBy: { code: "asc" } })).filter(isClassifiable).map(a => ({ code: a.code, name: a.name }));
       for (const l of sc.lines.filter((l) => l.bankKey === lu.bankKey && l.ai && l.date.getUTCFullYear() === lu.year && l.date.getUTCMonth() + 1 === lu.month)) {
         const key = merchantKey(l.description);
         const direction = l.amount >= 0n ? "IN" : "OUT";

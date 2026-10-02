@@ -1,0 +1,23 @@
+{
+  "_about": "Answer key of the golden dataset (lib/demo/golden.ts): whole Rupiah per 30 June 2026, from the generator's truth by goldenKey(). Change only together with the scenario, and say why in the commit.",
+  "pt.totalAssets": "2589951000",
+  "pt.totalLiabilities": "175000000",
+  "pt.totalEquity": "2414951000",
+  "pt.revenue": "1342327000",
+  "pt.netProfit": "462951000",
+  "pt.cash.bca": "983969000",
+  "pt.cash.mandiri": "348276000",
+  "pt.cash.petty": "60000000",
+  "pt.1199": "0",
+  "pt.1190": "52706000",
+  "pt.retainedOpening": "952000000",
+  "owner.totalAssets": "139823500",
+  "owner.totalLiabilities": "52706000",
+  "owner.totalEquity": "87117500",
+  "owner.netProfit": "124500",
+  "owner.cash.bca": "139823500",
+  "owner.prive": "38007000",
+  "owner.1190": "-52706000",
+  "group.totalAssets": "2677068500",
+  "group.netProfit": "463075500"
+}
