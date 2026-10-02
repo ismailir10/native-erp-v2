@@ -184,7 +184,11 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     statement's opening balance); otherwise the whole file is refused (another year or account's file would become the history and drive Saldo Awal).
 13. Order: **transfer matcher → rules (client before firm, unless a matching firm rule's pattern strictly contains the client rule's — a client "PAJAK" never swallows the firm's "PAJAK BUNGA") → memory → financing / tax-payment suggestion → AI → heuristic.** Transfer matching
     needs a textual hint (TRSF/TRF/PINDAH BUKU/own entity name) — equal amounts alone are never enough — and pairs within **2 business
-    days** (Sat/Sun don't count). Financing text (the sanity control's words, `lib/classify/financing`) gets a balance-sheet
+    days** (Sat/Sun don't count), only when **neither description names anyone besides the group's own entities** (`thirdPartyName`:
+    what's left after channel words, bank names and own-transfer words is a supplier or customer — a payment, not a transfer) and **exactly
+    one candidate** fits each side; several candidates are never resolved by date: every line involved goes to Review (0.8) naming them.
+    *Lepas pasangan* (`unpairTransfer`) sends both halves back to Review on 1999 and sets `pairRefused`, so no later import pairs them.
+    AI never sees or proposes 1190/1199 (`aiAccounts`, in the cache key and the whitelist). Financing text (the sanity control's words, `lib/classify/financing`) gets a balance-sheet
     suggestion (loan → 2210, interest → 7110, fees → 7100, capital → 3100, own-account move → 1199) without an AI call; it is a
     HEURISTIC and goes to review. Bank interest, fees and stamp duty as banks print them (BUNGA/INTEREST out → 7110, TAX ON
     INTEREST → 8200, BIAYA TXN / FEE PAYMENT / MATERAI / STAMP DUTY → 7100) are firm **rules** (they post); a new firm rule reaches

@@ -61,6 +61,10 @@ export async function reviewTransactionTx(tx: Tx, args: ReviewArgs) {
   const withholding = args.withholding === undefined ? (args.accountCode === ACCOUNT_CODES.SUSPENSE ? null : held) : args.withholding && checkWithholding(args.withholding, t.direction);
   await postBankTransaction(tx, t.id, { accountCode: args.accountCode, taxTag: args.taxTag, withholding }, { actorId: args.actorId });
   const changed = args.accountCode !== t.suggestedCode || args.taxTag !== t.taxTag;
+  // A paired half moved off the transfer accounts is no longer half of a transfer (UC-B2): the link goes, and this line is never paired
+  // again; its old partner may still find its real other half.
+  const leavesPair = t.matchedTxId !== null && args.accountCode !== ACCOUNT_CODES.CLEARING && args.accountCode !== ACCOUNT_CODES.INTERCOMPANY;
+  if (leavesPair) await tx.bankTransaction.updateMany({ where: { id: t.matchedTxId!, matchedTxId: t.id }, data: { matchedTxId: null } });
   await tx.bankTransaction.update({
     where: { id: t.id },
     data: {
@@ -73,6 +77,7 @@ export async function reviewTransactionTx(tx: Tx, args: ReviewArgs) {
       whtAmount: withholding?.amount ?? 0n,
       method: changed ? "MANUAL" : t.method,
       reason: changed ? "Diubah oleh reviewer" : t.reason,
+      ...(leavesPair ? { matchedTxId: null, pairRefused: true } : {}),
     },
   });
   // A key without a counterparty covers unrelated payments: never learned (normalize.ts, isGenericKey).
@@ -129,4 +134,39 @@ export async function acceptSimilar(
     await reviewTransaction(db, { bankTxId: p.id, accountCode, taxTag, actorId });
   }
   return peers.map((p) => p.id);
+}
+
+/**
+ * *Lepas pasangan* (use-case feedback UC-B2): the reviewer says two lines are not one transfer. Both halves go back to Review on 1999
+ * through the bank writer (a RECLASS of the difference; the bank side never moves), lose their link, and are marked so no later import
+ * pairs them again. Their transfer suggestion stays for the reviewer to accept or change. A locked month refuses (postJournal).
+ */
+export async function unpairTransfer(db: Db, args: { clientId: string; bankTxId: string; actorId?: string | null }) {
+  return db.$transaction(async (tx) => {
+    const t = await tx.bankTransaction.findFirst({ where: { id: args.bankTxId, bankAccount: { entity: { clientId: args.clientId } } } });
+    if (!t) throw new LedgerError("Mutasi tidak ditemukan.");
+    if (!t.matchedTxId) throw new LedgerError("Mutasi ini tidak berpasangan dengan transfer lain.");
+    const halves = await tx.bankTransaction.findMany({ where: { id: { in: [t.id, t.matchedTxId] }, bankAccount: { entity: { clientId: args.clientId } } }, include: { settlements: { select: { invoice: { select: { number: true } } } } } });
+    // A half that settles invoices stays where they are paid (rule 5c): unsettle first.
+    const settled = halves.flatMap((h) => h.settlements.map((x) => x.invoice.number));
+    if (settled.length) throw new LedgerError(`Mutasi ini melunasi ${settled.join(", ")}. Hapus pencocokannya dulu di Piutang & Utang sebelum melepas pasangannya.`);
+    for (const h of halves) {
+      await postBankTransaction(tx, h.id, { accountCode: ACCOUNT_CODES.SUSPENSE }, { actorId: args.actorId });
+      await tx.bankTransaction.update({
+        where: { id: h.id },
+        data: {
+          status: "NEEDS_REVIEW",
+          accountCode: ACCOUNT_CODES.SUSPENSE,
+          suggestedCode: h.accountCode,
+          taxTag: null,
+          whtKind: null,
+          whtAmount: 0n,
+          matchedTxId: null,
+          pairRefused: true,
+          reason: "Pasangan transfer dilepas oleh reviewer: pilih akunnya",
+        },
+      });
+    }
+    return halves.map((h) => h.id);
+  });
 }

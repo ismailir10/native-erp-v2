@@ -1,3 +1,4 @@
+import { aiAccounts } from "@/lib/ai/classify";
 import { createHash } from "node:crypto";
 import { bankLineAccounts, citedBankIds } from "@/lib/controls/cited";
 import type { Db } from "@/lib/db";
@@ -32,7 +33,8 @@ export async function explainControl(db: Db, firmId: string, clientId: string, y
   const entity = client.entities.find((e) => e.id === controlKey.split(":")[1]) ?? null;
   // Prive (3300) is an owner's withdrawal from a sole proprietorship or a CV partner; a PT or foreign company's draft never uses it.
   const noPrive = entity !== null && (entity.kind === "PT" || entity.kind === "BADAN_USAHA_ASING");
-  const accounts = (await db.account.findMany({ where: { clientId, isBank: false, ...(noPrive ? { fsLine: { not: "PRIVE" } } : {}) }, select: { code: true, name: true }, orderBy: { code: "asc" } }));
+  // Transfers are paired by the matcher or decided by the reviewer, never drafted by the model (accounting-rules 13): no 1190/1199.
+  const accounts = aiAccounts(await db.account.findMany({ where: { clientId, isBank: false, ...(noPrive ? { fsLine: { not: "PRIVE" } } : {}) }, select: { code: true, name: true }, orderBy: { code: "asc" } }));
   const input: ControlExplainInput = { client: client.name, period: formatPeriod(year, month), currency: entity?.functionalCurrency ?? client.entities[0]?.functionalCurrency ?? "IDR", accounts, control: reviewed, canDraft: entity !== null };
 
   const key = createHash("sha256").update(JSON.stringify([firmId, clientId, input, provider.model, CONTROL_EXPLAIN_PROMPT_VERSION])).digest("hex");

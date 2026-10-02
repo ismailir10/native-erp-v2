@@ -45,6 +45,14 @@ export async function accountLedger(
     },
     orderBy: [{ date: "asc" }, { entry: { createdAt: "asc" } }],
   });
+  // The other half of a transfer pair, named in the drawer next to *Lepas pasangan* (UC-B2).
+  const pairIds = [...new Set(lines.map((l) => l.entry.bankTransaction?.matchedTxId).filter((x): x is string => !!x))];
+  const pairs = new Map(
+    (await db.bankTransaction.findMany({ where: { id: { in: pairIds } }, include: { bankAccount: { include: { entity: { select: { shortName: true } } } } } })).map((p) => [
+      p.id,
+      `${p.bankAccount.entity.shortName} · ${p.bankAccount.label} · ${formatDate(p.date)} · ${formatMoney(p.amount < 0n ? -p.amount : p.amount, p.bankAccount.currency)} · ${p.description}`,
+    ]),
+  );
   const sign = args.normalBalance === "DEBIT" ? 1n : -1n;
   const opening = ((before._sum.debit ?? 0n) - (before._sum.credit ?? 0n)) * sign;
   const balances = lines.reduce<bigint[]>((acc, l) => [...acc, (acc.at(-1) ?? opening) + (l.debit - l.credit) * sign], []);
@@ -63,7 +71,7 @@ export async function accountLedger(
       entry: { lines: l.entry.lines.map((x) => ({ code: x.account.code, name: x.account.name, debit: x.debit.toString(), credit: x.credit.toString() })) },
       reversal: l.entry.kind === "ADJUSTMENT" ? { entryId: l.entry.id, blocker: reversalBlocker(l.entry), date: toIsoDate(l.entry.date) } : undefined,
       source: t
-        ? { bankTxId: t.id, accountCode: t.accountCode, taxTag: t.taxTag, whtKind: t.whtKind, whtAmount: t.whtAmount.toString(), fileName: t.import.fileName, sheet: t.sourceSheet, rowNumber: t.rowNumber, rawRow: t.rawRow, description: t.description, amount: t.amount.toString(), bank: `${t.bankAccount.label} · ${t.bankAccount.number}`, method: t.method, reason: t.reason, status: t.status }
+        ? { bankTxId: t.id, accountCode: t.accountCode, taxTag: t.taxTag, whtKind: t.whtKind, whtAmount: t.whtAmount.toString(), fileName: t.import.fileName, sheet: t.sourceSheet, rowNumber: t.rowNumber, rawRow: t.rawRow, description: t.description, amount: t.amount.toString(), bank: `${t.bankAccount.label} · ${t.bankAccount.number}`, method: t.method, reason: t.reason, status: t.status, pairedWith: t.matchedTxId ? (pairs.get(t.matchedTxId) ?? null) : null }
         : null,
       fileSource: l.entry.ledgerImport
         ? {

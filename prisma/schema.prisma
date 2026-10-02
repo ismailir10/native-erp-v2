@@ -410,6 +410,8 @@ model BankTransaction {
   /// Masa pajak of a PPh 25 instalment (first day of the month it is for); set when the line is classified, editable. Null = counted by bank date.
   taxMonth      DateTime?           @db.Date
   matchedTxId   String?
+  /// The reviewer took this line out of a transfer pair (*Lepas pasangan*): the matcher never pairs it again.
+  pairRefused   Boolean             @default(false)
   entries       JournalEntry[]
   proposals     ProposedEntry[]
   /// Invoices this bank line settles (a subledger link; the line itself already moved the GL).

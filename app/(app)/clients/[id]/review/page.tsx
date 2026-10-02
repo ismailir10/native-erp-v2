@@ -4,6 +4,9 @@ import type { SearchParams } from "@/lib/scope";
 import { formatDate } from "@/lib/format";
 import { classifiableOptions } from "@/lib/coa/options";
 import { NextStep, PageHeader } from "@/components/app/page-header";
+import { Download } from "lucide-react";
+import { buttonVariants } from "@/components/ui/button";
+import { withParams } from "@/lib/scope";
 import { ScopeBar } from "@/components/app/scope-bar";
 import { ReviewQueue } from "@/components/app/review-queue";
 import { isGenericKey } from "@/lib/import/normalize";
@@ -56,6 +59,13 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
         </NextStep>
       ) : (
         <NextStep href={`${base}/close?entity=${scope.value}&period=${period.key}`} cta="Tutup buku" tone="done">Tidak ada transaksi menunggu review dalam cakupan ini.</NextStep>
+      )}
+      {txs.length > 0 && (
+        <div className="flex justify-end">
+          <a href={withParams(`${base}/review/export`, { entity: scope.value, period: period.key })} className={buttonVariants({ variant: "outline", size: "sm" })} download data-testid="questions-download">
+            <Download /> Unduh daftar pertanyaan untuk klien (Excel)
+          </a>
+        </div>
       )}
       <ReviewQueue items={items} accounts={options} scope={{ entityIds: scope.entityIds, period: period.key }} clientId={client.id} simpleGuesses={simpleGuesses} aiReady={Boolean(ai.apiKey && ai.model)} canSetUpAi={member.role === "ADMIN"} />
     </div>

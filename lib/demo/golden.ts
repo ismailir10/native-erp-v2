@@ -92,9 +92,21 @@ export function goldenScenario(): ClientScenario {
     add("own-bca", d(y, m, 28), "BUNGA", 41_000n + BigInt(m) * 100n, T("4900"));
   }
 
-  // Equal opposite amounts on two accounts within a few days pair as a transfer (rule 13). Only the planted transfers may do so here:
-  // the false-match trap (UC-B2) belongs to the transfer-safety cycle, not to this key.
-  const loose = lines.filter((l) => l.truth.accountCode !== "1199" && l.truth.accountCode !== "1190");
+  // The false-match trap (UC-B2, the real case): supplier withdrawals of Rp 100 jt and Rp 300 jt on the day a customer's credit of the
+  // same amount lands on the other account, both with transfer words. They are payments and receipts, never one transfer.
+  const traps = [
+    { out: { bankKey: "pt-bca", description: bca("DB", 5, 12, "PT BAJA SUPPLIER PRIMA"), amount: -100_000_000n }, in: { bankKey: "pt-mdr", description: "TRANSFER DARI CV PELANGGAN SETIA", amount: 100_000_000n }, date: d(2026, 5, 12) },
+    { out: { bankKey: "pt-bca", description: bca("DB", 6, 19, "UD BESI KUAT SENTOSA"), amount: -300_000_000n }, in: { bankKey: "pt-mdr", description: "TRANSFER DARI PT GROSIR NUSA RAYA", amount: 300_000_000n }, date: d(2026, 6, 19) },
+  ];
+  for (const t of traps) {
+    add(t.out.bankKey, t.date, t.out.description, t.out.amount, T("5100"));
+    add(t.in.bankKey, t.date, t.in.description, t.in.amount, T("4100"));
+  }
+  const trapped = new Set(traps.flatMap((t) => [t.out.description, t.in.description]));
+
+  // Equal opposite amounts on two accounts within a few days pair as a transfer (rule 13). Only the planted transfers and the trap may
+  // do so here: anything else would be an accident of the generator.
+  const loose = lines.filter((l) => l.truth.accountCode !== "1199" && l.truth.accountCode !== "1190" && !trapped.has(l.description));
   for (const a of loose) for (const b of lines) {
     if (a !== b && a.bankKey !== b.bankKey && a.amount === -b.amount && Math.abs(+a.date - +b.date) <= 5 * 86_400_000) throw new Error(`Golden: ${a.description} dan ${b.description} bisa terpasangkan sebagai transfer`);
   }

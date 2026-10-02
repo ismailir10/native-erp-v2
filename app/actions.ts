@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { getClientForFirm, getCurrentFirm, getCurrentMember } from "@/lib/tenant";
 import { importStatement, type ImportSummary } from "@/lib/import/pipeline";
 import { resolveProvider } from "@/lib/settings/ai";
-import { acceptSimilar, reviewTransaction } from "@/lib/review";
+import { acceptSimilar, reviewTransaction, unpairTransfer } from "@/lib/review";
 import { CloseError, lockPeriod, runControls, unlockPeriod } from "@/lib/controls";
 import { LedgerError } from "@/lib/ledger/post";
 import { postAdjustment } from "@/lib/ledger/adjustment";
@@ -120,6 +120,18 @@ async function assertTxInFirm(bankTxId: string) {
   const t = await prisma.bankTransaction.findUniqueOrThrow({ where: { id: bankTxId }, include: { bankAccount: { include: { entity: true } } } });
   await getClientForFirm(t.bankAccount.entity.clientId);
   return t.bankAccount.entity.clientId;
+}
+
+/** *Lepas pasangan*: two lines are not one transfer; both go back to Review and are never paired again (UC-B2). */
+export async function unpairTransferAction(input: { bankTxId: string }): Promise<Result> {
+  try {
+    const clientId = await assertTxInFirm(input.bankTxId);
+    await unpairTransfer(prisma, { clientId, bankTxId: input.bankTxId, actorId: (await getCurrentMember()).id });
+    revalidatePath(`/clients/${clientId}`, "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
 }
 
 export async function reviewAction(input: { bankTxId: string; accountCode: string; taxTag: TaxTag | null; createRule?: boolean; /** Tax withheld (major units); undefined keeps the line's, null removes it. */ withholding?: { kind: WithholdingKind; amount: string } | null }): Promise<Result<{ learned: boolean }>> {

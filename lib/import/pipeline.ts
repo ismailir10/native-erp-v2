@@ -170,7 +170,7 @@ export async function importStatement(
   const openCounterparts: TransferCandidate[] = window
     ? (
         await db.bankTransaction.findMany({
-          where: { bankAccount: { entity: { clientId: client.id } }, matchedTxId: null, date: window, bankAccountId: { not: bankAccount.id } },
+          where: { bankAccount: { entity: { clientId: client.id } }, matchedTxId: null, pairRefused: false, date: window, bankAccountId: { not: bankAccount.id } },
         })
       ).map((t) => ({ ...t, id: t.id }))
     : [];

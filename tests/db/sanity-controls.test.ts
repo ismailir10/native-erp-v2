@@ -48,7 +48,8 @@ describe("sanity controls", () => {
     expect(financing?.status).toBe("REVIEW");
     expect(financing?.detail).toMatch(/^1 transaksi, total Rp 100\.000\.000: “PENCAIRAN PINJAMAN KMK” Rp 100\.000\.000 → 4100/);
     expect(financing?.detail).not.toMatch(/BUNGA/); // interest on a loan is P&L
-    expect((await find("guess"))?.detail).toBe("1 transaksi (Rp 1.000.000) disetujui persis seperti tebakan dengan keyakinan rendah");
+    // Rp 1 jt of Rp 102 jt moved this month = 0,98 % → 1 % (UC-B3: the share, not only the count).
+    expect((await find("guess"))?.detail).toBe("1 transaksi (Rp 1.000.000, 1% dari uang masuk dan keluar bulan ini) disetujui persis seperti tebakan dengan keyakinan rendah");
     expect(await find("sanity")).toBeUndefined();
 
     await reviewTransaction(db, { bankTxId: txs[0].id, accountCode: "2210", taxTag: null }); // accountant: it's a bank loan
