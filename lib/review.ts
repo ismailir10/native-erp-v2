@@ -130,3 +130,33 @@ export async function acceptSimilar(
   }
   return peers.map((p) => p.id);
 }
+
+/**
+ * *Lepas pasangan* (use-case feedback UC-B2): the reviewer says two lines are not one transfer. Both halves go back to Review on 1999
+ * through the bank writer (a RECLASS of the difference; the bank side never moves), lose their link, and are marked so no later import
+ * pairs them again. Their transfer suggestion stays for the reviewer to accept or change. A locked month refuses (postJournal).
+ */
+export async function unpairTransfer(db: Db, args: { clientId: string; bankTxId: string; actorId?: string | null }) {
+  return db.$transaction(async (tx) => {
+    const t = await tx.bankTransaction.findFirst({ where: { id: args.bankTxId, bankAccount: { entity: { clientId: args.clientId } } } });
+    if (!t) throw new LedgerError("Mutasi tidak ditemukan.");
+    if (!t.matchedTxId) throw new LedgerError("Mutasi ini tidak berpasangan dengan transfer lain.");
+    const halves = await tx.bankTransaction.findMany({ where: { id: { in: [t.id, t.matchedTxId] }, bankAccount: { entity: { clientId: args.clientId } } } });
+    for (const h of halves) {
+      await postBankTransaction(tx, h.id, { accountCode: ACCOUNT_CODES.SUSPENSE }, { actorId: args.actorId });
+      await tx.bankTransaction.update({
+        where: { id: h.id },
+        data: {
+          status: "NEEDS_REVIEW",
+          accountCode: ACCOUNT_CODES.SUSPENSE,
+          suggestedCode: h.accountCode,
+          taxTag: null,
+          matchedTxId: null,
+          pairRefused: true,
+          reason: "Pasangan transfer dilepas oleh reviewer: pilih akunnya",
+        },
+      });
+    }
+    return halves.map((h) => h.id);
+  });
+}

@@ -32,7 +32,7 @@ get them merged". So this cycle runs without a separate approval stop.
 - [x] **Exactly one candidate (UC-B2).** An outgoing line pairs only when exactly one incoming line qualifies, and that incoming line
       qualifies for no other outgoing line. Otherwise every line involved goes to Review with the transfer account suggested and a
       reason naming the candidates (date, account, amount). Nothing is auto-picked.
-- [ ] **Undo a pair (UC-B2).** *Lepas pasangan* in the bank line's ledger drawer unlinks both halves, moves both back to Review on 1999
+- [x] **Undo a pair (UC-B2).** *Lepas pasangan* in the bank line's ledger drawer unlinks both halves, moves both back to Review on 1999
       through the existing writer (RECLASS of the difference), and marks them so a later import never pairs them again. A locked month
       refuses.
 - [ ] **AI never proposes 1190 or 1199 (UC-B2).** Both accounts are dropped from the account list sent to the model and from the
@@ -68,7 +68,7 @@ would rewrite the demo story. Owner-name detection for clients without an owner 
 ## Tasks
 - [x] T1 Matcher: third-party refusal + exactly-one-candidate + reasons; `pairRefused` respected. Accept: `tests/unit/transfer*.test.ts`,
       `verify:books` ALL PASS.
-- [ ] T2 *Lepas pasangan*: migration, `unpairTransfer()` (lib), action, ledger-drawer button. Accept: DB test (both halves back to Review,
+- [x] T2 *Lepas pasangan*: migration, `unpairTransfer()` (lib), action, ledger-drawer button. Accept: DB test (both halves back to Review,
       never re-paired by a later import, locked month refused).
 - [ ] T3 AI chart without 1190/1199 (cache key and whitelist). Accept: unit/DB test.
 - [ ] T4 Counterparty test, owner question list (Ask Buku sort + Review Excel export), guess-control share. Accept: tests.
@@ -82,9 +82,15 @@ would rewrite the demo story. Owner-name detection for clients without an owner 
   transfer suggestion (Review) naming the candidates; the unpaired-hinted rule needs a clean description too; `pairRefused` lines never
   pair. Tests: `tests/unit/transfer-safety.test.ts` (new), `tests/unit/import.test.ts` (the TRF pair now passes the group's names).
   The demo's classification counts by entity × status × method are identical before and after (diffed).
+- T2: migration `20261002180000_transfer_pair_refused` (`BankTransaction.pairRefused`; SQL from `prisma migrate diff` against the previous
+  schema — the sandbox refuses an unattended `migrate reset` of the local DB, and `migrate dev` needs one because the local DB also holds
+  the open no-plug branch's table), `unpairTransfer()` in `lib/review.ts`, `unpairTransferAction`, the pipeline skips refused lines,
+  `lib/reports/account-ledger.ts` names the other half, ledger drawer *Pasangan transfer* + *Lepas pasangan*. Test: `tests/db/unpair-transfer.test.ts`.
 
 ## Verification
 - T1: `npx vitest run tests/unit/transfer-safety.test.ts tests/unit/import.test.ts` → `Tests 22 passed (22)`; `demo:reset && verify:books` →
   `ALL PASS — 1741 pemeriksaan saldo cocok dengan ground truth.`; lint + typecheck clean; `npm test` → `Test Files 122 passed (122) · Tests 915 passed (915)`.
+- T2: `npx vitest run tests/db/unpair-transfer.test.ts` → `Tests 2 passed (2)`; `prisma migrate deploy` on both DBs → applied; lint + typecheck clean;
+  `npm test` → `Test Files 123 passed (123) · Tests 917 passed (917)`.
 
 ## Ship Notes
