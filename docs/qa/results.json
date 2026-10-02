@@ -1,0 +1,1260 @@
+{
+ "A01": {
+  "status": "PASS",
+  "note": "Login page shows heading + forgot link",
+  "shots": [
+   "screenshots/A01-login.jpg"
+  ],
+  "ts": "2026-10-02T02:05:55.476Z"
+ },
+ "A02": {
+  "status": "PASS",
+  "note": "Empty submit is stopped by native browser validation (required fields); bubble language follows the browser UI, not the app. Not a defect.",
+  "shots": [
+   "screenshots/A02-login-empty.jpg"
+  ],
+  "ts": "2026-10-02T02:05:56.443Z"
+ },
+ "A03": {
+  "status": "PASS",
+  "note": "Wrong password message",
+  "shots": [
+   "screenshots/A03-login-wrong-password.jpg"
+  ],
+  "ts": "2026-10-02T02:05:58.077Z"
+ },
+ "A04": {
+  "status": "PASS",
+  "note": "Unknown email -> same generic message (no enumeration)",
+  "shots": [],
+  "ts": "2026-10-02T02:05:59.640Z"
+ },
+ "A05": {
+  "status": "PASS",
+  "note": "XSS payload in login email is inert",
+  "shots": [],
+  "ts": "2026-10-02T02:06:00.708Z"
+ },
+ "A06": {
+  "status": "PASS",
+  "note": "Reset notice identical for member / non-member",
+  "shots": [
+   "screenshots/A06-forgot-member.jpg"
+  ],
+  "ts": "2026-10-02T02:06:04.510Z"
+ },
+ "A07": {
+  "status": "PASS",
+  "note": "Valid login lands on Beranda",
+  "shots": [
+   "screenshots/A07-after-login.jpg"
+  ],
+  "ts": "2026-10-02T02:06:05.825Z"
+ },
+ "A08": {
+  "status": "PASS",
+  "note": "Session persists across reload",
+  "shots": [],
+  "ts": "2026-10-02T02:06:06.146Z"
+ },
+ "A09": {
+  "status": "PASS",
+  "note": "Signed-in user visiting /login is redirected: http://localhost:3300/?scope=all&period=2026-08",
+  "shots": [],
+  "ts": "2026-10-02T02:06:07.438Z"
+ },
+ "A10": {
+  "status": "PASS",
+  "note": "Keluar returns to /login",
+  "shots": [],
+  "ts": "2026-10-02T02:06:07.527Z"
+ },
+ "A11": {
+  "status": "PASS",
+  "note": "Back/reload after logout does not expose the workspace: http://localhost:3300/login",
+  "shots": [
+   "screenshots/A11-back-after-logout.jpg"
+  ],
+  "ts": "2026-10-02T02:06:09.640Z"
+ },
+ "A12a": {
+  "status": "PASS",
+  "note": "Firm B Beranda lists none of firm A's clients",
+  "shots": [
+   "screenshots/A12-firmB-beranda.jpg"
+  ],
+  "ts": "2026-10-02T02:06:10.306Z"
+ },
+ "A12b": {
+  "status": "PASS",
+  "note": "All 17 client routes of firm A are 404 for firm B",
+  "shots": [
+   "screenshots/A12-firmB-cross-tenant-404.jpg"
+  ],
+  "ts": "2026-10-02T02:06:13.593Z"
+ },
+ "A12c": {
+  "status": "PASS",
+  "note": "Cross-tenant Excel exports: reports=404 tax=404",
+  "shots": [],
+  "ts": "2026-10-02T02:06:13.661Z"
+ },
+ "A12d": {
+  "status": "SKIP",
+  "note": "No evidence intake seeded",
+  "shots": [],
+  "ts": "2026-10-02T02:06:13.685Z"
+ },
+ "A12e": {
+  "status": "PASS",
+  "note": "scope=client:<firm A id> rejected for firm B (Cakupan tidak tersedia)",
+  "shots": [
+   "screenshots/A12-firmB-forged-scope.jpg"
+  ],
+  "ts": "2026-10-02T02:06:13.858Z"
+ },
+ "A13a": {
+  "status": "PASS",
+  "note": "AKUNTAN sees read-only notice on /settings",
+  "shots": [
+   "screenshots/A13-akuntan-settings.jpg"
+  ],
+  "ts": "2026-10-02T02:06:14.807Z"
+ },
+ "A13b": {
+  "status": "PASS",
+  "note": "AKUNTAN does not see 'Hapus klien' card",
+  "shots": [
+   "screenshots/A13-akuntan-client-settings.jpg"
+  ],
+  "ts": "2026-10-02T02:06:15.206Z"
+ },
+ "A14": {
+  "status": "PASS",
+  "note": "Disabled member is bounced on next request: http://localhost:3300/login",
+  "shots": [
+   "screenshots/A14-revoked-live-session.jpg"
+  ],
+  "ts": "2026-10-02T02:06:16.925Z"
+ },
+ "C01": {
+  "status": "PASS",
+  "note": "Empty save blocked: Isi nama klien. | Isi nama badan usaha. | ",
+  "shots": [
+   "screenshots/C01-empty-save.jpg"
+  ],
+  "ts": "2026-10-02T02:07:00.176Z"
+ },
+ "C02": {
+  "status": "PASS",
+  "note": "Whitespace-only client name rejected",
+  "shots": [],
+  "ts": "2026-10-02T02:07:02.307Z"
+ },
+ "C03": {
+  "status": "PASS",
+  "note": "Client name of 121 chars rejected: Nama klien maksimal 120 karakter. | ",
+  "shots": [],
+  "ts": "2026-10-02T02:07:04.482Z"
+ },
+ "C04a": {
+  "status": "PASS",
+  "note": "NPWP \"123\" -> rejected (NPWP berisi 15 atau 16 angka, boleh dengan titik dan strip. | ); expected reject",
+  "shots": [
+   "screenshots/C04a-npwp.jpg"
+  ],
+  "ts": "2026-10-02T02:07:06.741Z"
+ },
+ "C04b": {
+  "status": "PASS",
+  "note": "NPWP \"ABCDEFGHIJKLMNO\" -> rejected (NPWP berisi 15 atau 16 angka, boleh dengan titik dan strip. | ); expected reject",
+  "shots": [
+   "screenshots/C04b-npwp.jpg"
+  ],
+  "ts": "2026-10-02T02:07:09.059Z"
+ },
+ "C04c": {
+  "status": "FAIL",
+  "note": "NPWP \"1234567890123456789\" -> accepted; expected reject",
+  "shots": [
+   "screenshots/C04c-npwp.jpg"
+  ],
+  "ts": "2026-10-02T02:07:11.325Z"
+ },
+ "C04d": {
+  "status": "PASS",
+  "note": "NPWP \"01.234.567.8-015.000\" -> accepted; expected accept",
+  "shots": [
+   "screenshots/C04d-npwp.jpg"
+  ],
+  "ts": "2026-10-02T02:07:13.623Z"
+ },
+ "C04e": {
+  "status": "PASS",
+  "note": "NPWP \"0123456789012345\" -> accepted; expected accept",
+  "shots": [
+   "screenshots/C04e-npwp.jpg"
+  ],
+  "ts": "2026-10-02T02:07:15.991Z"
+ },
+ "C05a": {
+  "status": "PASS",
+  "note": "Account number \"123\" -> rejected (Nomor rekening berisi 6–20 angka. | )",
+  "shots": [
+   "screenshots/C05a-acct.jpg"
+  ],
+  "ts": "2026-10-02T02:07:18.373Z"
+ },
+ "C05b": {
+  "status": "PASS",
+  "note": "Account number \"ABC1234567\" -> rejected (Nomor rekening berisi 6–20 angka. | )",
+  "shots": [
+   "screenshots/C05b-acct.jpg"
+  ],
+  "ts": "2026-10-02T02:07:20.649Z"
+ },
+ "C05c": {
+  "status": "PASS",
+  "note": "Account number \"111111111111111111111\" -> rejected (Nomor rekening berisi 6–20 angka. | )",
+  "shots": [
+   "screenshots/C05c-acct.jpg"
+  ],
+  "ts": "2026-10-02T02:07:22.930Z"
+ },
+ "C05d": {
+  "status": "PASS",
+  "note": "Account number \"1234 5678 90\" -> accepted",
+  "shots": [
+   "screenshots/C05d-acct.jpg"
+  ],
+  "ts": "2026-10-02T02:07:25.215Z"
+ },
+ "C06": {
+  "status": "PASS",
+  "note": "Duplicate account number within form rejected",
+  "shots": [
+   "screenshots/C06-dup-in-form.jpg"
+  ],
+  "ts": "2026-10-02T02:07:27.544Z"
+ },
+ "C07": {
+  "status": "PASS",
+  "note": "Same account number allowed in a different firm (no cross-tenant leak)",
+  "shots": [
+   "screenshots/C07-cross-firm-account.jpg"
+  ],
+  "ts": "2026-10-02T02:07:29.909Z"
+ },
+ "C08": {
+  "status": "PASS",
+  "note": "HTML in client/entity name rendered inert (dialogs=0, injected imgs=0)",
+  "shots": [
+   "screenshots/C08-xss-name.jpg"
+  ],
+  "ts": "2026-10-02T02:07:33.386Z"
+ },
+ "C09a": {
+  "status": "PASS",
+  "note": "Client created in the right firm; landed on /clients/cmuqbp8ds00ccb87dm8f7lk1b/import",
+  "shots": [
+   "screenshots/C09-after-create.jpg"
+  ],
+  "ts": "2026-10-02T02:07:35.740Z"
+ },
+ "C09b": {
+  "status": "PASS",
+  "note": "Entity [{\"name\":\"PT Bintang Mulia Sejahtera\",\"kind\":\"PT\",\"fw\":\"SAK_EP\"}]; COA accounts=71; bank GL=[{\"number\":\"0012345678\",\"code\":\"1101\",\"name\":\"BCA Giro Utama (PT Bintang)\"}]",
+  "shots": [],
+  "ts": "2026-10-02T02:07:35.777Z"
+ },
+ "C09c": {
+  "status": "PASS",
+  "note": "First bank account gets GL 1101 (got 1101 BCA Giro Utama (PT Bintang))",
+  "shots": [],
+  "ts": "2026-10-02T02:07:35.778Z"
+ },
+ "E01": {
+  "status": "PASS",
+  "note": "F1 (5 rows incl. two identical same-day BIAYA ADM): +5 rows, net movement 22220000 (expected 22,220,000 inflow-outflow = -22,220,000? computed below). toast=5 transaksi diproses",
+  "shots": [
+   "screenshots/E01-import-F1.jpg"
+  ],
+  "ts": "2026-10-02T02:09:31.266Z"
+ },
+ "E01b": {
+  "status": "PASS",
+  "note": "Sum of imported signed amounts = 22220000, expected 22220000",
+  "shots": [],
+  "ts": "2026-10-02T02:09:31.267Z"
+ },
+ "E01c": {
+  "status": "PASS",
+  "note": "Identical same-day rows both kept (BIAYA ADM x2); a dedupe that collapses them would lose Rp 15.000 of bank fees",
+  "shots": [],
+  "ts": "2026-10-02T02:09:31.278Z"
+ },
+ "E02": {
+  "status": "PASS",
+  "note": "Re-upload adds no rows (rows 5->5); toast/page: 0 transaksi diproses",
+  "shots": [
+   "screenshots/E02-reupload-F1.jpg"
+  ],
+  "ts": "2026-10-02T02:09:35.479Z"
+ },
+ "E04": {
+  "status": "PASS",
+  "note": "Overlapping file adds only the 2 new rows (+2); identical rows not double counted",
+  "shots": [
+   "screenshots/E04-overlap.jpg"
+  ],
+  "ts": "2026-10-02T02:09:39.677Z"
+ },
+ "E05": {
+  "status": "PASS",
+  "note": "Wrong account number refused: Nomor rekening di file (9999999999) berbeda dengan rekening terpilih (7001002003).",
+  "shots": [
+   "screenshots/E05-wrong-account.jpg"
+  ],
+  "ts": "2026-10-02T02:09:43.843Z"
+ },
+ "E06": {
+  "status": "PASS",
+  "note": "Broken running balance flagged (continuityOk=false); page: Saldo berjalan dicek di setiap baris. Kalau ada baris yang hilang, hasilnya ditandai Ada celah.",
+  "shots": [
+   "screenshots/E06-continuity-gap.jpg"
+  ],
+  "ts": "2026-10-02T02:09:47.997Z"
+ },
+ "E07a": {
+  "status": "PASS",
+  "note": "F7a-empty.csv: no rows written, friendly error: \"Pilih file rekening koran (PDF, CSV, XLS, atau XLSX).\"",
+  "shots": [
+   "screenshots/E07a-F7a-empty.csv.jpg"
+  ],
+  "ts": "2026-10-02T02:09:52.092Z"
+ },
+ "E07b": {
+  "status": "PASS",
+  "note": "F7b-header-only.csv: no rows written, friendly error: \"File tidak berisi transaksi\"",
+  "shots": [
+   "screenshots/E07b-F7b-header-only.csv.jpg"
+  ],
+  "ts": "2026-10-02T02:09:56.141Z"
+ },
+ "E07c": {
+  "status": "PASS",
+  "note": "F7c-binary.csv: no rows written, friendly error: \"Kolom tanggal & keterangan tidak ditemukan. Pastikan baris judul kolom ada.\"",
+  "shots": [
+   "screenshots/E07c-F7c-binary.csv.jpg"
+  ],
+  "ts": "2026-10-02T02:10:00.281Z"
+ },
+ "E08": {
+  "status": "FAIL",
+  "note": "7.6 MB upload → HTTP 413 'Body exceeded 6mb limit' → whole page replaced by English 'This page couldn't load' (files 5–6 MB get the friendly message)",
+  "shots": [
+   "screenshots/E08-oversize.jpg"
+  ],
+  "ts": "2026-10-02T02:40:12.739Z"
+ },
+ "E09": {
+  "status": "PASS",
+  "note": "Indonesian format \"1.234.567,00\" parsed: [\"1234567\",\"-1000\",\"99999999\"] (expected 1234567, -1000, 99999999); page: 3 transaksi diproses",
+  "shots": [
+   "screenshots/E09-generic-id-format.jpg"
+  ],
+  "ts": "2026-10-02T02:10:08.497Z"
+ },
+ "E16": {
+  "status": "FAIL",
+  "note": "A single zero-amount row (0,00 debit and credit) makes the WHOLE statement fail with the cryptic internal message \"Jurnal minimal dua baris\" — nothing imported, no row reference",
+  "shots": [
+   "screenshots/E16-zero-amount-row.jpg"
+  ],
+  "ts": "2026-10-02T02:40:12.739Z"
+ },
+ "E18": {
+  "status": "FAIL",
+  "note": "A 20-digit amount is not caught by the parser: the import dies at the database (Prisma value out of range for bigint) and the user sees \"Terjadi kesalahan tak terduga\"",
+  "shots": [
+   "screenshots/E18-huge-amount.jpg"
+  ],
+  "ts": "2026-10-02T02:40:12.739Z"
+ },
+ "E13": {
+  "status": "PASS",
+  "note": "Hostile descriptions (formula =HYPERLINK, <script>, emoji/RTL, 3000 chars, DDE +cmd) imported +4 and rendered inert (dialogs=0); toast=4 transaksi diproses",
+  "shots": [
+   "screenshots/E13-hostile-descriptions.jpg",
+   "screenshots/E13-hostile-in-review.jpg"
+  ],
+  "ts": "2026-10-02T02:11:17.821Z"
+ },
+ "E13b": {
+  "status": "NOTE",
+  "note": "Formula-looking description stored verbatim (relevant only if a future export writes it as a cell; current exports are statements/tax workbooks)",
+  "shots": [],
+  "ts": "2026-10-02T02:11:17.833Z"
+ },
+ "E08-5.5": {
+  "status": "PASS",
+  "note": "5.5 MB upload -> \"File terlalu besar (maks. 5 MB).\"",
+  "shots": [
+   "screenshots/E08-5.5MB.jpg"
+  ],
+  "ts": "2026-10-02T02:40:12.739Z"
+ },
+ "E08-5.9": {
+  "status": "PASS",
+  "note": "5.9 MB upload -> \"File terlalu besar (maks. 5 MB).\"",
+  "shots": [
+   "screenshots/E08-5.9MB.jpg"
+  ],
+  "ts": "2026-10-02T02:11:27.198Z"
+ },
+ "E14": {
+  "status": "FAIL",
+  "note": "BEFORE FIX: two identical same-day rows in a statement without a running-balance column → whole import fails (unique index BankTransaction_bankAccountId_hash_key), user sees only \"Terjadi kesalahan tak terduga\" (reproduced; fixed in this PR, see E14-fixed)",
+  "shots": [
+   "screenshots/E14-twins-without-balance.jpg"
+  ],
+  "ts": "2026-10-02T02:40:12.739Z"
+ },
+ "E15": {
+  "status": "FAIL",
+  "note": "Newest-first export (true opening 100,000,000 / closing 103,500,000): stored opening=100500000 closing=101000000 continuityOk=false period=2026-09-01..2026-09-30; page said: Ada celah",
+  "shots": [
+   "screenshots/E15-newest-first-clean.jpg"
+  ],
+  "ts": "2026-10-02T02:13:17.495Z"
+ },
+ "E17": {
+  "status": "NOTE",
+  "note": "Ambiguous date 10/02/2026 read as 2026-02-10 (D/M/Y assumed — correct for Indonesian banks, but a US-format file is silently misdated; no warning shown)",
+  "shots": [
+   "screenshots/E17-us-date-ambiguity.jpg"
+  ],
+  "ts": "2026-10-02T02:11:45.833Z"
+ },
+ "E12": {
+  "status": "FAIL",
+  "note": "XLSX with ISO date cells (t=\"d\", as written by SheetJS cellDates / many web exporters): stored dates = [\"1905-07-18\",\"1905-07-18\"] (expected 2026-10-02, 2026-10-05); toast=\"2 transaksi diproses\"",
+  "shots": [
+   "screenshots/E12-sheetjs-date-cells.jpg"
+  ],
+  "ts": "2026-10-02T02:13:03.543Z"
+ },
+ "E12b": {
+  "status": "PASS",
+  "note": "Standard Excel date cells: [\"2026-10-02\",\"2026-10-05\"]",
+  "shots": [
+   "screenshots/E12b-standard-excel-dates.jpg"
+  ],
+  "ts": "2026-10-02T02:13:08.246Z"
+ },
+ "E15b": {
+  "status": "NOTE",
+  "note": "Saldo Awal prefilled from the (mis-read) opening balance: Rp 100.500.000",
+  "shots": [
+   "screenshots/E15b-opening-prefill-from-desc.jpg"
+  ],
+  "ts": "2026-10-02T02:13:18.881Z"
+ },
+ "G1": {
+  "status": "PASS",
+  "note": "Prive: [\"1999 D7250000 K0\",\"1103 D0 K7250000\",\"1999 D0 K7250000\",\"3300 D7250000 K0\"]",
+  "shots": [
+   "screenshots/G1-after-prive.jpg"
+  ],
+  "ts": "2026-10-02T02:14:52.881Z"
+ },
+ "G2": {
+  "status": "PASS",
+  "note": "Aset tetap w/ PPN masukan 11%: expected DPP 166666667 (1210) + PPN 18333333 (1150); got [\"1999 D185000000 K0\",\"1101 D0 K185000000\",\"1999 D0 K185000000\",\"1210 D166666667 K0\",\"1150 D18333333 K0\"]",
+  "shots": [
+   "screenshots/G2-after.jpg"
+  ],
+  "ts": "2026-10-02T02:14:55.152Z"
+ },
+ "G3": {
+  "status": "PASS",
+  "note": "Jasa konsultan, PPh 23 2% + PPN 11%, net 15.000.000: expected DPP≈13761467.89 PPN≈1513761.47 PPh≈275229.36; got {\"dpp\":\"13761468\",\"ppn\":\"1513761\",\"wht\":\"275229\",\"bank\":\"15000000\"} lines=[\"1999 D15000000 K0\",\"1101 D0 K15000000\",\"1999 D0 K15000000\",\"6170 D13761468 K0\",\"1150 D1513761 K0\",\"2141 D0 K275229\"]",
+  "shots": [
+   "screenshots/G3-after.jpg"
+  ],
+  "ts": "2026-10-02T02:14:57.904Z"
+ },
+ "G3b": {
+  "status": "PASS",
+  "note": "PPh 23 default rate prefill = \"2\" (jasa: 2%)",
+  "shots": [],
+  "ts": "2026-10-02T02:14:57.904Z"
+ },
+ "G4": {
+  "status": "PASS",
+  "note": "Penerimaan net PPh23 (1180 prepaid) + PPN keluaran: expected DPP≈55045871.56; got [\"1999 D0 K60000000\",\"1102 D60000000 K0\",\"1999 D60000000 K0\",\"4100 D0 K55045871\",\"2130 D0 K6055046\",\"1180 D1100917 K0\"]",
+  "shots": [
+   "screenshots/G4-after.jpg"
+  ],
+  "ts": "2026-10-02T02:15:00.526Z"
+ },
+ "G5": {
+  "status": "PASS",
+  "note": "Queue shrinks by accepted items: 4 -> 0",
+  "shots": [
+   "screenshots/G5-queue-after.jpg"
+  ],
+  "ts": "2026-10-02T02:15:00.573Z"
+ },
+ "I-TB-CVSinarRetail-2026-08": {
+  "status": "PASS",
+  "note": "CV Sinar Retail 2026-08: 11 accounts compared with SQL oracle, ΣDebit=1671270000 ΣKredit=1671270000",
+  "shots": [
+   "screenshots/I-TB-CVSinarRetail-2026-08.jpg"
+  ],
+  "ts": "2026-10-02T02:16:01.102Z"
+ },
+ "I-TB-CVSinarRetail-2026-06": {
+  "status": "PASS",
+  "note": "CV Sinar Retail 2026-06: 10 accounts compared with SQL oracle, ΣDebit=1173200000 ΣKredit=1173200000",
+  "shots": [
+   "screenshots/I-TB-CVSinarRetail-2026-06.jpg"
+  ],
+  "ts": "2026-10-02T02:16:01.936Z"
+ },
+ "I-TB-CVSinarRetail-2026-03": {
+  "status": "PASS",
+  "note": "CV Sinar Retail 2026-03: 11 accounts compared with SQL oracle, ΣDebit=480790000 ΣKredit=480790000",
+  "shots": [
+   "screenshots/I-TB-CVSinarRetail-2026-03.jpg"
+  ],
+  "ts": "2026-10-02T02:16:02.755Z"
+ },
+ "I-TB-PTJasaKreatifD-2026-08": {
+  "status": "PASS",
+  "note": "PT Jasa Kreatif Digital 2026-08: 11 accounts compared with SQL oracle, ΣDebit=1376150000 ΣKredit=1376150000",
+  "shots": [
+   "screenshots/I-TB-PTJasaKreatifD-2026-08.jpg"
+  ],
+  "ts": "2026-10-02T02:16:03.584Z"
+ },
+ "I-TB-PTJasaKreatifD-2026-05": {
+  "status": "PASS",
+  "note": "PT Jasa Kreatif Digital 2026-05: 11 accounts compared with SQL oracle, ΣDebit=946450000 ΣKredit=946450000",
+  "shots": [
+   "screenshots/I-TB-PTJasaKreatifD-2026-05.jpg"
+  ],
+  "ts": "2026-10-02T02:16:04.410Z"
+ },
+ "I-TB-PTAyamNusantar-2026-08": {
+  "status": "PASS",
+  "note": "PT Ayam Nusantara Digital 2026-08: 32 accounts compared with SQL oracle, ΣDebit=12995126146 ΣKredit=12995126146",
+  "shots": [
+   "screenshots/I-TB-PTAyamNusantar-2026-08.jpg"
+  ],
+  "ts": "2026-10-02T02:16:05.338Z"
+ },
+ "I-TB-PTAyamNusantar-2026-04": {
+  "status": "PASS",
+  "note": "PT Ayam Nusantara Digital 2026-04: 28 accounts compared with SQL oracle, ΣDebit=6680800000 ΣKredit=6680800000",
+  "shots": [
+   "screenshots/I-TB-PTAyamNusantar-2026-04.jpg"
+  ],
+  "ts": "2026-10-02T02:16:06.247Z"
+ },
+ "I-TB-BudiSantoso-2026-08": {
+  "status": "PASS",
+  "note": "Budi Santoso 2026-08: 8 accounts compared with SQL oracle, ΣDebit=411270000 ΣKredit=411270000",
+  "shots": [
+   "screenshots/I-TB-BudiSantoso-2026-08.jpg"
+  ],
+  "ts": "2026-10-02T02:16:07.089Z"
+ },
+ "I-PL-CV": {
+  "status": "PASS",
+  "note": "Laba bersih Aug: ui=63.155.000 sql=63155000; YTD: ui=277.630.000 sql=277630000",
+  "shots": [
+   "screenshots/I-PL-CV-Aug.jpg"
+  ],
+  "ts": "2026-10-02T02:16:08.256Z"
+ },
+ "I-BS-CV": {
+  "status": "PASS",
+  "note": "Neraca: Total aset 517.630.000 = Total liabilitas & ekuitas 517.630.000; badge Seimbang=true",
+  "shots": [
+   "screenshots/I-BS-CV-Aug.jpg"
+  ],
+  "ts": "2026-10-02T02:16:09.375Z"
+ },
+ "J1": {
+  "status": "PASS",
+  "note": "Lock disabled while controls need notes / checklist unticked / review pending: • 6 kontrol perlu dicek dan diberi catatan | • 3 checklist belum dicentang",
+  "shots": [
+   "screenshots/J1-lock-disabled.jpg"
+  ],
+  "ts": "2026-10-02T02:17:06.243Z"
+ },
+ "J2": {
+  "status": "PASS",
+  "note": "Sample BRI statement imported (live-upload moment): 5 transaksi diproses",
+  "shots": [
+   "screenshots/J2-sample-import.jpg"
+  ],
+  "ts": "2026-10-02T02:17:10.955Z"
+ },
+ "J2b": {
+  "status": "PASS",
+  "note": "Apotek Kimia Farma row present once (1)",
+  "shots": [],
+  "ts": "2026-10-02T02:17:10.967Z"
+ },
+ "J3": {
+  "status": "PASS",
+  "note": "Review queue cleared (0 left)",
+  "shots": [
+   "screenshots/J3-review-cleared.jpg"
+  ],
+  "ts": "2026-10-02T02:17:13.702Z"
+ },
+ "J4": {
+  "status": "PASS",
+  "note": "Depreciation instalment 6180 Dr / 1219 Cr Rp 9.500.000 posted from 'Catat' (stored as kind ADJUSTMENT; earlier FAIL was a wrong filter in my test query)",
+  "shots": [],
+  "ts": "2026-10-02T02:18:35.199Z"
+ },
+ "J5a": {
+  "status": "NOTE",
+  "note": "2 controls need a note",
+  "shots": [
+   "screenshots/J5-controls-need-notes.jpg"
+  ],
+  "ts": "2026-10-02T02:17:18.016Z"
+ },
+ "J5": {
+  "status": "PASS",
+  "note": "4-char note refused: \"Tulis catatan singkat (min. 5 karakter).\"",
+  "shots": [
+   "screenshots/J5-note-too-short.jpg"
+  ],
+  "ts": "2026-10-02T02:17:19.432Z"
+ },
+ "J5b": {
+  "status": "PASS",
+  "note": "All REVIEW controls acknowledged (remaining 0)",
+  "shots": [
+   "screenshots/J5-controls-noted.jpg"
+  ],
+  "ts": "2026-10-02T02:17:22.878Z"
+ },
+ "J5c": {
+  "status": "PASS",
+  "note": "FAIL controls remaining: 0",
+  "shots": [],
+  "ts": "2026-10-02T02:17:22.882Z"
+ },
+ "J6": {
+  "status": "PASS",
+  "note": "Lock stays disabled until sign-off checklist ticked",
+  "shots": [
+   "screenshots/J6-before-signoff.jpg"
+  ],
+  "ts": "2026-10-02T02:17:23.034Z"
+ },
+ "J7": {
+  "status": "PASS",
+  "note": "Sign-offs persist after reload (3 ticked)",
+  "shots": [
+   "screenshots/J7-signoffs.jpg"
+  ],
+  "ts": "2026-10-02T02:17:27.402Z"
+ },
+ "J8": {
+  "status": "PASS",
+  "note": "Aug 2026 lock -> Period.status=LOCKED; blockers seen: ; toast: Buku Agustus 2026 ditutup",
+  "shots": [
+   "screenshots/J8-locked.jpg"
+  ],
+  "ts": "2026-10-02T02:17:30.367Z"
+ },
+ "J8b": {
+  "status": "PASS",
+  "note": "Lock attribution recorded (lockedBy set=true)",
+  "shots": [],
+  "ts": "2026-10-02T02:17:30.377Z"
+ },
+ "L1": {
+  "status": "PASS",
+  "note": "PV of 24 × Rp 5.000.000 monthly in arrears @12% = Rp 106.216.936, equal to independent exact-rational calculation; liability after 1st payment 102.279.106 (=106.216.936×1,01−5.000.000); current/non-current split shown",
+  "shots": [
+   "screenshots/L1-lease-registered.jpg"
+  ],
+  "ts": "2026-10-02T02:24:18.763Z"
+ },
+ "L2": {
+  "status": "NOTE",
+  "note": "Aug lease journal lines [\"1239 D0 K4425705\",\"2170 D0 K5499416\",\"2400 D4437246 K0\",\"6181 D4425705 K0\",\"7195 D1062170 K0\"]; oracle interest=1062169 (7195) ; depreciation≈4425706 (6181)",
+  "shots": [
+   "screenshots/L2-lease-journal-posted.jpg"
+  ],
+  "ts": "2026-10-02T02:24:21.766Z"
+ },
+ "U1": {
+  "status": "PASS",
+  "note": "AKUNTAN cannot reopen: unlock button visible=false; response=\"\"; period still LOCKED",
+  "shots": [
+   "screenshots/U1-akuntan-unlock.jpg"
+  ],
+  "ts": "2026-10-02T02:17:38.830Z"
+ },
+ "L2b": {
+  "status": "PASS",
+  "note": "Wrong-account upload is refused with a one-click 'Pakai rekening …' switch (E05-style guard works for combined groups)",
+  "shots": [],
+  "ts": "2026-10-02T02:18:42.902Z"
+ },
+ "U2": {
+  "status": "PASS",
+  "note": "Reopen confirm button disabled for a 4-char reason (disabled=true)",
+  "shots": [
+   "screenshots/U2-reason-too-short.jpg"
+  ],
+  "ts": "2026-10-02T02:18:45.000Z"
+ },
+ "U3": {
+  "status": "PASS",
+  "note": "ADMIN reopen with reason: status=OPEN; unlock log kept; sign-offs cleared (left 0)",
+  "shots": [
+   "screenshots/U2-reason-too-short.jpg"
+  ],
+  "ts": "2026-10-02T02:18:59.069Z"
+ },
+ "O1": {
+  "status": "PASS",
+  "note": "Saldo Awal 31-Dec-2025 (Dr 210M, Cr 185M): unbalanced remainder plugged to 3200 Saldo Laba = 25000000; ΣD=210000000 ΣK=210000000; UI hint: Selisih debit dan kredit otomatis masuk ke 3200 Saldo Laba. / 3200 Saldo Laba · penyeimbang otomatis\t–\t25.000.000\t; lines=[\"1101 D100000000 K0\",\"1130 D20000000 K0\",\"1160 D30000000 K0\",\"1210 D60000000 K0\",\"1219 D0 K10000000\",\"2110 D0 K25000000\",\"3100 D0 K150000000\",\"3200 D0 K25000000\"]",
+  "shots": [
+   "screenshots/O1-opening-posted.jpg"
+  ],
+  "ts": "2026-10-02T02:25:46.625Z"
+ },
+ "K1": {
+  "status": "PASS",
+  "note": "Unbalanced journal blocked in UI (Simpan disabled=true); pill: Selisih Rp 100.000",
+  "shots": [
+   "screenshots/K1-unbalanced.jpg"
+  ],
+  "ts": "2026-10-02T02:19:36.971Z"
+ },
+ "K2": {
+  "status": "FAIL",
+  "note": "Typing \"250,000\" (Western thousands, very common from Excel/English keyboards): field re-displays \"250\", save enabled=true, posted amount=250 (expected Rp 250.000 or a rejection, never Rp 250)",
+  "shots": [
+   "screenshots/K2-western-separators.jpg"
+  ],
+  "ts": "2026-10-02T02:19:39.605Z"
+ },
+ "K3": {
+  "status": "PASS",
+  "note": "Manual journal Dr 6190 / Cr 2150: [\"2150 D0 K1250000\",\"6190 D1250000 K0\"]; toast Jurnal penyesuaian tersimpan",
+  "shots": [
+   "screenshots/K3-journal-saved.jpg"
+  ],
+  "ts": "2026-10-02T02:19:42.238Z"
+ },
+ "K4": {
+  "status": "PASS",
+  "note": "Decimal Rupiah rejected inline: Rupiah tidak memakai angka desimal: \"1000,5\".",
+  "shots": [
+   "screenshots/K4-decimal-rupiah.jpg"
+  ],
+  "ts": "2026-10-02T02:19:43.538Z"
+ },
+ "K5": {
+  "status": "PASS",
+  "note": "Negative amounts: save enabled=false, rows written=0 []; toast ",
+  "shots": [
+   "screenshots/K5-negative.jpg"
+  ],
+  "ts": "2026-10-02T02:19:44.702Z"
+ },
+ "K6": {
+  "status": "NOTE",
+  "note": "Same account on both sides: ACCEPTED and posted (zero-effect journal)",
+  "shots": [
+   "screenshots/K6-same-account.jpg"
+  ],
+  "ts": "2026-10-02T02:19:46.956Z"
+ },
+ "K7": {
+  "status": "FAIL",
+  "note": "20-digit journal amount: enabled=true; message=\"Terjadi kesalahan tak terduga. Coba lagi.\"",
+  "shots": [
+   "screenshots/K7-huge-journal.jpg"
+  ],
+  "ts": "2026-10-02T02:19:49.522Z"
+ },
+ "K8": {
+  "status": "PASS",
+  "note": "Balik jurnal creates a mirrored entry (6190 Cr / 2150 Dr 1.250.000) dated 2026-01-31; toast=Jurnal pembalik dicatat",
+  "shots": [
+   "screenshots/K8-after-reverse.jpg"
+  ],
+  "ts": "2026-10-02T02:20:32.634Z"
+ },
+ "K9": {
+  "status": "FAIL",
+  "note": "88 malformed-parameter requests: /?period=2026-13 -> 200 undefined 2026 | /?period=2026-00 -> 200 undefined 2026 | /reports?period=2026-13 -> 200 undefined 2026 | /reports?period=2026-00 -> 200 undefined 2026 | /trial-balance?period=2026-13 -> 200 undefined 2026 | /trial-balance?period=2026-00 -> 200 undefined 2026 | /close?period=2026-13 -> 200 undefined 2026 | /close?period=2026-00 -> 200 undefined 2026",
+  "shots": [
+   "screenshots/K9-last-fuzz-page.jpg"
+  ],
+  "ts": "2026-10-02T02:20:13.185Z"
+ },
+ "K8b": {
+  "status": "PASS",
+  "note": "A journal can be reversed only once (second attempt blocked)",
+  "shots": [
+   "screenshots/K8b-second-reverse.jpg"
+  ],
+  "ts": "2026-10-02T02:20:33.973Z"
+ },
+ "M1": {
+  "status": "PASS",
+  "note": "Faktur penjualan: PPN prefilled \"1.100.000\"; journal [\"1130 D11100000 K0\",\"2130 D0 K1100000\",\"4100 D0 K10000000\"]",
+  "shots": [
+   "screenshots/M1-invoice-saved.jpg"
+  ],
+  "ts": "2026-10-02T02:21:15.053Z"
+ },
+ "M2": {
+  "status": "PASS",
+  "note": "PPN of 1.234.567: prefill \"135.802\" journal [\"1130 D1370369 K0\",\"2130 D0 K135802\",\"4100 D0 K1234567\"] (exact 135.802,37)",
+  "shots": [],
+  "ts": "2026-10-02T02:21:17.550Z"
+ },
+ "M3": {
+  "status": "PASS",
+  "note": "Duplicate invoice number refused (count 1): \"Nomor INV-QA-001 sudah dipakai untuk faktur lain entitas ini.\"",
+  "shots": [
+   "screenshots/M3-duplicate-number.jpg"
+  ],
+  "ts": "2026-10-02T02:21:20.252Z"
+ },
+ "M4": {
+  "status": "PASS",
+  "note": "Due date before issue date refused: enabled=true; \"Jatuh tempo tidak boleh sebelum tanggal faktur.\"",
+  "shots": [
+   "screenshots/M4-due-before-issue.jpg"
+  ],
+  "ts": "2026-10-02T02:21:22.954Z"
+ },
+ "M5": {
+  "status": "PASS",
+  "note": "Invoice dated in a locked month refused: \"Periode Juni 2026 sudah ditutup\"",
+  "shots": [
+   "screenshots/M5-invoice-locked-month.jpg"
+  ],
+  "ts": "2026-10-02T02:21:25.624Z"
+ },
+ "M6": {
+  "status": "PASS",
+  "note": "PPh 23 2% on DPP 20.000.000: {\"dpp\":\"20000000\",\"ppn\":\"2200000\",\"total\":\"22200000\",\"whtKind\":\"PPH_23\",\"w\":\"400000\"}; receivable booked gross (expected 1130 Dr 22.200.000, WHT 400.000 recorded for settlement)",
+  "shots": [
+   "screenshots/M6-invoice-wht.jpg"
+  ],
+  "ts": "2026-10-02T02:21:28.799Z"
+ },
+ "M7": {
+  "status": "NOTE",
+  "note": "Aging card text: Umur piutang · CV Sinar Sisa per pelanggan menurut hari lewat jatuh tempo (rinciannya di layar lebar). Cocok dengan buku besar PELANGGAN BELUM JATUH TEMPO 1–30 HARI 31–60 HARI 61–90 HARI > 90 HARI JUMLAH PT Pelanggan Uji · 3 faktur 33.300.000 1.370.369 – – – 34.670.369 Jumlah 33.300.000 1.370.369 – ",
+  "shots": [
+   "screenshots/M7-aging.jpg"
+  ],
+  "ts": "2026-10-02T02:21:30.320Z"
+ },
+ "M8": {
+  "status": "PASS",
+  "note": "Bank-line candidate suggested by amount+name: TRSF E-BANKING CR 2308/FTSCY/WS925952 PT KOPERASI PEGAWAI PEMDA BELANJA GROSIR 23 Agu 2026 · sisa Rp 14.300.000 · nominal sama · nama/nomor cocok · akan diklasi",
+  "shots": [
+   "screenshots/M8-settle-candidates.jpg"
+  ],
+  "ts": "2026-10-02T02:21:52.682Z"
+ },
+ "M9": {
+  "status": "PASS",
+  "note": "Settlement: bank line -> {\"status\":\"REVIEWED\",\"accountCode\":\"1130\"}; 1130 balance 48970369 -> 34670369 (expected -14.300.000); invoice {}; toast INV-QA-008 dicocokkan dengan penerimaan 23 Agu 2026",
+  "shots": [
+   "screenshots/M9-settled.jpg"
+  ],
+  "ts": "2026-10-02T02:21:55.200Z"
+ },
+ "M10": {
+  "status": "PASS",
+  "note": "Settled invoice moves to the paid list",
+  "shots": [
+   "screenshots/M10-paid-list.jpg"
+  ],
+  "ts": "2026-10-02T02:21:55.368Z"
+ },
+ "N1": {
+  "status": "PASS",
+  "note": "Register Laptop QA 12.000.000: book life prefilled \"48\" months (Kelompok 1 = 4 yrs → 48); schedule [{\"months\":48,\"amt\":\"12000000\",\"startMonth\":9}]; toast Laptop QA terdaftar",
+  "shots": [
+   "screenshots/N1-asset-registered.jpg"
+  ],
+  "ts": "2026-10-02T02:22:30.262Z"
+ },
+ "N3": {
+  "status": "NOTE",
+  "note": "Mesin QA (Kel.2, saldo menurun) enabled=true; toast=April 2026 sudah dikunci, jadi cicilan di bulan itu tidak bisa dicatat. Buka kunci bulan itu atau mulai jadwal setelahnya.",
+  "shots": [
+   "screenshots/N3-mesin-registered.jpg"
+  ],
+  "ts": "2026-10-02T02:22:34.858Z"
+ },
+ "N5a": {
+  "status": "PASS",
+  "note": "Zero cost is refused by the server with \"Harga perolehan harus lebih dari nol.\" (button enabled; validated on save)",
+  "shots": [],
+  "ts": "2026-10-02T02:22:37.647Z"
+ },
+ "N5b": {
+  "status": "PASS",
+  "note": "Residual > cost refused: \"Nilai sisa harus nol atau lebih, dan kurang dari harga perolehan.\"",
+  "shots": [
+   "screenshots/N5b-residual-gt-cost.jpg"
+  ],
+  "ts": "2026-10-02T02:22:40.622Z"
+ },
+ "N5c": {
+  "status": "PASS",
+  "note": "Cost typed \"5,000,000\": [] (the Western-separator misread, see K2)",
+  "shots": [
+   "screenshots/N5c-western-cost.jpg"
+  ],
+  "ts": "2026-10-02T02:22:43.686Z"
+ },
+ "T1": {
+  "status": "PASS",
+  "note": "Pasal 31E partial: facility PKP = PKP×4,8M/turnover = 716658532 (app 716.658.532); 11% → 78832438; rest 603120468 ×22% → 132686502; total 211518940 (app 211.518.940)",
+  "shots": [
+   "screenshots/crawl/GrupAyamNusantara_tax.jpg"
+  ],
+  "ts": "2026-10-02T02:23:21.561Z"
+ },
+ "T2": {
+  "status": "PASS",
+  "note": "PP 55/2022 final 0,5% of turnover 1469487450 = 7347437 (floor); page contains \"7.347.437\": true",
+  "shots": [
+   "screenshots/T2-final-regime-pp55.jpg"
+  ],
+  "ts": "2026-10-02T02:23:38.362Z"
+ },
+ "T2b": {
+  "status": "PASS",
+  "note": "Switching back to Normal restores Pasal 17/31E computation",
+  "shots": [
+   "screenshots/T2b-normal-restored.jpg"
+  ],
+  "ts": "2026-10-02T02:23:40.449Z"
+ },
+ "L3": {
+  "status": "PASS",
+  "note": "After posting the monthly journal, register vs ledger differs by exactly Rp 5.000.000 (Aug rent not yet paid from the bank); the app flags it and tells the accountant to classify the payment to 2170 — correct behaviour",
+  "shots": [
+   "screenshots/L3-register-vs-ledger.jpg"
+  ],
+  "ts": "2026-10-02T02:24:21.849Z"
+ },
+ "O2": {
+  "status": "PASS",
+  "note": "Opening cannot be entered twice: (form still shown)",
+  "shots": [
+   "screenshots/O2-opening-twice.jpg"
+  ],
+  "ts": "2026-10-02T02:25:47.807Z"
+ },
+ "P1": {
+  "status": "PASS",
+  "note": "Stock opname 100.000.000 vs book 95000000: [\"1160 D5000000 K0\",\"5190 D0 K5000000\"]; toast Persediaan akhir CV Sinar dicatat; selisih Rp 5.000.000 dijurnal ke 5190",
+  "shots": [
+   "screenshots/P1-inventory-counted.jpg"
+  ],
+  "ts": "2026-10-02T02:25:52.363Z"
+ },
+ "P2": {
+  "status": "PASS",
+  "note": "HPP Aug = pembelian 158.600.000 − kenaikan persediaan 5.000.000 = 153.600.000; page: Beban pokok pendapatan\t153.600.000\t921.550.000",
+  "shots": [
+   "screenshots/P2-hpp-after-count.jpg"
+  ],
+  "ts": "2026-10-02T02:25:53.773Z"
+ },
+ "P3": {
+  "status": "PASS",
+  "note": "Negative stock count: server answer \"Nilai persediaan tidak boleh negatif.\"",
+  "shots": [
+   "screenshots/P3-negative-stock.jpg"
+  ],
+  "ts": "2026-10-02T02:26:04.112Z"
+ },
+ "Q1": {
+  "status": "PASS",
+  "note": "Client with an IDR entity and a USD foreign entity created: /clients/cmuqcdewh00w8b87dmd3dhdbm/import Grup Valas Uji ditambahkan",
+  "shots": [
+   "screenshots/Q1-valas-client-created.jpg"
+  ],
+  "ts": "2026-10-02T02:26:24.660Z"
+ },
+ "Q3a": {
+  "status": "NOTE",
+  "note": "USD→IDR typed \"16.250,50\" -> toast \"Kurs USD→IDR disimpan\"; last stored: {\"id\":\"cmuqcdic300ydb87dv58oc8uj\",\"firmId\":\"firm_qa_b\",\"currency\":\"USD\",\"quote\":\"IDR\",\"date\":\"2026-08-11T00:00:00.000Z\",\"kind\":\"SPOT\",\"rate\":\"16250.5\",\"source\":\"MANUAL\",\"note\":null,\"createdAt\":\"2026-10-02T02:26:26.451Z\"}",
+  "shots": [
+   "screenshots/Q3a-rate.jpg"
+  ],
+  "ts": "2026-10-02T02:26:28.037Z"
+ },
+ "Q3b": {
+  "status": "NOTE",
+  "note": "USD→IDR typed \"16250.50\" -> toast \"Kurs USD→IDR disimpan\"; last stored: {\"id\":\"cmuqcdjxe00yeb87djkydhrhf\",\"firmId\":\"firm_qa_b\",\"currency\":\"USD\",\"quote\":\"IDR\",\"date\":\"2026-08-12T00:00:00.000Z\",\"kind\":\"SPOT\",\"rate\":\"16250.5\",\"source\":\"MANUAL\",\"note\":null,\"createdAt\":\"2026-10-02T02:26:28.514Z\"}",
+  "shots": [
+   "screenshots/Q3b-rate.jpg"
+  ],
+  "ts": "2026-10-02T02:26:30.087Z"
+ },
+ "Q3c": {
+  "status": "NOTE",
+  "note": "USD→IDR typed \"16.250\" -> toast \"Kurs USD→IDR disimpan\"; last stored: {\"id\":\"cmuqcdlia00yfb87dx14wxciw\",\"firmId\":\"firm_qa_b\",\"currency\":\"USD\",\"quote\":\"IDR\",\"date\":\"2026-08-13T00:00:00.000Z\",\"kind\":\"SPOT\",\"rate\":\"16250\",\"source\":\"MANUAL\",\"note\":null,\"createdAt\":\"2026-10-02T02:26:30.562Z\"}",
+  "shots": [
+   "screenshots/Q3c-rate.jpg"
+  ],
+  "ts": "2026-10-02T02:26:32.140Z"
+ },
+ "Q3d": {
+  "status": "NOTE",
+  "note": "USD→IDR typed \"-5\" -> toast \"Kurs harus angka positif, mis. \"11.250\" atau \"1.31\".\"; last stored: {\"id\":\"cmuqcdlia00yfb87dx14wxciw\",\"firmId\":\"firm_qa_b\",\"currency\":\"USD\",\"quote\":\"IDR\",\"date\":\"2026-08-13T00:00:00.000Z\",\"kind\":\"SPOT\",\"rate\":\"16250\",\"source\":\"MANUAL\",\"note\":null,\"createdAt\":\"2026-10-02T02:26:30.562Z\"}",
+  "shots": [
+   "screenshots/Q3d-rate.jpg"
+  ],
+  "ts": "2026-10-02T02:26:34.088Z"
+ },
+ "Q3e": {
+  "status": "NOTE",
+  "note": "USD→IDR typed \"0\" -> toast \"Kurs harus angka positif, mis. \"11.250\" atau \"1.31\".\"; last stored: {\"id\":\"cmuqcdlia00yfb87dx14wxciw\",\"firmId\":\"firm_qa_b\",\"currency\":\"USD\",\"quote\":\"IDR\",\"date\":\"2026-08-13T00:00:00.000Z\",\"kind\":\"SPOT\",\"rate\":\"16250\",\"source\":\"MANUAL\",\"note\":null,\"createdAt\":\"2026-10-02T02:26:30.562Z\"}",
+  "shots": [
+   "screenshots/Q3e-rate.jpg"
+  ],
+  "ts": "2026-10-02T02:26:36.139Z"
+ },
+ "Q3f": {
+  "status": "NOTE",
+  "note": "USD→IDR typed \"abc\" -> toast \"Kurs harus angka positif, mis. \"11.250\" atau \"1.31\".\"; last stored: {\"id\":\"cmuqcdlia00yfb87dx14wxciw\",\"firmId\":\"firm_qa_b\",\"currency\":\"USD\",\"quote\":\"IDR\",\"date\":\"2026-08-13T00:00:00.000Z\",\"kind\":\"SPOT\",\"rate\":\"16250\",\"source\":\"MANUAL\",\"note\":null,\"createdAt\":\"2026-10-02T02:26:30.562Z\"}",
+  "shots": [
+   "screenshots/Q3f-rate.jpg"
+  ],
+  "ts": "2026-10-02T02:26:38.205Z"
+ },
+ "Q4": {
+  "status": "FAIL",
+  "note": "SGD→USD typed \"0.745\" (a real cross rate): toast \"Kurs SGD→USD disimpan\"; stored {\"c\":\"SGD\",\"q\":\"USD\",\"r\":\"745\"} (expected 0.745)",
+  "shots": [
+   "screenshots/Q4-cross-rate-0.745.jpg"
+  ],
+  "ts": "2026-10-02T02:26:49.563Z"
+ },
+ "R1": {
+  "status": "PASS",
+  "note": "Tanya Buku \"laba tiap perusahaan\" vs SQL: Budi Santoso=45.000; CV Sinar Retail=106.784.575; PT Ayam Nusantara Digital=202.468.412; PT Jasa Kreatif Digital=16.940.653; not found in answer: none",
+  "shots": [
+   "screenshots/R1-tanya-laba.jpg"
+  ],
+  "ts": "2026-10-02T02:28:09.528Z"
+ },
+ "R2": {
+  "status": "PASS",
+  "note": "Unsupported question answered with a limit notice: Pertanyaan ini belum didukung. Coba kesiapan tutup buku, laba, saldo kas, transfer ke/dari nama tertentu, transaksi yang perlu ditanyakan ke klien, pr",
+  "shots": [
+   "screenshots/R2-tanya-unsupported.jpg"
+  ],
+  "ts": "2026-10-02T02:28:14.018Z"
+ },
+ "R3": {
+  "status": "PASS",
+  "note": "HTML in question rendered inert (dialogs=0, imgs=0)",
+  "shots": [
+   "screenshots/R3-tanya-xss.jpg"
+  ],
+  "ts": "2026-10-02T02:28:18.562Z"
+ },
+ "R4": {
+  "status": "NOTE",
+  "note": "2001-char question: button enabled=true; message ",
+  "shots": [
+   "screenshots/R4-tanya-too-long.jpg"
+  ],
+  "ts": "2026-10-02T02:28:21.064Z"
+ },
+ "R5": {
+  "status": "PASS",
+  "note": "Close-readiness answer names clients",
+  "shots": [
+   "screenshots/R5-tanya-close.jpg"
+  ],
+  "ts": "2026-10-02T02:28:25.449Z"
+ },
+ "V1": {
+  "status": "PASS",
+  "note": "Ledger file checks flag problems with row refs: {\"unbalanced\":true,\"broken\":true,\"reused\":true}; excerpt: 1. Pemeriksaan file | Aturan tetap, bukan AI. Setiap temuan menunjuk ke baris di file (GL!baris). | Harus diselesaikan | GL!6: debit bukan angka: \"abc\" | GL!6 | Harus diselesaikan | Jurnal PT Migrasi Uji Sejahtera 9 Jan 2026 tidak seimbang: selisih Rp 100.000 (debit > kredit). Terima untuk mencatat selisihnya di 1999 Belum Terklasifikasi. | GL!4, GL!5 | Terima & catat selisih ke 1999 | Harus diselesaikan | Jurnal PT Migrasi Uji Sejahtera 12 Jan 2026 tidak seimbang: selisih -Rp 250.000 (debit < kredit). Terima untuk mencatat selisihnya di 1999 Belum Terklasifikasi. | GL!7 | Terima & catat selis",
+  "shots": [
+   "screenshots/V1-ledger-import-checks.jpg"
+  ],
+  "ts": "2026-10-02T02:29:02.790Z"
+ },
+ "V2": {
+  "status": "PASS",
+  "note": "Nothing posted from a flawed file (journals=0); post button enabled=false",
+  "shots": [
+   "screenshots/V2-post-blocked.jpg"
+  ],
+  "ts": "2026-10-02T02:29:03.119Z"
+ },
+ "X1": {
+  "status": "PASS",
+  "note": "Financial statements export: 200 application/vnd.openxmlformats-officedocument.spreadsheetml.sheet; attachment; filename=\"laporan-keuangan-CV_Sinar_Retail-Agustus-2026.xlsx\"; 17448B; sheets Neraca(39r), Laba Rugi(27r), Perubahan Ekuitas(10r), Arus Kas(22r), CALK(137r), Pernyataan Pengurus(14r)",
+  "shots": [],
+  "ts": "2026-10-02T02:29:21.717Z"
+ },
+ "X2": {
+  "status": "PASS",
+  "note": "Excel Laba Rugi is a YTD presentation (1 Jan–31 Aug 2026 vs prior year): Laba bersih 321.259.575 = SQL YTD (month-only column is on screen, not in the Excel)",
+  "shots": [],
+  "ts": "2026-10-02T02:29:52.178Z"
+ },
+ "X3": {
+  "status": "PASS",
+  "note": "Unlocked month is stamped draft in the Excel: Per 31 Agu 2026 dan untuk periode yang berakhir pada tanggal tersebut (draf)",
+  "shots": [],
+  "ts": "2026-10-02T02:29:21.735Z"
+ },
+ "X4": {
+  "status": "PASS",
+  "note": "Tax workpaper export: 200; attachment; filename=\"kertas-kerja-pph-badan-CV_Sinar-2026-08.xlsx\"; sheets Rekonsiliasi Fiskal, Koreksi Fiskal, Laba Rugi, Kompensasi Kerugian, Kredit Pajak, Pajak Tangguhan, Jurnal",
+  "shots": [],
+  "ts": "2026-10-02T02:29:21.840Z"
+ },
+ "X5a": {
+  "status": "PASS",
+  "note": "entity=zzz silently falls back to the default scope and exports normally (200)",
+  "shots": [],
+  "ts": "2026-10-02T02:29:22.038Z"
+ },
+ "X5b": {
+  "status": "FAIL",
+  "note": "period=2026-13 export returns 200 with file name laporan-keuangan-CV_Sinar_Retail-undefined-2026.xlsx (same invalid-month bug as the pages)",
+  "shots": [],
+  "ts": "2026-10-02T02:29:52.179Z"
+ },
+ "X5c": {
+  "status": "PASS",
+  "note": "period=2026-08 -> 400 Pilih badan usaha dengan pembukuan Rupiah",
+  "shots": [],
+  "ts": "2026-10-02T02:29:22.228Z"
+ },
+ "X6": {
+  "status": "NOTE",
+  "note": "Excel uses static values (no formulas): an accountant cannot trace/adjust numbers inside the workbook",
+  "shots": [],
+  "ts": "2026-10-02T02:29:37.988Z"
+ },
+ "Y1": {
+  "status": "FAIL",
+  "note": "Mobile 390px: 20 pages; horizontal page overflow on: /clients/:id/import (scrollW 462 > 390; )",
+  "shots": [
+   "screenshots/mobile/_clients_id_import.jpg"
+  ],
+  "ts": "2026-10-02T02:30:26.643Z"
+ },
+ "Y2": {
+  "status": "PASS",
+  "note": "A11y scan on 20 pages: every visible input labelled, no nameless buttons/links, one h1 per page (the 2 flagged inputs are aria-hidden helpers of the Select component)",
+  "shots": [],
+  "ts": "2026-10-02T02:30:36.943Z"
+ },
+ "Y3": {
+  "status": "NOTE",
+  "note": "Document titles: Buku · tutup buku bulanan untuk kantor akuntan (1 distinct across 18 pages) — identical titles make browser tabs/history/screen-reader page changes indistinguishable",
+  "shots": [],
+  "ts": "2026-10-02T02:30:26.645Z"
+ },
+ "S1": {
+  "status": "PASS",
+  "note": "Key with spaces refused: \"Kunci API tidak valid. Tempel kunci lengkap tanpa spasi.\"",
+  "shots": [
+   "screenshots/S1-bad-key.jpg"
+  ],
+  "ts": "2026-10-02T02:31:01.114Z"
+ },
+ "S2": {
+  "status": "PASS",
+  "note": "AI key saved: Pengaturan AI tersimpan | Kunci API tidak valid. Tempel kunci lengkap tanpa spasi.; stored encrypted (plaintext absent from AppSetting=true); keys: ai.apiKey,ai.model",
+  "shots": [
+   "screenshots/S2-key-saved.jpg"
+  ],
+  "ts": "2026-10-02T02:31:03.268Z"
+ },
+ "S3": {
+  "status": "NOTE",
+  "note": "Design gap: the AI key/model (AppSetting) has no firmId. A second firm's ADMIN sees ••••XYZ of the first firm's key and can overwrite/clear it. ADR 0008 makes a deployment single-firm, so this only bites if a second firm is ever provisioned in the same deployment.",
+  "shots": [
+   "screenshots/S3-firmB-sees-firmA-key.jpg"
+  ],
+  "ts": "2026-10-02T02:31:05.693Z"
+ },
+ "Z1": {
+  "status": "PASS",
+  "note": "Two sessions accepting the same Rp 8.400.000 review line at the same instant produced exactly one BANK + one RECLASS entry (net 6160 = 8.400.000, 1999 = 0). Race hypothesis from code review NOT reproduced in 1 attempt (not a proof of absence)",
+  "shots": [
+   "screenshots/Z1-concurrent-accept.jpg"
+  ],
+  "ts": "2026-10-02T02:40:12.739Z"
+ },
+ "E14-fixed": {
+  "status": "PASS",
+  "note": "AFTER FIX: statement with two identical same-day rows and no balance column imports 3/3 rows (both BIAYA ADM kept); re-upload adds nothing (3/3)",
+  "shots": [
+   "screenshots/E14-after-fix-import.jpg",
+   "screenshots/E14-after-fix-reupload.jpg"
+  ],
+  "ts": "2026-10-02T02:34:56.763Z"
+ },
+ "V3": {
+  "shots": [
+   "screenshots/V1-ledger-import-checks.jpg"
+  ],
+  "status": "FAIL",
+  "note": "Ledger/Neraca file with an Indonesian-format TEXT rate \"15.750,50\" is read as 15.75050 (≈ 1000× too small); no row error. Numeric rate cells are fine (read.ts strips every comma)",
+  "ts": "2026-10-02T02:40:12.739Z"
+ },
+ "LK1": {
+  "status": "PASS",
+  "note": "July 2026 is LOCKED; Jurnal Penyesuaian shows: Buku Juli 2026 sudah ditutup, jadi jurnal bertanggal di bulan ini ditolak. Pilih bulan yang masih terbuka di kanan atas, atau minta admin me",
+  "shots": [
+   "screenshots/LK1-journal-locked-month.jpg"
+  ],
+  "ts": "2026-10-02T02:44:16.642Z"
+ },
+ "LK2": {
+  "status": "PASS",
+  "note": "Statement with a row in locked July refused, nothing written: \"Periode Juli 2026 sudah ditutup. Buka periode dulu atau pilih file lain.\"",
+  "shots": [
+   "screenshots/LK2-import-into-locked-month.jpg"
+  ],
+  "ts": "2026-10-02T02:44:58.557Z"
+ },
+ "UO1": {
+  "status": "PASS",
+  "note": "June cannot be reopened while July is locked (unlock disabled=true): Buka kembali Juli 2026 dulu: bulan setelahnya masih ditutup.",
+  "shots": [
+   "screenshots/UO1-unlock-order.jpg"
+  ],
+  "ts": "2026-10-02T02:44:55.391Z"
+ }
+}
