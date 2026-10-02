@@ -85,8 +85,9 @@ test.describe("sign-in does not reveal who has an account, and typed HTML stays 
       await page.getByLabel("Email").fill(address);
       await page.getByLabel("Kata sandi").fill(password);
       await page.getByRole("button", { name: "Masuk", exact: true }).click();
-      await expect(page.locator("#login-error, [role=alert]").first()).toBeVisible();
-      return (await page.locator("#login-error, [role=alert]").first().innerText()).trim();
+      // #login-error only: Next's empty route announcer is also role=alert and can match first while the action is still running.
+      await expect(page.locator("#login-error")).toBeVisible();
+      return (await page.locator("#login-error").innerText()).trim();
     };
     const wrongPassword = await attempt(email, "salah-total-1");
     const unknown = await attempt("tidak-ada@example.test", "salah-total-1");
