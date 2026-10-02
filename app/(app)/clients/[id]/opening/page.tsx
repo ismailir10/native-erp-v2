@@ -20,7 +20,7 @@ export default async function OpeningPage({ params }: { params: Promise<{ id: st
   const client = await getClientForFirm(id).catch(() => notFound());
   const [ctx, accounts] = await Promise.all([
     openingContext(prisma, client.id),
-    prisma.account.findMany({ where: { clientId: client.id, isBank: false, code: { notIn: [ACCOUNT_CODES.SUSPENSE, ACCOUNT_CODES.RETAINED, ACCOUNT_CODES.CLEARING] } }, orderBy: { code: "asc" } }),
+    prisma.account.findMany({ where: { clientId: client.id, isBank: false, code: { notIn: [ACCOUNT_CODES.SUSPENSE, ACCOUNT_CODES.RETAINED, ACCOUNT_CODES.CLEARING, ACCOUNT_CODES.OPENING_DIFFERENCE] } }, orderBy: { code: "asc" } }),
   ]);
   const setup = await setupProgress(prisma, client.id);
   // Entities whose ledger import brought its own opening rows don't need a separate Saldo Awal.
@@ -52,8 +52,8 @@ export default async function OpeningPage({ params }: { params: Promise<{ id: st
                 : imported.has(c.entity.id)
                   ? "Buku entitas ini berasal dari impor buku besar, termasuk saldo awalnya."
                   : c.banks.length === 0
-                    ? "Tidak ada rekening bank, jadi saldo awal tidak wajib. Isi hanya kalau entitas ini punya saldo lain. Selisih debit dan kredit masuk ke 3200 Saldo Laba."
-                    : "Selisih debit dan kredit otomatis masuk ke 3200 Saldo Laba."}
+                    ? "Tidak ada rekening bank, jadi saldo awal tidak wajib. Isi hanya kalau entitas ini punya saldo lain. Selisih debit dan kredit menjadi temuan."
+                    : "Salin dari neraca klien, termasuk Saldo Laba. Selisih debit dan kredit tidak diseimbangkan otomatis: ia menjadi temuan yang harus diputuskan sebelum tutup buku."}
             </CardDescription>
           </CardHeader>
           <CardContent className={c.existing ? "px-0" : undefined}>

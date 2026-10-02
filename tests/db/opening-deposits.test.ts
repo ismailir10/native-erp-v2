@@ -58,8 +58,8 @@ describe("Saldo Awal from the statements", () => {
     await importStatement(db, { bankAccountId: g.owner.banks[0].id, fileName: "smbc-mei.pdf", data: smbcGiroDepositPdf(), provider: null });
     expect((await openingContext(db, g.client.id))[0].deposits).toHaveLength(1);
 
-    // Posting the deposit with the bank balances leaves only the real difference on 3200.
-    const entry = await postOpening(db, {
+    // Posting the deposit with the bank balances leaves only the real difference, on 3290 as a Temuan (ADR 0012).
+    const { entry } = await postOpening(db, {
       clientId: g.client.id,
       entityId: g.owner.entity.id,
       date: dateOnly(2026, 4, 30),
@@ -69,8 +69,8 @@ describe("Saldo Awal from the statements", () => {
         { accountCode: "2210", debit: "", credit: "3.600.000.000" },
       ],
     });
-    const plug = (await db.journalLine.findMany({ where: { entryId: entry.id }, include: { account: true } })).find((l) => l.account.code === "3200");
-    expect(plug?.credit).toBe(649_569n);
+    const difference = (await db.journalLine.findMany({ where: { entryId: entry.id }, include: { account: true } })).find((l) => l.account.code === "3290");
+    expect(difference?.credit).toBe(649_569n);
   });
 
   it("offers only deposits listed on the earliest statement period, not ones placed later", async () => {

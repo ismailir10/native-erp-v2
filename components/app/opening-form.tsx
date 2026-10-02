@@ -11,9 +11,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { openingAction } from "@/app/actions";
 import { formatMoney, moneyExample, parseMoney } from "@/lib/money";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { cn } from "@/lib/utils";
+import { ACCOUNT_CODES } from "@/lib/coa/template";
 
 type Line = { accountCode: string; debit: string; credit: string };
+const RETAINED = ACCOUNT_CODES.RETAINED;
+const DIFFERENCE = ACCOUNT_CODES.OPENING_DIFFERENCE;
 type BankLine = { accountCode: string; label: string; prefill: string; source: string | null; isOverdraft?: boolean };
 
 /** Typed amount → minor units, or the Bahasa reason it can't be read. */
@@ -27,7 +29,8 @@ const read = (s: string, currency: string): { value: bigint; error?: undefined }
 
 /**
  * One entity's opening balances. Bank lines come first (prefilled from the first statement), then any other
- * balances (receivables, fixed assets, loans…). The difference is shown as the 3200 Saldo Laba plug.
+ * balances (receivables, fixed assets, loans…), then Saldo Laba as typed from the client's Neraca. No plug (ADR 0012): a difference
+ * left over is shown on 3290 Selisih Saldo Awal and becomes a Temuan that holds the close until it is decided in writing.
  * Amounts are typed in major units of the entity's `currency`; the server parses them the same way.
  */
 export function OpeningForm({
@@ -58,12 +61,14 @@ export function OpeningForm({
   const [date, setDate] = useState(suggestedDate);
   const [bankBalances, setBankBalances] = useState(banks.map((b) => b.prefill));
   const [others, setOthers] = useState<Line[]>(deposits.map((d) => ({ accountCode: d.accountCode, debit: d.amount, credit: "" })));
+  const [retained, setRetained] = useState<{ debit: string; credit: string }>({ debit: "", credit: "" });
   const [busy, setBusy] = useState(false);
 
   const cur = currency === "IDR" ? "" : ` (${currency})`;
   const bankParsed = bankBalances.map((v) => read(v, currency));
   const otherParsed = others.map((l) => ({ debit: read(l.debit, currency), credit: read(l.credit, currency) }));
-  const error = [...bankParsed.map((p) => p.error), ...otherParsed.flatMap((p) => [p.debit.error, p.credit.error])].find(Boolean);
+  const retainedParsed = { debit: read(retained.debit, currency), credit: read(retained.credit, currency) };
+  const error = [...bankParsed.map((p) => p.error), ...otherParsed.flatMap((p) => [p.debit.error, p.credit.error]), retainedParsed.debit.error, retainedParsed.credit.error].find(Boolean);
   // A bank balance is an asset: positive = debit, negative (overdraft) = credit. Sent back in the same major-unit
   // notation the server parses, never as raw minor units.
   const bankLines: Line[] = banks.map((b, i) => {
@@ -71,10 +76,17 @@ export function OpeningForm({
     const major = formatMoney(v < 0n ? -v : v, currency, { bare: true });
     return { accountCode: b.accountCode, debit: v > 0n ? major : "", credit: v < 0n ? major : "" };
   });
-  const lines = [...bankLines, ...others];
-  const dr = bankParsed.reduce((s, p) => s + (p.value > 0n ? p.value : 0n), 0n) + otherParsed.reduce((s, p) => s + p.debit.value, 0n);
-  const cr = bankParsed.reduce((s, p) => s + (p.value < 0n ? -p.value : 0n), 0n) + otherParsed.reduce((s, p) => s + p.credit.value, 0n);
-  const plug = dr - cr;
+  const lines = [...bankLines, ...others, ...(retained.debit || retained.credit ? [{ accountCode: RETAINED, ...retained }] : [])];
+  const dr = bankParsed.reduce((s, p) => s + (p.value > 0n ? p.value : 0n), 0n) + otherParsed.reduce((s, p) => s + p.debit.value, 0n) + retainedParsed.debit.value;
+  const cr = bankParsed.reduce((s, p) => s + (p.value < 0n ? -p.value : 0n), 0n) + otherParsed.reduce((s, p) => s + p.credit.value, 0n) + retainedParsed.credit.value;
+  /** Debit minus credit of what is typed: positive leaves a credit on 3290, negative a debit. */
+  const diff = dr - cr;
+  // An explicit choice for a client without a Neraca: the difference becomes the Saldo Laba line (shown, editable), not a silent plug.
+  const useAsRetained = () => {
+    const net = retainedParsed.credit.value - retainedParsed.debit.value + diff;
+    const major = formatMoney(net < 0n ? -net : net, currency, { bare: true });
+    setRetained(net > 0n ? { debit: "", credit: major } : net < 0n ? { debit: major, credit: "" } : { debit: "", credit: "" });
+  };
   const hasCapital = !company || others.some((l) => l.accountCode.startsWith("31"));
   const setOther = (i: number, patch: Partial<Line>) => setOthers((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
 
@@ -83,7 +95,7 @@ export function OpeningForm({
     try {
       const r = await openingAction({ clientId, entityId, date, lines });
       if (!r.ok) return void toast.error(r.error);
-      toast.success("Saldo awal tersimpan");
+      toast.success(r.finding ? `Saldo awal tersimpan. Selisihnya dibuka sebagai temuan ${r.finding} di Tutup Buku.` : "Saldo awal tersimpan");
       router.refresh();
     } finally {
       setBusy(false);
@@ -158,29 +170,50 @@ export function OpeningForm({
                 <TableCell className="p-2"><Button variant="ghost" size="icon-sm" aria-label="Hapus baris" onClick={() => setOthers((ls) => ls.filter((_, j) => j !== i))}><Trash2 /></Button></TableCell>
               </TableRow>
             ))}
-            <TableRow className="border-t text-muted-foreground">
-              <TableCell className="p-2 pl-3">3200 Saldo Laba <span className="text-xs">· penyeimbang otomatis</span></TableCell>
-              <TableCell className="num p-2 pr-5 text-right">{plug < 0n ? formatMoney(-plug, currency, { bare: true }) : "–"}</TableCell>
-              <TableCell className="num p-2 pr-5 text-right">{plug > 0n ? formatMoney(plug, currency, { bare: true }) : "–"}</TableCell>
+            <TableRow className="border-t">
+              <TableCell className="p-2 pl-3">
+                <div className="font-medium">{RETAINED} Saldo Laba</div>
+                <div className="text-xs text-muted-foreground">Dari neraca klien per tanggal di atas.</div>
+              </TableCell>
+              <TableCell className="p-2"><Input aria-label="Saldo Laba debit" aria-invalid={!!retainedParsed.debit.error || undefined} inputMode="decimal" className="num text-right" value={retained.debit} onChange={(e) => setRetained({ debit: e.target.value, credit: e.target.value ? "" : retained.credit })} placeholder={formatMoney(0n, currency, { bare: true })} /></TableCell>
+              <TableCell className="p-2"><Input aria-label="Saldo Laba kredit" aria-invalid={!!retainedParsed.credit.error || undefined} inputMode="decimal" className="num text-right" value={retained.credit} onChange={(e) => setRetained({ credit: e.target.value, debit: e.target.value ? "" : retained.debit })} placeholder={formatMoney(0n, currency, { bare: true })} /></TableCell>
               <TableCell />
             </TableRow>
+            {diff !== 0n && (
+              <TableRow className="border-t bg-review-subtle/60" data-testid="opening-difference-row">
+                <TableCell className="p-2 pl-3">
+                  <div className="font-medium">{DIFFERENCE} Selisih Saldo Awal</div>
+                  <div className="text-xs text-muted-foreground">Menjadi temuan sampai Anda memutuskan asalnya.</div>
+                </TableCell>
+                <TableCell className="num p-2 pr-5 text-right">{diff < 0n ? formatMoney(-diff, currency, { bare: true }) : "–"}</TableCell>
+                <TableCell className="num p-2 pr-5 text-right">{diff > 0n ? formatMoney(diff, currency, { bare: true }) : "–"}</TableCell>
+                <TableCell />
+              </TableRow>
+            )}
           </TableBody>
           <TableFooter>
             <TableRow>
               <TableCell className="p-2 pl-3 font-semibold">Jumlah</TableCell>
-              <TableCell className="num p-2 pr-5 text-right font-semibold" data-testid="opening-total-debit">{formatMoney(plug < 0n ? dr - plug : dr, currency, { bare: true })}</TableCell>
-              <TableCell className="num p-2 pr-5 text-right font-semibold">{formatMoney(plug > 0n ? cr + plug : cr, currency, { bare: true })}</TableCell>
+              <TableCell className="num p-2 pr-5 text-right font-semibold" data-testid="opening-total-debit">{formatMoney(diff < 0n ? dr - diff : dr, currency, { bare: true })}</TableCell>
+              <TableCell className="num p-2 pr-5 text-right font-semibold">{formatMoney(diff > 0n ? cr + diff : cr, currency, { bare: true })}</TableCell>
               <TableCell />
             </TableRow>
           </TableFooter>
         </Table>
       </div>
 
-      {plug !== 0n && (
-        <p className={cn("rounded-md border px-3 py-2 text-sm", !hasCapital ? "border-review/40 bg-review-subtle" : "text-muted-foreground")} data-testid="opening-plug">
-          Selisih {formatMoney(plug < 0n ? -plug : plug, currency)} dicatat ke 3200 Saldo Laba di sisi {plug > 0n ? "kredit" : "debit"}.
-          {!hasCapital && " Modal disetor (3100) belum diisi: bila klien punya modal disetor, isi barisnya agar modal tidak ikut tercatat sebagai saldo laba."}
-        </p>
+      {diff !== 0n && (
+        <div className="space-y-2 rounded-md border border-review/40 bg-review-subtle px-3 py-2 text-sm" data-testid="opening-difference">
+          <p>
+            Debit dan kredit selisih {formatMoney(diff < 0n ? -diff : diff, currency)}. Selisih ini dicatat ke {DIFFERENCE} Selisih Saldo Awal dan dibuka sebagai{" "}
+            <span className="font-medium">temuan</span>: Tutup Buku tertahan sampai Anda menulis dari mana asalnya.
+            {!hasCapital && " Modal disetor (3100) belum diisi: bila klien punya modal disetor, isi barisnya dulu."}
+          </p>
+          <p className="text-muted-foreground">
+            Klien tidak punya neraca, jadi saldo laba memang sisa dari saldo yang ada?{" "}
+            <Button variant="link" size="sm" className="h-auto p-0 align-baseline" onClick={useAsRetained} data-testid="opening-use-retained">Pakai selisih sebagai Saldo Laba</Button>
+          </p>
+        </div>
       )}
 
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}

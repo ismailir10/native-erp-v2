@@ -35,7 +35,12 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
    month with entries other than the Saldo Awal is open (`lockPeriod`, checked again under the client lock). Unlock (`unlockPeriod`) is
    explicit, **ADMIN only**, needs a reason (≥ 5 characters), runs in reverse order (refused while a later month is locked) and writes a
    `PeriodUnlockLog` row in the same transaction.
-5. **Opening balances** are `OPENING` entries; the plug goes to 3200 Saldo Laba. Prior-year P&L folds into 3200 in the TB.
+5. **Opening balances** are `OPENING` entries. **No plug** (ADR 0012): a difference between the typed lines posts to **3290 Selisih Saldo
+   Awal** and opens a **Temuan** (`Finding`, `T-<n>` per client) in the same transaction — never to 3200. Saldo Laba is typed (or copied
+   from the difference by an explicit click). A Temuan is resolved once: a written decision (≥ 10 characters) and one `OPENING` entry dated the
+   Saldo Awal date moving the entity's 3290 balance to the decided account (`lib/findings.ts`); it keeps who, when and the entry. Control
+   `opening-diff:` FAILs while 3290 holds a balance (GL, not the row); `opening:` is REVIEW for an entity with entries and no Saldo Awal.
+   Prior-year P&L folds into 3200 in the TB.
    Saldo Awal prefills bank lines from the first statement and proposes (never posts) time deposits the statements list
    (`StatementImport.deposits`, on 1260, changeable); loan rows in the statements prompt for the loan balance.
    Saldo Awal precedes activity from both sides: `postOpening` refuses a date on/after the first bank row, and `importStatement` refuses the
@@ -156,7 +161,7 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
 
 ## Chart of accounts (per client, shared by its entities so combined reports line up)
 9. Special codes are load-bearing — never renumber: **7300** disposal gain/loss, **1190** intercompany, **1199** transfer clearing,
-   **1999** suspense (Belum Terklasifikasi), **3200** retained earnings, bank GL accounts **1101–1109**,
+   **1999** suspense (Belum Terklasifikasi), **3200** retained earnings, **3290** opening difference (Temuan, never a classifier target), bank GL accounts **1101–1109**,
    overdraft (PRK) bank accounts **2201–2209**, **7190** rounding, **7200** FX gain/loss, **3900** translation difference.
 9a. An entity's own codes live in `SourceAccount` (per entity), each mapped to exactly one client account. Imported lines keep
    `sourceAccountId`; the *Akun sumber* TB groups by it, and a client account's ledger (and its *Akun sumber* TB row) reads by the accounts its lines were posted to
@@ -267,6 +272,6 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
 24. Every row has `firmId`. Server actions resolve the client through `getClientForFirm()` before any write.
 25. **Deleting a client** (`lib/clients/delete.ts`) is not a ledger correction: an admin removes a client entered by mistake or a test
     copy after typing its exact name. Everything that is its books (entities, accounts, periods, journals, bank and ledger imports,
-    memories, client rules, proposals, invoices, assets, schedules, leases, employee benefits, tax records, stock counts, evidence) goes in one
+    memories, client rules, proposals, invoices, assets, schedules, leases, employee benefits, tax records, stock counts, evidence, Temuan) goes in one
     transaction; firm rules, rates, mortality tables and
     AI caches stay. A new table that references a client or entity must be added to that function.

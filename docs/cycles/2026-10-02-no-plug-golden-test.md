@@ -32,14 +32,14 @@ judgement", so this cycle runs without a separate approval stop.
       every file again adds 0 rows and leaves every number unchanged (deterministic).
 - [x] **Propagation (UC-K4 part).** Reclassifying one line moves the TB, Laba Rugi and Neraca by exactly its amount, recorded as a RECLASS
       entry. Reclassifying it back restores the key.
-- [ ] **No plug on Saldo Awal.** A difference between the lines typed in Saldo Awal posts to **3290 Selisih Saldo Awal** (new template
+- [x] **No plug on Saldo Awal.** A difference between the lines typed in Saldo Awal posts to **3290 Selisih Saldo Awal** (new template
       equity account and FS line *Selisih saldo awal belum diselesaikan*, shown on its own line in the Neraca), never to 3200. In the same
       transaction it opens a **Temuan** `T-<n>` (per client) with the entity, amount, date and question
       ("Selisih saldo awal Rp X: dari mana? …").
-- [ ] **Saldo Laba is typed, not plugged.** The opening form has a 3200 Saldo Laba row like any other. *Pakai selisih sebagai Saldo Laba*
+- [x] **Saldo Laba is typed, not plugged.** The opening form has a 3200 Saldo Laba row like any other. *Pakai selisih sebagai Saldo Laba*
       copies the current difference into it as an explicit choice, for clients without a source Neraca. While a difference remains, the
       form says it becomes a Temuan and blocks the close.
-- [ ] **Resolving a Temuan.** The accountant picks the account the difference belongs to and writes a decision (≥ 10 characters). Buku then
+- [x] **Resolving a Temuan.** The accountant picks the account the difference belongs to and writes a decision (≥ 10 characters). Buku then
       posts one `OPENING` entry dated the Saldo Awal date that moves the entity's whole 3290 balance to that account through
       `postJournal()`, and marks the Temuan *Selesai* with who, when, the decision and the entry. A Temuan is resolved once and never
       deleted.
@@ -91,7 +91,7 @@ existing 3200 plugs (history is not rewritten); FX, consolidation and audit-pack
 - [x] T2 Schema + ADR: `Finding` model and migration; 3290 in `COA_TEMPLATE`; FS line `SELISIH_SALDO_AWAL` (Neraca, changes in equity, cash
       flow fall-through); ADR 0012; accounting-rules rule 5 amended; `deleteClient` covers `Finding`. Accept: `prisma migrate diff` empty,
       typecheck, existing tests green.
-- [ ] T3 Opening difference → 3290 + Temuan; `lib/findings.ts` (open, list, resolve); opening form and page copy; actions. Accept:
+- [x] T3 Opening difference → 3290 + Temuan; `lib/findings.ts` (open, list, resolve); opening form and page copy; actions. Accept:
       `tests/db/opening.test.ts` (updated) and `tests/db/findings.test.ts` green.
 - [ ] T4 Close gate and visibility: `opening-diff:` and `opening:` controls, the Temuan card on Tutup Buku, report status reason, honest
       Neraca pill. Accept: DB tests for the controls; the golden test's opening-difference case reaches the key after resolution.
@@ -111,11 +111,18 @@ existing 3200 plugs (history is not rewritten); FX, consolidation and audit-pack
   decision + time), `lib/coa/template.ts` (3290, FS line `SELISIH_SALDO_AWAL`, `isClassifiable` — the AI chart in the pipeline, retry and demo
   pre-cache drops it), `lib/reports/statements.ts` (an equity column; a non-opening movement reads as a Saldo Laba correction),
   `lib/clients/delete.ts`, `docs/adrs/0012-no-plug-findings.md`. The accounting-rules amendment ships with T3, where the behaviour lands.
+- T3: `lib/findings.ts` (`openFinding` numbered under a per-client lock, `openingQuestion`, `resolveOpeningFinding` under the close lock, `listFindings`),
+  `lib/opening.ts` (difference → 3290 + Temuan in one transaction, returns `{ entry, finding }`; typing 3290 refused), `app/actions.ts`
+  (`openingAction` returns the Temuan label, `resolveFindingAction`), `components/app/opening-form.tsx` (Saldo Laba row typed like any line,
+  3290 row + notice while a difference remains, *Pakai selisih sebagai Saldo Laba*), opening page copy; accounting-rules rule 5 amended.
+  Tests: `tests/db/findings.test.ts` (new), `opening.test.ts`, `opening-deposits.test.ts` (3200 → 3290).
 
 ## Verification
 - T2: fresh `prisma migrate deploy` on both DBs → "All migrations have been successfully applied."; `prisma migrate diff --from-config-datasource --to-schema` →
   "This is an empty migration."; lint + typecheck clean; `npm test` → `Test Files 122 passed (122) · Tests 916 passed (916)`; `demo:reset && verify:books` →
   `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`
 - T1: `npx vitest run tests/db/golden.test.ts` → `Tests 6 passed (6)`; gate: lint clean, typecheck clean, `npm test` → `Test Files 122 passed (122) · Tests 916 passed (916)`.
+- T3: `npx vitest run tests/db/opening.test.ts tests/db/findings.test.ts tests/db/opening-deposits.test.ts` → `Tests 9 passed (9)`; lint + typecheck clean;
+  `npm test` → `Test Files 123 passed (123) · Tests 920 passed (920)`.
 
 ## Ship Notes
