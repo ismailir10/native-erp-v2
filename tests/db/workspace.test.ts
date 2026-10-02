@@ -181,3 +181,23 @@ it("ranks what blocks the books first and names the client on a review task", as
   expect(at("statement:")).toBeLessThan(at("review:"));
   expect(tasks[at("review:")].detail).toBe("Grup Uji · PT Uji Sejahtera · sampai Agustus 2026");
 });
+
+it("labels answers of a month not yet closed as preliminary, names the clients still open, and drops the label once closed (UC-X5)", async () => {
+  const g = await makeGroup();
+  await sale(g, g.pt.entity.id, 1500n);
+  const ask = (period: string) => askWorkspace(db, g.firm.id, { scope: `client:${g.client.id}`, period, question: "Berapa laba bulan ini?" });
+  expect((await ask("2026-08")).preliminary).toBe("Sementara: Agustus 2026 belum ditutup. Angka bisa berubah sampai buku ditutup.");
+  await db.period.update({ where: { clientId_year_month: { clientId: g.client.id, year: 2026, month: 8 } }, data: { status: "LOCKED" } });
+  expect((await ask("2026-08")).preliminary).toBeNull();
+  // Documents are not the books: no period label on them.
+  expect((await askWorkspace(db, g.firm.id, { scope: `client:${g.client.id}`, period: "2026-09", question: "Dokumen apa yang tersedia?" })).preliminary).toBeNull();
+});
+
+it("refuses to change data and says where it is done instead", async () => {
+  const g = await makeGroup();
+  for (const question of ["Tolong ubah akun transaksi PLN ke 6100", "Hapus impor bulan Juni", "Catat jurnal penyusutan Agustus"]) {
+    const answer = await askWorkspace(db, g.firm.id, { scope: `client:${g.client.id}`, period: "2026-08", question });
+    expect(answer.text).toMatch(/^Tanya Buku hanya membaca buku, tidak mengubahnya\./);
+    expect(answer.rows).toHaveLength(0);
+  }
+});

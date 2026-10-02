@@ -99,10 +99,25 @@ export async function getWorkspaceOverview(db: Db, firmId: string, input: Worksp
   return { scope, entities, clients, tasks, counts: { entities: entities.length, openReview: entities.reduce((n, e) => n + e.openReview, 0), closed: clients.filter(c => c.state === "LOCKED").length, clients: clients.length } };
 }
 export type WorkspaceOverview = Awaited<ReturnType<typeof getWorkspaceOverview>>;
-export type WorkspaceAnswer = { id: string; question: string; scope: Pick<WorkspaceScope, "key" | "label" | "period" | "periodLabel">; text: string; rows: { label: string; value: string; source: string }[]; citations: { label: string; href: string }[]; limitations: string[] };
+export type WorkspaceAnswer = {
+  id: string;
+  question: string;
+  scope: Pick<WorkspaceScope, "key" | "label" | "period" | "periodLabel">;
+  text: string;
+  rows: { label: string; value: string; source: string }[];
+  citations: { label: string; href: string }[];
+  limitations: string[];
+  /** Numbers of a month not closed yet are preliminary (use-case feedback UC-X5): which month, for which clients. Null when closed or not from the books. */
+  preliminary: string | null;
+};
+
+/** Asking Buku to change something (it only reads): an instruction verb at the start, politely or not. */
+const CHANGE_REQUEST = /^\s*(?:tolong|mohon|bisa(?:kah)?|coba|please)?\s*(?:ubah|ubahkan|ganti|hapus|hapuskan|edit|koreksi|koreksikan|catat|catatkan|posting|postingkan|jurnalkan|reklas|reklasifikasi(?:kan)?|pindahkan|kunci|buka kembali|unlock|delete|change)\b/i;
 
 export function workspaceQuestionIntent(question: string) {
   const q = question.toLowerCase();
+  // "Koreksi fiskal berapa?" asks about a number; "Koreksi akun transaksi ini ke 6100" asks Buku to act.
+  if (CHANGE_REQUEST.test(question) && !/\b(berapa|apakah|bagaimana|kenapa|mengapa|kapan)\b/.test(q)) return "change";
   if (/\b(prediksi|forecast|proyeksi|ramalan|tahun depan|bulan depan)\b/.test(q)) return "unsupported";
   // "Transaksi apa yang belum jelas / perlu ditanyakan ke klien?": rows still waiting in Review (before the payee search reads "klien" as a name).
   if (/belum jelas|(perlu|harus|mau) (di)?tanya|ditanyakan|tanya(kan)? (ke )?klien|pertanyaan (untuk|ke|buat) klien|konfirmasi (ke )?klien|belum (di)?klasifikasi|menunggu review/.test(q)) return "unclear";
@@ -114,6 +129,15 @@ export function workspaceQuestionIntent(question: string) {
   if (/\b(laba|profit|pendapatan|revenue)\b/.test(q)) return "profit";
   if (/\b(saldo|kas|bank|balance)\b/.test(q)) return "balances";
   return "unsupported";
+}
+
+/** "Sementara: Agustus 2026 belum ditutup (untuk …)" when any client in scope has the month open; null when all closed it. */
+async function preliminaryLabel(db: Db, scope: WorkspaceScope) {
+  const locked = await db.period.findMany({ where: { clientId: { in: scope.clientIds }, year: scope.year, month: scope.month, status: "LOCKED" }, select: { clientId: true } });
+  const open = scope.clients.filter((c) => scope.clientIds.includes(c.id) && !locked.some((l) => l.clientId === c.id));
+  if (!open.length) return null;
+  const who = open.length === scope.clientIds.length ? "" : ` untuk ${open.map((c) => c.name).join(", ")}`;
+  return `Sementara: ${scope.periodLabel} belum ditutup${who}. Angka bisa berubah sampai buku ditutup.`;
 }
 
 const PHRASE_END = /\s+(?:bulan|tahun|dan|di|yang|pada|sampai|dicatat|masuk|keluar|periode|berapa|total|ke akun|di akun)\b|[?.,;:!]|$/i;
@@ -134,9 +158,14 @@ export async function askWorkspace(db: Db, firmId: string, input: WorkspaceInput
   if (!question || question.length > 2000) throw new WorkspaceInputError("Tulis pertanyaan antara 1 dan 2.000 karakter.");
   const resolved = await resolveWorkspaceScope(db, firmId, input);
   const { key, label, period, periodLabel } = resolved;
-  const answer: WorkspaceAnswer = { id: randomUUID(), question, scope: { key, label, period, periodLabel }, text: "", rows: [], citations: [], limitations: [] };
+  const answer: WorkspaceAnswer = { id: randomUUID(), question, scope: { key, label, period, periodLabel }, text: "", rows: [], citations: [], limitations: [], preliminary: null };
   const intent = workspaceQuestionIntent(question);
   const accountCode = question.match(/\b(?:akun|account)\s+([0-9][a-z0-9.-]{0,29})\b/i)?.[1];
+  if (intent === "change") {
+    answer.text = "Tanya Buku hanya membaca buku, tidak mengubahnya. Lakukan perubahan di halamannya agar tercatat dengan nama Anda: klasifikasi di Review atau di buku besar (Ubah akun), jurnal di Jurnal Penyesuaian, saldo awal di Saldo Awal, temuan dan penutupan di Tutup Buku.";
+    return answer;
+  }
+  if (intent !== "context" && intent !== "evidence" && intent !== "unsupported") answer.preliminary = await preliminaryLabel(db, resolved);
   if (intent === "unsupported") {
     answer.text = "Pertanyaan ini belum didukung. Coba kesiapan tutup buku, laba, saldo kas, transfer ke/dari nama tertentu, transaksi yang perlu ditanyakan ke klien, profil perusahaan, atau pencarian dokumen.";
     return answer;

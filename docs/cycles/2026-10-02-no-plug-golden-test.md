@@ -54,7 +54,7 @@ judgement", so this cycle runs without a separate approval stop.
 - [x] **Honest Neraca header (#5).** The Neraca pill says *Seimbang* only when A = L + E, total assets ≥ 0 and nothing sits on 3290.
       Negative total assets show FAIL *Aset negatif*; an open Temuan shows REVIEW *Seimbang · n temuan terbuka*. The report status bar
       lists open Temuan as a reason the report is a draft.
-- [ ] **Ask Buku (UC-X5).** An answer for a month that isn't closed (for any client in scope) carries a *Sementara* label naming the
+- [x] **Ask Buku (UC-X5).** An answer for a month that isn't closed (for any client in scope) carries a *Sementara* label naming the
       month. A request to change data (ubah / hapus / ganti / catat / posting / koreksi / reklasifikasi / kunci …) is refused, naming the
       page where it is done.
 
@@ -96,7 +96,7 @@ existing 3200 plugs (history is not rewritten); FX, consolidation and audit-pack
 - [x] T4 Close gate and visibility: `opening-diff:` and `opening:` controls, the Temuan card on Tutup Buku, report status reason, honest
       Neraca pill. Accept: DB tests for the controls; the golden test's opening-difference case reaches the key after resolution.
 - [x] T5 Completeness matrix (`lib/controls/completeness.ts`) and its card. Accept: DB test with a missing month and a broken handover.
-- [ ] T6 Ask Buku: *Sementara* label and refusal of change requests. Accept: unit test on the intent, DB test on the label.
+- [x] T6 Ask Buku: *Sementara* label and refusal of change requests. Accept: unit test on the intent, DB test on the label.
 - [ ] T7 End-of-cycle gates: lint, typecheck, test, build, `verify:books`, `test:e2e`; cycle doc Verification.
 
 ## Implementation
@@ -125,6 +125,9 @@ existing 3200 plugs (history is not rewritten); FX, consolidation and audit-pack
 - T5: `lib/controls/completeness.ts` (six months up to the selected one; *before* until the account's books start — day after Saldo Awal, else its
   first statement; a handover compares a statement's opening with the closing of the last statement ending before it), `components/app/completeness-card.tsx`
   on Tutup Buku. Test: `tests/db/completeness.test.ts`.
+- T6: `lib/workspace/index.ts` (`preliminary` on every answer read from the books while any client in scope has the month open, naming
+  them when only some do; intent `change` — an instruction verb at the start and no question word — answers where the change is made),
+  `components/app/workspace-ask.tsx` (*Sementara* pill). Tests: `tests/unit/workspace.test.ts`, `tests/db/workspace.test.ts`.
 
 ## Verification
 - T2: fresh `prisma migrate deploy` on both DBs → "All migrations have been successfully applied."; `prisma migrate diff --from-config-datasource --to-schema` →
@@ -136,5 +139,7 @@ existing 3200 plugs (history is not rewritten); FX, consolidation and audit-pack
 - T4: `npx vitest run tests/db/opening-controls.test.ts tests/db/golden.test.ts` → `Tests 9 passed (9)`; lint + typecheck clean; `npm test` →
   `Test Files 124 passed (124) · Tests 923 passed (923)`.
 - T5: `npx vitest run tests/db/completeness.test.ts` → `Tests 1 passed (1)`; lint + typecheck clean; `npm test` → `Test Files 125 passed (125) · Tests 924 passed (924)`.
+- T6: `npx vitest run tests/unit/workspace.test.ts tests/db/workspace.test.ts` → `Tests 21 passed (21)`; lint + typecheck clean; `npm test` →
+  `Test Files 125 passed (125) · Tests 926 passed (926)`.
 
 ## Ship Notes
