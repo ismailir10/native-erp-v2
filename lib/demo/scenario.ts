@@ -358,13 +358,13 @@ export function scenarios(): ClientScenario[] {
 }
 
 /** Statement files per client/bank/month, in chronological order. */
-export function statementFiles(sc: ClientScenario): (StatementFile & { bankKey: string })[] {
+export function statementFiles(sc: ClientScenario, months: { year: number; month: number }[] = DEMO_MONTHS): (StatementFile & { bankKey: string })[] {
   const files: (StatementFile & { bankKey: string })[] = [];
   for (const [bankKey, b] of Object.entries(sc.banks)) {
     const ent = sc.spec.entities[b.entity];
     const bank = ent.banks[b.bank];
     let opening = b.opening;
-    for (const { year, month } of DEMO_MONTHS) {
+    for (const { year, month } of months) {
       const rows = sc.lines
         .filter((l) => l.bankKey === bankKey && l.date.getUTCFullYear() === year && l.date.getUTCMonth() + 1 === month)
         .sort((a, z) => a.date.getTime() - z.date.getTime())
