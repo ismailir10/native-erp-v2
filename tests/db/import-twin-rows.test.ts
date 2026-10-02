@@ -38,3 +38,47 @@ describe("identical lines in one statement without a running balance", () => {
     expect(await db.bankTransaction.count({ where: { bankAccountId: g.pt.banks[0].id } })).toBe(4);
   });
 });
+
+describe("a line that moves no money (BUG-009)", () => {
+  beforeEach(resetDb);
+  // BRI internet-banking CSV keeps a 0,00 / 0,00 line (the generic reader already drops them).
+  const bri = (number: string, ...rows: string[]) => Buffer.from([`NOREK;${number}`, "NAMA;PT UJI", "TGL_TRAN;DESK_TRAN;MUTASI_DEBET;MUTASI_KREDIT;SALDO_AKHIR_MUTASI", ...rows, ""].join("\n"));
+
+  it("is left out with a note naming its row; the other lines import", async () => {
+    const g = await makeGroup();
+    const bank = g.pt.banks[0];
+    const data = bri(bank.number, "2026-08-02;BIAYA NOL;0.00;0.00;100000000.00", "2026-08-03;TRSF MASUK PT X;0.00;1000000.00;101000000.00");
+    const summary = await importStatement(db, { bankAccountId: bank.id, fileName: "bri.csv", data, provider: null });
+    expect(summary.rows).toBe(1);
+    expect(summary.notes.join(" ")).toMatch(/1 baris bernilai nol dilewati \(baris 4\)/);
+    expect(await db.bankTransaction.count({ where: { bankAccountId: bank.id } })).toBe(1);
+  });
+
+  it("a file of only zero lines says so", async () => {
+    const g = await makeGroup();
+    const bank = g.pt.banks[0];
+    await expect(importStatement(db, { bankAccountId: bank.id, fileName: "bri.csv", data: bri(bank.number, "2026-08-02;BIAYA NOL;0.00;0.00;100000000.00"), provider: null })).rejects.toThrow("semua baris berjumlah nol");
+  });
+});
+
+describe("an amount beyond any real account (BUG-010)", () => {
+  beforeEach(resetDb);
+
+  it("is refused with its row, not left to fail at the database", async () => {
+    const g = await makeGroup();
+    const bank = g.pt.banks[0];
+    const data = Buffer.from([`NOREK;${bank.number}`, "NAMA;PT UJI", "TGL_TRAN;DESK_TRAN;MUTASI_DEBET;MUTASI_KREDIT;SALDO_AKHIR_MUTASI", "2026-05-02;SETORAN RAKSASA;0.00;99999999999999999999.00;99999999999999999999.00", ""].join("\n"));
+    await expect(importStatement(db, { bankAccountId: bank.id, fileName: "bri.csv", data, provider: null })).rejects.toThrow(/Nominal terlalu besar di baris 4/);
+    expect(await db.bankTransaction.count()).toBe(0);
+  });
+});
+
+describe("a statement date nowhere near the present is refused (BUG-002)", () => {
+  beforeEach(resetDb);
+
+  it("names the row and the date", async () => {
+    const g = await makeGroup();
+    const data = Buffer.from(["Tanggal;Keterangan;Debet;Kredit;Saldo", "18/07/1905;SETORAN;0,00;2.500.000,00;102.500.000,00", ""].join("\n"));
+    await expect(importStatement(db, { bankAccountId: g.pt.banks[0].id, fileName: "x.csv", data, provider: null })).rejects.toThrow(/tidak masuk akal: 18 Jul 1905/);
+  });
+});

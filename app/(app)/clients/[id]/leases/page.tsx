@@ -7,6 +7,8 @@ import { NextStep, PageHeader } from "@/components/app/page-header";
 import { LeaseRegister } from "@/components/app/lease-register";
 import { leaseRegisterViews } from "@/lib/leases/view";
 
+export const metadata = { title: "Sewa (PSAK 116)" };
+
 export default async function LeasesPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, period, scope, periodOptions, entityOptions, base } = await loadClientPage(params, searchParams);
   const entities = client.entities.filter((e) => scope.entityIds.includes(e.id));

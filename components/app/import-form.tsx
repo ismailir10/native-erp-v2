@@ -15,6 +15,7 @@ import { StatusPill } from "@/components/app/status";
 import { importAction, importSampleAction } from "@/app/actions";
 import type { ImportSummary } from "@/lib/import/pipeline";
 import { cn } from "@/lib/utils";
+import { MAX_UPLOAD_BYTES, UPLOAD_TOO_BIG } from "@/lib/upload";
 
 type BankOption = { id: string; label: string; entity: string; bank: string; number: string };
 
@@ -30,6 +31,11 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
   const [year, setYear] = useState("");
   const [yearHint, setYearHint] = useState<{ guessed: boolean } | null>(null);
   const setFile = (f: File | null) => {
+    if (f && f.size > MAX_UPLOAD_BYTES) {
+      toast.error(UPLOAD_TOO_BIG);
+      if (inputRef.current) inputRef.current.value = "";
+      f = null;
+    }
     setFileState(f);
     setPassword("");
     setNeedsPassword(false);

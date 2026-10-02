@@ -7,6 +7,8 @@ import { NextStep, PageHeader } from "@/components/app/page-header";
 import { EmployeeBenefits } from "@/components/app/employee-benefits";
 import { benefitViews } from "@/lib/benefits/view";
 
+export const metadata = { title: "Imbalan Kerja" };
+
 export default async function BenefitsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, period, scope, periodOptions, entityOptions } = await loadClientPage(params, searchParams);
   const entities = client.entities.filter((e) => scope.entityIds.includes(e.id)).sort((a, b) => Number(a.kind === "PERORANGAN") - Number(b.kind === "PERORANGAN"));

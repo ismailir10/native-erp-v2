@@ -58,7 +58,7 @@ export function validateRateInput(input: { currency: string; quote: string; date
   if (input.kind !== "SPOT" && input.kind !== "AVERAGE") throw new RateError("Pilih jenis kurs.");
   let rate: string;
   try {
-    rate = formatRate(parseRate(normalizeRateInput(input.rate)));
+    rate = formatRate(parseRate(normalizeRateInput(input.rate, { currency: input.currency, quote: input.quote })));
   } catch {
     throw new RateError('Kurs harus angka positif, mis. "11.250" atau "1.31".');
   }

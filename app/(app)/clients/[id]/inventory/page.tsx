@@ -7,6 +7,8 @@ import { NextStep, PageHeader } from "@/components/app/page-header";
 import { InventoryCard, type InventoryEntityView } from "@/components/app/inventory-card";
 import { inventoryRows } from "@/lib/inventory";
 
+export const metadata = { title: "Persediaan" };
+
 export default async function InventoryPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, period, scope, periodOptions, entityOptions, base } = await loadClientPage(params, searchParams);
   const [rows, p] = await Promise.all([

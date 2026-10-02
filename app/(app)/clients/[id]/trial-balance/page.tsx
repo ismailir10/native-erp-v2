@@ -12,6 +12,8 @@ import { sourceTrialBalance } from "@/lib/reports/source";
 import { AccountViewTabs } from "@/components/app/account-view-tabs";
 import { TbTable, type TbTableRow } from "@/components/app/tb-table";
 
+export const metadata = { title: "Neraca Saldo" };
+
 export default async function TrialBalancePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, period, scope, periodOptions, entityOptions, base, scopeLabel, currency, mixed, sp } = await loadClientPage(params, searchParams);
   const note = currencyNote(currency, mixed);

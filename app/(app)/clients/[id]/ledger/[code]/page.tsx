@@ -15,6 +15,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { NextStep } from "@/components/app/page-header";
 import { currencyNote } from "@/components/app/fx-missing";
 
+export const metadata = { title: "Buku Besar" };
+
 export default async function AccountLedger({ params, searchParams }: { params: Promise<{ id: string; code: string }>; searchParams: SearchParams }) {
   const { code } = await params;
   const { client, period, scope, periodOptions, entityOptions, base, scopeLabel, currency, mixed } = await loadClientPage(params, searchParams);

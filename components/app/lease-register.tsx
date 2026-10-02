@@ -21,6 +21,8 @@ import type { LeaseRegisterView, LeaseRowView } from "@/lib/leases/view";
 type Result = { ok: true } | { ok: false; error: string };
 type Form = { entityId: string; name: string; lessor: string; start: string; months: string; payment: string; intervalMonths: string; timing: "ADVANCE" | "ARREARS"; rate: string };
 
+/** "Sewa Gudang" stays as is; "Gudang Cikarang" becomes "Sewa Gudang Cikarang" (no "Sewa Sewa …"). */
+const leaseLabel = (name: string) => (/^sewa\b/i.test(name.trim()) ? name.trim() : `Sewa ${name.trim()}`);
 const STATUS: Record<LeaseRowView["status"], string> = { AKTIF: "aktif", SELESAI: "selesai", BELUM_MULAI: "belum mulai", DIBATALKAN: "dibatalkan" };
 
 /** The lease register of the scope (PSAK 116, accounting-rules 5f): contracts, carrying amounts at the month-end, schedules, journals. */
@@ -226,7 +228,7 @@ export function LeaseRegister(props: { clientId: string; year: number; month: nu
             <Button variant="outline" onClick={() => setForm(null)}>Batal</Button>
             <Button
               disabled={busy || !form?.name.trim() || !form?.lessor.trim() || !form?.payment || !form?.rate || !form?.months}
-              onClick={() => form && run(() => createLeaseAction({ clientId: props.clientId, entityId: form.entityId, name: form.name, lessor: form.lessor, start: form.start, months: Number(form.months), payment: form.payment, intervalMonths: Number(form.intervalMonths), timing: form.timing, rate: form.rate }), `Sewa ${form.name} didaftarkan`, () => setForm(null))}
+              onClick={() => form && run(() => createLeaseAction({ clientId: props.clientId, entityId: form.entityId, name: form.name, lessor: form.lessor, start: form.start, months: Number(form.months), payment: form.payment, intervalMonths: Number(form.intervalMonths), timing: form.timing, rate: form.rate }), `${leaseLabel(form.name)} didaftarkan`, () => setForm(null))}
             >
               Simpan sewa
             </Button>
@@ -242,7 +244,7 @@ export function LeaseRegister(props: { clientId: string; year: number; month: nu
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCancelling(null)}>Kembali</Button>
-            <Button variant="destructive" disabled={busy} onClick={() => cancelling && run(() => cancelLeaseAction(props.clientId, cancelling.id), `Sewa ${cancelling.name} dibatalkan`, () => setCancelling(null))}>Batalkan sewa</Button>
+            <Button variant="destructive" disabled={busy} onClick={() => cancelling && run(() => cancelLeaseAction(props.clientId, cancelling.id), `${leaseLabel(cancelling.name)} dibatalkan`, () => setCancelling(null))}>Batalkan sewa</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

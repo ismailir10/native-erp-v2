@@ -2,6 +2,8 @@ import { supabaseEnv } from "@/lib/supabase/env";
 import { AuthShell } from "@/app/login/shell";
 import { SetPasswordForm } from "./set-password-form";
 
+export const metadata = { title: "Atur kata sandi" };
+
 export const dynamic = "force-dynamic";
 
 export default async function SetPasswordPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {

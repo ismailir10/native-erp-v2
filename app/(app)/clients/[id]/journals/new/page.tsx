@@ -12,6 +12,8 @@ import { JournalForm } from "@/components/app/journal-form";
 import { accountGroup } from "@/lib/coa/options";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
+export const metadata = { title: "Jurnal Penyesuaian" };
+
 export default async function NewJournalPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, period, periodOptions } = await loadClientPage(params, searchParams);
   const [due, candidates, schedules, p, lockedPeriods] = await Promise.all([

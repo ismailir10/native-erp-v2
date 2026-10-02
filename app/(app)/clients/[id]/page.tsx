@@ -22,6 +22,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ArrowRight } from "lucide-react";
 
+export const metadata = { title: "Ringkasan klien" };
+
 export default async function ClientOverview({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, period, scope, periodOptions, entityOptions, base, scopeLabel, currency } = await loadClientPage(params, searchParams);
   const s = { clientId: client.id, entityIds: scope.entityIds };

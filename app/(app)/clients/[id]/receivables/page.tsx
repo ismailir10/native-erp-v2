@@ -10,6 +10,8 @@ import { receivablesView } from "@/lib/receivables/view";
 import { ckpn, ckpnView } from "@/lib/receivables/ckpn";
 import { CkpnCard } from "@/components/app/ckpn-card";
 
+export const metadata = { title: "Piutang & Utang" };
+
 export default async function ReceivablesPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, period, scope, periodOptions, entityOptions, sp } = await loadClientPage(params, searchParams);
   const direction = sp.tab === "utang" ? "PURCHASE" : "SALES";

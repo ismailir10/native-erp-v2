@@ -17,6 +17,8 @@ import { AcceptCheckButton, DiscardDraftButton, PostImportButton } from "@/compo
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
+export const metadata = { title: "Impor buku besar" };
+
 const TYPE_LABEL = { ASET: "Aset", LIABILITAS: "Liabilitas", EKUITAS: "Ekuitas", PENDAPATAN: "Pendapatan", BEBAN: "Beban" } as const;
 const SEVERITY = { BLOCK: { status: "FAIL", label: "Harus diselesaikan" }, REVIEW: { status: "REVIEW", label: "Perlu dicek" }, INFO: { status: "PASS", label: "Info" } } as const;
 

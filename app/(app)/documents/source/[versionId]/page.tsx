@@ -9,6 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDate } from "@/lib/format";
 import { ArrowLeft } from "lucide-react";
 import type { EvidenceUnit } from "@/lib/evidence/types";
+
+export const metadata = { title: "Sumber dokumen" };
 export default async function SourcePage({ params, searchParams }: { params: Promise<{ versionId: string }>; searchParams: Promise<{ at?: string; scope?: string; period?: string; answer?: string }> }) {
   if (!evidenceEnabled()) notFound();
   const { versionId } = await params; const { at, scope, period, answer } = await searchParams; const firm = await getCurrentFirm();

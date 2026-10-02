@@ -18,6 +18,8 @@ import { requireWorkspaceSession } from "@/lib/auth/session";
 import { DeleteClientCard } from "@/components/app/delete-client";
 import { FrameworkCard } from "@/components/app/framework-card";
 
+export const metadata = { title: "Aturan klasifikasi" };
+
 export default async function SettingsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client } = await loadClientPage(params, searchParams);
   const { member } = await requireWorkspaceSession();

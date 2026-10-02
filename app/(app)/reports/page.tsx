@@ -3,6 +3,8 @@ import { WorkspaceScopeBar } from "@/components/app/workspace-scope";
 import { WorkspaceFinancials } from "@/components/app/workspace-overview";
 import { loadWorkspace, WorkspaceScopeError, type WorkspaceSearchParams } from "@/components/app/workspace-page";
 
+export const metadata = { title: "Laporan" };
+
 export default async function ReportsPage({ searchParams }: { searchParams: WorkspaceSearchParams }) {
   const data = await loadWorkspace(searchParams);
   if ("error" in data) return <WorkspaceScopeError message={data.error} />;

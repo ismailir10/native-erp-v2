@@ -4,6 +4,8 @@ import { WorkspaceAsk } from "@/components/app/workspace-ask";
 import { WorkspaceTasks, WorkspaceClose, WorkspaceFinancials } from "@/components/app/workspace-overview";
 import { loadWorkspace, WorkspaceScopeError, type WorkspaceSearchParams } from "@/components/app/workspace-page";
 
+export const metadata = { title: "Beranda" };
+
 export default async function HomePage({ searchParams }: { searchParams: WorkspaceSearchParams }) {
   const data = await loadWorkspace(searchParams);
   if ("error" in data) return <WorkspaceScopeError message={data.error} />;

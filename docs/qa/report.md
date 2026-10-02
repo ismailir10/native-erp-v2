@@ -11,10 +11,10 @@
 | Checks recorded | **165** — ✅ 132 pass · ❌ 14 fail · ℹ️ 18 observations · ⏭ 1 skipped |
 | Pages crawled | 61 (every route × every client) — 0 server errors, 0 console errors, 0 `NaN/undefined/null` |
 | Blockers found | **1 — fixed in this branch** ([BUG-001](./bugs/BUG-001.md)) |
-| Open bugs (separate list) | **13** — 2 High, 5 Medium, 6 Low |
-| Repo gates (before → after fix) | lint ✅ · typecheck ✅ · Vitest 862 → **868** ✅ · `verify:books` ALL PASS (1,741) ✅ · Playwright e2e **28/28** ✅ both times |
+| Other bugs (separate list) | **13** — 2 High, 5 Medium, 6 Low — **all fixed afterwards on `task/fix-qa-bugs`** (see §9) |
+| Repo gates (baseline → blocker fix → all fixes) | lint ✅ · typecheck ✅ · Vitest 862 → 868 → **910** ✅ · `verify:books` ALL PASS (1,741) ✅ · Playwright e2e **28/28** ✅ every time |
 
-**Top three things to fix next (all silent-wrong-number risks):**
+**The three worst findings (all silent-wrong-number risks — now fixed, §9):**
 1. [BUG-003](./bugs/BUG-003.md) — typing `250,000` books **Rp 250** (journals, Saldo Awal, faktur, aset…).
 2. [BUG-002](./bugs/BUG-002.md) — an XLSX with ISO date cells imports with dates in **1905** and says "success".
 3. [BUG-004](./bugs/BUG-004.md) / [BUG-005](./bugs/BUG-005.md) / [BUG-006](./bugs/BUG-006.md) — newest-first statements give a wrong opening balance; cross-rates and text rates can be 1,000× off.
@@ -85,7 +85,7 @@ Identical same-day rows *with* a balance column both kept; re-upload adds nothin
 
 Gates after the fix: lint ✅ typecheck ✅ Vitest 868/868 ✅ `verify:books` ALL PASS ✅ e2e 28/28 ✅.
 
-## 5. Open bugs (not fixed — separate list)
+## 5. Bugs found beyond the blocker (listed separately; fixed in §9)
 
 | ID | Sev | Title | Evidence |
 |---|---|---|---|
@@ -119,3 +119,25 @@ Real Supabase Auth (invite/reset e-mail, token refresh) · real AI behaviour · 
 ## 8. Reproducing
 
 `bash scripts/session-start.sh` → `npm run build` → run a local Auth endpoint or point `.env` at the staging project → drive the scenarios in [test-plan.md](./test-plan.md). The generated edge-case files, the local-Auth stand-in and the Playwright scripts were kept outside the repo; ask if you want them added under `e2e/` as permanent regression specs for the open bugs.
+
+## 9. Fix round — all 13 bugs fixed
+
+Requested after the report; done on `task/fix-qa-bugs` (stacked on this PR). Every fix has a regression test or a browser re-verification, listed in each bug file under *Fix applied* and as `VF-*` cases in [results-table.md](./results-table.md).
+
+| Bug | Fix in one line | Guard |
+|---|---|---|
+| 002 | XLSX with ISO date cells rewritten through SheetJS first; statement dates outside 2000–2100 refused with the row | unit + DB tests, browser |
+| 003 | `250,000` refused with “tulis ribuan dengan titik” (Indonesian notation unchanged) | unit, browser |
+| 004 | Newest-first tables are read from the oldest row (opening/closing/period correct) | unit, browser |
+| 005 | Rate parsing knows the currency pair (`0.745`, `1.085`, `105.234`, `16.250` all right) | unit, browser |
+| 006 | Ledger-file text rate `15.750,50` → 15750.50 | unit, probe |
+| 007 | `parsePeriod` validates month 1–12 / year window | unit, browser |
+| 008 | Upload forms check the 5 MB limit before sending | browser |
+| 009 | Zero-amount rows skipped with a note naming the row | DB test, browser |
+| 010 | Typed amounts > 15 digits and statement amounts > 10^15 refused with a clear message (evidence extraction deliberately stays uncapped) | unit + DB tests, browser |
+| 011 | NPWP must be 15/16 digits; stored normalised | unit, browser |
+| 012–014 | Mobile tab strip scrolls; per-page `<title>` (`%s · Buku`); long text wraps; no “Sewa Sewa” | browser |
+
+A first version capped file amounts in the shared `parseRupiah`/`parseCents`; the full suite caught that the evidence extractor intentionally reads 19-digit source figures, so the cap was moved to the statement pipeline.
+
+Gates after the fixes: lint ✅ · typecheck ✅ · Vitest **910/910** ✅ · `verify:books` ALL PASS (1,741) ✅ · e2e **28/28** ✅.

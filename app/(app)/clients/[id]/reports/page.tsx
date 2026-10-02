@@ -24,6 +24,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { buttonVariants } from "@/components/ui/button";
 import { Download } from "lucide-react";
 
+export const metadata = { title: "Laporan Keuangan" };
+
 export default async function ReportsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, period, scope, periodOptions, entityOptions, base, scopeLabel, sp, currency, mixed } = await loadClientPage(params, searchParams);
   const s = { clientId: client.id, entityIds: scope.entityIds };

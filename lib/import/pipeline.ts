@@ -51,7 +51,7 @@ export async function importStatement(
 
   const sections = await parseStatementSections(args.fileName, args.data, { password: args.password, year: args.year });
   const digits = (s: string | null) => (s ?? "").replace(/\D/g, "");
-  const st = sections.length === 1 ? sections[0] : sections.find((s) => digits(s.accountNumber) === digits(bankAccount.number));
+  let st = sections.length === 1 ? sections[0] : sections.find((s) => digits(s.accountNumber) === digits(bankAccount.number));
   if (!st) {
     const list = sections.map((s) => `${s.accountNumber}${s.section ? ` ${s.section.label} (${s.section.currency})` : ""}`).join(", ");
     throw new AccountMismatchError(`File ini berisi ${sections.length} rekening (${list}), tapi tidak ada nomor ${bankAccount.number}. Pilih rekening yang sesuai atau tambahkan rekeningnya di klien.`, sections.flatMap((s) => (s.accountNumber ? [s.accountNumber] : [])));
@@ -61,6 +61,20 @@ export async function importStatement(
   }
   if (st.section && st.section.currency !== "IDR") {
     throw new ParseError(`Rekening ${st.accountNumber} dalam ${st.section.currency}. Rekening koran valas belum didukung; impor lewat buku besar dengan kurs.`);
+  }
+  // A date that is nowhere near a statement (an Excel serial misread as 1905) must never become a period of the books.
+  const odd = st.rows.find((r) => r.date.getUTCFullYear() < 2000 || r.date.getUTCFullYear() > 2100);
+  if (odd) throw new ParseError(`Tanggal di baris ${odd.rowNumber}${odd.sheet ? ` (lembar ${odd.sheet})` : ""} tidak masuk akal: ${formatDate(odd.date)}. Periksa kolom tanggal di file.`);
+  // An amount beyond any real account would only fail later at the database with no explanation.
+  const LIMIT = 10n ** 15n;
+  const huge = st.rows.find((r) => r.amount > LIMIT || r.amount < -LIMIT || (r.balance !== null && (r.balance > LIMIT || r.balance < -LIMIT)));
+  if (huge) throw new ParseError(`Nominal terlalu besar di baris ${huge.rowNumber}${huge.sheet ? ` (lembar ${huge.sheet})` : ""} (maks. 15 angka). Periksa kolom jumlah dan saldo di file.`);
+  // A line that moves no money (0 debit and 0 credit) is no bank transaction and can't be journaled: left out, said so, row numbers kept.
+  const zeroRows = st.rows.filter((r) => r.amount === 0n);
+  if (zeroRows.length) {
+    if (zeroRows.length === st.rows.length) throw new ParseError("File tidak berisi mutasi bernilai: semua baris berjumlah nol.");
+    const refs = zeroRows.slice(0, 5).map((r) => r.rowNumber).join(", ");
+    st = { ...st, rows: st.rows.filter((r) => r.amount !== 0n), notes: [...(st.notes ?? []), `${zeroRows.length} baris bernilai nol dilewati (baris ${refs}${zeroRows.length > 5 ? ", …" : ""}): tidak ada uang yang bergerak.`] };
   }
   const others = sections.filter((s) => s !== st);
   const otherSections = others.map((s) => `${s.accountNumber} ${s.section?.label ?? ""} (${s.section?.currency ?? "IDR"}): tidak diimpor ke rekening ini`);

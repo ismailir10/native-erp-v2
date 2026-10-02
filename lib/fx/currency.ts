@@ -96,10 +96,22 @@ export function formatRateId(rate: string): string {
 }
 
 /**
- * Typed-in rate → canonical decimal ("12.250,50" → "12250.50", "12.250" → "12250", "1,31" → "1.31", "1.31" → "1.31").
- * Both separators: the last one is the decimal. One kind only: 3-digit groups mean thousands, anything else is the decimal.
+ * Plausible IDR per 1 unit of a currency, deliberately wide (2015–2030 swings with room). Only used to settle "105.234": thousands
+ * (105234) or decimal (105,234)? Whichever reading falls inside the band wins.
  */
-export function normalizeRateInput(input: string): string {
+const IDR_BAND: Record<string, [number, number]> = {
+  USD: [3000, 60000], SGD: [3000, 60000], EUR: [3000, 80000], GBP: [3000, 90000], AUD: [2000, 50000],
+  CNY: [500, 10000], HKD: [500, 10000], MYR: [500, 20000], JPY: [20, 1000],
+};
+
+/**
+ * Typed-in rate → canonical decimal ("12.250,50" → "12250.50", "12.250" → "12250", "1,31" → "1.31", "1.31" → "1.31").
+ * Both separators: the last one is the decimal. One kind only: 3-digit groups look like thousands, anything else is the decimal.
+ * `pair` settles the look-alike: a rate between two foreign currencies is never in the thousands ("1.085" is 1,085), a group led by
+ * "0" is a fraction ("0.745"), and against Rupiah the reading that lands in a plausible IDR range wins (JPY→IDR "105.234" is
+ * 105,234 not 105234; USD→IDR "16.250" stays 16250).
+ */
+export function normalizeRateInput(input: string, pair?: { currency: string; quote: string }): string {
   const s = input.trim().replace(/\s/g, "");
   const dot = s.lastIndexOf(".");
   const comma = s.lastIndexOf(",");
@@ -110,6 +122,31 @@ export function normalizeRateInput(input: string): string {
   }
   const sep = dot >= 0 ? "." : comma >= 0 ? "," : null;
   if (!sep) return s;
-  const thousands = new RegExp(`^\\d{1,3}(\\${sep}\\d{3})+$`).test(s);
-  return thousands ? s.split(sep).join("") : s.replace(sep, ".");
+  const looksThousands = new RegExp(`^\\d{1,3}(\\${sep}\\d{3})+$`).test(s);
+  const thousands = s.split(sep).join("");
+  const decimal = s.replace(sep, ".");
+  if (!looksThousands || s.startsWith("0")) return decimal;
+  if (!pair) return thousands;
+  if (pair.currency !== "IDR" && pair.quote !== "IDR") return s.split(sep).length > 2 ? thousands : decimal;
+  const base = pair.quote === "IDR" ? pair.currency : pair.quote;
+  const band = IDR_BAND[base];
+  if (!band) return thousands;
+  const inBand = (n: number) => (pair.quote === "IDR" ? n >= band[0] && n <= band[1] : n >= 1 / band[1] && n <= 1 / band[0]);
+  const asThousands = inBand(Number(thousands));
+  const asDecimal = inBand(Number(decimal));
+  return asDecimal && !asThousands ? decimal : thousands;
+}
+
+/**
+ * A rate cell of a ledger file read as text. Both separators: the last is the decimal ("15.750,50" → "15750.50"). A lone comma
+ * followed by exactly three digits is a thousands group ("15,750"), any other lone comma a decimal ("1,31"); a lone dot stays the
+ * decimal point, as these files always had it ("1.31", "1.085").
+ */
+export function normalizeLedgerRate(input: string): string {
+  const s = input.trim().replace(/\s/g, "");
+  const dot = s.lastIndexOf(".");
+  const comma = s.lastIndexOf(",");
+  if (dot >= 0 && comma >= 0) return normalizeRateInput(s);
+  if (comma >= 0) return /^\d{1,3}(,\d{3})+$/.test(s) ? s.split(",").join("") : s.replace(",", ".");
+  return s;
 }

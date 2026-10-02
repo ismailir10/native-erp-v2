@@ -4,7 +4,7 @@ import { isBriCsv, parseBri } from "@/lib/import/parsers/bri";
 import { parseTabular, parseWorkbook, xlsxToSheets } from "@/lib/import/parsers/tabular";
 import { decodeText, detectDelimiter, readCsv } from "@/lib/import/parsers/common";
 import { parsePdfSections } from "@/lib/import/parsers/pdf";
-import { asXlsx, sniffFile } from "@/lib/import/workbook";
+import { readableXlsx, sniffFile } from "@/lib/import/workbook";
 
 export type ParseOptions = {
   /** Used once to open a PDF; never stored. */
@@ -30,7 +30,7 @@ export async function parseStatementSections(fileName: string, data: Buffer, opt
 
 async function parseAny(fileName: string, data: Buffer, opts: ParseOptions): Promise<ParsedStatement[]> {
   if (sniffFile(data) === "PDF") return parsePdfSections(data, opts);
-  const xlsx = asXlsx(data);
+  const xlsx = await readableXlsx(data);
   if (xlsx) return parseWorkbook(await xlsxToSheets(xlsx), { year: opts.year, fileName });
   const text = decodeText(data);
   const generic = () => {

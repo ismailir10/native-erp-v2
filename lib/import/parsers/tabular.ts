@@ -249,11 +249,20 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
   };
   const openingDate = openingRow?.parts ? dateOf(openingRow.parts) : null;
   const dates = drafts.map((d) => dateOf(d.parts));
+  // Internet banking often exports newest first. Opening balance, closing balance and the period are read from the first and last row, so
+  // such a file is read from its oldest row. Only with printed years (a year-less date needs the order to find its year) and only when
+  // every date is on or before the one above it; a few rows out of order are left as they are.
+  const newestFirst = drafts.length >= 2 && drafts.every((d) => d.parts.y !== null) && +dates[0] > +dates[dates.length - 1] && dates.every((d, i) => i === 0 || +d <= +dates[i - 1]);
+  if (newestFirst) {
+    drafts.reverse();
+    dates.reverse();
+  }
 
   // ---- direction: the bank's way (kredit = masuk) unless only the books' way (debet = masuk) keeps the balance continuous ----
   const notes: string[] = [];
   const senNote = sen.note();
   if (senNote) notes.push(senNote);
+  if (newestFirst) notes.push("Baris di file berurutan dari yang terbaru; dibaca dari yang terlama supaya saldo awal, saldo akhir, dan periode benar.");
   if (cFlag >= 0) notes.push(`Kolom "${header[cFlag] || "D/K"}" dipakai sebagai tanda D/K: D / DB / Debet = uang keluar, K / CR / Kredit = uang masuk.`);
   const opening = (flip: boolean): bigint | null => {
     if (openingRow?.balance !== undefined && openingRow?.balance !== null) return openingRow.balance;

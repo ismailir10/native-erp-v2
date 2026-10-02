@@ -3,7 +3,7 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 
 export const metadata: Metadata = {
-  title: "Buku · tutup buku bulanan untuk kantor akuntan",
+  title: { default: "Buku · tutup buku bulanan untuk kantor akuntan", template: "%s · Buku" },
   description: "Rekening koran jadi jurnal, buku besar, dan laporan keuangan. Setiap angka bisa ditelusuri ke baris banknya.",
 };
 

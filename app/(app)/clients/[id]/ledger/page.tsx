@@ -14,6 +14,8 @@ import { currencyNote, FxMissing, withFx } from "@/components/app/fx-missing";
 import { FxMissingError } from "@/lib/reports/fx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
+export const metadata = { title: "Buku Besar" };
+
 const TYPES = [
   ["ASET", "Aset"],
   ["LIABILITAS", "Liabilitas"],

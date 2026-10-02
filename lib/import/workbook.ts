@@ -47,3 +47,21 @@ export function asXlsx(data: Buffer): Buffer | null {
   // them back as UTC dates.
   return Buffer.from(XLSX.write(wb, { type: "buffer", bookType: "xlsx", cellDates: false, compression: false }));
 }
+
+/**
+ * Like {@link asXlsx}, and also repairs an .xlsx whose date cells are stored as ISO text (`<c t="d">2026-10-02T00:00:00.000Z</c>`, what
+ * SheetJS writes with `cellDates` and many web exporters copy). ExcelJS reads that text as the number 2026 — 18 Jul 1905 — so such a
+ * file is rewritten by SheetJS first, which turns the cells into real date serials. Other .xlsx files are passed through untouched.
+ */
+export async function readableXlsx(data: Buffer): Promise<Buffer | null> {
+  if (sniffFile(data) !== "XLSX") return asXlsx(data);
+  try {
+    const wb = XLSX.read(data, { type: "buffer", raw: true, cellDates: false, cellFormula: false, bookFiles: true });
+    const files = (wb as unknown as { files?: Record<string, { content?: Uint8Array }> }).files ?? {};
+    const iso = Object.entries(files).some(([name, f]) => /^xl\/worksheets\/[^/]+\.xml$/.test(name) && f.content && /<c\b[^>]*\bt="d"/.test(Buffer.from(f.content).toString("utf8")));
+    if (!iso) return data;
+    return Buffer.from(XLSX.write(wb, { type: "buffer", bookType: "xlsx", cellDates: false, compression: false }));
+  } catch {
+    return data;
+  }
+}

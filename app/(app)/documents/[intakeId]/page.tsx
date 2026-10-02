@@ -4,6 +4,8 @@ import { getCurrentFirm } from "@/lib/tenant";
 import { prisma } from "@/lib/db";
 import { loadWorkspace } from "@/lib/evidence/workspace";
 import { EvidenceWorkspace } from "@/components/app/evidence-workspace";
+
+export const metadata = { title: "Dokumen" };
 export default async function IntakePage({ params }: { params: Promise<{ intakeId: string }> }) {
   if (!evidenceEnabled()) notFound();
   const { intakeId } = await params;
