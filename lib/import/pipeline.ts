@@ -2,7 +2,7 @@ import type { Db, Tx } from "@/lib/db";
 import type { ClassifyMethod, Direction } from "@/lib/generated/prisma/enums";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { parseStatementSections } from "@/lib/import/parsers";
-import { checkContinuity, isGenericKey, merchantKey, rowHash } from "@/lib/import/normalize";
+import { checkContinuity, isGenericKey, merchantKey, rowHashes } from "@/lib/import/normalize";
 import { AccountMismatchError, ParseError, type ParsedStatement } from "@/lib/import/types";
 import { matchRule, sortRules } from "@/lib/classify/rules";
 import { financingSuggestion, taxPaymentSuggestion } from "@/lib/classify/financing";
@@ -89,7 +89,7 @@ export async function importStatement(
   }
 
   // Dedupe against what's already imported for this bank account (see `dedupe`); checked again under the account's lock when writing.
-  const hashes = st.rows.map(rowHash);
+  const hashes = rowHashes(st.rows);
   const seen = await dedupe(db, bankAccount.id, st, hashes);
   const fresh = st.rows.map((r, i) => ({ r, hash: hashes[i] })).filter((_, i) => !seen.duplicate[i]);
   const notes = [...(st.notes ?? []), ...seen.notes];

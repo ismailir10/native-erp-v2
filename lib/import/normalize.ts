@@ -50,6 +50,22 @@ export function rowHash(row: ParsedRow): string {
     .slice(0, 24);
 }
 
+/**
+ * Hashes of a statement's rows, in file order. Two real bank lines can be identical (two Rp 15.000 fees on one day) and only a file
+ * that prints a running balance tells them apart. The unique (bankAccountId, hash) index would reject the second one, so each repeat
+ * within the file carries its ordinal. The first of a kind keeps its plain hash: lines imported before this stay matched, and the
+ * same file imported again produces the same hashes, so the dedupe still pairs the twins one to one.
+ */
+export function rowHashes(rows: ParsedRow[]): string[] {
+  const seen = new Map<string, number>();
+  return rows.map((row) => {
+    const base = rowHash(row);
+    const n = seen.get(base) ?? 0;
+    seen.set(base, n + 1);
+    return n === 0 ? base : createHash("sha1").update(`${base}|#${n}`).digest("hex").slice(0, 24);
+  });
+}
+
 export type ContinuityResult = { ok: boolean; note: string | null; brokenRows: number[] };
 
 /**
