@@ -19,6 +19,8 @@ import { cachedCloseReview } from "@/lib/controls/ai-review";
 import { resolveAiConfig } from "@/lib/settings/ai";
 import { createHash } from "node:crypto";
 
+export const metadata = { title: "Tutup Buku" };
+
 export default async function ClosePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, period, periodOptions, base } = await loadClientPage(params, searchParams);
   const controls = await runControls(prisma, client.id, period.year, period.month);

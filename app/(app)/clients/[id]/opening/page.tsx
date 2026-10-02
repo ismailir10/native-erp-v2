@@ -13,6 +13,8 @@ import { OpeningForm } from "@/components/app/opening-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
+export const metadata = { title: "Saldo Awal" };
+
 export default async function OpeningPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const client = await getClientForFirm(id).catch(() => notFound());

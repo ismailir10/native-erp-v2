@@ -12,6 +12,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { accountLedger, sourceLedgerBasis } from "@/lib/reports/account-ledger";
 import { sourceAccountLabel } from "@/lib/ledger-import/code";
 
+export const metadata = { title: "Buku Besar" };
+
 /** Ledger of one of the client's own accounts (from their ledger or Neraca file), every line down to its source row. */
 export default async function ClientAccountLedger({ params, searchParams }: { params: Promise<{ id: string; sourceAccountId: string }>; searchParams: SearchParams }) {
   const { sourceAccountId } = await params;

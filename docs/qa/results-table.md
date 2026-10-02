@@ -1,6 +1,6 @@
 # Per-case results
 
-Generated from [results.json](./results.json) (162 recorded checks). ✅ pass · ❌ fail (a bug, see [bugs/](./bugs/README.md)) · ℹ️ observation · ⏭ skipped.
+Generated from [results.json](./results.json) (the 165 checks of the original run plus the VF-* re-verifications after the fixes). ✅ pass · ❌ fail (a bug, see [bugs/](./bugs/README.md)) · ℹ️ observation · ⏭ skipped.
 
 ## A
 
@@ -254,6 +254,28 @@ Generated from [results.json](./results.json) (162 recorded checks). ✅ pass ·
 | V1 | ✅ PASS | Ledger file checks flag problems with row refs: {"unbalanced":true,"broken":true,"reused":true}; excerpt: 1. Pemeriksaan file \| Aturan tetap, bukan AI. Setiap temuan menunjuk ke baris di file (GL!baris). \| Harus diselesaikan \| GL!6: debit bukan angka: "abc" \| GL!6 \| Harus diselesaikan \| Jurnal PT Migrasi Uji Sejahtera 9 Jan 2026 tidak seimbang: selisih Rp 100.000 (debit > | [img](./screenshots/V1-ledger-import-checks.jpg) |
 | V2 | ✅ PASS | Nothing posted from a flawed file (journals=0); post button enabled=false | [img](./screenshots/V2-post-blocked.jpg) |
 | V3 | ❌ FAIL | Ledger/Neraca file with an Indonesian-format TEXT rate "15.750,50" is read as 15.75050 (≈ 1000× too small); no row error. Numeric rate cells are fine (read.ts strips every comma) | [img](./screenshots/V1-ledger-import-checks.jpg) |
+
+## VF
+
+| Case | Result | Detail | Evidence |
+|---|---|---|---|
+| VF-002 | ✅ PASS | SheetJS ISO-date workbook now imports dates ["2026-10-02","2026-10-05"] (was 1905-07-18) | [img](./screenshots/fixed/VF-002-xlsx-iso-dates.jpg) |
+| VF-003 | ✅ PASS | "250,000" is refused inline (Simpan disabled=true): Nominal "250,000" bisa dibaca ribuan atau desimal. Tulis ribuan dengan titik, misalnya 1.250.000. | [img](./screenshots/fixed/VF-003-western-separators.jpg) |
+| VF-003b | ✅ PASS | Indonesian 250.000 still accepted |  |
+| VF-004 | ✅ PASS | Newest-first export: opening 100000000 closing 103500000 continuityOk=true (was 100.500.000 / 101.000.000 / false) | [img](./screenshots/fixed/VF-004-newest-first.jpg) |
+| VF-004b | ✅ PASS | Saldo Awal prefill is the true opening 100.000.000 | [img](./screenshots/fixed/VF-004b-opening-prefill.jpg) |
+| VF-005 | ✅ PASS | SGD→USD "0.745" => 0.745 (exp 0.745); EUR→USD "1.085" => 1.085 (exp 1.085); USD→IDR "16.250" => 16250 (exp 16250); JPY→IDR "105.234" => 105.234 (exp 105.234); USD→IDR "16.250,50" => 16250.5 (exp 16250.5) | [img](./screenshots/fixed/VF-005-rates.jpg) |
+| VF-007 | ✅ PASS | 16 pages with month 13/00: "undefined" on 0; export file name attachment; filename="laporan-keuangan-CV_Sinar_Retail-Oktober-2026.xlsx" | [img](./screenshots/fixed/VF-007-month-13.jpg) |
+| VF-008 | ✅ PASS | 6.5 MB file: page intact; toast "File terlalu besar (maks. 5 MB)." | [img](./screenshots/fixed/VF-008-oversize-friendly.jpg) |
+| VF-009 | ✅ PASS | Zero-amount row skipped, other row imported (1); page note: 1 baris bernilai nol dilewati (baris 4): tidak ada uang yang bergerak. | [img](./screenshots/fixed/VF-009-zero-row.jpg) |
+| VF-010a | ✅ PASS | 20-digit statement amount: "Nominal terlalu besar di baris 4 (maks. 15 angka). Periksa kolom jumlah dan saldo di file." | [img](./screenshots/fixed/VF-010a-huge-statement.jpg) |
+| VF-010b | ✅ PASS | 20-digit journal amount refused inline: Nominal terlalu besar (maks. 15 angka): "99.999.999.999.999.999.999". | [img](./screenshots/fixed/VF-010b-huge-journal.jpg) |
+| VF-011a | ✅ PASS | 19-digit NPWP is now rejected with the field message | [img](./screenshots/fixed/VF-011a-npwp-19-digits.jpg) |
+| VF-011b | ✅ PASS | 15 digits typed without separators are stored normalised: 01.234.567.8-015.000 |  |
+| VF-012 | ✅ PASS | Impor page at 390 px: scrollWidth 390 / clientWidth 390 (was 462 / 390) | [img](./screenshots/fixed/VF-012-mobile-import.jpg) |
+| VF-013 | ✅ PASS | 18 distinct titles on 18 pages, e.g. Beranda · Buku \| Laporan · Buku \| Dokumen · Buku \| Pengaturan · Buku |  |
+| VF-014a | ✅ PASS | Lease toast: "Sewa Gudang Fix didaftarkan" |  |
+| VF-014b | ✅ PASS | 2000-char unbroken question: article horizontal overflow 0px | [img](./screenshots/fixed/VF-014b-long-question.jpg) |
 
 ## X
 

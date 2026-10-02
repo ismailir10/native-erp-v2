@@ -1,6 +1,8 @@
 import { AuthShell } from "../shell";
 import { ForgotPasswordForm } from "../login-form";
 
+export const metadata = { title: "Lupa kata sandi" };
+
 export const dynamic = "force-dynamic";
 
 export default function ForgotPasswordPage() {

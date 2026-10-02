@@ -4,6 +4,7 @@ import { useKeepEarlyFile } from "@/components/app/keep-early-file";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { MAX_UPLOAD_BYTES, UPLOAD_TOO_BIG } from "@/lib/upload";
 import { FileUp, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +32,11 @@ export function LedgerImportForm({ clientId, entities }: { clientId: string; ent
   const [drag, setDrag] = useState(false);
   const [busy, setBusy] = useState(false);
   const setFile = (f: File | null) => {
+    if (f && f.size > MAX_UPLOAD_BYTES) {
+      toast.error(UPLOAD_TOO_BIG);
+      if (inputRef.current) inputRef.current.value = "";
+      f = null;
+    }
     setFileState(f);
     setCandidates(null);
     setSheet("");

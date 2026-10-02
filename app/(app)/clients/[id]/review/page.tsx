@@ -12,6 +12,8 @@ import { isSimpleGuess } from "@/lib/classify/fallback";
 import { resolveAiConfig } from "@/lib/settings/ai";
 import { getCurrentMember } from "@/lib/tenant";
 
+export const metadata = { title: "Review transaksi" };
+
 export default async function ReviewPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, base, scope, period, scopeLabel, entityOptions, periodOptions } = await loadClientPage(params, searchParams);
   const txs = await prisma.bankTransaction.findMany({

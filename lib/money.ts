@@ -8,6 +8,10 @@ import { CURRENCIES, divRound, exponentOf } from "@/lib/fx/currency";
 /** Effective PPN rate since 2025: 12% × DPP 11/12 = 11% of the gross-up base. */
 export const PPN_EFFECTIVE_PERCENT = 11n;
 
+/** Largest integer part (in major units) a typed amount may have: 15 digits, far beyond any client's books and safe for bigint. Source-reported
+ *  figures in uploaded reports (evidence) are read without this cap; bank statement rows are capped in the import pipeline. */
+const MAX_INTEGER_DIGITS = 15;
+
 /**
  * Parse a bank amount string into integer Rupiah. Handles "1.234.567,00" (id-ID),
  * "1,234,567.00" (en), "1500000.00", "-2.500", "(2.500)". Sen are rounded half-up.
@@ -149,6 +153,15 @@ export function parseMoney(input: string, currency: string): bigint {
   const m = s.match(/^(\d{1,3}(?:\.\d{3})+|\d+)(?:,(\d+))?$/);
   if (!m) throw unreadable();
   const frac = m[2] ?? "";
+  // "250,000" is how English-locale spreadsheets write two hundred fifty thousand; read with a decimal comma it would silently be 250.
+  // A comma followed by exactly three digits (and no dot grouping) is never a real fraction for a currency with at most two decimals;
+  // with decimals that aren't zeros the "too many decimals" message below already says so.
+  if (!m[1].includes(".") && frac.length === 3 && (e === 0 || !/[1-9]/.test(frac))) {
+    throw new MoneyError(`Nominal "${input.trim()}" bisa dibaca ribuan atau desimal. Tulis ribuan dengan titik, misalnya ${moneyExample(currency)}.`);
+  }
+  if (m[1].replace(/\./g, "").replace(/^0+/, "").length > MAX_INTEGER_DIGITS) {
+    throw new MoneyError(`Nominal terlalu besar (maks. ${MAX_INTEGER_DIGITS} angka): "${input.trim().slice(0, 40)}".`);
+  }
   if (/[1-9]/.test(frac.slice(e))) {
     throw new MoneyError(e === 0 ? `${name} tidak memakai angka desimal: "${input.trim()}".` : `${name} paling banyak ${e} angka di belakang koma: "${input.trim()}".`);
   }

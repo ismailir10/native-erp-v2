@@ -10,6 +10,8 @@ import { packApplies, taxPack } from "@/lib/tax/pack";
 import { taxPackView } from "@/lib/tax/view";
 import { Card, CardContent } from "@/components/ui/card";
 
+export const metadata = { title: "Pajak Badan" };
+
 export default async function TaxPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, period, scope, periodOptions, entityOptions } = await loadClientPage(params, searchParams, { defaultCombined: false });
   const entity = client.entities.find((e) => e.id === scope.entityIds[0])!;

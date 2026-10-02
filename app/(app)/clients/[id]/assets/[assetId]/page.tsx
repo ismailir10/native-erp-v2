@@ -12,6 +12,8 @@ import { Money } from "@/components/app/money";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
+export const metadata = { title: "Aset Tetap" };
+
 const KIND = { ACQUIRED: "Perolehan", OPENING: "Saldo Awal", DEPRECIATION: "Penyusutan", DISPOSAL: "Pelepasan" } as const;
 
 /** One asset's register figures down to their entries (accounting-rules 5b; ui-rules: every number drills to its source). */

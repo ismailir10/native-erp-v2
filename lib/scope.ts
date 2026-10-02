@@ -5,8 +5,10 @@ export type SearchParams = Promise<Record<string, string | string[] | undefined>
 
 export function parsePeriod(v: string | string[] | undefined, fallback: { year: number; month: number }) {
   const m = typeof v === "string" ? v.match(/^(\d{4})-(\d{2})$/) : null;
-  const year = m ? Number(m[1]) : fallback.year;
-  const month = m ? Number(m[2]) : fallback.month;
+  // A month outside 1–12 or a year outside 1900–2199 is no period at all: the default one is shown, never "undefined 2026".
+  const ok = m !== null && Number(m[2]) >= 1 && Number(m[2]) <= 12 && Number(m[1]) >= 1900 && Number(m[1]) <= 2199;
+  const year = ok ? Number(m![1]) : fallback.year;
+  const month = ok ? Number(m![2]) : fallback.month;
   return { year, month, ...periodBounds(year, month), key: `${year}-${String(month).padStart(2, "0")}` };
 }
 

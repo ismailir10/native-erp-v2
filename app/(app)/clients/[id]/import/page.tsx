@@ -16,6 +16,8 @@ import { LedgerImportForm } from "@/components/app/ledger-import-form";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 
+export const metadata = { title: "Impor Mutasi" };
+
 export default async function ImportPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, sp, period } = await loadClientPage(params, searchParams);
   const setup = await setupProgress(prisma, client.id, { period });
@@ -106,7 +108,7 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
         ledger
       ) : (
         <Tabs defaultValue={tab}>
-          <TabsList>
+          <TabsList className="max-w-full justify-start overflow-x-auto">
             <TabsTrigger value="statement">Rekening koran bank</TabsTrigger>
             <TabsTrigger value="ledger">Neraca atau buku besar dari sistem lama</TabsTrigger>
           </TabsList>

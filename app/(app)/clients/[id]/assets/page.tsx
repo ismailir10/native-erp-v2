@@ -7,6 +7,8 @@ import { NextStep, PageHeader } from "@/components/app/page-header";
 import { AssetRegister } from "@/components/app/asset-register";
 import { candidateViews, registerViews, scheduleLinkViews } from "@/lib/assets/view";
 
+export const metadata = { title: "Aset Tetap" };
+
 export default async function AssetsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, period, scope, periodOptions, entityOptions, base } = await loadClientPage(params, searchParams);
   const entities = client.entities.filter((e) => scope.entityIds.includes(e.id));

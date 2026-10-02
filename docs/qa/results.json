@@ -1256,5 +1256,133 @@
    "screenshots/UO1-unlock-order.jpg"
   ],
   "ts": "2026-10-02T02:44:55.391Z"
+ },
+ "VF-011a": {
+  "status": "PASS",
+  "note": "19-digit NPWP is now rejected with the field message",
+  "shots": [
+   "screenshots/fixed/VF-011a-npwp-19-digits.jpg"
+  ],
+  "ts": "2026-10-02T03:09:33.576Z"
+ },
+ "VF-011b": {
+  "status": "PASS",
+  "note": "15 digits typed without separators are stored normalised: 01.234.567.8-015.000",
+  "shots": [],
+  "ts": "2026-10-02T03:09:36.242Z"
+ },
+ "VF-002": {
+  "status": "PASS",
+  "note": "SheetJS ISO-date workbook now imports dates [\"2026-10-02\",\"2026-10-05\"] (was 1905-07-18)",
+  "shots": [
+   "screenshots/fixed/VF-002-xlsx-iso-dates.jpg"
+  ],
+  "ts": "2026-10-02T03:09:43.332Z"
+ },
+ "VF-004": {
+  "status": "PASS",
+  "note": "Newest-first export: opening 100000000 closing 103500000 continuityOk=true (was 100.500.000 / 101.000.000 / false)",
+  "shots": [
+   "screenshots/fixed/VF-004-newest-first.jpg"
+  ],
+  "ts": "2026-10-02T03:09:50.457Z"
+ },
+ "VF-004b": {
+  "status": "PASS",
+  "note": "Saldo Awal prefill is the true opening 100.000.000",
+  "shots": [
+   "screenshots/fixed/VF-004b-opening-prefill.jpg"
+  ],
+  "ts": "2026-10-02T03:09:51.687Z"
+ },
+ "VF-009": {
+  "status": "PASS",
+  "note": "Zero-amount row skipped, other row imported (1); page note: 1 baris bernilai nol dilewati (baris 4): tidak ada uang yang bergerak.",
+  "shots": [
+   "screenshots/fixed/VF-009-zero-row.jpg"
+  ],
+  "ts": "2026-10-02T03:09:58.798Z"
+ },
+ "VF-010a": {
+  "status": "PASS",
+  "note": "20-digit statement amount: \"Nominal terlalu besar di baris 4 (maks. 15 angka). Periksa kolom jumlah dan saldo di file.\"",
+  "shots": [
+   "screenshots/fixed/VF-010a-huge-statement.jpg"
+  ],
+  "ts": "2026-10-02T03:13:39.696Z"
+ },
+ "VF-008": {
+  "status": "PASS",
+  "note": "6.5 MB file: page intact; toast \"File terlalu besar (maks. 5 MB).\"",
+  "shots": [
+   "screenshots/fixed/VF-008-oversize-friendly.jpg"
+  ],
+  "ts": "2026-10-02T03:10:06.651Z"
+ },
+ "VF-003": {
+  "status": "PASS",
+  "note": "\"250,000\" is refused inline (Simpan disabled=true): Nominal \"250,000\" bisa dibaca ribuan atau desimal. Tulis ribuan dengan titik, misalnya 1.250.000.",
+  "shots": [
+   "screenshots/fixed/VF-003-western-separators.jpg"
+  ],
+  "ts": "2026-10-02T03:10:07.884Z"
+ },
+ "VF-003b": {
+  "status": "PASS",
+  "note": "Indonesian 250.000 still accepted",
+  "shots": [],
+  "ts": "2026-10-02T03:10:07.963Z"
+ },
+ "VF-010b": {
+  "status": "PASS",
+  "note": "20-digit journal amount refused inline: Nominal terlalu besar (maks. 15 angka): \"99.999.999.999.999.999.999\".",
+  "shots": [
+   "screenshots/fixed/VF-010b-huge-journal.jpg"
+  ],
+  "ts": "2026-10-02T03:10:08.396Z"
+ },
+ "VF-007": {
+  "status": "PASS",
+  "note": "16 pages with month 13/00: \"undefined\" on 0; export file name attachment; filename=\"laporan-keuangan-CV_Sinar_Retail-Oktober-2026.xlsx\"",
+  "shots": [
+   "screenshots/fixed/VF-007-month-13.jpg"
+  ],
+  "ts": "2026-10-02T03:10:14.719Z"
+ },
+ "VF-005": {
+  "status": "PASS",
+  "note": "SGD→USD \"0.745\" => 0.745 (exp 0.745); EUR→USD \"1.085\" => 1.085 (exp 1.085); USD→IDR \"16.250\" => 16250 (exp 16250); JPY→IDR \"105.234\" => 105.234 (exp 105.234); USD→IDR \"16.250,50\" => 16250.5 (exp 16250.5)",
+  "shots": [
+   "screenshots/fixed/VF-005-rates.jpg"
+  ],
+  "ts": "2026-10-02T03:10:29.241Z"
+ },
+ "VF-014a": {
+  "status": "PASS",
+  "note": "Lease toast: \"Sewa Gudang Fix didaftarkan\"",
+  "shots": [],
+  "ts": "2026-10-02T03:10:32.022Z"
+ },
+ "VF-014b": {
+  "status": "PASS",
+  "note": "2000-char unbroken question: article horizontal overflow 0px",
+  "shots": [
+   "screenshots/fixed/VF-014b-long-question.jpg"
+  ],
+  "ts": "2026-10-02T03:10:36.689Z"
+ },
+ "VF-012": {
+  "status": "PASS",
+  "note": "Impor page at 390 px: scrollWidth 390 / clientWidth 390 (was 462 / 390)",
+  "shots": [
+   "screenshots/fixed/VF-012-mobile-import.jpg"
+  ],
+  "ts": "2026-10-02T03:10:39.018Z"
+ },
+ "VF-013": {
+  "status": "PASS",
+  "note": "18 distinct titles on 18 pages, e.g. Beranda · Buku | Laporan · Buku | Dokumen · Buku | Pengaturan · Buku",
+  "shots": [],
+  "ts": "2026-10-02T03:10:42.638Z"
  }
 }

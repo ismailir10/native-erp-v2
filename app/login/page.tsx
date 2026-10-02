@@ -4,6 +4,8 @@ import { authConfigured } from "@/lib/auth";
 import { AuthShell } from "./shell";
 import { LoginForm } from "./login-form";
 
+export const metadata = { title: "Masuk" };
+
 // Login configuration is runtime env; never prerender a build-time "not configured" page.
 export const dynamic = "force-dynamic";
 

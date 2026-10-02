@@ -9,6 +9,8 @@ import { WorkspaceScopeBar } from "@/components/app/workspace-scope";
 import { resolveWorkspaceScope, workspaceHref, WorkspaceInputError } from "@/lib/workspace";
 import type { SearchParams } from "@/lib/scope";
 
+export const metadata = { title: "Dokumen" };
+
 export default async function DocumentsPage({ searchParams }: { searchParams: SearchParams }) {
   const { firm, member } = await requireWorkspaceSession();
   if (!evidenceEnabled()) notFound();

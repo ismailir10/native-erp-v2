@@ -35,6 +35,7 @@ import { EntitySettingsError, setReportingFramework } from "@/lib/entity-setting
 import { OpeningError, postOpening, type OpeningLineInput } from "@/lib/opening";
 import type { TaxTag, WithholdingKind } from "@/lib/generated/prisma/enums";
 import { RateError, upsertRate, validateRateInput } from "@/lib/fx/rates";
+import { MAX_UPLOAD_BYTES } from "@/lib/upload";
 import { postRevaluation, RevaluationError } from "@/lib/fx/revalue";
 import { reviewClose, type CloseReviewView } from "@/lib/controls/ai-review";
 import { explainControl, ExplainError, type ControlExplanation } from "@/lib/controls/explain";
@@ -67,7 +68,7 @@ function fail(e: unknown): { ok: false; error: string; needsPassword?: boolean; 
   return { ok: false, error: infra ?? "Terjadi kesalahan tak terduga. Coba lagi." };
 }
 
-const MAX_UPLOAD = 5 * 1024 * 1024;
+const MAX_UPLOAD = MAX_UPLOAD_BYTES;
 
 export async function importAction(formData: FormData): Promise<Result<{ summary: ImportSummary }>> {
   let banks: { id: string; number: string }[] = [];

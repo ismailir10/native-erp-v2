@@ -11,6 +11,8 @@ import { StatusPill } from "@/components/app/status";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
+export const metadata = { title: "Kurs" };
+
 export default async function RatesPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, period } = await loadClientPage(params, searchParams);
   const [rates, needs] = await Promise.all([

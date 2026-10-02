@@ -43,18 +43,33 @@ function cleanBank(b: BankInput, bt: string, fields: Record<string, string>, see
   return { bank: b.bank, number, label: label.slice(0, 60), isOverdraft: Boolean(b.isOverdraft) };
 }
 
+/**
+ * An NPWP as the books keep it: blank stays blank, 15 digits print as 99.999.999.9-999.999, 16 digits (NIK-based) as is. Dots, dashes and
+ * spaces may be typed; anything else, or any other count of digits, is null (not an NPWP).
+ */
+export function normalizeNpwp(raw: string): string | null {
+  const s = raw.trim();
+  if (!s) return "";
+  if (!/^[\d.\-\s]+$/.test(s)) return null;
+  const d = s.replace(/\D/g, "");
+  if (d.length === 16) return d;
+  if (d.length === 15) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}.${d[8]}-${d.slice(9, 12)}.${d.slice(12)}`;
+  return null;
+}
+
 /** One entity with its bank rows; empty rows are skipped but keep their place, so error keys name the rows the form shows. */
 function cleanEntity(e: EntityInput, at: string, fields: Record<string, string>, seen: Map<string, string>, duplicate?: string) {
   const eName = e.name.trim();
   if (!eName) fields[`${at}.name`] = e.kind === "PERORANGAN" ? "Isi nama pemilik." : "Isi nama badan usaha.";
   if (!KINDS.includes(e.kind)) fields[`${at}.kind`] = "Pilih jenis entitas.";
-  if (e.npwp.trim() && !/^[\d.\-\s]{15,25}$/.test(e.npwp.trim())) fields[`${at}.npwp`] = "NPWP berisi 15 atau 16 angka, boleh dengan titik dan strip.";
+  const npwp = normalizeNpwp(e.npwp);
+  if (npwp === null) fields[`${at}.npwp`] = "NPWP berisi 15 atau 16 angka, boleh dengan titik dan strip.";
   const currency = (e.currency ?? "IDR").trim().toUpperCase();
   if (!isCurrency(currency)) fields[`${at}.currency`] = "Pilih mata uang dari daftar.";
   const reportingFramework = e.reportingFramework ?? "SAK_EP";
   if (!isFramework(reportingFramework)) fields[`${at}.reportingFramework`] = "Pilih kerangka pelaporan.";
   const banks = e.banks.flatMap((b, k) => cleanBank(b, `${at}.banks.${k}`, fields, seen, duplicate) ?? []);
-  return { name: eName, shortName: e.shortName.trim() || eName, kind: e.kind, npwp: e.npwp.trim() || undefined, functionalCurrency: currency, reportingFramework, banks };
+  return { name: eName, shortName: e.shortName.trim() || eName, kind: e.kind, npwp: npwp || undefined, functionalCurrency: currency, reportingFramework, banks };
 }
 
 /** Every problem at once, keyed by field. Optional: industry, short name, NPWP, framework (SAK EP), bank accounts (an empty row is ignored), account label (defaults to "BCA ••5566"). */

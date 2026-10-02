@@ -1,9 +1,10 @@
 import ExcelJS from "exceljs";
 import { dateOnly } from "@/lib/format";
 import { parseCents } from "@/lib/money";
+import { normalizeLedgerRate } from "@/lib/fx/currency";
 import { readCsv } from "@/lib/import/parsers/common";
 import { ParseError } from "@/lib/import/types";
-import { asXlsx, sniffFile } from "@/lib/import/workbook";
+import { readableXlsx, sniffFile } from "@/lib/import/workbook";
 import type { AccountType } from "@/lib/generated/prisma/enums";
 import type { Columns, ColumnKey, LedgerRow, NeracaRow, NeracaTotal, RawCell, RawSheet, ReadResult, TableCandidate } from "@/lib/ledger-import/types";
 import { NO_CODE_PREFIX } from "@/lib/ledger-import/code";
@@ -57,7 +58,7 @@ function toRaw(v: ExcelJS.CellValue): RawCell {
 /** The file's kind comes from its bytes (a `.xls` may be old Excel, an HTML table or text); the name is only shown. */
 export async function readSheets(_fileName: string, data: Buffer): Promise<RawSheet[]> {
   if (sniffFile(data) === "PDF") throw new ParseError("File PDF tidak bisa dibaca sebagai buku besar atau neraca. Unggah XLSX, XLS, atau CSV.");
-  const xlsx = asXlsx(data);
+  const xlsx = await readableXlsx(data);
   if (xlsx) {
     const wb = new ExcelJS.Workbook();
     try {
@@ -299,7 +300,7 @@ export function readLedger(sheet: RawSheet, t: TableCandidate): LedgerRow[] {
       debit: d,
       credit: k,
       currency: cellText(get("currency")).toUpperCase() || null,
-      rate: rateText ? rateText.replace(/,/g, "") : null,
+      rate: rateText ? normalizeLedgerRate(rateText) : null,
       description: cellText(get("desc")).replace(/\s+/g, " ").slice(0, 300),
       voucher: cellText(get("voucher")) || null,
       errors,

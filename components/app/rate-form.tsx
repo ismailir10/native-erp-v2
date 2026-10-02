@@ -104,7 +104,7 @@ export function RateForm({ clientId, defaultCurrency, missing }: { clientId: str
 function preview(rate: string, currency: string, quote: string) {
   if (!rate.trim()) return "Contoh: 1 SGD = 12.250 IDR ditulis 12250 atau 12.250.";
   try {
-    return `Dibaca sebagai: 1 ${currency} = ${formatRateId(normalizeRateInput(rate))} ${quote}`;
+    return `Dibaca sebagai: 1 ${currency} = ${formatRateId(normalizeRateInput(rate, { currency, quote }))} ${quote}`;
   } catch {
     return "Kurs harus angka positif.";
   }

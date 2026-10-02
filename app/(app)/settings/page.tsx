@@ -8,6 +8,8 @@ import { AiSettingsForm } from "@/components/app/ai-settings-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { planRejections } from "@/lib/evidence/plan-stats";
 
+export const metadata = { title: "Pengaturan" };
+
 export default async function SettingsPage() {
   const { firm, member } = await requireWorkspaceSession();
   const isAdmin = member.role === "ADMIN";
