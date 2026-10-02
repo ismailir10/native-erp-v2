@@ -74,6 +74,7 @@ export async function resolveOpeningFinding(db: Db, input: { clientId: string; f
     if (!target || !diff || target.id === diff.id) throw new FindingError("Pilih akun tujuan selisih.");
     if (target.isBank) throw new FindingError("Saldo rekening bank datang dari rekening koran. Kalau kasnya ada di luar bank, pilih Kas Kecil.");
     if (target.isSuspense || target.isClearing) throw new FindingError(`Pilih akun yang menjelaskan selisihnya, bukan ${target.code} ${target.name}.`);
+    if (target.type === "PENDAPATAN" || target.type === "BEBAN") throw new FindingError("Saldo awal tidak berisi laba rugi: pilih akun neraca (aset, liabilitas atau ekuitas).");
 
     const balance = await openingDifference(tx, f.entityId, diff.id);
     let entryId: string | null = null;

@@ -182,7 +182,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 Laporan Posisi Keuangan (Neraca)
-                <StatusPill status={bs.totals.difference === 0n ? "PASS" : "FAIL"} label={bs.totals.difference === 0n ? "Seimbang" : `Selisih`} />
+                <BalancePill bs={bs} findings={status.reasons.flatMap((r) => (r.kind === "findings" ? r.items.map((i) => Math.max(i.labels.length, 1)) : [])).reduce((n, k) => n + k, 0)} />
               </CardTitle>
               <CardDescription>
                 Per akhir {formatPeriod(period.year, period.month)}
@@ -297,4 +297,15 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
       </UrlTabs>
     </div>
   );
+}
+
+/**
+ * The Neraca's own verdict (use-case feedback #5): "Seimbang" only when A = L + E, total assets aren't negative and no Saldo Awal
+ * difference is waiting on 3290. Adding up is not the same as being right.
+ */
+function BalancePill({ bs, findings }: { bs: BalanceSheet; findings: number }) {
+  if (bs.totals.difference !== 0n) return <StatusPill status="FAIL" label="Selisih" />;
+  if (bs.totals.assets < 0n) return <StatusPill status="FAIL" label="Seimbang, tapi total aset negatif" />;
+  if (findings) return <StatusPill status="REVIEW" label={`Seimbang · ${findings} temuan terbuka`} />;
+  return <StatusPill status="PASS" label="Seimbang" />;
 }

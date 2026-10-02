@@ -3,7 +3,7 @@ import { loadClientPage } from "@/lib/client-page";
 import type { SearchParams } from "@/lib/scope";
 import { CLOSE_SIGNOFFS, closeReadiness, earlierOpenMonth, laterLockedMonth, runControls } from "@/lib/controls";
 import { requireWorkspaceSession } from "@/lib/auth/session";
-import { formatDateTime, formatPeriod } from "@/lib/format";
+import { formatDate, formatDateTime, formatPeriod } from "@/lib/format";
 import { NextStep, PageHeader } from "@/components/app/page-header";
 import { setupProgress } from "@/lib/setup-progress";
 import { ScopeBar } from "@/components/app/scope-bar";
@@ -18,6 +18,9 @@ import { CloseReviewCard } from "@/components/app/close-review-card";
 import { cachedCloseReview } from "@/lib/controls/ai-review";
 import { resolveAiConfig } from "@/lib/settings/ai";
 import { createHash } from "node:crypto";
+import { listFindings } from "@/lib/findings";
+import { openingTargetOptions } from "@/lib/coa/options";
+import { FindingsCard } from "@/components/app/findings-card";
 
 export const metadata = { title: "Tutup Buku" };
 
@@ -57,6 +60,10 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
   const reviewKey = createHash("sha1").update(controls.filter((c) => c.status !== "PASS").map((c) => `${c.key}|${c.detail}`).join("\n")).digest("hex");
   const review = !locked && flagged ? await cachedCloseReview(prisma, client.firmId, client.id, period.year, period.month, aiModel, controls) : null;
 
+  const findings = await listFindings(prisma, client.id);
+  const openFindings = findings.filter((f) => f.status === "OPEN");
+  const targets = openFindings.length ? openingTargetOptions(await prisma.account.findMany({ where: { clientId: client.id }, orderBy: { code: "asc" } })) : [];
+
   const monthKey = (m: { year: number; month: number }) => `${m.year}-${String(m.month).padStart(2, "0")}`;
   return (
     <div className="space-y-6">
@@ -67,6 +74,8 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
         <NextStep href={`${base}/close?period=${monthKey(before)}`} cta={`Buka ${formatPeriod(before.year, before.month)}`}>Tutup buku {formatPeriod(before.year, before.month)} dulu. Penutupan berurutan dari bulan paling awal.</NextStep>
       ) : setup.current === "opening" && setup.next ? (
         <NextStep href={setup.next.href} cta={setup.next.cta}>{setup.next.text}</NextStep>
+      ) : openFindings.length ? (
+        <NextStep>Putuskan {openFindings.length === 1 ? `temuan ${openFindings[0].label}` : `${openFindings.length} temuan`} di bawah: tulis asal selisih saldo awal dan pilih akunnya. Tutup buku tertahan sampai itu selesai.</NextStep>
       ) : missing ? (
         <NextStep href={`${base}/import`} cta="Impor mutasi">{missing.title.replace("Rekonsiliasi", "Mutasi")} belum diimpor. Beberapa kontrol baru bisa lolos setelah mutasinya masuk.</NextStep>
       ) : open ? (
@@ -77,6 +86,28 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
         <NextStep>Centang checklist di kanan setelah Anda memeriksanya.</NextStep>
       ) : (
         <NextStep>Semua kontrol lolos dan checklist lengkap. Tutup buku {label}.</NextStep>
+      )}
+      {findings.length > 0 && (
+        <div id="temuan" className="scroll-mt-20">
+          <FindingsCard
+            clientId={client.id}
+            accounts={targets}
+            items={findings.map((f) => ({
+              id: f.id,
+              label: f.label,
+              entity: f.entity,
+              currency: f.currency,
+              amount: f.amount.toString(),
+              date: formatDate(f.date),
+              question: f.question,
+              status: f.status,
+              opened: `${formatDateTime(f.createdAt)}${f.openedBy ? ` oleh ${f.openedBy}` : ""}`,
+              resolution: f.resolution,
+              resolved: f.resolvedAt ? `${formatDateTime(f.resolvedAt)}${f.resolvedBy ? ` oleh ${f.resolvedBy}` : ""}` : null,
+              resolvedTo: f.resolvedTo,
+            }))}
+          />
+        </div>
       )}
       {reval.length > 0 && (
         <RevaluationCard

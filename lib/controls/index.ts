@@ -17,6 +17,7 @@ import { valuation } from "@/lib/benefits/valuation";
 import { inventoryRows } from "@/lib/inventory";
 import { openingDate, statementCoverage } from "@/lib/controls/coverage";
 import { packApplies, taxPack } from "@/lib/tax/pack";
+import { findingLabel } from "@/lib/findings";
 
 /**
  * Close controls (analog of belifi 16_CONTROLS). PASS / REVIEW / FAIL.
@@ -89,9 +90,40 @@ async function collectControls(db: Db, clientId: string, year: number, month: nu
       href: `${base}/reports?entity=${e.id}`,
     });
 
+    // No plug (ADR 0012): a Saldo Awal difference waits on 3290 until a written decision moves it. The GL decides, not the Temuan row,
+    // so a resolution reversed later fails again.
+    const openingDiff = tb.find((r) => r.account.code === ACCOUNT_CODES.OPENING_DIFFERENCE)?.net ?? 0n;
+    if (openingDiff !== 0n) {
+      const open = await db.finding.findMany({ where: { entityId: e.id, kind: "OPENING_DIFFERENCE", status: "OPEN" }, orderBy: { number: "asc" }, select: { number: true } });
+      controls.push({
+        key: `opening-diff:${e.id}`,
+        title: "Selisih saldo awal diputuskan",
+        scope: e.shortName,
+        status: "FAIL",
+        detail: `${fmt(openingDiff < 0n ? -openingDiff : openingDiff)} di 3290 Selisih Saldo Awal${open.length ? ` (temuan ${open.map((f) => findingLabel(f.number)).join(", ")})` : ""}. Tulis asal selisihnya dan pilih akunnya di Temuan.`,
+        href: `${base}/close?period=${year}-${String(month).padStart(2, "0")}#temuan`,
+      });
+    }
+
     let statementMissing = false;
     // Books start at the entity's Saldo Awal (else the account's first statement): a month ending before that needs no statement.
     const opening = await openingDate(db, e.id);
+    if (!opening) {
+      // An entity whose books start in this month without a Saldo Awal: its Neraca starts from zero. Asked once, in the first month.
+      const first = await db.journalEntry.findFirst({ where: { entityId: e.id }, orderBy: { date: "asc" }, select: { date: true } });
+      if (first && +first.date >= +start && +first.date <= +end) {
+        const oKey = `opening:${e.id}`;
+        controls.push({
+          key: oKey,
+          title: "Saldo awal dicatat",
+          scope: e.shortName,
+          status: "REVIEW",
+          detail: "Belum ada saldo awal: neraca dimulai dari nol. Isi Saldo Awal, atau tulis catatan bila entitas ini memang baru berdiri.",
+          href: `${base}/opening`,
+          ack: acks.get(oKey),
+        });
+      }
+    }
     for (const ba of e.bankAccounts) {
       const lastTx = await db.bankTransaction.findFirst({
         where: { bankAccountId: ba.id, date: { lte: end }, balance: { not: null } },

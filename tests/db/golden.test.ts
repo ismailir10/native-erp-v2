@@ -2,7 +2,10 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { db, resetDb } from "../helpers";
-import { GOLDEN_END, goldenKey, goldenScenario, seedGolden } from "@/lib/demo/golden";
+import { GOLDEN_END, GOLDEN_PETTY_CASH, goldenKey, goldenScenario, seedGolden } from "@/lib/demo/golden";
+import { runControls } from "@/lib/controls";
+import { reportStatus } from "@/lib/reports/status";
+import { resolveOpeningFinding } from "@/lib/findings";
 import { balanceSheet, incomeStatement, trialBalance, type Scope } from "@/lib/reports/ledger";
 import { cashFlow } from "@/lib/reports/statements";
 import { importStatement } from "@/lib/import/pipeline";
@@ -108,4 +111,29 @@ describe("golden dataset (Belifi pattern)", () => {
     await reviewTransaction(db, { bankTxId: t.id, accountCode: "6150", taxTag: null, learn: false });
     expect(await appKey(ids.clientId, ids.ptId, ids.ownerId)).toEqual(committed);
   });
+});
+
+describe("golden dataset with the old Neraca's petty cash left out (UC-B4)", () => {
+  const sc = goldenScenario();
+
+  it("opens T-001 for exactly the missing Rp 60 jt, fails the close, and reaches the key once the decision moves it to Kas Kecil", async () => {
+    await resetDb();
+    const g = await seedGolden(db, sc, { omitPettyCash: true });
+    const ids = { clientId: g.client.id, ptId: g.entities[0].entity.id, ownerId: g.entities[1].entity.id };
+    const [finding] = await db.finding.findMany({ where: { clientId: ids.clientId } });
+    expect(finding).toMatchObject({ number: 1, status: "OPEN", amount: GOLDEN_PETTY_CASH, entityId: ids.ptId });
+
+    // The difference is visible, not in Saldo Laba: 3290 holds it and the close refuses.
+    const before = await appKey(ids.clientId, ids.ptId, ids.ownerId);
+    expect(before["pt.retainedOpening"]).toBe(committed["pt.retainedOpening"]);
+    expect(BigInt(before["pt.totalAssets"])).toBe(BigInt(committed["pt.totalAssets"]) - GOLDEN_PETTY_CASH);
+    const controls = await runControls(db, ids.clientId, 2026, 4);
+    expect(controls.find((c) => c.key === `opening-diff:${ids.ptId}`)).toMatchObject({ status: "FAIL", detail: expect.stringContaining("temuan T-001") });
+    expect((await reportStatus(db, ids.clientId, [ids.ptId], 2026, 6)).reasons[0]).toMatchObject({ kind: "findings", items: [{ labels: ["T-001"], amount: GOLDEN_PETTY_CASH }] });
+
+    await resolveOpeningFinding(db, { clientId: ids.clientId, findingId: finding.id, accountCode: "1110", decision: "Kas kecil di brankas kantor, dikonfirmasi pemilik" });
+    expect(await appKey(ids.clientId, ids.ptId, ids.ownerId)).toEqual(committed);
+    expect((await runControls(db, ids.clientId, 2026, 4)).find((c) => c.key.startsWith("opening-diff:"))).toBeUndefined();
+    expect((await reportStatus(db, ids.clientId, [ids.ptId], 2026, 6)).reasons.find((r) => r.kind === "findings")).toBeUndefined();
+  }, 180_000);
 });

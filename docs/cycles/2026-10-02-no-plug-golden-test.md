@@ -43,15 +43,15 @@ judgement", so this cycle runs without a separate approval stop.
       posts one `OPENING` entry dated the Saldo Awal date that moves the entity's whole 3290 balance to that account through
       `postJournal()`, and marks the Temuan *Selesai* with who, when, the decision and the entry. A Temuan is resolved once and never
       deleted.
-- [ ] **Close gate.** Control `opening-diff:<entity>` FAILs while the entity's 3290 balance at month end is ≠ 0, naming the open Temuan
+- [x] **Close gate.** Control `opening-diff:<entity>` FAILs while the entity's 3290 balance at month end is ≠ 0, naming the open Temuan
       numbers. GL-driven: a resolution reversed later brings the FAIL back. Control `opening:<entity>` is REVIEW when an entity has posted
       entries but no Saldo Awal ("neraca dimulai dari nol"); a note clears it, for example "PT baru".
-- [ ] **Temuan list.** The Tutup Buku page shows each Temuan with number, entity, amount, question, status and resolution history, and the
+- [x] **Temuan list.** The Tutup Buku page shows each Temuan with number, entity, amount, question, status and resolution history, and the
       resolve form for open ones.
 - [ ] **Completeness matrix (UC-B4).** On Tutup Buku, a bank account × month grid from the month the books start to the selected month.
       Each cell reads *ada*, *bolong* (no statement), or *tidak nyambung* (opening ≠ the previous statement's closing, or continuity broken
       inside the file), with the difference.
-- [ ] **Honest Neraca header (#5).** The Neraca pill says *Seimbang* only when A = L + E, total assets ≥ 0 and nothing sits on 3290.
+- [x] **Honest Neraca header (#5).** The Neraca pill says *Seimbang* only when A = L + E, total assets ≥ 0 and nothing sits on 3290.
       Negative total assets show FAIL *Aset negatif*; an open Temuan shows REVIEW *Seimbang · n temuan terbuka*. The report status bar
       lists open Temuan as a reason the report is a draft.
 - [ ] **Ask Buku (UC-X5).** An answer for a month that isn't closed (for any client in scope) carries a *Sementara* label naming the
@@ -93,7 +93,7 @@ existing 3200 plugs (history is not rewritten); FX, consolidation and audit-pack
       typecheck, existing tests green.
 - [x] T3 Opening difference → 3290 + Temuan; `lib/findings.ts` (open, list, resolve); opening form and page copy; actions. Accept:
       `tests/db/opening.test.ts` (updated) and `tests/db/findings.test.ts` green.
-- [ ] T4 Close gate and visibility: `opening-diff:` and `opening:` controls, the Temuan card on Tutup Buku, report status reason, honest
+- [x] T4 Close gate and visibility: `opening-diff:` and `opening:` controls, the Temuan card on Tutup Buku, report status reason, honest
       Neraca pill. Accept: DB tests for the controls; the golden test's opening-difference case reaches the key after resolution.
 - [ ] T5 Completeness matrix (`lib/controls/completeness.ts`) and its card. Accept: DB test with a missing month and a broken handover.
 - [ ] T6 Ask Buku: *Sementara* label and refusal of change requests. Accept: unit test on the intent, DB test on the label.
@@ -116,6 +116,12 @@ existing 3200 plugs (history is not rewritten); FX, consolidation and audit-pack
   (`openingAction` returns the Temuan label, `resolveFindingAction`), `components/app/opening-form.tsx` (Saldo Laba row typed like any line,
   3290 row + notice while a difference remains, *Pakai selisih sebagai Saldo Laba*), opening page copy; accounting-rules rule 5 amended.
   Tests: `tests/db/findings.test.ts` (new), `opening.test.ts`, `opening-deposits.test.ts` (3200 → 3290).
+- T4: `lib/controls/index.ts` (`opening-diff:` FAIL from the 3290 balance naming the open Temuan; `opening:` REVIEW only in the month an entity's
+  books start without a Saldo Awal), `lib/reports/status.ts` (reason `findings`, listed first), `components/app/report-status.tsx` (links to
+  `close#temuan`), reports page `BalancePill` (Selisih / *Seimbang, tapi total aset negatif* / *Seimbang · n temuan terbuka* / Seimbang),
+  close page (NextStep for open Temuan, `FindingsCard` anchored `#temuan`), `components/app/findings-card.tsx`, `lib/coa/options.ts`
+  (`openingTargetOptions`: balance-sheet accounts only; 3290 out of the review picker), `lib/findings.ts` refuses P&L targets.
+  Tests: `tests/db/opening-controls.test.ts` (new), golden test's UC-B4 walk (T-001 for exactly Rp 60 jt → FAIL → decision → the key).
 
 ## Verification
 - T2: fresh `prisma migrate deploy` on both DBs → "All migrations have been successfully applied."; `prisma migrate diff --from-config-datasource --to-schema` →
@@ -124,5 +130,7 @@ existing 3200 plugs (history is not rewritten); FX, consolidation and audit-pack
 - T1: `npx vitest run tests/db/golden.test.ts` → `Tests 6 passed (6)`; gate: lint clean, typecheck clean, `npm test` → `Test Files 122 passed (122) · Tests 916 passed (916)`.
 - T3: `npx vitest run tests/db/opening.test.ts tests/db/findings.test.ts tests/db/opening-deposits.test.ts` → `Tests 9 passed (9)`; lint + typecheck clean;
   `npm test` → `Test Files 123 passed (123) · Tests 920 passed (920)`.
+- T4: `npx vitest run tests/db/opening-controls.test.ts tests/db/golden.test.ts` → `Tests 9 passed (9)`; lint + typecheck clean; `npm test` →
+  `Test Files 124 passed (124) · Tests 923 passed (923)`.
 
 ## Ship Notes
