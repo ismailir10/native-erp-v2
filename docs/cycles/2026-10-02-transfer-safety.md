@@ -72,8 +72,10 @@ would rewrite the demo story. Owner-name detection for clients without an owner 
       never re-paired by a later import, locked month refused).
 - [x] T3 AI chart without 1190/1199 (cache key and whitelist). Accept: unit/DB test.
 - [x] T4 Counterparty test, owner question list (Ask Buku sort + Review Excel export), guess-control share. Accept: tests.
-- [ ] T5 Login value proposition. Accept: login renders at 1440/390, no horizontal scroll.
-- [ ] T6 End-of-cycle gates + accounting-rules amendment.
+- [x] T5 Golden false-match trap (added once the no-plug cycle merged): two supplier withdrawals with a same-amount customer credit on the
+      other account. Accept: the golden key with the trap passes, and fails with the previous matcher.
+- [ ] T6 Login value proposition. Accept: login renders at 1440/390, no horizontal scroll.
+- [ ] T7 End-of-cycle gates + accounting-rules amendment.
 
 ## Implementation
 - Plan: T1–T6 sequential, inline (one module each; the matcher first because unpairing depends on its `pairRefused`).
@@ -93,6 +95,11 @@ would rewrite the demo story. Owner-name detection for clients without an owner 
   by amount; `lib/controls/sanity.ts` guess control adds the share (bigint, half up to one decimal). Tests: `tests/db/review-counterparty.test.ts`
   (new: five resellers, Rp 100 jt each, one date — five keys; *Terima serupa* touches none; next month only the decided one is Memory),
   `sanity-controls.test.ts` (share: Rp 1 jt of Rp 102 jt → 1 %).
+- Merged `main` (the no-plug cycle, PR #80) into this branch: no conflicts.
+- T5: `lib/demo/golden.ts` plants the UC-B2 case — 12 May PT BCA pays PT Baja Supplier Prima Rp 100 jt while CV Pelanggan Setia pays
+  Rp 100 jt into Mandiri; 19 Jun UD Besi Kuat Sentosa Rp 300 jt against PT Grosir Nusa Raya Rp 300 jt; all with transfer words. 256 lines.
+  `tests/golden/belifi-pattern.json` changes on purpose: PT revenue +Rp 400 jt (1.742.327.000), BCA −Rp 400 jt, Mandiri +Rp 400 jt; profit
+  unchanged (the payments are HPP). The generator's guard exempts only the planted lines.
 
 ## Verification
 - T1: `npx vitest run tests/unit/transfer-safety.test.ts tests/unit/import.test.ts` → `Tests 22 passed (22)`; `demo:reset && verify:books` →
@@ -103,5 +110,9 @@ would rewrite the demo story. Owner-name detection for clients without an owner 
   `demo:reset && verify:books` → `ALL PASS — 1741 pemeriksaan saldo cocok dengan ground truth.`
 - T4: `npx vitest run tests/db/review-counterparty.test.ts tests/db/sanity-controls.test.ts tests/db/workspace.test.ts` → `Tests 18 passed (18)`;
   lint + typecheck clean; `npm test` → `Test Files 125 passed (125) · Tests 920 passed (920)`.
+- T5: with the new matcher `npx vitest run tests/db/golden.test.ts` → `Tests 7 passed (7)`; with `lib/classify/transfer.ts` from before T1 swapped in →
+  `Tests 4 failed | 3 passed (7)`, `"pt.revenue": "1742327000"` expected, `"1342327000"` received (the two pairs netted in 1199), then restored.
+  After the merge: lint + typecheck clean; `npm test` → `Test Files 129 passed (129) · Tests 939 passed (939)`; `demo:reset && verify:books` →
+  `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`
 
 ## Ship Notes
