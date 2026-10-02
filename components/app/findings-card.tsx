@@ -86,7 +86,7 @@ export function FindingsCard({ clientId, items, accounts }: { clientId: string; 
                   </div>
                 </div>
               ) : (
-                <div className="grid gap-3 md:grid-cols-[minmax(0,18rem)_minmax(0,1fr)_auto] md:items-end">
+                <div className="grid gap-3 md:grid-cols-[minmax(0,18rem)_minmax(0,1fr)_auto] md:items-start">
                   <Field>
                     <FieldLabel>Akun tujuan</FieldLabel>
                     <AccountPicker ariaLabel={`Akun tujuan ${f.label}`} value={v.code} onChange={(code) => set(f.id, { code })} options={accounts} />
@@ -96,7 +96,7 @@ export function FindingsCard({ clientId, items, accounts }: { clientId: string; 
                     <Textarea id={`decision-${f.id}`} rows={2} value={v.decision} onChange={(e) => set(f.id, { decision: e.target.value })} placeholder="Mis. kas kecil di brankas, dikonfirmasi pemilik 2 Okt 2026" />
                     <FieldDescription>Dari mana selisihnya dan siapa yang mengonfirmasi (min. {DECISION_MIN} karakter).</FieldDescription>
                   </Field>
-                  <Button variant="outline" disabled={busy !== null || !v.code || v.decision.trim().length < DECISION_MIN} onClick={() => resolve(f)}>
+                  <Button variant="outline" className="md:mt-6" disabled={busy !== null || !v.code || v.decision.trim().length < DECISION_MIN} onClick={() => resolve(f)}>
                     {busy === f.id ? "Menyimpan…" : `Selesaikan ${f.label}`}
                   </Button>
                 </div>

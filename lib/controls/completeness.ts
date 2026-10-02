@@ -47,5 +47,8 @@ export async function completenessMatrix(db: Db, clientId: string, year: number,
       rows.push({ bankAccountId: ba.id, entity: e.shortName, label: ba.label, currency: ba.currency, cells });
     }
   }
-  return { months, rows };
+  // Months before any account's books start are a column of dashes: leave them out.
+  const first = months.findIndex((_, i) => rows.some((r) => r.cells[i].state !== "before"));
+  const from = first < 0 ? months.length : first;
+  return { months: months.slice(from), rows: rows.map((r) => ({ ...r, cells: r.cells.slice(from) })) };
 }

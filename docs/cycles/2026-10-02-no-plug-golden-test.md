@@ -97,7 +97,7 @@ existing 3200 plugs (history is not rewritten); FX, consolidation and audit-pack
       Neraca pill. Accept: DB tests for the controls; the golden test's opening-difference case reaches the key after resolution.
 - [x] T5 Completeness matrix (`lib/controls/completeness.ts`) and its card. Accept: DB test with a missing month and a broken handover.
 - [x] T6 Ask Buku: *Sementara* label and refusal of change requests. Accept: unit test on the intent, DB test on the label.
-- [ ] T7 End-of-cycle gates: lint, typecheck, test, build, `verify:books`, `test:e2e`; cycle doc Verification.
+- [x] T7 End-of-cycle gates: lint, typecheck, test, build, `verify:books`, `test:e2e`; cycle doc Verification.
 
 ## Implementation
 - Plan: tasks T1–T7 sequential, done inline (each builds on the previous: the golden test is the yardstick for T3–T4, the Finding table for T4–T6).
@@ -128,12 +128,14 @@ existing 3200 plugs (history is not rewritten); FX, consolidation and audit-pack
 - T6: `lib/workspace/index.ts` (`preliminary` on every answer read from the books while any client in scope has the month open, naming
   them when only some do; intent `change` — an instruction verb at the start and no question word — answers where the change is made),
   `components/app/workspace-ask.tsx` (*Sementara* pill). Tests: `tests/unit/workspace.test.ts`, `tests/db/workspace.test.ts`.
+- T7: polish after looking at the pages — the Saldo Awal page names its open Temuan with a link, the completeness matrix drops months before
+  any book starts, the Temuan form aligns its fields.
 
 ## Verification
+- T1: `npx vitest run tests/db/golden.test.ts` → `Tests 6 passed (6)`; gate: lint clean, typecheck clean, `npm test` → `Test Files 122 passed (122) · Tests 916 passed (916)`.
 - T2: fresh `prisma migrate deploy` on both DBs → "All migrations have been successfully applied."; `prisma migrate diff --from-config-datasource --to-schema` →
   "This is an empty migration."; lint + typecheck clean; `npm test` → `Test Files 122 passed (122) · Tests 916 passed (916)`; `demo:reset && verify:books` →
   `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`
-- T1: `npx vitest run tests/db/golden.test.ts` → `Tests 6 passed (6)`; gate: lint clean, typecheck clean, `npm test` → `Test Files 122 passed (122) · Tests 916 passed (916)`.
 - T3: `npx vitest run tests/db/opening.test.ts tests/db/findings.test.ts tests/db/opening-deposits.test.ts` → `Tests 9 passed (9)`; lint + typecheck clean;
   `npm test` → `Test Files 123 passed (123) · Tests 920 passed (920)`.
 - T4: `npx vitest run tests/db/opening-controls.test.ts tests/db/golden.test.ts` → `Tests 9 passed (9)`; lint + typecheck clean; `npm test` →
@@ -141,5 +143,26 @@ existing 3200 plugs (history is not rewritten); FX, consolidation and audit-pack
 - T5: `npx vitest run tests/db/completeness.test.ts` → `Tests 1 passed (1)`; lint + typecheck clean; `npm test` → `Test Files 125 passed (125) · Tests 924 passed (924)`.
 - T6: `npx vitest run tests/unit/workspace.test.ts tests/db/workspace.test.ts` → `Tests 21 passed (21)`; lint + typecheck clean; `npm test` →
   `Test Files 125 passed (125) · Tests 926 passed (926)`.
+- T7 end of cycle: lint clean; typecheck clean; `npm test` → `Test Files 125 passed (125) · Tests 926 passed (926)`; `npm run build` → "✓ Compiled
+  successfully"; `demo:reset && verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`
+- `npm run test:e2e` **not run here**: its global setup signs in through Supabase Auth, which this sandbox can't reach (no keys, no Docker daemon
+  for a local stack), as in earlier cycles. CI runs it. Checked by reading every spec that touches the changed pages: no selector collides
+  (the demo has no Temuan, the new texts don't repeat asserted strings, `getByLabel("Debit").first()` on Saldo Awal still finds the deposit row).
+- Browser check (local only: the session read was stubbed to a member row, never committed, then reverted; the golden client with the petty
+  cash left out seeded into the dev DB): Tutup Buku shows NextStep → T-001 open with its question → completeness matrix (Apr–Jun *Ada*) →
+  `opening-diff:` *Gagal* naming T-001; Neraca shows *Selisih saldo awal belum diselesaikan (60.000.000)* on its own line, pill *Seimbang · 1
+  temuan terbuka*, Draf bar naming T-001; Saldo Awal on a new client: bank 80.000.000 → 3290 row + notice, *Pakai selisih sebagai Saldo Laba*
+  fills the line, saving with Saldo Laba 50.000.000 posts 30.000.000 to 3290 and toasts "temuan T-001"; resolving T-001 to 1110 with a written
+  decision shows *Selesai* with the decision, the account, who and when, and the Neraca pill returns to *Seimbang*. 390 px: no horizontal
+  scroll; no console errors.
 
 ## Ship Notes
+- **Migration** `20261002160155_findings` (new table `Finding` + two enums + a CHECK). Additive; applied by `prisma migrate deploy` on deploy.
+- **Behaviour change for the firm:** a Saldo Awal that doesn't balance no longer lands in 3200. It goes to 3290 Selisih Saldo Awal (created on
+  first use for existing clients; part of the template for new ones) and blocks Tutup Buku until the Temuan is decided. A new client set up from
+  bank statements alone gets one Temuan for its whole bank balance: answer it with Modal (3100) or Saldo Laba (3200) and a sentence why.
+  Existing openings with a 3200 plug are unchanged (history is not rewritten).
+- An entity whose books start in a month without any Saldo Awal gets one *Perlu dicek* in that month (cleared by a note).
+- No env vars. Rollback: revert the merge; the `Finding` table can stay (nothing else reads it), 3290 lines already posted remain until
+  reclassified by an Adjustment.
+- Sandbox: `xlsx` came from the npm registry locally (the pinned `cdn.sheetjs.com` tarball is blocked); the lockfile is untouched.

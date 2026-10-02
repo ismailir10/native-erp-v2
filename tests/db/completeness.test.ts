@@ -7,7 +7,7 @@ import { dateOnly } from "@/lib/format";
 describe("kelengkapan rekening koran", () => {
   beforeEach(resetDb);
 
-  it("marks a missing month, a broken handover with its difference, a break inside a file, and nothing before the books start", async () => {
+  it("marks a missing month, a broken handover with its difference, a break inside a file, and shows no month before the books start", async () => {
     const g = await makeGroup();
     const bca = g.pt.banks[0];
     const stmt = (m: number, opening: bigint, closing: bigint, continuityOk = true) =>
@@ -20,11 +20,12 @@ describe("kelengkapan rekening koran", () => {
     await stmt(7, 320n, 300n, false);
 
     const { months, rows } = await completenessMatrix(db, g.client.id, 2026, 8, 6);
-    expect(months.map((m) => m.month)).toEqual([3, 4, 5, 6, 7, 8]);
+    // March is before any book starts: no column for it.
+    expect(months.map((m) => m.month)).toEqual([4, 5, 6, 7, 8]);
     const row = rows.find((r) => r.bankAccountId === bca.id)!;
-    expect(row.cells.map((c) => c.state)).toEqual(["before", "ok", "missing", "broken", "broken", "missing"]);
-    expect(row.cells[3]).toMatchObject({ diff: 160n, note: "Saldo awal bca-6.csv tidak sama dengan saldo akhir bca-4.csv" });
-    expect(row.cells[4]).toMatchObject({ diff: null, note: "bca-7.csv: baris 7: saldo tidak nyambung" });
+    expect(row.cells.map((c) => c.state)).toEqual(["ok", "missing", "broken", "broken", "missing"]);
+    expect(row.cells[2]).toMatchObject({ diff: 160n, note: "Saldo awal bca-6.csv tidak sama dengan saldo akhir bca-4.csv" });
+    expect(row.cells[3]).toMatchObject({ diff: null, note: "bca-7.csv: baris 7: saldo tidak nyambung" });
     // Accounts with no statement and no Saldo Awal have nothing to show yet.
     expect(rows.map((r) => r.bankAccountId)).toEqual([bca.id]);
   });
