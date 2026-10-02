@@ -47,10 +47,24 @@ describe("Saldo awal", () => {
     expect(entry.lines.map((l) => [l.account.code, l.debit, l.credit]).sort()).toEqual([
       ["1102", 50_000_000n, 0n],
       ["2210", 0n, 30_000_000n],
-      ["3200", 0n, 20_000_000n],
+      ["3290", 0n, 20_000_000n],
     ]);
+    // No plug (ADR 0012): the difference waits on 3290 as an open Temuan with its question, never on 3200.
+    const [finding] = await db.finding.findMany({ where: { clientId: g.client.id } });
+    expect(finding).toMatchObject({ number: 1, kind: "OPENING_DIFFERENCE", status: "OPEN", amount: -20_000_000n, sourceEntryId: entry.id });
+    expect(finding.question).toContain("aset yang diisi lebih besar Rp 20.000.000 dari liabilitas + ekuitas");
     const after = await runControls(db, g.client.id, 2026, 8);
     expect(after.find((c) => c.key === `bank:${mandiri.id}`)?.status).toBe("PASS");
+  });
+
+  it("a balanced Saldo Awal with a typed Saldo Laba posts no difference and opens no Temuan; 3290 can't be typed", async () => {
+    const g = await makeGroup();
+    const base = { clientId: g.client.id, entityId: g.pt.entity.id, date: dateOnly(2026, 7, 31) };
+    await expect(postOpening(db, { ...base, lines: [{ accountCode: "1102", debit: "5", credit: "" }, { accountCode: "3290", debit: "", credit: "5" }] })).rejects.toThrow(/3290 Selisih Saldo Awal diisi otomatis/);
+    const r = await postOpening(db, { ...base, lines: [{ accountCode: "1102", debit: "50.000.000", credit: "" }, { accountCode: "3100", debit: "", credit: "30.000.000" }, { accountCode: "3200", debit: "", credit: "20.000.000" }] });
+    expect(r.finding).toBeNull();
+    expect(await db.finding.count()).toBe(0);
+    expect(await db.journalLine.count({ where: { account: { code: "3290" } } })).toBe(0);
   });
 
   it("refuses a second opening, a date on/after the first transaction, and empty input", async () => {
@@ -63,7 +77,7 @@ describe("Saldo awal", () => {
     await expect(postOpening(db, { ...base, date: dateOnly(2026, 7, 31), lines: [{ accountCode: "1102", debit: "1", credit: "" }] })).rejects.toBeInstanceOf(OpeningError);
   });
 
-  it("SGD entity: balances are typed in dollars and posted in cents, plug included", async () => {
+  it("SGD entity: balances are typed in dollars and posted in cents, the difference included", async () => {
     const g = await makeGroup();
     await db.entity.update({ where: { id: g.pt.entity.id }, data: { functionalCurrency: "SGD" } });
     await postOpening(db, {
@@ -79,7 +93,7 @@ describe("Saldo awal", () => {
     expect(entry.lines.map((l) => [l.account.code, l.debit, l.credit]).sort()).toEqual([
       ["1102", 100_000n, 0n],
       ["2210", 0n, 25_050n],
-      ["3200", 0n, 74_950n],
+      ["3290", 0n, 74_950n],
     ]);
     await expect(
       postOpening(db, { clientId: g.client.id, entityId: g.owner.entity.id, date: dateOnly(2026, 7, 31), lines: [{ accountCode: "1103", debit: "12,5", credit: "" }] }),

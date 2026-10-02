@@ -3,11 +3,15 @@ import { postJournal, type PostLine } from "@/lib/ledger/post";
 import { formatDate } from "@/lib/format";
 import { parseMoney } from "@/lib/money";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
+import { templateAccounts } from "@/lib/coa/ensure";
+import { closeLock } from "@/lib/adjust/schedules";
+import { findingLabel, openFinding, openingQuestion } from "@/lib/findings";
 
 /**
  * Saldo awal (accounting-rules §5): one OPENING entry per entity, posted through postJournal().
- * The difference between the listed balances goes to 3200 Saldo Laba, the same plug the demo seed uses.
- * Bank lines are prefilled from the earliest imported statement's opening balance, so bank recon holds.
+ * No plug (ADR 0012): a difference between the typed lines goes to 3290 Selisih Saldo Awal and opens a Temuan in the same
+ * transaction; Saldo Laba (3200) is a line the accountant types. Bank lines are prefilled from the earliest imported statement's
+ * opening balance, so bank recon holds.
  */
 export class OpeningError extends Error {}
 
@@ -21,7 +25,8 @@ export async function openingContext(db: Db, clientId: string) {
   const openings = await db.journalEntry.findMany({
     where: { entityId: { in: entities.map((e) => e.id) }, kind: "OPENING" },
     include: { lines: { include: { account: true } } },
-    orderBy: { date: "asc" },
+    // The Saldo Awal itself first; a Temuan's resolution is a later OPENING entry on the same date.
+    orderBy: [{ date: "asc" }, { createdAt: "asc" }],
   });
   const firstTx = await db.bankTransaction.groupBy({ by: ["entityId"], where: { entityId: { in: entities.map((e) => e.id) } }, _min: { date: true } });
   // Loan principal moving in the statements means a loan existed (or started): its balance at the opening date belongs in Saldo Awal.
@@ -118,10 +123,36 @@ export async function postOpening(db: Db, input: { clientId: string; entityId: s
     credit += cr;
   }
   if (lines.length === 0) throw new OpeningError("Isi minimal satu saldo.");
-  const retained = accounts.get(ACCOUNT_CODES.RETAINED)!;
-  if (debit !== credit) lines.push(debit > credit ? { accountId: retained.id, credit: debit - credit, memo: "Penyeimbang saldo awal" } : { accountId: retained.id, debit: credit - debit, memo: "Penyeimbang saldo awal" });
+  if (lines.some((l) => l.accountId === accounts.get(ACCOUNT_CODES.OPENING_DIFFERENCE)?.id)) {
+    throw new OpeningError("3290 Selisih Saldo Awal diisi otomatis dari selisihnya. Hapus baris itu.");
+  }
 
-  return db.$transaction((tx) =>
-    postJournal(tx, { entityId: entity.id, date: input.date, kind: "OPENING", memo: `Saldo awal per ${formatDate(input.date)}`, lines, actorId: input.actorId }),
-  );
+  return db.$transaction(async (tx) => {
+    // Two saves at once must not post two Saldo Awal (and two Temuan): checked again under the client's lock.
+    await closeLock(tx, input.clientId);
+    const raced = await tx.journalEntry.findFirst({ where: { entityId: entity.id, kind: "OPENING" } });
+    if (raced) throw new OpeningError(`Saldo awal ${entity.shortName} sudah dicatat per ${formatDate(raced.date)}. Koreksi lewat Jurnal Penyesuaian.`);
+    // The difference as it sits on 3290: typed debits above credits leave a credit there (negative), and the other way round.
+    const difference = credit - debit;
+    if (difference !== 0n) {
+      const diffAccountId = (await templateAccounts(tx, input.clientId, [ACCOUNT_CODES.OPENING_DIFFERENCE])).get(ACCOUNT_CODES.OPENING_DIFFERENCE)!;
+      const memo = "Selisih saldo awal, menunggu keputusan (Temuan)";
+      lines.push(difference > 0n ? { accountId: diffAccountId, debit: difference, memo } : { accountId: diffAccountId, credit: -difference, memo });
+    }
+    const entry = await postJournal(tx, { entityId: entity.id, date: input.date, kind: "OPENING", memo: `Saldo awal per ${formatDate(input.date)}`, lines, actorId: input.actorId });
+    const finding =
+      difference !== 0n
+        ? await openFinding(tx, {
+            clientId: input.clientId,
+            entityId: entity.id,
+            kind: "OPENING_DIFFERENCE",
+            date: input.date,
+            amount: difference,
+            question: openingQuestion(entity.shortName, input.date, difference, entity.functionalCurrency),
+            sourceEntryId: entry.id,
+            actorId: input.actorId,
+          })
+        : null;
+    return { entry, finding: finding && { id: finding.id, label: findingLabel(finding.number), amount: finding.amount } };
+  });
 }

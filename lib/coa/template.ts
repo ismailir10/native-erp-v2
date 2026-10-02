@@ -3,7 +3,7 @@ import type { AccountType, NormalBalance, TaxTag } from "@/lib/generated/prisma/
 /**
  * Standard COA template (SAK EP-style presentation, Bahasa). Applied per Client.
  * Special accounts (never renumber — referenced by code across the app):
- *   1190 intercompany · 1199 transfer clearing · 1999 suspense · 3200 retained earnings.
+ *   1190 intercompany · 1199 transfer clearing · 1999 suspense · 3200 retained earnings · 3290 opening difference (Temuan).
  * Bank GL accounts (11xx) are created per BankAccount by `bankAccountCode()`.
  */
 export type AccountSeed = {
@@ -25,6 +25,8 @@ export const ACCOUNT_CODES = {
   CLEARING: "1199",
   SUSPENSE: "1999",
   RETAINED: "3200",
+  /** Saldo Awal lines that don't balance wait here as an open Temuan, never on 3200 (ADR 0012). */
+  OPENING_DIFFERENCE: "3290",
   PPN_MASUKAN: "1150",
   PPN_KELUARAN: "2130",
   OPENING_EQUITY: "3100",
@@ -77,6 +79,7 @@ export const FS_LINES = {
   UTANG_JANGKA_PANJANG: { label: "Liabilitas jangka panjang", section: "LIABILITAS_JANGKA_PANJANG" },
   MODAL: { label: "Modal", section: "EKUITAS" },
   SALDO_LABA: { label: "Saldo laba", section: "EKUITAS" },
+  SELISIH_SALDO_AWAL: { label: "Selisih saldo awal belum diselesaikan", section: "EKUITAS" },
   PRIVE: { label: "Prive / penarikan pemilik", section: "EKUITAS" },
   SELISIH_PENJABARAN: { label: "Selisih penjabaran mata uang asing", section: "EKUITAS" },
   PKL_IMBALAN_KERJA: { label: "Pengukuran kembali imbalan kerja", section: "EKUITAS" },
@@ -144,6 +147,7 @@ export const COA_TEMPLATE: AccountSeed[] = [
   a("3100", "Modal Disetor", "EKUITAS", "MODAL"),
   a("3110", "Tambahan Modal Disetor", "EKUITAS", "MODAL"),
   a("3200", "Saldo Laba", "EKUITAS", "SALDO_LABA", { isRetained: true }),
+  a("3290", "Selisih Saldo Awal", "EKUITAS", "SELISIH_SALDO_AWAL"),
   a("3300", "Prive / Penarikan Pemilik", "EKUITAS", "PRIVE", { normalBalance: "DEBIT" }),
   a("3900", "Selisih Penjabaran Mata Uang Asing", "EKUITAS", "SELISIH_PENJABARAN"),
   a("3920", "Pengukuran Kembali Imbalan Kerja", "EKUITAS", "PKL_IMBALAN_KERJA"),
@@ -198,3 +202,7 @@ export const TAX_TAG_LABEL: Record<TaxTag, string> = {
   PPH_4_2: "PPh 4(2)",
   PPH_25: "PPh 25",
 };
+
+/** Accounts a classifier (rules aside) may propose for a bank line: never a bank, the suspense, retained earnings or an opening difference. */
+export const isClassifiable = (a: { isBank: boolean; isSuspense: boolean; isRetained: boolean; fsLine: string }) =>
+  !a.isBank && !a.isSuspense && !a.isRetained && a.fsLine !== "SELISIH_SALDO_AWAL";

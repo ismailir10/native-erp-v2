@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getClientForFirm } from "@/lib/tenant";
 import { openingContext } from "@/lib/opening";
+import { findingLabel } from "@/lib/findings";
 import Link from "next/link";
 import { formatDate, toIsoDate } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
@@ -20,13 +21,15 @@ export default async function OpeningPage({ params }: { params: Promise<{ id: st
   const client = await getClientForFirm(id).catch(() => notFound());
   const [ctx, accounts] = await Promise.all([
     openingContext(prisma, client.id),
-    prisma.account.findMany({ where: { clientId: client.id, isBank: false, code: { notIn: [ACCOUNT_CODES.SUSPENSE, ACCOUNT_CODES.RETAINED, ACCOUNT_CODES.CLEARING] } }, orderBy: { code: "asc" } }),
+    prisma.account.findMany({ where: { clientId: client.id, isBank: false, code: { notIn: [ACCOUNT_CODES.SUSPENSE, ACCOUNT_CODES.RETAINED, ACCOUNT_CODES.CLEARING, ACCOUNT_CODES.OPENING_DIFFERENCE] } }, orderBy: { code: "asc" } }),
   ]);
   const setup = await setupProgress(prisma, client.id);
   // Entities whose ledger import brought its own opening rows don't need a separate Saldo Awal.
   const imported = new Set(
     (await prisma.journalEntry.findMany({ where: { entityId: { in: ctx.map((c) => c.entity.id) }, kind: "IMPORTED" }, select: { entityId: true }, distinct: ["entityId"] })).map((e) => e.entityId),
   );
+  const openFindings = await prisma.finding.findMany({ where: { clientId: client.id, status: "OPEN" }, orderBy: { number: "asc" }, select: { entityId: true, number: true } });
+  const waiting = (entityId: string) => openFindings.filter((f) => f.entityId === entityId).map((f) => findingLabel(f.number));
   const currencyOf = (entityId: string) => client.entities.find((e) => e.id === entityId)?.functionalCurrency ?? "IDR";
 
   return (
@@ -48,12 +51,14 @@ export default async function OpeningPage({ params }: { params: Promise<{ id: st
             <CardTitle>{c.entity.name}</CardTitle>
             <CardDescription>
               {c.existing
-                ? `Dicatat per ${formatDate(c.existing.date)}. Koreksi lewat Jurnal Penyesuaian.`
+                ? waiting(c.entity.id).length
+                  ? <>Dicatat per {formatDate(c.existing.date)}. Selisihnya menunggu keputusan di <Link className="font-medium text-primary hover:underline" href={`/clients/${client.id}/close#temuan`}>temuan {waiting(c.entity.id).join(", ")}</Link>.</>
+                  : `Dicatat per ${formatDate(c.existing.date)}. Koreksi lewat Jurnal Penyesuaian.`
                 : imported.has(c.entity.id)
                   ? "Buku entitas ini berasal dari impor buku besar, termasuk saldo awalnya."
                   : c.banks.length === 0
-                    ? "Tidak ada rekening bank, jadi saldo awal tidak wajib. Isi hanya kalau entitas ini punya saldo lain. Selisih debit dan kredit masuk ke 3200 Saldo Laba."
-                    : "Selisih debit dan kredit otomatis masuk ke 3200 Saldo Laba."}
+                    ? "Tidak ada rekening bank, jadi saldo awal tidak wajib. Isi hanya kalau entitas ini punya saldo lain. Selisih debit dan kredit menjadi temuan."
+                    : "Salin dari neraca klien, termasuk Saldo Laba. Selisih debit dan kredit tidak diseimbangkan otomatis: ia menjadi temuan yang harus diputuskan sebelum tutup buku."}
             </CardDescription>
           </CardHeader>
           <CardContent className={c.existing ? "px-0" : undefined}>
