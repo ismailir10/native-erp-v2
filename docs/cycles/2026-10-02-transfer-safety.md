@@ -44,7 +44,7 @@ get them merged". So this cycle runs without a separate approval stop.
       Buku's suggestion and an empty *Jawaban klien* column.
 - [x] **Default-guess leakage (UC-B3).** The *Tebakan diterima tanpa diubah* control also states the share of the month's money in or
       out it represents.
-- [ ] **Login value proposition.** The login page shows three short points next to the form (below it on phones): statements to
+- [x] **Login value proposition.** The login page shows three short points next to the form (below it on phones): statements to
       financial statements, every number traceable to its bank row, a close that is checked before it is locked. All three are true
       today.
 
@@ -74,7 +74,7 @@ would rewrite the demo story. Owner-name detection for clients without an owner 
 - [x] T4 Counterparty test, owner question list (Ask Buku sort + Review Excel export), guess-control share. Accept: tests.
 - [x] T5 Golden false-match trap (added once the no-plug cycle merged): two supplier withdrawals with a same-amount customer credit on the
       other account. Accept: the golden key with the trap passes, and fails with the previous matcher.
-- [ ] T6 Login value proposition. Accept: login renders at 1440/390, no horizontal scroll.
+- [x] T6 Login value proposition. Accept: login renders at 1440/390, no horizontal scroll.
 - [ ] T7 End-of-cycle gates + accounting-rules amendment.
 
 ## Implementation
@@ -100,6 +100,9 @@ would rewrite the demo story. Owner-name detection for clients without an owner 
   Rp 100 jt into Mandiri; 19 Jun UD Besi Kuat Sentosa Rp 300 jt against PT Grosir Nusa Raya Rp 300 jt; all with transfer words. 256 lines.
   `tests/golden/belifi-pattern.json` changes on purpose: PT revenue +Rp 400 jt (1.742.327.000), BCA −Rp 400 jt, Mandiri +Rp 400 jt; profit
   unchanged (the payments are HPP). The generator's guard exempts only the planted lines.
+- T6: `app/login/shell.tsx` (`aside` beside the card, below it on phones), `app/login/page.tsx` (*Apa yang dikerjakan Buku*: three numbered
+  points — statements to financial statements, every number traceable, a close checked before it locks; the third names the Temuan now
+  on main).
 
 ## Verification
 - T1: `npx vitest run tests/unit/transfer-safety.test.ts tests/unit/import.test.ts` → `Tests 22 passed (22)`; `demo:reset && verify:books` →
@@ -114,5 +117,6 @@ would rewrite the demo story. Owner-name detection for clients without an owner 
   `Tests 4 failed | 3 passed (7)`, `"pt.revenue": "1742327000"` expected, `"1342327000"` received (the two pairs netted in 1199), then restored.
   After the merge: lint + typecheck clean; `npm test` → `Test Files 129 passed (129) · Tests 939 passed (939)`; `demo:reset && verify:books` →
   `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`
+- T6: `/login` in Chromium at 1440 px (points left, card right) and 390 px (card first, points below): no horizontal scroll, no console errors.
 
 ## Ship Notes
