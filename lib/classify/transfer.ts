@@ -25,17 +25,40 @@ const AMBIGUOUS_CONFIDENCE = 0.8;
 const BANK_WORDS = new Set(
   "BANK BCA MANDIRI MDR BRI BNI BSI CIMB NIAGA SMBC BTN PERMATA DANAMON OCBC MAYBANK PANIN MEGA JAGO SEABANK JENIUS BTPN UOB HSBC DBS GIRO TABUNGAN TAHAPAN SIMPEDES BRITAMA XPRESI".split(" "),
 );
-/** Words that describe moving the group's own money, not who it went to. A word missing here only sends an own transfer to Review. */
-const OWN_TRANSFER_WORDS = new Set("PEMILIK OWNER SENDIRI ANTAR REKENING REK SWEEP INTERNAL MODAL KEMBALI PENGEMBALIAN TALANGAN OPERASIONAL".split(" "));
+/**
+ * Words that describe moving the group's own money, or how a bank prints a transfer (Mandiri "Transfer Dana Masuk MCM InhouseTrf",
+ * BRI "NBMB … TGL … SDR"), not who it went to. A word missing here only sends an own transfer to Review, never pairs two strangers.
+ */
+const OWN_TRANSFER_WORDS = new Set(
+  ("PEMILIK OWNER SENDIRI ANTAR REKENING REK SWEEP INTERNAL MODAL KEMBALI PENGEMBALIAN TALANGAN OPERASIONAL " +
+    "MASUK KELUAR MCM INHOUSETRF INHOUSE NBMB TGL JAM WIB SDR SDRI BPK IBU NO REF CABANG KCP BERITA NOREK ESB").split(" "),
+);
+
+/**
+ * Takes the group's own names out of a key's words. A bank may cut a long name ("PT GEMILANG MAHAKAR" for PT Gemilang Mahakarya Nusa):
+ * a run of at least two of the name's words counts, the last of them possibly cut short (≥ 3 letters).
+ */
+function withoutOwnNames(words: string[], ownNames: string[]): string[] {
+  const names = ownNames.map((n) => merchantKey(n).split(" ").filter(Boolean)).filter((n) => n.join(" ").length >= 3).sort((a, b) => b.length - a.length);
+  const out = [...words];
+  for (const name of names) {
+    for (let i = 0; i < out.length; i++) {
+      let m = 0;
+      while (m < name.length && i + m < out.length && out[i + m] === name[m]) m++;
+      const cut = i + m < out.length && m < name.length && out[i + m].length >= 3 && name[m].startsWith(out[i + m]) ? 1 : 0;
+      if (m + cut >= Math.min(2, name.length)) out.splice(i--, m + cut);
+    }
+  }
+  return out;
+}
 
 /**
  * The counterparty a description names besides the group's own entities, or null when it names none. What is left after taking out
  * references, channel words, bank names, own-transfer words and the own entities' names is a name.
  */
 export function thirdPartyName(description: string, ownNames: string[]): string | null {
-  let s = ` ${merchantKey(description)} `;
-  for (const n of [...ownNames].map((x) => merchantKey(x)).filter((x) => x.length >= 3).sort((a, b) => b.length - a.length)) s = s.split(` ${n} `).join(" ");
-  const rest = s.split(/\s+/).filter((w) => /^[A-Z]{2,}$/.test(w) && !BANK_WORDS.has(w) && !OWN_TRANSFER_WORDS.has(w));
+  const words = withoutOwnNames(merchantKey(description).split(" ").filter(Boolean), ownNames);
+  const rest = words.filter((w) => /^[A-Z]{2,}$/.test(w) && !BANK_WORDS.has(w) && !OWN_TRANSFER_WORDS.has(w));
   return rest.length && !isGenericKey(rest.join(" ")) ? rest.join(" ") : null;
 }
 
@@ -59,14 +82,18 @@ export function matchTransfers(
 ): Map<string, Classification> {
   const result = new Map<string, Classification>();
   const allNames = ownNames.flatMap((e) => e.names);
+  const looksLikeTransfer = (i: TransferCandidate) => !i.matched && !i.pairRefused && (TRANSFER_HINT.test(i.description) || mentionsOwn(i, ownNames));
   const clean = (i: TransferCandidate) => !thirdPartyName(i.description, allNames);
-  const hinted = items.filter((i) => !i.matched && !i.pairRefused && (TRANSFER_HINT.test(i.description) || mentionsOwn(i, ownNames)) && clean(i));
+  const hinted = items.filter((i) => looksLikeTransfer(i) && clean(i));
+  // Lines with transfer words that name someone else: payments, never paired; their equal-amount counterpart is not left to chance either.
+  const naming = items.filter((i) => looksLikeTransfer(i) && !clean(i));
   const outs = hinted.filter((i) => i.amount < 0n);
   const ins = hinted.filter((i) => i.amount > 0n);
   const fits = (o: TransferCandidate, i: TransferCandidate) => i.bankAccountId !== o.bankAccountId && i.amount === -o.amount && businessDaysApart(i.date, o.date) <= MATCH_BUSINESS_DAYS;
   const candidatesOf = new Map(outs.map((o) => [o.id, ins.filter((i) => fits(o, i))]));
   const outsFor = (i: TransferCandidate) => outs.filter((o) => candidatesOf.get(o.id)!.includes(i));
   const codeFor = (a: TransferCandidate, b: TransferCandidate) => (a.entityId === b.entityId ? ACCOUNT_CODES.CLEARING : ACCOUNT_CODES.INTERCOMPANY);
+  const named = (xs: TransferCandidate[]) => xs.map((y) => `${formatDate(y.date)} ${formatRupiah(y.amount < 0n ? -y.amount : y.amount)}`).join("; ");
 
   for (const o of outs) {
     const cands = candidatesOf.get(o.id)!;
@@ -81,33 +108,45 @@ export function matchTransfers(
       result.set(partner.id, { ...c, matchedTxId: o.id });
       continue;
     }
-    // Several lines could be the other half: none is chosen. Each one involved waits in Review with the candidates named.
+    // Several lines could be each other's other half: none is chosen. Each one involved waits in Review naming the others.
     const group = new Set([o, ...cands, ...cands.flatMap(outsFor)]);
     for (const x of group) {
       if (result.has(x.id)) continue;
-      const others = [...group].filter((y) => Math.sign(Number(y.amount)) !== Math.sign(Number(x.amount)));
-      const named = others.map((y) => `${formatDate(y.date)} ${formatRupiah(y.amount < 0n ? -y.amount : y.amount)}`).join("; ");
+      const own = x.amount < 0n ? candidatesOf.get(x.id)! : outsFor(x); // the lines that could really be its other half
+      const others = [...group].filter((y) => y !== x);
       result.set(x.id, {
         method: "TRANSFER",
-        accountCode: codeFor(x, others[0]),
+        accountCode: codeFor(x, own[0]),
         taxTag: null,
         confidence: AMBIGUOUS_CONFIDENCE,
-        reason: `${others.length} kandidat pasangan transfer dengan nominal sama (${named}): tidak dipasangkan otomatis, pilih akunnya di Review`,
+        reason: `Tidak dipasangkan otomatis: ${others.length} mutasi lain bernominal sama ikut cocok (${named(others)}). Pilih akunnya di Review`,
       });
     }
   }
 
   // Unpaired but hinted: names another group entity → 1190; names its own entity → 1199.
-  // Either way the counterpart is pending import; the clearing/intercompany controls track it.
+  // Either way the counterpart is pending import; the clearing/intercompany controls track it. Except when a line of the same amount
+  // that names someone else sits on the other side: then it may be that line's money, and the reviewer decides.
   for (const i of hinted) {
     if (result.has(i.id) || !TRANSFER_HINT.test(i.description)) continue;
+    const lookalike = naming.filter((n) => (i.amount < 0n ? fits(i, n) : fits(n, i)));
     const d = i.description.toUpperCase();
     const other = ownNames.find((e) => e.entityId !== i.entityId && e.names.some((n) => d.includes(n)));
     const self = ownNames.find((e) => e.entityId === i.entityId && e.names.some((n) => d.includes(n)));
-    if (other) {
-      result.set(i.id, { method: "TRANSFER", accountCode: ACCOUNT_CODES.INTERCOMPANY, taxTag: null, confidence: 0.92, reason: "Transfer ke/dari entitas grup (pasangan belum diimpor)" });
-    } else if (self) {
-      result.set(i.id, { method: "TRANSFER", accountCode: ACCOUNT_CODES.CLEARING, taxTag: null, confidence: 0.92, reason: "Transfer antar rekening sendiri (pasangan belum diimpor)" });
+    const code = other ? ACCOUNT_CODES.INTERCOMPANY : self ? ACCOUNT_CODES.CLEARING : null;
+    if (!code) continue;
+    if (lookalike.length) {
+      result.set(i.id, {
+        method: "TRANSFER",
+        accountCode: code,
+        taxTag: null,
+        confidence: AMBIGUOUS_CONFIDENCE,
+        reason: `Bernominal sama dengan mutasi yang menyebut pihak lain (${named(lookalike)}): bukan pasangan otomatis, periksa di Review`,
+      });
+    } else if (other) {
+      result.set(i.id, { method: "TRANSFER", accountCode: code, taxTag: null, confidence: 0.92, reason: "Transfer ke/dari entitas grup (pasangan belum diimpor)" });
+    } else {
+      result.set(i.id, { method: "TRANSFER", accountCode: code, taxTag: null, confidence: 0.92, reason: "Transfer antar rekening sendiri (pasangan belum diimpor)" });
     }
   }
   return result;

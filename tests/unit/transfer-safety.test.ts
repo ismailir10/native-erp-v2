@@ -18,6 +18,12 @@ describe("third-party names", () => {
     expect(thirdPartyName("TRSF E-BANKING DB 2005/FTSCY/WS955555 RANI KUSUMAWARDANI PINJAMAN PEMILIK", names)).toBeNull();
     expect(thirdPartyName("BI-FAST CR 20260513 ANTAR REKENING SENDIRI", names)).toBeNull();
     expect(thirdPartyName("TRANSFER DARI CV MAJU JAYA", names)).toBe("CV MAJU JAYA");
+    // How banks really print own transfers: a cut name (BCA), Mandiri's MCM, BRI's NBMB.
+    expect(thirdPartyName("TRSF E-BANKING CR 1305/FTSCY/WS912345 30000000.00 PT GEMILANG MAHAKAR", names)).toBeNull();
+    expect(thirdPartyName("Transfer Dana Masuk MCM InhouseTrf DARI PT GEMILANG MAHAKARYA NUSA", names)).toBeNull();
+    expect(thirdPartyName("NBMB RANI KUSUMAWARDANI TO PT GEMILANG MAHAKARYA NUSA TGL 13/05", names)).toBeNull();
+    // Part of a name is not the name: "PT SUMBER …" shares only "PT" with the group.
+    expect(thirdPartyName("TRSF E-BANKING DB PT SUMBER GEMILANG", names)).toBe("PT SUMBER GEMILANG");
   });
 });
 
@@ -35,9 +41,11 @@ describe("transfer matcher safety", () => {
     expect(r.has("w1")).toBe(false);
     expect(r.has("c1")).toBe(false);
     expect(r.has("w2")).toBe(false);
-    // The clean half still files to 1199 as an own transfer whose other half isn't here.
-    expect(r.get("c2")?.accountCode).toBe("1199");
+    // The clean half would be an own transfer whose other half isn't here, but a same-amount line naming someone else sits on the other
+    // side: it waits in Review (suggestion 1199) instead of auto-posting.
+    expect(r.get("c2")).toMatchObject({ accountCode: "1199", confidence: 0.8 });
     expect(r.get("c2")?.matchedTxId).toBeUndefined();
+    expect(r.get("c2")?.reason).toMatch(/^Bernominal sama dengan mutasi yang menyebut pihak lain \(20 Mei 2026 Rp 300\.000\.000\)/);
   });
 
   it("pairs exactly one candidate; with two candidates every line involved waits in Review naming them", () => {
@@ -56,7 +64,7 @@ describe("transfer matcher safety", () => {
       expect(two.get(id)?.matchedTxId).toBeUndefined();
       expect(two.get(id)!.confidence).toBeLessThan(0.9); // below auto-post: Review
     }
-    expect(two.get("o")?.reason).toBe("2 kandidat pasangan transfer dengan nominal sama (13 Mei 2026 Rp 30.000.000; 14 Mei 2026 Rp 30.000.000): tidak dipasangkan otomatis, pilih akunnya di Review");
+    expect(two.get("o")?.reason).toBe("Tidak dipasangkan otomatis: 2 mutasi lain bernominal sama ikut cocok (13 Mei 2026 Rp 30.000.000; 14 Mei 2026 Rp 30.000.000). Pilih akunnya di Review");
     expect(two.get("i2")?.accountCode).toBe("1190");
   });
 
@@ -70,7 +78,9 @@ describe("transfer matcher safety", () => {
       own,
     );
     expect([...r.values()].some((c) => c.matchedTxId)).toBe(false);
-    expect(r.get("i")?.reason).toMatch(/^2 kandidat pasangan/);
+    expect(r.get("i")?.reason).toMatch(/^Tidak dipasangkan otomatis: 2 mutasi lain/);
+    // Each out's suggestion follows its own candidate: o2 (the owner's) is intercompany, o1 an own-account move.
+    expect([r.get("o1")?.accountCode, r.get("o2")?.accountCode]).toEqual(["1199", "1190"]);
   });
 
   it("never pairs a line the reviewer took out of a pair", () => {

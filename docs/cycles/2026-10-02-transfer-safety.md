@@ -75,7 +75,7 @@ would rewrite the demo story. Owner-name detection for clients without an owner 
 - [x] T5 Golden false-match trap (added once the no-plug cycle merged): two supplier withdrawals with a same-amount customer credit on the
       other account. Accept: the golden key with the trap passes, and fails with the previous matcher.
 - [x] T6 Login value proposition. Accept: login renders at 1440/390, no horizontal scroll.
-- [ ] T7 End-of-cycle gates + accounting-rules amendment.
+- [x] T7 End-of-cycle gates + accounting-rules amendment.
 
 ## Implementation
 - Plan: T1–T6 sequential, inline (one module each; the matcher first because unpairing depends on its `pairRefused`).
@@ -103,6 +103,16 @@ would rewrite the demo story. Owner-name detection for clients without an owner 
 - T6: `app/login/shell.tsx` (`aside` beside the card, below it on phones), `app/login/page.tsx` (*Apa yang dikerjakan Buku*: three numbered
   points — statements to financial statements, every number traceable, a close checked before it locks; the third names the Temuan now
   on main).
+- Review (independent adversarial pass over the branch diff) found five defects, all fixed:
+  (1) `thirdPartyName` read real own-transfer descriptions as third parties — BCA cuts long names ("PT GEMILANG MAHAKAR"), Mandiri prints
+  "Transfer Dana Masuk MCM InhouseTrf", BRI "NBMB … TGL"; and a clean half then auto-posted to 1199 while its refused counterpart went
+  elsewhere → own names match as a run of ≥ 2 words with the last possibly cut, the bank print words are known, and a clean line with a
+  same-amount line naming someone else on the other side goes to Review (0.8) naming it. (2) The close copilot (*Jelaskan*, AI close
+  review) could still draft 1199/1190 → `aiAccounts` there too. (3) *Lepas pasangan* ignored settlements and withholding, and moving a
+  paired half elsewhere in Review kept the link → refused while a half settles invoices, withholding cleared, and a half reviewed off
+  1199/1190 drops the link (it is never paired again; its partner may pair with its real other half). (4) The guess share counted own
+  transfers twice in its base → transfer lines left out. (5) The ambiguous reason named non-candidates and the suggestion could follow
+  an unrelated line → each line's account follows its own candidates; the reason names the other lines in the group.
 
 ## Verification
 - T1: `npx vitest run tests/unit/transfer-safety.test.ts tests/unit/import.test.ts` → `Tests 22 passed (22)`; `demo:reset && verify:books` →
@@ -118,5 +128,18 @@ would rewrite the demo story. Owner-name detection for clients without an owner 
   After the merge: lint + typecheck clean; `npm test` → `Test Files 129 passed (129) · Tests 939 passed (939)`; `demo:reset && verify:books` →
   `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`
 - T6: `/login` in Chromium at 1440 px (points left, card right) and 390 px (card first, points below): no horizontal scroll, no console errors.
+- T7 end of cycle: lint clean; typecheck clean; `npm test` → `Test Files 129 passed (129) · Tests 939 passed (939)`; `npm run build` → "✓ Compiled
+  successfully"; `demo:reset && verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`
+- `npm run test:e2e` not runnable here (Supabase Auth unreachable from the sandbox); CI runs it. The demo's classification is identical
+  (diffed in T1), and no spec asserts the changed copy (login keeps its form labels; Review gets one more link).
+- After the review fixes: lint + typecheck clean; `npm test` → `Test Files 129 passed (129) · Tests 940 passed (940)`; `demo:reset && verify:books` →
+  `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`; the demo's classification counts are again identical to before the cycle (diffed).
 
 ## Ship Notes
+- **Migration** `20261002180000_transfer_pair_refused` (one boolean column, default false). Additive.
+- **Behaviour changes:** equal-amount transfers whose description names a third party no longer pair (they're classified as payments);
+  several candidates go to Review instead of the nearest date; *Lepas pasangan* in the ledger drawer; AI never proposes 1190/1199.
+  **AI cache:** the cache key now leaves 1190/1199 out, so merchants cached before are asked once more on their next import (bounded by
+  the usual per-import cap and monthly budget).
+- Login shows three value points; Review has *Unduh daftar pertanyaan untuk klien (Excel)*.
+- No env vars. Rollback: revert the merge; the column can stay.

@@ -47,4 +47,14 @@ describe("lepas pasangan transfer", () => {
     await unpairTransfer(db, { clientId: g.client.id, bankTxId: out.id });
     await expect(unpairTransfer(db, { clientId: g.client.id, bankTxId: out.id })).rejects.toThrow("Mutasi ini tidak berpasangan dengan transfer lain.");
   });
+
+  it("a half the reviewer moves off 1199 leaves the pair: its partner is free to pair again, this line never", async () => {
+    const { g, out, inn } = await paired();
+    const { reviewTransaction } = await import("@/lib/review");
+    await reviewTransaction(db, { bankTxId: inn.id, accountCode: "4100", taxTag: null });
+    const [o, i] = await Promise.all([db.bankTransaction.findUniqueOrThrow({ where: { id: out.id } }), db.bankTransaction.findUniqueOrThrow({ where: { id: inn.id } })]);
+    expect([o.matchedTxId, o.pairRefused]).toEqual([null, false]);
+    expect([i.matchedTxId, i.pairRefused]).toEqual([null, true]);
+    await expect(unpairTransfer(db, { clientId: g.client.id, bankTxId: out.id })).rejects.toThrow("Mutasi ini tidak berpasangan dengan transfer lain.");
+  });
 });

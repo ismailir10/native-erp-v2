@@ -1,3 +1,4 @@
+import { aiAccounts } from "@/lib/ai/classify";
 import { createHash } from "node:crypto";
 import type { Db } from "@/lib/db";
 import { runControls, type Control } from "@/lib/controls";
@@ -154,7 +155,7 @@ export async function gather(db: Db, clientId: string, year: number, month: numb
     }
     reviewed.push({ key: c.key, title: c.title, scope: c.scope, status: c.status as "REVIEW" | "FAIL", detail: c.detail, rows });
   }
-  const accounts = await db.account.findMany({ where: { clientId }, select: { code: true, name: true }, orderBy: { code: "asc" } });
+  const accounts = aiAccounts(await db.account.findMany({ where: { clientId }, select: { code: true, name: true }, orderBy: { code: "asc" } }));
   return { input: { client: client.name, period: formatPeriod(year, month), accounts, controls: reviewed }, links, flagged };
 }
 
