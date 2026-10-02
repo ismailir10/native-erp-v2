@@ -4,10 +4,15 @@ import type { Direction } from "@/lib/generated/prisma/enums";
 import { AI_BATCH_SIZE, AI_TIMEOUT_MS, CLASSIFICATION_PROMPT_VERSION, DEMO_AI_MODEL, aiConfig, buildPrompt, maxTokensFor, type AiItem, type AiProvider } from "@/lib/ai/provider";
 import { AiBudgetError, runBudgetedAi } from "@/lib/ai/budget";
 import type { Classification } from "@/lib/classify/types";
+import { ACCOUNT_CODES } from "@/lib/coa/template";
+
+/** Transfers are paired by the matcher or decided by the reviewer, never guessed (use-case feedback UC-B2): 1199 and 1190 never reach the model. */
+const NOT_FOR_AI = new Set<string>([ACCOUNT_CODES.CLEARING, ACCOUNT_CODES.INTERCOMPANY]);
+export const aiAccounts = <T extends { code: string }>(accounts: T[]) => accounts.filter((a) => !NOT_FOR_AI.has(a.code));
 
 export type ClassificationCacheContext = { firmId: string; clientId: string; model: string; clientName: string; accounts: { code: string; name: string }[]; sample: string };
 export function aiCacheKey(merchantKey: string, direction: Direction, coaVersion: number, scope: ClassificationCacheContext) {
-  const prompt = buildPrompt([{ key: merchantKey, direction, sample: scope.sample }], [...scope.accounts].sort((a, b) => a.code.localeCompare(b.code)), scope.clientName);
+  const prompt = buildPrompt([{ key: merchantKey, direction, sample: scope.sample }], aiAccounts([...scope.accounts]).sort((a, b) => a.code.localeCompare(b.code)), scope.clientName);
   return createHash("sha256").update(JSON.stringify([scope.firmId, scope.clientId, coaVersion, scope.model, CLASSIFICATION_PROMPT_VERSION, prompt])).digest("hex");
 }
 
@@ -39,6 +44,7 @@ export async function suggestWithAi(
     provider: AiProvider | null;
   },
 ): Promise<{ suggestions: Map<string, Classification>; usage: { calls: number; cacheHits: number; note?: string } }> {
+  args = { ...args, accounts: aiAccounts(args.accounts) };
   const suggestions = new Map<string, Classification>();
   const unique = new Map<string, Pending>();
   for (const p of args.pending) unique.set(`${p.key}|${p.direction}`, p);

@@ -35,7 +35,7 @@ get them merged". So this cycle runs without a separate approval stop.
 - [x] **Undo a pair (UC-B2).** *Lepas pasangan* in the bank line's ledger drawer unlinks both halves, moves both back to Review on 1999
       through the existing writer (RECLASS of the difference), and marks them so a later import never pairs them again. A locked month
       refuses.
-- [ ] **AI never proposes 1190 or 1199 (UC-B2).** Both accounts are dropped from the account list sent to the model and from the
+- [x] **AI never proposes 1190 or 1199 (UC-B2).** Both accounts are dropped from the account list sent to the model and from the
       whitelist that a cached or returned answer must pass.
 - [ ] **Counterparty-keyed decisions (UC-B3).** Test: five Rp 100 jt payments on one date to five resellers each keep their own
       decision; *Terima serupa* on one reseller touches none of the others.
@@ -70,7 +70,7 @@ would rewrite the demo story. Owner-name detection for clients without an owner 
       `verify:books` ALL PASS.
 - [x] T2 *Lepas pasangan*: migration, `unpairTransfer()` (lib), action, ledger-drawer button. Accept: DB test (both halves back to Review,
       never re-paired by a later import, locked month refused).
-- [ ] T3 AI chart without 1190/1199 (cache key and whitelist). Accept: unit/DB test.
+- [x] T3 AI chart without 1190/1199 (cache key and whitelist). Accept: unit/DB test.
 - [ ] T4 Counterparty test, owner question list (Ask Buku sort + Review Excel export), guess-control share. Accept: tests.
 - [ ] T5 Login value proposition. Accept: login renders at 1440/390, no horizontal scroll.
 - [ ] T6 End-of-cycle gates + accounting-rules amendment.
@@ -86,11 +86,15 @@ would rewrite the demo story. Owner-name detection for clients without an owner 
   schema — the sandbox refuses an unattended `migrate reset` of the local DB, and `migrate dev` needs one because the local DB also holds
   the open no-plug branch's table), `unpairTransfer()` in `lib/review.ts`, `unpairTransferAction`, the pipeline skips refused lines,
   `lib/reports/account-ledger.ts` names the other half, ledger drawer *Pasangan transfer* + *Lepas pasangan*. Test: `tests/db/unpair-transfer.test.ts`.
+- T3: `lib/ai/classify.ts` `aiAccounts()`, applied inside `aiCacheKey` and `suggestWithAi`, so the pipeline, *Minta saran AI* and the demo's
+  pre-cached answers drop 1190/1199 alike, and a cached or fresh answer naming them fails the whitelist. Test: `tests/db/ai-no-transfer.test.ts`.
 
 ## Verification
 - T1: `npx vitest run tests/unit/transfer-safety.test.ts tests/unit/import.test.ts` → `Tests 22 passed (22)`; `demo:reset && verify:books` →
   `ALL PASS — 1741 pemeriksaan saldo cocok dengan ground truth.`; lint + typecheck clean; `npm test` → `Test Files 122 passed (122) · Tests 915 passed (915)`.
 - T2: `npx vitest run tests/db/unpair-transfer.test.ts` → `Tests 2 passed (2)`; `prisma migrate deploy` on both DBs → applied; lint + typecheck clean;
   `npm test` → `Test Files 123 passed (123) · Tests 917 passed (917)`.
+- T3: `npx vitest run tests/db/ai-no-transfer.test.ts` → `Tests 1 passed (1)`; lint + typecheck clean; `npm test` → `Test Files 124 passed (124) · Tests 918 passed (918)`;
+  `demo:reset && verify:books` → `ALL PASS — 1741 pemeriksaan saldo cocok dengan ground truth.`
 
 ## Ship Notes
