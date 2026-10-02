@@ -26,6 +26,9 @@ describe("shared workspace context", () => {
     expect(workspaceQuestionIntent("bisakah reklasifikasi beban sewa ke 1170")).toBe("change");
     expect(workspaceQuestionIntent("Koreksi fiskal berapa tahun ini?")).not.toBe("change");
     expect(workspaceQuestionIntent("Catatan apa yang perlu ditanyakan ke klien?")).toBe("unclear");
+    expect(workspaceQuestionIntent("Posting apa saja ke 6100 bulan ini?")).not.toBe("change");
+    expect(workspaceQuestionIntent("Ganti rugi dibayar ke siapa")).not.toBe("change");
+    expect(workspaceQuestionIntent("Koreksi mana yang dibuat bulan ini")).not.toBe("change");
   });
 
   it("reads the counterparty named in a question", () => {

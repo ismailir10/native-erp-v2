@@ -44,4 +44,19 @@ describe("kontrol saldo awal", () => {
     // The owner has no entries at all: nothing to ask.
     expect((await runControls(db, g.client.id, 2026, 4)).some((c) => c.key === `opening:${g.owner.entity.id}`)).toBe(false);
   });
+
+  it("doesn't ask an entity booked by a ledger import, which brings its own opening rows", async () => {
+    const g = await makeGroup();
+    await db.$transaction(async (tx) => postJournal(tx, { entityId: g.pt.entity.id, date: dateOnly(2026, 4, 10), kind: "IMPORTED", memo: "GL", lines: [{ accountId: await acc(g.client.id, "6100"), debit: 5n }, { accountId: await acc(g.client.id, "2150"), credit: 5n }] }));
+    expect((await runControls(db, g.client.id, 2026, 4)).some((c) => c.key === `opening:${g.pt.entity.id}`)).toBe(false);
+  });
+
+  it("posts one Saldo Awal and one Temuan when two saves race", async () => {
+    const g = await makeGroup();
+    const save = () => postOpening(db, { clientId: g.client.id, entityId: g.pt.entity.id, date: dateOnly(2026, 3, 31), lines: [{ accountCode: "1101", debit: "1.000", credit: "" }] });
+    const results = await Promise.allSettled([save(), save()]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(await db.journalEntry.count({ where: { entityId: g.pt.entity.id, kind: "OPENING" } })).toBe(1);
+    expect(await db.finding.count()).toBe(1);
+  });
 });

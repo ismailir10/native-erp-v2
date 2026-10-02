@@ -130,6 +130,15 @@ existing 3200 plugs (history is not rewritten); FX, consolidation and audit-pack
   `components/app/workspace-ask.tsx` (*Sementara* pill). Tests: `tests/unit/workspace.test.ts`, `tests/db/workspace.test.ts`.
 - T7: polish after looking at the pages — the Saldo Awal page names its open Temuan with a link, the completeness matrix drops months before
   any book starts, the Temuan form aligns its fields.
+- Review (independent adversarial pass over the branch diff) found six defects, all fixed: `opening:` asked ledger-imported entities (whose
+  Saldo Awal page offers no form) → skipped when the entity has IMPORTED entries; the change-request intent refused questions such as
+  "Posting apa saja ke 6100?" → any question word or a trailing "?" keeps it a question; the completeness matrix compared only a month's first
+  statement and compared files that overlap → every statement starting in the month is checked against its predecessor, overlapping ones
+  are skipped (gaps are judged by balances, not dates: a file without a period line spans only its first to last row); the Neraca pill said
+  "1 temuan terbuka" for a 3290 balance with no open Temuan → says *selisih saldo awal belum diputuskan*; the fixed-asset movement could
+  link the resolution instead of the Saldo Awal (two OPENING entries on one date) → ordered by `createdAt`; two simultaneous Saldo Awal saves
+  could post twice → re-checked under the client lock inside the transaction. Confirmed sound: signs, every OPENING reader, locks, tenancy,
+  3290 placement in every statement, the golden key's independence.
 
 ## Verification
 - T1: `npx vitest run tests/db/golden.test.ts` → `Tests 6 passed (6)`; gate: lint clean, typecheck clean, `npm test` → `Test Files 122 passed (122) · Tests 916 passed (916)`.
@@ -143,7 +152,8 @@ existing 3200 plugs (history is not rewritten); FX, consolidation and audit-pack
 - T5: `npx vitest run tests/db/completeness.test.ts` → `Tests 1 passed (1)`; lint + typecheck clean; `npm test` → `Test Files 125 passed (125) · Tests 924 passed (924)`.
 - T6: `npx vitest run tests/unit/workspace.test.ts tests/db/workspace.test.ts` → `Tests 21 passed (21)`; lint + typecheck clean; `npm test` →
   `Test Files 125 passed (125) · Tests 926 passed (926)`.
-- T7 end of cycle: lint clean; typecheck clean; `npm test` → `Test Files 125 passed (125) · Tests 926 passed (926)`; `npm run build` → "✓ Compiled
+- After the review fixes: `npx vitest run` of the touched suites → `Tests 26 passed (26)`.
+- T7 end of cycle (after the review fixes): lint clean; typecheck clean; `npm test` → `Test Files 125 passed (125) · Tests 929 passed (929)`; `npm run build` → "✓ Compiled
   successfully"; `demo:reset && verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`
 - `npm run test:e2e` **not run here**: its global setup signs in through Supabase Auth, which this sandbox can't reach (no keys, no Docker daemon
   for a local stack), as in earlier cycles. CI runs it. Checked by reading every spec that touches the changed pages: no selector collides

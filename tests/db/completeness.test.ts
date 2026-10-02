@@ -29,4 +29,21 @@ describe("kelengkapan rekening koran", () => {
     // Accounts with no statement and no Saldo Awal have nothing to show yet.
     expect(rows.map((r) => r.bankAccountId)).toEqual([bca.id]);
   });
+
+  it("checks every statement of a month against the one before it, and doesn't compare a file that starts inside another", async () => {
+    const g = await makeGroup();
+    const bca = g.pt.banks[0];
+    const stmt = (name: string, from: Date, to: Date, opening: bigint, closing: bigint) =>
+      db.statementImport.create({ data: { firmId: g.firm.id, bankAccountId: bca.id, fileName: name, format: "BCA", periodStart: from, periodEnd: to, openingBalance: opening, closingBalance: closing, rowCount: 3, continuityOk: true } });
+    await stmt("apr.csv", dateOnly(2026, 4, 1), dateOnly(2026, 4, 30), 100n, 150n);
+    // May in two halves: the second doesn't start where the first ended.
+    await stmt("mei-1.csv", dateOnly(2026, 5, 1), dateOnly(2026, 5, 15), 150n, 170n);
+    await stmt("mei-2.csv", dateOnly(2026, 5, 16), dateOnly(2026, 5, 31), 175n, 180n);
+    // June, plus a file from mid-June to mid-July that overlaps it: its opening is mid-June's, not comparable.
+    await stmt("jun.csv", dateOnly(2026, 6, 1), dateOnly(2026, 6, 30), 180n, 200n);
+    await stmt("jun-jul.csv", dateOnly(2026, 6, 15), dateOnly(2026, 7, 15), 190n, 210n);
+    const row = (await completenessMatrix(db, g.client.id, 2026, 7, 4)).rows[0];
+    expect(row.cells.map((c) => c.state)).toEqual(["ok", "broken", "ok", "ok"]);
+    expect(row.cells[1]).toMatchObject({ diff: 5n, note: "Saldo awal mei-2.csv tidak sama dengan saldo akhir mei-1.csv" });
+  });
 });

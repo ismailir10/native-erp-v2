@@ -110,8 +110,10 @@ async function collectControls(db: Db, clientId: string, year: number, month: nu
     const opening = await openingDate(db, e.id);
     if (!opening) {
       // An entity whose books start in this month without a Saldo Awal: its Neraca starts from zero. Asked once, in the first month.
+      // A ledger import brings its own opening rows (the Saldo Awal page offers no form for it): nothing to ask.
       const first = await db.journalEntry.findFirst({ where: { entityId: e.id }, orderBy: { date: "asc" }, select: { date: true } });
-      if (first && +first.date >= +start && +first.date <= +end) {
+      const imported = await db.journalEntry.findFirst({ where: { entityId: e.id, kind: "IMPORTED" }, select: { id: true } });
+      if (first && !imported && +first.date >= +start && +first.date <= +end) {
         const oKey = `opening:${e.id}`;
         controls.push({
           key: oKey,

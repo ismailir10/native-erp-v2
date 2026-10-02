@@ -117,7 +117,7 @@ const CHANGE_REQUEST = /^\s*(?:tolong|mohon|bisa(?:kah)?|coba|please)?\s*(?:ubah
 export function workspaceQuestionIntent(question: string) {
   const q = question.toLowerCase();
   // "Koreksi fiskal berapa?" asks about a number; "Koreksi akun transaksi ini ke 6100" asks Buku to act.
-  if (CHANGE_REQUEST.test(question) && !/\b(berapa|apakah|bagaimana|kenapa|mengapa|kapan)\b/.test(q)) return "change";
+  if (CHANGE_REQUEST.test(question) && !/\b(berapa|apa|apakah|siapa|mana|bagaimana|kenapa|mengapa|kapan)\b|\?\s*$/.test(q)) return "change";
   if (/\b(prediksi|forecast|proyeksi|ramalan|tahun depan|bulan depan)\b/.test(q)) return "unsupported";
   // "Transaksi apa yang belum jelas / perlu ditanyakan ke klien?": rows still waiting in Review (before the payee search reads "klien" as a name).
   if (/belum jelas|(perlu|harus|mau) (di)?tanya|ditanyakan|tanya(kan)? (ke )?klien|pertanyaan (untuk|ke|buat) klien|konfirmasi (ke )?klien|belum (di)?klasifikasi|menunggu review/.test(q)) return "unclear";

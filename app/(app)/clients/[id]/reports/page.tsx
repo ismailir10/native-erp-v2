@@ -182,7 +182,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 Laporan Posisi Keuangan (Neraca)
-                <BalancePill bs={bs} findings={status.reasons.flatMap((r) => (r.kind === "findings" ? r.items.map((i) => Math.max(i.labels.length, 1)) : [])).reduce((n, k) => n + k, 0)} />
+                <BalancePill bs={bs} findings={status.reasons.flatMap((r) => (r.kind === "findings" ? r.items : []))} />
               </CardTitle>
               <CardDescription>
                 Per akhir {formatPeriod(period.year, period.month)}
@@ -303,9 +303,12 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
  * The Neraca's own verdict (use-case feedback #5): "Seimbang" only when A = L + E, total assets aren't negative and no Saldo Awal
  * difference is waiting on 3290. Adding up is not the same as being right.
  */
-function BalancePill({ bs, findings }: { bs: BalanceSheet; findings: number }) {
+function BalancePill({ bs, findings }: { bs: BalanceSheet; findings: { labels: string[] }[] }) {
   if (bs.totals.difference !== 0n) return <StatusPill status="FAIL" label="Selisih" />;
   if (bs.totals.assets < 0n) return <StatusPill status="FAIL" label="Seimbang, tapi total aset negatif" />;
-  if (findings) return <StatusPill status="REVIEW" label={`Seimbang · ${findings} temuan terbuka`} />;
+  const open = findings.reduce((n, f) => n + f.labels.length, 0);
+  // 3290 can hold a balance with no open Temuan (moved there by a later journal): say what is true.
+  if (open) return <StatusPill status="REVIEW" label={`Seimbang · ${open} temuan terbuka`} />;
+  if (findings.length) return <StatusPill status="REVIEW" label="Seimbang · selisih saldo awal belum diputuskan" />;
   return <StatusPill status="PASS" label="Seimbang" />;
 }

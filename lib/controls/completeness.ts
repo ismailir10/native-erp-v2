@@ -4,9 +4,10 @@ import { openingDate } from "@/lib/controls/coverage";
 
 /**
  * Kelengkapan rekening koran (use-case feedback UC-B4): every bank account × month from where its books start to the month asked —
- * *ada* (a statement covers it and its running balance holds), *bolong* (no statement), or *tidak nyambung* (the statement's opening
+ * *ada* (statements cover it and their running balance holds), *bolong* (no statement), or *tidak nyambung* (a statement's opening
  * differs from the previous statement's closing, or its running balance breaks inside the file), with the difference when there is
- * one. Read-only: the bank reconciliation and continuity controls stay the authority; this is the picture of where the gaps are.
+ * one. Gaps are judged by balances, not dates: a file without a period line spans its first to last row, and days without rows
+ * between two statements that hand over lost nothing. Read-only: the bank reconciliation and continuity controls stay the authority; this is the picture of where the gaps are.
  */
 export type CellState = "ok" | "missing" | "broken" | "before";
 export type CompletenessCell = { year: number; month: number; state: CellState; diff: bigint | null; note: string | null };
@@ -31,17 +32,22 @@ export async function completenessMatrix(db: Db, clientId: string, year: number,
       const startsAt = opening ? new Date(+opening + DAY) : statements[0]?.periodStart ?? null;
       const cells = months.map(({ year: y, month: m }): CompletenessCell => {
         const { start, end } = periodBounds(y, m);
-        if (!startsAt || +end < +startsAt) return { year: y, month: m, state: "before", diff: null, note: null };
-        const covering = statements.filter((s) => +s.periodStart <= +end && +s.periodEnd >= +start);
-        if (!covering.length) return { year: y, month: m, state: "missing", diff: null, note: null };
-        const first = covering[0];
-        const previous = [...statements].reverse().find((s) => +s.periodEnd < +first.periodStart);
-        if (previous && previous.closingBalance !== first.openingBalance) {
-          return { year: y, month: m, state: "broken", diff: first.openingBalance - previous.closingBalance, note: `Saldo awal ${first.fileName} tidak sama dengan saldo akhir ${previous.fileName}` };
+        const cell = (state: CellState, diff: bigint | null = null, note: string | null = null) => ({ year: y, month: m, state, diff, note });
+        if (!startsAt || +end < +startsAt) return cell("before");
+        const covering = statements.filter((x) => +x.periodStart <= +end && +x.periodEnd >= +start);
+        if (!covering.length) return cell("missing");
+        // Every statement that starts this month must hand over from the one before it. Overlapping files (a file that starts inside
+        // another) carry no comparable opening, so they are not compared.
+        for (const x of covering.filter((c) => +c.periodStart >= +start)) {
+          if (statements.some((o) => o !== x && +o.periodStart < +x.periodStart && +o.periodEnd >= +x.periodStart)) continue;
+          const previous = statements.filter((o) => +o.periodEnd < +x.periodStart).sort((a, b) => +b.periodEnd - +a.periodEnd)[0];
+          if (previous && previous.closingBalance !== x.openingBalance) {
+            return cell("broken", x.openingBalance - previous.closingBalance, `Saldo awal ${x.fileName} tidak sama dengan saldo akhir ${previous.fileName}`);
+          }
         }
-        const inside = covering.find((s) => !s.continuityOk);
-        if (inside) return { year: y, month: m, state: "broken", diff: null, note: `${inside.fileName}: ${inside.continuityNote ?? "saldo berjalan putus"}` };
-        return { year: y, month: m, state: "ok", diff: null, note: null };
+        const inside = covering.find((c) => !c.continuityOk);
+        if (inside) return cell("broken", null, `${inside.fileName}: ${inside.continuityNote ?? "saldo berjalan putus"}`);
+        return cell("ok");
       });
       if (cells.every((c) => c.state === "before")) continue;
       rows.push({ bankAccountId: ba.id, entity: e.shortName, label: ba.label, currency: ba.currency, cells });

@@ -4,6 +4,7 @@ import { formatDate } from "@/lib/format";
 import { parseMoney } from "@/lib/money";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { templateAccounts } from "@/lib/coa/ensure";
+import { closeLock } from "@/lib/adjust/schedules";
 import { findingLabel, openFinding, openingQuestion } from "@/lib/findings";
 
 /**
@@ -127,6 +128,10 @@ export async function postOpening(db: Db, input: { clientId: string; entityId: s
   }
 
   return db.$transaction(async (tx) => {
+    // Two saves at once must not post two Saldo Awal (and two Temuan): checked again under the client's lock.
+    await closeLock(tx, input.clientId);
+    const raced = await tx.journalEntry.findFirst({ where: { entityId: entity.id, kind: "OPENING" } });
+    if (raced) throw new OpeningError(`Saldo awal ${entity.shortName} sudah dicatat per ${formatDate(raced.date)}. Koreksi lewat Jurnal Penyesuaian.`);
     // The difference as it sits on 3290: typed debits above credits leave a credit there (negative), and the other way round.
     const difference = credit - debit;
     if (difference !== 0n) {
