@@ -1,0 +1,90 @@
+# Transfer and review safety (use-case feedback, cycle 2) + login value proposition
+
+## Context
+This cycle comes from the owner's use-case document (2 Oct 2026); the review that ordered the cycles is in the no-plug cycle
+([2026-10-02-no-plug-golden-test](2026-10-02-no-plug-golden-test.md)). The one real money bug in the document is UC-B2: Rp 100 jt and
+Rp 300 jt withdrawals to an external supplier netted to zero in 1199, only because a credit of the same amount sat on another account.
+Buku's matcher (`lib/classify/transfer.ts`) has the same weaknesses:
+- it pairs on a transfer hint word plus an equal opposite amount;
+- among several candidates it auto-picks the nearest date;
+- it never refuses a pair whose description names a third party;
+- a pair can't be undone;
+- AI may propose 1190/1199.
+
+UC-B3 asks that a learned decision for reseller A never overwrites reseller B, that the owner question list sorts by amount and can be
+exported, and that money accepted on the default guess shows as a share, not only a count.
+
+The owner also asked for the login page to say what Buku does, in at most three points.
+
+Spec approval: the owner said "continue with the transfer safety cycle" and then, before leaving, "get things done, address all feedback,
+get them merged". So this cycle runs without a separate approval stop.
+
+## Spec
+- [x] **No pair across a third party (UC-B2).** Two lines pair only when neither description names anyone besides the group's own
+      entities. A name counts when something is left after removing:
+      - the channel and transfer words (`isGenericKey`);
+      - bank names;
+      - the group's own entity names;
+      - own-transfer words (*pemilik*, *antar rekening*, *sendiri*, …).
+
+      A refused line is classified like any other: rules, memory, AI, guess. The unpaired-hinted rule (1199/1190 for a line naming an own
+      entity) also needs a clean description.
+- [x] **Exactly one candidate (UC-B2).** An outgoing line pairs only when exactly one incoming line qualifies, and that incoming line
+      qualifies for no other outgoing line. Otherwise every line involved goes to Review with the transfer account suggested and a
+      reason naming the candidates (date, account, amount). Nothing is auto-picked.
+- [ ] **Undo a pair (UC-B2).** *Lepas pasangan* in the bank line's ledger drawer unlinks both halves, moves both back to Review on 1999
+      through the existing writer (RECLASS of the difference), and marks them so a later import never pairs them again. A locked month
+      refuses.
+- [ ] **AI never proposes 1190 or 1199 (UC-B2).** Both accounts are dropped from the account list sent to the model and from the
+      whitelist that a cached or returned answer must pass.
+- [ ] **Counterparty-keyed decisions (UC-B3).** Test: five Rp 100 jt payments on one date to five resellers each keep their own
+      decision; *Terima serupa* on one reseller touches none of the others.
+- [ ] **Owner question list (UC-B3).** Ask Buku's "perlu ditanyakan ke klien" lists lines by amount, largest first. Review gets
+      *Unduh daftar pertanyaan* (Excel): every line waiting in Review, largest first, with date, account, description, in/out, amount,
+      Buku's suggestion and an empty *Jawaban klien* column.
+- [ ] **Default-guess leakage (UC-B3).** The *Tebakan diterima tanpa diubah* control also states the share of the month's money in or
+      out it represents.
+- [ ] **Login value proposition.** The login page shows three short points next to the form (below it on phones): statements to
+      financial statements, every number traceable to its bank row, a close that is checked before it is locked. All three are true
+      today.
+
+**Non-goals:** splitting one bank line across accounts (needs posting changes; its own cycle). Changing the 2-business-day window (the
+owner wrote ≤ 3 days; still pending their answer, and 2 business days already spans a weekend). Unpaired hinted lines naming another
+group entity stay auto-posted to 1190 at 0.92: it's not an expense default, the intercompany control tracks the open half, and changing it
+would rewrite the demo story. Owner-name detection for clients without an owner entity.
+
+**Gate-reopeners (flagged):**
+- **Schema migration:** `BankTransaction.pairRefused` (boolean, default false).
+- **Classification rule change:** accounting-rules 13 is amended (transfer matcher conditions; AI chart without 1190/1199). A one-time
+  effect on the AI cache: the classification cache key includes the account list, so merchants already cached are asked once more.
+- No new dependency.
+
+**Assumptions:**
+1. Own-transfer words and bank names are a fixed list in `lib/classify/transfer.ts`. A word missing from it can only send an own transfer
+   to Review (safe), never pair two strangers.
+2. The demo and golden transfers carry no third-party words, so `verify:books` and the golden key are unchanged. Both are re-run to show it.
+3. The value proposition is static copy, Bahasa, no hype words (ui-rules), shown on the login page only.
+
+## Tasks
+- [x] T1 Matcher: third-party refusal + exactly-one-candidate + reasons; `pairRefused` respected. Accept: `tests/unit/transfer*.test.ts`,
+      `verify:books` ALL PASS.
+- [ ] T2 *Lepas pasangan*: migration, `unpairTransfer()` (lib), action, ledger-drawer button. Accept: DB test (both halves back to Review,
+      never re-paired by a later import, locked month refused).
+- [ ] T3 AI chart without 1190/1199 (cache key and whitelist). Accept: unit/DB test.
+- [ ] T4 Counterparty test, owner question list (Ask Buku sort + Review Excel export), guess-control share. Accept: tests.
+- [ ] T5 Login value proposition. Accept: login renders at 1440/390, no horizontal scroll.
+- [ ] T6 End-of-cycle gates + accounting-rules amendment.
+
+## Implementation
+- Plan: T1–T6 sequential, inline (one module each; the matcher first because unpairing depends on its `pairRefused`).
+- T1: `lib/classify/transfer.ts`: `thirdPartyName()` (what's left of the merchant key after channel words, bank names, own-transfer
+  words and the group's names); pairs only clean, hinted lines with exactly one candidate on each side; an ambiguous group gets a 0.8
+  transfer suggestion (Review) naming the candidates; the unpaired-hinted rule needs a clean description too; `pairRefused` lines never
+  pair. Tests: `tests/unit/transfer-safety.test.ts` (new), `tests/unit/import.test.ts` (the TRF pair now passes the group's names).
+  The demo's classification counts by entity × status × method are identical before and after (diffed).
+
+## Verification
+- T1: `npx vitest run tests/unit/transfer-safety.test.ts tests/unit/import.test.ts` → `Tests 22 passed (22)`; `demo:reset && verify:books` →
+  `ALL PASS — 1741 pemeriksaan saldo cocok dengan ground truth.`; lint + typecheck clean; `npm test` → `Test Files 122 passed (122) · Tests 915 passed (915)`.
+
+## Ship Notes

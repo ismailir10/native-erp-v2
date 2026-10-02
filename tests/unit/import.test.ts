@@ -225,7 +225,8 @@ describe("transfer hints", () => {
       { id: "a", entityId: "pt", bankAccountId: "bca", date: d(5), amount: -25_000_000n, direction: "OUT" as const, merchantKey: "BUDI SANTOSO", description: "TRSF E-BANKING DB 0501 BUDI SANTOSO" },
       { id: "b", entityId: "owner", bankAccountId: "bri", date: d(5), amount: 25_000_000n, direction: "IN" as const, merchantKey: "PT MAJU BERSAMA", description: "TRF DR PT MAJU BERSAMA" },
     ];
-    const m = matchTransfers(items, []);
+    // Both sides name only the group's own entities (UC-B2: anyone else's name makes it a payment, not a transfer).
+    const m = matchTransfers(items, [{ entityId: "pt", names: ["PT MAJU BERSAMA"] }, { entityId: "owner", names: ["BUDI SANTOSO"] }]);
     expect(m.get("b")?.accountCode).toBe("1190");
     expect(m.get("a")?.accountCode).toBe("1190");
   });
