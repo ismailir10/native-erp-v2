@@ -88,7 +88,7 @@ existing 3200 plugs (history is not rewritten); FX, consolidation and audit-pack
 - [x] T1 Golden scenario, independent key, committed answer file, DB test (chain, determinism, propagation). Reuse `ClientScenario`,
       `statementFiles` (made month-parameterised), `renderStatement`, `importStatement`, `reviewTransaction`. Accept:
       `npx vitest run tests/db/golden.test.ts` green, ≥ 250 lines, 20 numbers.
-- [ ] T2 Schema + ADR: `Finding` model and migration; 3290 in `COA_TEMPLATE`; FS line `SELISIH_SALDO_AWAL` (Neraca, changes in equity, cash
+- [x] T2 Schema + ADR: `Finding` model and migration; 3290 in `COA_TEMPLATE`; FS line `SELISIH_SALDO_AWAL` (Neraca, changes in equity, cash
       flow fall-through); ADR 0012; accounting-rules rule 5 amended; `deleteClient` covers `Finding`. Accept: `prisma migrate diff` empty,
       typecheck, existing tests green.
 - [ ] T3 Opening difference → 3290 + Temuan; `lib/findings.ts` (open, list, resolve); opening form and page copy; actions. Accept:
@@ -107,8 +107,15 @@ existing 3200 plugs (history is not rewritten); FX, consolidation and audit-pack
   `tests/golden/belifi-pattern.json` (20 literals), `tests/db/golden.test.ts` — 252 lines (PT BCA + Mandiri, owner BCA, Apr–Jun 2026): reseller sales,
   marketplace settlements, purchases, payroll, BPJS, rent, utilities, ads, PPh 21 remittance, bank fees and interest, 1199 sweeps, PT → owner 1190, owner prive.
   A guard refuses any accidental transfer pair. The app matched the key on the first run.
+- T2: `prisma/schema.prisma` + migration `20261002160155_findings` (`Finding`, `FindingKind`, `FindingStatus`; CHECK: open ⇔ no decision, resolved ⇔
+  decision + time), `lib/coa/template.ts` (3290, FS line `SELISIH_SALDO_AWAL`, `isClassifiable` — the AI chart in the pipeline, retry and demo
+  pre-cache drops it), `lib/reports/statements.ts` (an equity column; a non-opening movement reads as a Saldo Laba correction),
+  `lib/clients/delete.ts`, `docs/adrs/0012-no-plug-findings.md`. The accounting-rules amendment ships with T3, where the behaviour lands.
 
 ## Verification
+- T2: fresh `prisma migrate deploy` on both DBs → "All migrations have been successfully applied."; `prisma migrate diff --from-config-datasource --to-schema` →
+  "This is an empty migration."; lint + typecheck clean; `npm test` → `Test Files 122 passed (122) · Tests 916 passed (916)`; `demo:reset && verify:books` →
+  `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`
 - T1: `npx vitest run tests/db/golden.test.ts` → `Tests 6 passed (6)`; gate: lint clean, typecheck clean, `npm test` → `Test Files 122 passed (122) · Tests 916 passed (916)`.
 
 ## Ship Notes
