@@ -48,7 +48,7 @@ judgement", so this cycle runs without a separate approval stop.
       entries but no Saldo Awal ("neraca dimulai dari nol"); a note clears it, for example "PT baru".
 - [x] **Temuan list.** The Tutup Buku page shows each Temuan with number, entity, amount, question, status and resolution history, and the
       resolve form for open ones.
-- [ ] **Completeness matrix (UC-B4).** On Tutup Buku, a bank account × month grid from the month the books start to the selected month.
+- [x] **Completeness matrix (UC-B4).** On Tutup Buku, a bank account × month grid from the month the books start to the selected month.
       Each cell reads *ada*, *bolong* (no statement), or *tidak nyambung* (opening ≠ the previous statement's closing, or continuity broken
       inside the file), with the difference.
 - [x] **Honest Neraca header (#5).** The Neraca pill says *Seimbang* only when A = L + E, total assets ≥ 0 and nothing sits on 3290.
@@ -95,7 +95,7 @@ existing 3200 plugs (history is not rewritten); FX, consolidation and audit-pack
       `tests/db/opening.test.ts` (updated) and `tests/db/findings.test.ts` green.
 - [x] T4 Close gate and visibility: `opening-diff:` and `opening:` controls, the Temuan card on Tutup Buku, report status reason, honest
       Neraca pill. Accept: DB tests for the controls; the golden test's opening-difference case reaches the key after resolution.
-- [ ] T5 Completeness matrix (`lib/controls/completeness.ts`) and its card. Accept: DB test with a missing month and a broken handover.
+- [x] T5 Completeness matrix (`lib/controls/completeness.ts`) and its card. Accept: DB test with a missing month and a broken handover.
 - [ ] T6 Ask Buku: *Sementara* label and refusal of change requests. Accept: unit test on the intent, DB test on the label.
 - [ ] T7 End-of-cycle gates: lint, typecheck, test, build, `verify:books`, `test:e2e`; cycle doc Verification.
 
@@ -122,6 +122,9 @@ existing 3200 plugs (history is not rewritten); FX, consolidation and audit-pack
   close page (NextStep for open Temuan, `FindingsCard` anchored `#temuan`), `components/app/findings-card.tsx`, `lib/coa/options.ts`
   (`openingTargetOptions`: balance-sheet accounts only; 3290 out of the review picker), `lib/findings.ts` refuses P&L targets.
   Tests: `tests/db/opening-controls.test.ts` (new), golden test's UC-B4 walk (T-001 for exactly Rp 60 jt → FAIL → decision → the key).
+- T5: `lib/controls/completeness.ts` (six months up to the selected one; *before* until the account's books start — day after Saldo Awal, else its
+  first statement; a handover compares a statement's opening with the closing of the last statement ending before it), `components/app/completeness-card.tsx`
+  on Tutup Buku. Test: `tests/db/completeness.test.ts`.
 
 ## Verification
 - T2: fresh `prisma migrate deploy` on both DBs → "All migrations have been successfully applied."; `prisma migrate diff --from-config-datasource --to-schema` →
@@ -132,5 +135,6 @@ existing 3200 plugs (history is not rewritten); FX, consolidation and audit-pack
   `npm test` → `Test Files 123 passed (123) · Tests 920 passed (920)`.
 - T4: `npx vitest run tests/db/opening-controls.test.ts tests/db/golden.test.ts` → `Tests 9 passed (9)`; lint + typecheck clean; `npm test` →
   `Test Files 124 passed (124) · Tests 923 passed (923)`.
+- T5: `npx vitest run tests/db/completeness.test.ts` → `Tests 1 passed (1)`; lint + typecheck clean; `npm test` → `Test Files 125 passed (125) · Tests 924 passed (924)`.
 
 ## Ship Notes

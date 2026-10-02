@@ -21,6 +21,8 @@ import { createHash } from "node:crypto";
 import { listFindings } from "@/lib/findings";
 import { openingTargetOptions } from "@/lib/coa/options";
 import { FindingsCard } from "@/components/app/findings-card";
+import { completenessMatrix } from "@/lib/controls/completeness";
+import { CompletenessCard } from "@/components/app/completeness-card";
 
 export const metadata = { title: "Tutup Buku" };
 
@@ -61,6 +63,7 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
   const review = !locked && flagged ? await cachedCloseReview(prisma, client.firmId, client.id, period.year, period.month, aiModel, controls) : null;
 
   const findings = await listFindings(prisma, client.id);
+  const completeness = await completenessMatrix(prisma, client.id, period.year, period.month);
   const openFindings = findings.filter((f) => f.status === "OPEN");
   const targets = openFindings.length ? openingTargetOptions(await prisma.account.findMany({ where: { clientId: client.id }, orderBy: { code: "asc" } })) : [];
 
@@ -109,6 +112,7 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
           />
         </div>
       )}
+      {completeness.rows.length > 0 && <CompletenessCard months={completeness.months} rows={completeness.rows} importHref={`${base}/import`} />}
       {reval.length > 0 && (
         <RevaluationCard
           clientId={client.id}
