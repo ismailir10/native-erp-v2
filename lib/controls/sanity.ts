@@ -80,7 +80,10 @@ export async function sanityControls(db: Db, a: Args): Promise<Control[]> {
   // 5. Guesses accepted as they were.
   if (guesses.length) {
     const total = guesses.reduce((s, t) => s + abs(t.amount), 0n);
-    control("guess", "Tebakan diterima tanpa diubah", "REVIEW", `${guesses.length} transaksi (${fmt(total)}) disetujui persis seperti tebakan dengan keyakinan rendah`, `${a.base}/ledger?entity=${e.id}`);
+    // How much of the month's money that is (UC-B3: leakage into the default account shows as a share, not only a count).
+    const moved = txs.reduce((s, t) => s + abs(t.amount), 0n);
+    const share = moved > 0n ? `, ${percentOf(total, moved)} dari uang masuk dan keluar bulan ini` : "";
+    control("guess", "Tebakan diterima tanpa diubah", "REVIEW", `${guesses.length} transaksi (${fmt(total)}${share}) disetujui persis seperti tebakan dengan keyakinan rendah`, `${a.base}/ledger?entity=${e.id}`);
   }
 
   // 6. Capital deficiency: a company whose liabilities exceed its assets (going concern, SAK EP / PSAK 1).
@@ -140,4 +143,9 @@ export async function flaggedBankRows(db: Db, clientId: string, entityId: string
 }
 
 const abs = (v: bigint) => (v < 0n ? -v : v);
+/** "12,5%" of a whole, half up to one decimal, in bigint (no float on amounts). */
+const percentOf = (part: bigint, whole: bigint) => {
+  const tenths = (part * 1000n + whole / 2n) / whole;
+  return `${tenths / 10n}${tenths % 10n ? `,${tenths % 10n}` : ""}%`;
+};
 const periodKey = (d: Date) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;

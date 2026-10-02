@@ -142,13 +142,15 @@ export async function askWorkspace(db: Db, firmId: string, input: WorkspaceInput
     return answer;
   }
   if (intent === "unclear") {
-    // Deterministic: bank lines still in Review (1999) up to the month's end, oldest first — the list to ask the client about.
+    // Deterministic: bank lines still in Review (1999) up to the month's end, largest amount first (UC-B3) — the list to ask the client about.
     const { end } = periodBounds(resolved.year, resolved.month);
     const lines = await db.bankTransaction.findMany({
       where: { firmId, entityId: { in: resolved.entityIds }, status: "NEEDS_REVIEW", date: { lte: end } },
       include: { bankAccount: { include: { entity: true } } },
       orderBy: [{ date: "asc" }, { rowNumber: "asc" }],
     });
+    const size = (v: bigint) => (v < 0n ? -v : v);
+    lines.sort((x, y) => (size(y.amount) > size(x.amount) ? 1 : size(y.amount) < size(x.amount) ? -1 : 0));
     const names = new Map((await db.account.findMany({ where: { clientId: { in: resolved.clientIds } }, select: { clientId: true, code: true, name: true } })).map((a) => [`${a.clientId}|${a.code}`, a.name]));
     const totals = new Map<string, { inn: bigint; out: bigint }>();
     for (const t of lines) {
@@ -174,7 +176,7 @@ export async function askWorkspace(db: Db, firmId: string, input: WorkspaceInput
     }
     const entities = [...new Map(lines.map((t) => [t.entityId, t.bankAccount.entity])).values()];
     for (const e of entities) answer.citations.push({ label: `${e.shortName} · Review transaksi`, href: workspaceHref(`/clients/${e.clientId}/review`, resolved, { entity: e.id }) });
-    if (lines.length > 30) answer.limitations.push(`Menampilkan 30 dari ${lines.length} transaksi; totalnya dari semua.`);
+    if (lines.length > 30) answer.limitations.push(`Menampilkan 30 dari ${lines.length} transaksi, dari nominal terbesar; totalnya dari semua. Daftar lengkapnya bisa diunduh di Review.`);
     answer.limitations.push("Dari mutasi bank yang masih di Review (1999). Transaksi yang sudah diterima dengan tebakan ada di kontrol Tutup Buku.");
     return answer;
   }

@@ -37,12 +37,12 @@ get them merged". So this cycle runs without a separate approval stop.
       refuses.
 - [x] **AI never proposes 1190 or 1199 (UC-B2).** Both accounts are dropped from the account list sent to the model and from the
       whitelist that a cached or returned answer must pass.
-- [ ] **Counterparty-keyed decisions (UC-B3).** Test: five Rp 100 jt payments on one date to five resellers each keep their own
+- [x] **Counterparty-keyed decisions (UC-B3).** Test: five Rp 100 jt payments on one date to five resellers each keep their own
       decision; *Terima serupa* on one reseller touches none of the others.
-- [ ] **Owner question list (UC-B3).** Ask Buku's "perlu ditanyakan ke klien" lists lines by amount, largest first. Review gets
+- [x] **Owner question list (UC-B3).** Ask Buku's "perlu ditanyakan ke klien" lists lines by amount, largest first. Review gets
       *Unduh daftar pertanyaan* (Excel): every line waiting in Review, largest first, with date, account, description, in/out, amount,
       Buku's suggestion and an empty *Jawaban klien* column.
-- [ ] **Default-guess leakage (UC-B3).** The *Tebakan diterima tanpa diubah* control also states the share of the month's money in or
+- [x] **Default-guess leakage (UC-B3).** The *Tebakan diterima tanpa diubah* control also states the share of the month's money in or
       out it represents.
 - [ ] **Login value proposition.** The login page shows three short points next to the form (below it on phones): statements to
       financial statements, every number traceable to its bank row, a close that is checked before it is locked. All three are true
@@ -71,7 +71,7 @@ would rewrite the demo story. Owner-name detection for clients without an owner 
 - [x] T2 *Lepas pasangan*: migration, `unpairTransfer()` (lib), action, ledger-drawer button. Accept: DB test (both halves back to Review,
       never re-paired by a later import, locked month refused).
 - [x] T3 AI chart without 1190/1199 (cache key and whitelist). Accept: unit/DB test.
-- [ ] T4 Counterparty test, owner question list (Ask Buku sort + Review Excel export), guess-control share. Accept: tests.
+- [x] T4 Counterparty test, owner question list (Ask Buku sort + Review Excel export), guess-control share. Accept: tests.
 - [ ] T5 Login value proposition. Accept: login renders at 1440/390, no horizontal scroll.
 - [ ] T6 End-of-cycle gates + accounting-rules amendment.
 
@@ -88,6 +88,11 @@ would rewrite the demo story. Owner-name detection for clients without an owner 
   `lib/reports/account-ledger.ts` names the other half, ledger drawer *Pasangan transfer* + *Lepas pasangan*. Test: `tests/db/unpair-transfer.test.ts`.
 - T3: `lib/ai/classify.ts` `aiAccounts()`, applied inside `aiCacheKey` and `suggestWithAi`, so the pipeline, *Minta saran AI* and the demo's
   pre-cached answers drop 1190/1199 alike, and a cached or fresh answer naming them fails the whitelist. Test: `tests/db/ai-no-transfer.test.ts`.
+- T4: `lib/review-questions.ts` (`ownerQuestions` largest first, `ownerQuestionsWorkbook`: whole-unit currencies as numbers, others formatted —
+  never minor units shown as units), route `review/export`, Review page *Unduh daftar pertanyaan untuk klien (Excel)*; Ask Buku's list sorts
+  by amount; `lib/controls/sanity.ts` guess control adds the share (bigint, half up to one decimal). Tests: `tests/db/review-counterparty.test.ts`
+  (new: five resellers, Rp 100 jt each, one date — five keys; *Terima serupa* touches none; next month only the decided one is Memory),
+  `sanity-controls.test.ts` (share: Rp 1 jt of Rp 102 jt → 1 %).
 
 ## Verification
 - T1: `npx vitest run tests/unit/transfer-safety.test.ts tests/unit/import.test.ts` → `Tests 22 passed (22)`; `demo:reset && verify:books` →
@@ -96,5 +101,7 @@ would rewrite the demo story. Owner-name detection for clients without an owner 
   `npm test` → `Test Files 123 passed (123) · Tests 917 passed (917)`.
 - T3: `npx vitest run tests/db/ai-no-transfer.test.ts` → `Tests 1 passed (1)`; lint + typecheck clean; `npm test` → `Test Files 124 passed (124) · Tests 918 passed (918)`;
   `demo:reset && verify:books` → `ALL PASS — 1741 pemeriksaan saldo cocok dengan ground truth.`
+- T4: `npx vitest run tests/db/review-counterparty.test.ts tests/db/sanity-controls.test.ts tests/db/workspace.test.ts` → `Tests 18 passed (18)`;
+  lint + typecheck clean; `npm test` → `Test Files 125 passed (125) · Tests 920 passed (920)`.
 
 ## Ship Notes
