@@ -124,7 +124,7 @@ The cycle runs without a separate stop, like cycles 1–3.
 - [x] T4 TB with column groups: detection, reading, plan of three journals with per-row ties and total tie-out, per-entry kind on
       posting, "Neraca saldo (TB)" label. Accept: DB test posts a TB and the TB report equals its closing column; the ADJUSTMENT entry
       stands alone.
-- [ ] T5 Opening bridge: a Neraca after the first journal stages as an anchor; post computes the bridge; refusals. Accept: DB test,
+- [x] T5 Opening bridge: a Neraca after the first journal stages as an anchor; post computes the bridge; refusals. Accept: DB test,
       Neraca at the anchor date equals the file; no double counting.
 - [ ] T6 Synthetic K2 set end-to-end + accounting-rules 15a. Accept: the four-file test passes to the rupiah.
 - [ ] T7 End-of-cycle gates, review pass, ship.
@@ -164,6 +164,17 @@ The cycle runs without a separate stop, like cycles 1–3.
   date assumed = previous year end, INFO `TB_OPENING_DATE`; `tb: true` in the saved plan) and posts each entry with its own kind.
   `code.ts` `importKindLabel` gives "Neraca saldo (TB)" on the Impor list and the draft page. Typos now carry their label and row.
   Test: `tests/db/ledger-import-tb.test.ts`.
+- T5: in `post.ts` staging:
+  - a non-TB Neraca dated on or after the entity's first journal stages as an anchor: its entry moves to the day before that journal and
+    carries `bridge.anchor`, with REVIEW `OPENING_BRIDGE`;
+  - a TB over months with journals is BLOCK `TB_OVERLAP`.
+
+  When posting, `bridgeLines` recomputes from the books as they stand:
+  - it reverses each balance-sheet account's movement up to the anchor and puts that span's income and expense on 3200;
+  - it refuses money on 1999/1199 at the anchor and an anchor line mapped to income or expense;
+  - with no journals up to the anchor, it is a plain Saldo Awal on the anchor date.
+
+  Test: `tests/db/ledger-import-bridge.test.ts` (Neraca at the anchor equals the file; TB, BS and Laba Rugi to the rupiah).
 
 ## Verification
 - T1: `npx vitest run tests/unit/ledger-header-typos.test.ts tests/unit/ledger-read.test.ts` → `Tests 16 passed (16)`; lint + typecheck
@@ -175,5 +186,8 @@ The cycle runs without a separate stop, like cycles 1–3.
   `Test Files 133 passed (133) · Tests 956 passed (956)`.
 - T4: `tests/db/ledger-import-tb.test.ts` + reader tests → `Tests 26 passed (26)`; lint + typecheck clean; `npm test` →
   `Test Files 134 passed (134) · Tests 960 passed (960)`.
+- T5: `tests/db/ledger-import-bridge.test.ts` → `Tests 3 passed (3)`; lint + typecheck clean; `npm test` →
+  `Test Files 135 passed (135) · Tests 963 passed (963)`; `demo:reset && verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok
+  dengan ground truth.`
 
 ## Ship Notes

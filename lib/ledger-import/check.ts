@@ -41,6 +41,8 @@ export type PlanEntry = {
   key: string;
   /** The journal kind when it isn't the import's own (a TB's Adjustment, its movement). */
   kind?: "OPENING" | "ADJUSTMENT" | "IMPORTED";
+  /** Opening bridge: the Neraca is an anchor at this date (YYYY-MM-DD); the books' movement up to it is reversed when posting. */
+  bridge?: { anchor: string };
   entityKey: string;
   date: Date;
   ref: string;
