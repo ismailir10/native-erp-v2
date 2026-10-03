@@ -79,6 +79,13 @@ enum PeriodStatus {
 enum FindingKind {
   /// Saldo Awal lines that don't balance: the difference sits on 3290 Selisih Saldo Awal until the accountant decides (ADR 0012).
   OPENING_DIFFERENCE
+  /// A client's aging (its own receivable/payable subledger) disagrees with the ledger beyond the rounding threshold (UC-A1).
+  SUBLEDGER_DIFFERENCE
+}
+
+enum SubledgerKind {
+  RECEIVABLE
+  PAYABLE
 }
 
 enum FindingStatus {
@@ -192,6 +199,7 @@ model Client {
   leases             Lease[]
   periodUnlocks      PeriodUnlockLog[]
   findings           Finding[]
+  subledgerImports   SubledgerImport[]
   auditEvents        AuditEvent[]
   reportFormat       ReportFormat?
   coaVersion         Int                  @default(1)
@@ -226,6 +234,7 @@ model Entity {
   benefitSetting     BenefitSetting?
   benefitPostings    BenefitPosting[]
   findings           Finding[]
+  subledgerImports   SubledgerImport[]
 
   @@index([clientId])
 }
@@ -304,32 +313,76 @@ model Period {
 /// Temuan (ADR 0012): a difference Buku does not plug. Opened by the posting that finds it, in the same transaction; resolved once by the
 /// accountant's written decision and the entry that carries it. Never edited otherwise, never deleted (except with its client). The close
 /// controls read the GL, not this row: a resolution reversed later shows as a failing control again.
+/// A client's own aging (receivable or payable subledger) at a date, compared with the ledger (lib/reconcile/subledger.ts, UC-A1).
+model SubledgerImport {
+  id           String         @id @default(cuid())
+  firmId       String
+  clientId     String
+  client       Client         @relation(fields: [clientId], references: [id])
+  entityId     String
+  entity       Entity         @relation(fields: [entityId], references: [id])
+  kind         SubledgerKind
+  asOf         DateTime       @db.Date
+  fileName     String
+  /// Buku accounts the aging represents (their GL balance at asOf is the comparison).
+  accountCodes String[]
+  /// Within this many minor units the difference is rounding, not a finding.
+  threshold    BigInt         @default(1000)
+  /// The Temuan its difference opened, if any.
+  findingId    String?        @unique
+  finding      Finding?       @relation(fields: [findingId], references: [id])
+  createdById  String?
+  createdBy    FirmMember?    @relation("SubledgerImportBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt    DateTime       @default(now())
+  rows         SubledgerRow[]
+
+  @@unique([entityId, kind, asOf])
+}
+
+/// One counterparty line of an aging: its total (signed minor units, as the client's system shows it) and buckets, with `sheet!row`.
+model SubledgerRow {
+  id           String          @id @default(cuid())
+  importId     String
+  import       SubledgerImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+  position     Int
+  counterparty String
+  total        BigInt
+  /// Bucket → amount (string minor units), as read.
+  buckets      Json
+  sourceRef    String
+  /// The amount had sen and was rounded to whole Rupiah.
+  rounded      Boolean         @default(false)
+
+  @@unique([importId, position])
+}
+
 model Finding {
-  id              String        @id @default(cuid())
+  id              String           @id @default(cuid())
   firmId          String
   clientId        String
-  client          Client        @relation(fields: [clientId], references: [id])
+  client          Client           @relation(fields: [clientId], references: [id])
   entityId        String
-  entity          Entity        @relation(fields: [entityId], references: [id])
+  entity          Entity           @relation(fields: [entityId], references: [id])
   /// T-<number>, per client.
   number          Int
   kind            FindingKind
-  status          FindingStatus @default(OPEN)
-  date            DateTime      @db.Date
+  status          FindingStatus    @default(OPEN)
+  date            DateTime         @db.Date
   /// Signed minor units of the entity's currency as the difference sits on its account: debit +, credit −.
   amount          BigInt
   question        String
   sourceEntryId   String?
-  sourceEntry     JournalEntry? @relation("FindingSource", fields: [sourceEntryId], references: [id])
+  sourceEntry     JournalEntry?    @relation("FindingSource", fields: [sourceEntryId], references: [id])
   openedById      String?
-  openedBy        FirmMember?   @relation("FindingOpenedBy", fields: [openedById], references: [id])
-  createdAt       DateTime      @default(now())
+  openedBy        FirmMember?      @relation("FindingOpenedBy", fields: [openedById], references: [id])
+  createdAt       DateTime         @default(now())
   resolution      String?
-  resolvedEntryId String?       @unique
-  resolvedEntry   JournalEntry? @relation("FindingResolution", fields: [resolvedEntryId], references: [id])
+  resolvedEntryId String?          @unique
+  resolvedEntry   JournalEntry?    @relation("FindingResolution", fields: [resolvedEntryId], references: [id])
   resolvedById    String?
-  resolvedBy      FirmMember?   @relation("FindingResolvedBy", fields: [resolvedById], references: [id])
+  resolvedBy      FirmMember?      @relation("FindingResolvedBy", fields: [resolvedById], references: [id])
   resolvedAt      DateTime?
+  subledgerImport SubledgerImport?
 
   @@unique([clientId, number])
   @@index([entityId, status])
@@ -344,7 +397,7 @@ model AuditEvent {
   clientId  String
   client    Client      @relation(fields: [clientId], references: [id])
   entityId  String?
-  /// CLASSIFY · UNPAIR · IMPORT_REMOVED · CONTROL_NOTE · MAPPING · FINDING_RESOLVED · REPORT_FORMAT · FISCAL_YEAR
+  /// CLASSIFY · UNPAIR · IMPORT_REMOVED · CONTROL_NOTE · MAPPING · FINDING_RESOLVED · REPORT_FORMAT · FISCAL_YEAR · SUBLEDGER
   kind      String
   subject   String
   summary   String
@@ -986,6 +1039,7 @@ model FirmMember {
   findingsOpened   Finding[]             @relation("FindingOpenedBy")
   auditEvents      AuditEvent[]          @relation("AuditEventBy")
   reportFormats    ReportFormat[]        @relation("ReportFormatBy")
+  subledgerImports SubledgerImport[]     @relation("SubledgerImportBy")
   findingsResolved Finding[]             @relation("FindingResolvedBy")
   proposalsDecided ProposedEntry[]       @relation("ProposalDecidedBy")
 

@@ -44,6 +44,7 @@ export async function deleteClient(db: Db, input: { firmId: string; clientId: st
       // Schedules and entries point at each other (a schedule's source line; installments' scheduleId): release the source
       // line on both columns at once (a CHECK keeps them paired), then entries, then schedules.
       await tx.adjustmentSchedule.updateMany({ where: { clientId }, data: { sourceEntryId: null, sourceAccountId: null } });
+      await tx.subledgerImport.deleteMany({ where: { clientId } }); // its rows cascade; it points at its Temuan
       await tx.finding.deleteMany({ where: { clientId } }); // points at the entries that raised and resolved it
       await tx.journalEntry.updateMany({ where: { ...byEntity, reversesId: { not: null } }, data: { reversesId: null } }); // self-reference first
       await tx.journalEntry.deleteMany({ where: byEntity }); // lines cascade

@@ -106,6 +106,15 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     amount, contact name or number in the description) are never applied on their own. Open amount at a date = total − settlements by
     bank lines dated by then; aging by days past due (0 / 1–30 / 31–60 / 61–90 / > 90). Close controls `ar:` / `ap:` compare Σ open
     invoices with the GL balance of the accounts they use: equal = PASS, else REVIEW with the count of unmatched bank lines.
+    **A client's own aging** (`lib/reconcile`, UC-A1) is evidence, never posted:
+    - `SubledgerImport` + rows keep `sheet!row`;
+    - its total is compared at its date with the GL balance of the chosen accounts (default: trade receivable / payable), read fresh;
+    - within the threshold (default Rp 1.000) the difference is rounding; beyond it, one Temuan `SUBLEDGER_DIFFERENCE` per import is
+      updated on re-import, closed when a newer aging matches, and otherwise closed only by a written explanation (≥ 10 characters);
+    - candidate causes (lines within ± 7 days, credit rows and advance accounts, non-trade accounts, names on one side) are shown,
+      never asserted;
+    - an open one is a REVIEW close control, not a block;
+    - corrections go through Jurnal Penyesuaian.
 5d. **Tax pack — PPh badan** (`lib/tax`): per company (not PERORANGAN) with IDR books and calendar fiscal year, **computed at read time**
     through the chosen month; only the accountant's records are stored (`TaxYear` regime, `FiscalCorrection`, `TaxCredit`, dismissed
     suggestions, `TaxPosting`). Laba sebelum pajak (BEBAN_PAJAK excluded) + koreksi fiskal → PKP rounded down to thousands (a loss = 0; no

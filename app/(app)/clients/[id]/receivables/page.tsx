@@ -9,11 +9,17 @@ import { Receivables } from "@/components/app/receivables";
 import { receivablesView } from "@/lib/receivables/view";
 import { ckpn, ckpnView } from "@/lib/receivables/ckpn";
 import { CkpnCard } from "@/components/app/ckpn-card";
+import { ReceivablesTabs } from "@/components/app/receivables-tabs";
+import { SubledgerRecon, type ReconView } from "@/components/app/subledger-recon";
+import { compareSubledger, listSubledgerImports } from "@/lib/reconcile/subledger";
+import { formatDate } from "@/lib/format";
+import { periodKeyOf } from "@/lib/fiscal";
 
 export const metadata = { title: "Piutang & Utang" };
 
 export default async function ReceivablesPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
-  const { client, period, scope, periodOptions, entityOptions, sp } = await loadClientPage(params, searchParams);
+  const { client, period, scope, periodOptions, entityOptions, sp, base } = await loadClientPage(params, searchParams);
+  if (sp.tab === "rekonsiliasi") return <Reconcile client={client} period={period} scope={scope} periodOptions={periodOptions} entityOptions={entityOptions} base={base} />;
   const direction = sp.tab === "utang" ? "PURCHASE" : "SALES";
   const sales = direction === "SALES";
   const entities = client.entities.filter((e) => scope.entityIds.includes(e.id));
@@ -70,3 +76,69 @@ export default async function ReceivablesPage({ params, searchParams }: { params
     </div>
   );
 }
+
+type PageData = Awaited<ReturnType<typeof loadClientPage>>;
+
+/** Rekonsiliasi subledger (UC-A1): the client's agings against the ledger, newest date first. */
+async function Reconcile({ client, period, scope, periodOptions, entityOptions, base }: Pick<PageData, "client" | "period" | "scope" | "periodOptions" | "entityOptions" | "base">) {
+  const entities = client.entities.filter((e) => scope.entityIds.includes(e.id) && e.functionalCurrency === "IDR").sort((a, b) => Number(a.kind === "PERORANGAN") - Number(b.kind === "PERORANGAN"));
+  const [imports, accounts] = await Promise.all([listSubledgerImports(prisma, client.id, entities.map((e) => e.id)), prisma.account.findMany({ where: { clientId: client.id }, orderBy: { code: "asc" } })]);
+  const comparisons = await Promise.all(imports.map((i) => compareSubledger(prisma, client.id, i.id)));
+  const s = (v: bigint) => v.toString();
+  const amounts = (xs: { code: string; name: string; balance: bigint }[]) => xs.map((a) => ({ code: a.code, name: a.name, balance: s(a.balance) }));
+  const views: ReconView[] = comparisons.map((c) => ({
+    importId: c.importId,
+    entityId: c.entityId,
+    entity: c.entity,
+    kind: c.kind,
+    asOf: formatDate(c.asOf),
+    periodKey: periodKeyOf(c.asOf),
+    fileName: c.fileName,
+    threshold: s(c.threshold),
+    aging: s(c.aging),
+    ledger: s(c.ledger),
+    difference: s(c.difference),
+    percent: c.percent,
+    status: c.status,
+    accounts: amounts(c.accounts),
+    rows: c.rows.map((r) => ({ counterparty: r.counterparty, total: s(r.total), sourceRef: r.sourceRef, rounded: r.rounded })),
+    counterparties: c.counterparties?.map((x) => ({ name: x.name, aging: s(x.aging), buku: s(x.buku), difference: s(x.difference), sourceRef: x.sourceRef })) ?? null,
+    candidates: {
+      cutoff: c.candidates.cutoff.map((x) => ({ date: formatDate(x.date), memo: x.memo, code: x.code, amount: s(x.amount), source: x.source })),
+      credits: c.candidates.credits.map((x) => ({ counterparty: x.counterparty, total: s(x.total), sourceRef: x.sourceRef })),
+      advances: amounts(c.candidates.advances),
+      nonTrade: amounts(c.candidates.nonTrade),
+    },
+    finding: c.finding,
+  }));
+  // The accounts an aging can stand for, the trade ones ticked (what the client's aging normally covers).
+  const options = (lines: string[], trade: string, normal: "DEBIT" | "CREDIT") =>
+    accounts.filter((a) => lines.includes(a.fsLine) && !a.isClearing && !a.isIntercompany).map((a) => ({ code: a.code, name: a.name, checked: a.fsLine === trade && a.normalBalance === normal }));
+  const open = views.filter((v) => v.finding?.status === "OPEN");
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Piutang & Utang"
+        description={`${client.name} · aging dari sistem klien dibandingkan dengan buku besar`}
+        actions={<ScopeBar entities={entityOptions} periods={periodOptions} entity={scope.value} period={period.key} />}
+      />
+      {open.length ? (
+        <NextStep>Jelaskan {open.length === 1 ? `selisih ${open[0].finding!.label}` : `${open.length} selisih`} di bawah: lihat kandidat penyebabnya, lalu tulis penjelasan. Koreksi, bila perlu, dicatat lewat Jurnal Penyesuaian.</NextStep>
+      ) : views.length ? (
+        <NextStep tone="done">Semua aging yang diunggah cocok dengan buku besar atau sudah dijelaskan.</NextStep>
+      ) : (
+        <NextStep>Unggah aging piutang atau utang dari sistem klien per tanggal tutup buku untuk dibandingkan dengan buku besar.</NextStep>
+      )}
+      <ReceivablesTabs value="rekonsiliasi" />
+      <SubledgerRecon
+        clientId={client.id}
+        base={base}
+        entities={entities.map((e) => ({ id: e.id, name: e.name }))}
+        accountOptions={{ RECEIVABLE: options(["PIUTANG_USAHA", "PIUTANG_LAIN"], "PIUTANG_USAHA", "DEBIT"), PAYABLE: options(["UTANG_USAHA", "UTANG_LAIN", "UTANG_BANK"], "UTANG_USAHA", "CREDIT") }}
+        defaultAsOf={period.end.toISOString().slice(0, 10)}
+        views={views}
+      />
+    </div>
+  );
+}
+

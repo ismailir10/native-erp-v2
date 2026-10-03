@@ -36,7 +36,7 @@ export async function reportStatus(db: Db, clientId: string, entityIds: string[]
   const diffs = await db.journalLine.groupBy({ by: ["entityId"], where: { entityId: { in: entityIds }, account: { clientId, code: ACCOUNT_CODES.OPENING_DIFFERENCE }, date: { lte: end } }, _sum: { debit: true, credit: true } });
   const undecided = diffs.map((g) => ({ g, amount: (g._sum.debit ?? 0n) - (g._sum.credit ?? 0n) })).filter((x) => x.amount !== 0n);
   if (undecided.length) {
-    const open = await db.finding.findMany({ where: { entityId: { in: undecided.map((x) => x.g.entityId) }, status: "OPEN" }, orderBy: { number: "asc" }, select: { entityId: true, number: true } });
+    const open = await db.finding.findMany({ where: { entityId: { in: undecided.map((x) => x.g.entityId) }, kind: "OPENING_DIFFERENCE", status: "OPEN" }, orderBy: { number: "asc" }, select: { entityId: true, number: true } });
     reasons.push({
       kind: "findings",
       items: undecided.map(({ g, amount }) => {

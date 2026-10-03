@@ -11,9 +11,13 @@ import { AccountPicker, type AccountOption } from "@/components/app/account-pick
 import { Money } from "@/components/app/money";
 import { StatusPill } from "@/components/app/status";
 import { resolveFindingAction } from "@/app/actions";
+import Link from "next/link";
 
 export type FindingItem = {
   id: string;
+  kind: "OPENING_DIFFERENCE" | "SUBLEDGER_DIFFERENCE";
+  /** Where a subledger difference is explained (Piutang & Utang → Rekonsiliasi). */
+  href?: string;
   label: string;
   entity: string;
   currency: string;
@@ -73,16 +77,21 @@ export function FindingsCard({ clientId, items, accounts }: { clientId: string; 
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-mono text-sm font-medium">{f.label}</span>
                 <StatusPill status={f.status === "OPEN" ? "FAIL" : "PASS"} label={f.status === "OPEN" ? "Terbuka" : "Selesai"} />
-                <span className="text-sm text-muted-foreground">{f.entity} · selisih saldo awal per {f.date}</span>
+                <span className="text-sm text-muted-foreground">{f.entity} · {f.kind === "SUBLEDGER_DIFFERENCE" ? "selisih aging vs buku besar" : "selisih saldo awal"} per {f.date}</span>
                 <Money className="ml-auto text-sm font-medium" value={amount < 0n ? -amount : amount} currency={f.currency} />
               </div>
               <p className="text-sm">{f.question}</p>
               <p className="text-xs text-muted-foreground">Dibuka {f.opened}</p>
-              {f.status === "RESOLVED" ? (
+              {f.kind === "SUBLEDGER_DIFFERENCE" && f.status === "OPEN" ? (
+                <p className="text-sm">
+                  <Link href={f.href ?? "#"} className="text-primary underline-offset-4 hover:underline">Jelaskan di Piutang &amp; Utang → Rekonsiliasi</Link>
+                  <span className="text-muted-foreground"> · tidak menahan tutup buku, tampil sebagai kontrol “Perlu dicek”.</span>
+                </p>
+              ) : f.status === "RESOLVED" ? (
                 <div className="rounded-md border px-3 py-2 text-sm" data-testid="finding-resolution">
                   <div><span className="text-muted-foreground">Keputusan:</span> {f.resolution}</div>
                   <div className="text-xs text-muted-foreground">
-                    {f.resolvedTo ? `Dipindahkan ke ${f.resolvedTo}` : "Selisihnya sudah dikoreksi lewat jurnal lain"} · {f.resolved}
+                    {f.kind === "SUBLEDGER_DIFFERENCE" ? "Dijelaskan" : f.resolvedTo ? `Dipindahkan ke ${f.resolvedTo}` : "Selisihnya sudah dikoreksi lewat jurnal lain"} · {f.resolved}
                   </div>
                 </div>
               ) : (

@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ChevronDown, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ReceivablesTabs } from "@/components/app/receivables-tabs";
 import { SimpleSelect } from "@/components/app/simple-select";
 import { Money } from "@/components/app/money";
 import { StatusPill } from "@/components/app/status";
@@ -45,8 +45,6 @@ export function Receivables(props: {
   defaultDate: string;
 }) {
   const router = useRouter();
-  const pathname = usePathname();
-  const params = useSearchParams();
   const w = WORDS[props.direction];
   const [form, setForm] = useState<InvoiceForm | null>(null);
   const [matching, setMatching] = useState<{ invoice: InvoiceView; candidates: CandidateView[] | null } | null>(null);
@@ -149,24 +147,13 @@ export function Receivables(props: {
     router.refresh();
   };
 
-  const switchTab = (v: string) => {
-    const p = new URLSearchParams(params.toString());
-    p.set("tab", v);
-    router.push(`${pathname}?${p.toString()}`);
-  };
-
   const openInvoices = props.invoices.filter((i) => BigInt(i.open) > 0n);
   const paid = props.invoices.filter((i) => BigInt(i.open) === 0n);
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Tabs value={props.direction === "SALES" ? "piutang" : "utang"} onValueChange={(v) => switchTab(v as string)}>
-          <TabsList>
-            <TabsTrigger value="piutang">Piutang</TabsTrigger>
-            <TabsTrigger value="utang">Utang</TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <ReceivablesTabs value={props.direction === "SALES" ? "piutang" : "utang"} />
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={() => setForm({ ...blank(), opening: true })}>{w.doc} saldo awal</Button>
           <Button variant="outline" size="sm" onClick={() => setForm(blank())}><Plus /> {w.newDoc}</Button>
