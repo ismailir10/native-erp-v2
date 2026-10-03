@@ -78,7 +78,7 @@ below are reported back; correct any and the cycle follows.
 4. Locking a month freezes the year end (a closed set of statements never changes underneath).
 
 ## Tasks
-- [ ] T1 `lib/fiscal.ts` + `Client.fiscalYearEndMonth` (migration, CHECK) + settings field + action + history. Accept: unit tests for
+- [x] T1 `lib/fiscal.ts` + `Client.fiscalYearEndMonth` (migration, CHECK) + settings field + action + history. Accept: unit tests for
       every end month (start, end, the month that wraps, leap February); DB test: set, refused after a lock, recorded.
 - [ ] T2 Ledger core: TB fold, account ledger, source TB, equity changes and cash flow openings. Accept: DB test for a 31 January
       client with Jan and Feb 2026 entries: TB at Agu 2026 has January's P&L in Saldo Laba, and equity changes and cash flow tie to the
@@ -90,7 +90,17 @@ below are reported back; correct any and the cycle follows.
 - [ ] T5 Rule 1 amendment, README, end-of-cycle gates, review pass, ship.
 
 ## Implementation
+- T1:
+  - `lib/fiscal.ts`: `financialYear`, `fiscalYearStart`, `priorYearEnd`, `samePeriodLastYear`, `fiscalLabel`, `fiscalSpan`,
+    `fiscalEndMonth`.
+  - `Client.fiscalYearEndMonth` with migration `20261003070000_fiscal_year`, which adds the column (default 12) and a CHECK 1–12.
+  - `setFiscalYearEnd` in `lib/entity-settings.ts`: refused once any month is LOCKED (naming the latest one), a no-op for the same value,
+    history kind `FISCAL_YEAR`.
+  - `saveFiscalYearEndAction`; `FiscalYearCard` on client settings (12 options "1 Februari – 31 Januari"; disabled with the reason once a
+    month is closed; notes that Pajak Badan is calendar-only).
 
 ## Verification
+- T1: `tests/unit/fiscal.test.ts` (4) + `tests/db/fiscal-settings.test.ts` (1) → `Tests 5 passed (5)`. Migration applied to both DBs.
+  Lint + typecheck clean; `npm test` → `Test Files 153 passed (153) · Tests 1032 passed (1032)`.
 
 ## Ship Notes
