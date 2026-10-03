@@ -3,6 +3,7 @@ import { db, makeGroup, resetDb } from "../helpers";
 import { postJournal } from "@/lib/ledger/post";
 import { postInstallment } from "@/lib/adjust/schedules";
 import { assetRegister, createAsset } from "@/lib/assets/register";
+import { registerViews } from "@/lib/assets/view";
 import { importCensus, saveBenefitSetting, uploadMortality } from "@/lib/benefits/census";
 import { valuation } from "@/lib/benefits/valuation";
 import { runControls } from "@/lib/controls";
@@ -30,13 +31,16 @@ describe("financial year in registers and controls", () => {
       const a = await createAsset(db, { clientId: g.client.id, entityId: g.pt.entity.id, name: "Mesin jahit", taxGroup: "KELOMPOK_1", fiscalMethod: "GARIS_LURUS", acquiredOn: "2026-08-10", cost: "12000000", usefulLifeMonths: 12, assetAccountCode: "1210", sourceEntryId: entry.id });
       for (const k of [1, 2, 3, 4, 5, 6]) await postInstallment(db, { clientId: g.client.id, scheduleId: a.scheduleId!, k }); // Sep 2026 – Feb 2027
       const at = async (y: number, m: number) => (await assetRegister(db, g.client.id, y, m))[0];
-      return { jan: await at(2027, 1), feb: await at(2027, 2) };
+      // The page's totals: no tax-depreciation column (of zeros) where the register computed none.
+      const view = (await registerViews(db, g.client.id, 2027, 1, [{ id: g.pt.entity.id, name: g.pt.entity.name, shortName: g.pt.entity.shortName, functionalCurrency: "IDR", kind: "PT" }]))[0];
+      return { jan: await at(2027, 1), feb: await at(2027, 2), totals: view.totals };
     };
     const chickin = await run(1);
     expect([chickin.jan.bookYtd, chickin.feb.bookYtd, chickin.jan.fiscalYtd]).toEqual([5_000_000n, 1_000_000n, null]);
+    expect([chickin.totals.fiscalYtd, chickin.totals.difference]).toEqual([null, null]);
     const calendar = await run(12);
     expect([calendar.jan.bookYtd, calendar.feb.bookYtd]).toEqual([1_000_000n, 2_000_000n]);
-    expect(calendar.jan.fiscalYtd).not.toBeNull();
+    expect([calendar.jan.fiscalYtd, calendar.totals.fiscalYtd]).not.toContain(null);
   });
 
   it("benefits: a June year end opens at 30 June, takes six months of cost by December, and is checked in June", async () => {

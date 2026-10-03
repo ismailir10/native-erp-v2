@@ -166,4 +166,25 @@ below are reported back; correct any and the cycle follows.
     - `npm run demo:reset && npm run verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`;
     - e2e runs in CI (the local setup needs the Supabase secret key).
 
+## Review pass
+Advisor review: 5 findings, all fixed. Then `npm run lint && npm run typecheck && npm test` → `Test Files 156 passed (156) · Tests 1041
+passed (1041)`, and `npm run build` passes.
+1. **M, asset page.** The Aset page totals summed `fiscalYtd ?? 0`, so a non-calendar client got tax-depreciation columns of zeros.
+   `registerViews` now shows them only when the register computed tax depreciation. The test checks the view totals.
+2. **M, wrong-year links.** The "Laba (rugi) tahun lalu" links on Neraca Saldo and Buku Besar (client accounts) opened December of the
+   calendar year before. They now open the previous financial-year end via `periodKeyOf(priorYearEnd(…))`, shared with the reports page.
+3. **L, lock race.** `setFiscalYearEnd` takes the close's advisory lock (`closeLock`) first, so a month can't be locked between its check
+   and the change.
+4. **L, wording.** AI/evidence copy said P&L counts "sejak awal tahun kalender"; it now says "tahun buku klien".
+5. **L, coverage.** The view-totals test is added; the prior-year link is a one-liner shared by three pages.
+
 ## Ship Notes
+- **Migration:** `20261003070000_fiscal_year` adds `Client.fiscalYearEndMonth` (default 12) and a CHECK 1–12. It is additive, and the Vercel
+  build applies it.
+- **Behaviour:**
+  - Calendar clients are unchanged.
+  - A client set to another year end counts the year from the month after it, across the ledger, statements, Excel/PDF, CALK,
+    registers and close controls.
+  - Pajak Badan refuses with a notice for such a client.
+- **Rollback:** revert the merge. The column can stay; nothing else reads it.
+

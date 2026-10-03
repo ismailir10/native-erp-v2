@@ -66,3 +66,6 @@ export const monthsIntoYear = (endMonth: number, year: number, month: number) =>
   return year * 12 + month - (fy.startYear * 12 + fy.start.getUTCMonth() + 1) + 1;
 };
 
+/** "2026-01": the period key (`?period=`) of the month holding a date. */
+export const periodKeyOf = (d: Date) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+

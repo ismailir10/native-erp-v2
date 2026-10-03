@@ -293,7 +293,7 @@ export async function askWorkspace(db: Db, firmId: string, input: WorkspaceInput
         answer.citations.push({ label: `${e.name} · ${intent === "profit" ? "laporan dari buku besar" : "neraca saldo"}`, href });
       }
       answer.limitations.push("Setiap perusahaan dalam mata uangnya sendiri; perbandingan ini bukan konsolidasi. Dokumen laporan unggahan tidak dihitung sebagai jurnal.");
-      if (intent === "balances") answer.limitations.push(accountCode ? "Saldo neraca kumulatif sampai akhir bulan; akun laba rugi dihitung sejak awal tahun kalender." : "Saldo kumulatif sampai akhir bulan; rekening utang/cerukan tidak termasuk kas aset. Untuk akun lain, sebutkan kode akun.");
+      if (intent === "balances") answer.limitations.push(accountCode ? "Saldo neraca kumulatif sampai akhir bulan; akun laba rugi dihitung sejak awal tahun buku klien." : "Saldo kumulatif sampai akhir bulan; rekening utang/cerukan tidak termasuk kas aset. Untuk akun lain, sebutkan kode akun.");
       if (/kenapa|mengapa|why|penyebab|banding|compare|perubahan|naik|turun/.test(question.toLowerCase())) answer.limitations.push("Jawaban menampilkan periode terpilih saja; perbandingan antarperiode dan penyebab perubahan belum didukung di Tanya Buku.");
     }
   }

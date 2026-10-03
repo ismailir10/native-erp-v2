@@ -7,7 +7,7 @@ import { balanceItems, incomeItems, loadReportFormat, renderFormat, toUnit } fro
 import { cashFlow, equityChanges, otherComprehensiveIncome } from "@/lib/reports/statements";
 import { CashFlowTable, EquityTable, NotesView } from "@/components/app/statements";
 import { financialNotes, manualCount } from "@/lib/reports/notes";
-import { financialYear, priorYearEnd, samePeriodLastYear } from "@/lib/fiscal";
+import { financialYear, periodKeyOf, priorYearEnd, samePeriodLastYear } from "@/lib/fiscal";
 import { formatDateLong, formatPeriod, monthName } from "@/lib/format";
 import { reportStatus } from "@/lib/reports/status";
 import { ReportStatusBar } from "@/components/app/report-status";
@@ -87,7 +87,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
       const sign = net === 0n || (a.amount > 0n) === (net > 0n) ? 1n : -1n; // presentation sign of this FS line
       const rows = list.map((x) => ({ key: `${a.code}:${x.sourceAccountId ?? "-"}`, code: x.sourceAccountId ? x.code : "", name: x.name, amount: x.net * sign, href: x.sourceAccountId ? withParams(`${base}/ledger/akun/${x.sourceAccountId}`, q) : undefined }));
       const rest = a.amount - net * sign;
-      if (rest !== 0n) rows.push({ key: `${a.code}:rest`, code: "", name: a.code === "3200" ? "Laba (rugi) tahun-tahun sebelumnya" : "Lainnya", amount: rest, href: a.code === "3200" ? withParams(`${base}/reports`, { period: `${lastYearEnd.getUTCFullYear()}-${String(lastYearEnd.getUTCMonth() + 1).padStart(2, "0")}`, entity: scope.value, tab: "pl" }) : undefined });
+      if (rest !== 0n) rows.push({ key: `${a.code}:rest`, code: "", name: a.code === "3200" ? "Laba (rugi) tahun-tahun sebelumnya" : "Lainnya", amount: rest, href: a.code === "3200" ? withParams(`${base}/reports`, { period: periodKeyOf(lastYearEnd), entity: scope.value, tab: "pl" }) : undefined });
       out[a.code] = rows;
     }
     return out;
