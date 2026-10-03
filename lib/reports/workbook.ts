@@ -1,7 +1,8 @@
 import ExcelJS from "exceljs";
 import type { Db } from "@/lib/db";
 import { dateOnly, formatDate, formatDateTime, formatPeriod, periodBounds } from "@/lib/format";
-import { balanceSheet, incomeStatement, type BalanceSheet, type FsItem, type IncomeStatement, type Scope } from "@/lib/reports/ledger";
+import { balanceSheet, incomeStatement, type FsItem, type Scope } from "@/lib/reports/ledger";
+import { balanceItems, incomeItems, loadReportFormat, renderFormat, type FormatSection } from "@/lib/reports/format";
 import { cashFlow, equityChanges, otherComprehensiveIncome, EQUITY_ROWS, EQUITY_ROW_LABEL } from "@/lib/reports/statements";
 import { financialNotes, type NoteCell } from "@/lib/reports/notes";
 import { isMixed, scopeEntities } from "@/lib/reports/fx";
@@ -14,6 +15,8 @@ import { frameworkLabel, scopeFramework, signatoryOf, statementNames } from "@/l
  */
 
 const NUM = '#,##0;(#,##0);"–"';
+/** Thousands as a display format over exact Rupiah cells (the trailing comma divides by 1.000), so every formula stays exact. */
+const NUM_THOUSANDS = '#,##0,;(#,##0,);"–"';
 const n = (v: bigint) => (v <= BigInt(Number.MAX_SAFE_INTEGER) && v >= -BigInt(Number.MAX_SAFE_INTEGER) ? Number(v) : v.toString());
 
 /** `meta.draft`: why the statements are not final yet (lib/reports/status.ts); printed in red under every sheet's title. Absent = final. */
@@ -35,17 +38,21 @@ export async function financialStatementsWorkbook(db: Db, scope: Scope, year: nu
 
   const wb = new ExcelJS.Workbook();
   wb.creator = meta.firm;
-  const sheet = (name: string, title: string, subtitle: string, widths: number[]) => {
+  // Totals are formulas; a cached 0 is not written, so Excel recalculates every formula when the file opens.
+  wb.calcProperties.fullCalcOnLoad = true;
+  const format = await loadReportFormat(db, scope.clientId);
+  const sheet = (name: string, title: string, subtitle: string, widths: number[], unit: "RUPIAH" | "RIBUAN" = "RUPIAH") => {
     const ws = wb.addWorksheet(name);
     ws.addRow([meta.title]).font = { bold: true, size: 13 };
     ws.addRow([title]).font = { bold: true };
     ws.addRow([subtitle]);
+    ws.addRow([`Dinyatakan dalam ${unit === "RIBUAN" ? "ribuan " : ""}Rupiah`]).font = { italic: true };
     ws.addRow([`${meta.firm} · dibuat ${formatDateTime(new Date())}`]).font = { italic: true, color: { argb: "FF4B5768" } };
     if (meta.draft) ws.addRow([`DRAF — ${meta.draft}`]).font = { bold: true, color: { argb: "FFC4213A" } };
     ws.addRow([]);
     widths.forEach((w, i) => {
       ws.getColumn(i + 1).width = w;
-      if (i > 0) ws.getColumn(i + 1).numFmt = NUM;
+      if (i > 0) ws.getColumn(i + 1).numFmt = unit === "RIBUAN" ? NUM_THOUSANDS : NUM;
     });
     return ws;
   };
@@ -71,47 +78,59 @@ export async function financialStatementsWorkbook(db: Db, scope: Scope, year: nu
     }
   };
 
+  /**
+   * A statement in the client's format (lib/reports/format.ts): each *Pos* a row of numbers with its accounts beneath, each subtotal and
+   * total an Excel formula over the rows it sums (the computed value cached, so the file opens with numbers).
+   */
+  const formatted = (ws: ExcelJS.Worksheet, sections: FormatSection[]) => {
+    const rowOf = new Map<string, number>();
+    const columns = sections[0]?.items.length ?? 0;
+    const letter = (c: number) => String.fromCharCode(66 + c); // B, C, …
+    for (const sec of sections) {
+      const keys = [...new Set(sec.items.flatMap((col) => col.map((i) => i.fsLine)))];
+      if (sec.title && keys.length) line(ws, sec.title.toUpperCase(), [], { bold: true });
+      for (const k of keys) {
+        const cells = sec.items.map((col) => col.find((i) => i.fsLine === k));
+        line(ws, cells.find(Boolean)!.label, cells.map((c) => c?.amount ?? 0n), { indent: 1 });
+        rowOf.set(k, ws.lastRow!.number);
+        const codes = [...new Set(cells.flatMap((c) => c?.accounts.map((a) => a.code) ?? []))];
+        for (const code of codes) {
+          const name = cells.flatMap((c) => c?.accounts ?? []).find((a) => a.code === code)!.name;
+          line(ws, `${code} ${name}`, cells.map((c) => c?.accounts.find((a) => a.code === code)?.amount ?? 0n), { indent: 2 });
+        }
+      }
+      const t = sec.total;
+      if (!t || (t.subtotal && !keys.length)) continue;
+      const r = ws.addRow([t.caps ? t.label.toUpperCase() : t.label]);
+      for (let c = 0; c < columns; c++) {
+        const parts = t.terms.filter((x) => rowOf.has(x.key)).map((x, i) => `${x.sign < 0 ? "-" : i ? "+" : ""}${letter(c)}${rowOf.get(x.key)}`);
+        const value = n(t.values[c]);
+        r.getCell(c + 2).value = parts.length ? { formula: parts.join(""), result: typeof value === "number" ? value : Number(value) } : value;
+      }
+      if (t.strong || t.caps) r.font = { bold: true };
+      rowOf.set(t.key, r.number);
+    }
+  };
+
   // Neraca
   const cur = formatDate(asOf);
   const old = formatDate(lastYearEnd);
-  const nr = sheet("Neraca", names.position, `Per ${cur}${bsPrior ? ` dan ${old}` : ""}`, [56, 20, 20]);
+  const nr = sheet("Neraca", names.position, `Per ${cur}${bsPrior ? ` dan ${old}` : ""}`, [56, 20, 20], format.unit);
   head(nr, ["", cur, ...(bsPrior ? [old] : [])]);
-  const both = <T,>(a: T, pick: (b: BalanceSheet) => T) => [a, ...(bsPrior ? [pick(bsPrior)] : [])];
-  const section = (title: string, a: FsItem[], pick: (b: BalanceSheet) => FsItem[]) => {
-    line(nr, title, [], { bold: true });
-    items(nr, both(a, pick));
-  };
-  section("ASET LANCAR", bs.currentAssets, (b) => b.currentAssets);
-  section("ASET TIDAK LANCAR", bs.nonCurrentAssets, (b) => b.nonCurrentAssets);
-  line(nr, "JUMLAH ASET", both(bs.totals.assets, (b) => b.totals.assets), { bold: true });
-  section("LIABILITAS JANGKA PENDEK", bs.currentLiabilities, (b) => b.currentLiabilities);
-  section("LIABILITAS JANGKA PANJANG", bs.nonCurrentLiabilities, (b) => b.nonCurrentLiabilities);
-  line(nr, "JUMLAH LIABILITAS", both(bs.totals.liabilities, (b) => b.totals.liabilities), { bold: true });
-  section("EKUITAS", bs.equity, (b) => b.equity);
-  line(nr, "JUMLAH EKUITAS", both(bs.totals.equity, (b) => b.totals.equity), { bold: true });
-  line(nr, "JUMLAH LIABILITAS DAN EKUITAS", both(bs.totals.liabilities + bs.totals.equity, (b) => b.totals.liabilities + b.totals.equity), { bold: true });
+  formatted(nr, renderFormat(format.neraca, [bs, ...(bsPrior ? [bsPrior] : [])].map(balanceItems)));
 
   // Laba Rugi (with other comprehensive income)
   const colCur = `1 Jan – ${cur}`;
   const colOld = `1 Jan – ${formatDate(priorTo)}`;
-  const lr = sheet("Laba Rugi", names.income, `Untuk periode 1 Januari – ${cur}${isPrior ? `, dibandingkan periode yang sama ${year - 1}` : ""}`, [56, 20, 20]);
+  const lr = sheet("Laba Rugi", names.income, `Untuk periode 1 Januari – ${cur}${isPrior ? `, dibandingkan periode yang sama ${year - 1}` : ""}`, [56, 20, 20], format.unit);
   head(lr, ["", colCur, ...(isPrior ? [colOld] : [])]);
-  const pl = <T,>(a: T, pick: (i: IncomeStatement) => T) => [a, ...(isPrior ? [pick(isPrior)] : [])];
-  items(lr, pl(is.revenue, (i) => i.revenue));
-  line(lr, "Jumlah pendapatan usaha", pl(is.totals.revenue, (i) => i.totals.revenue), { bold: true });
-  items(lr, pl(is.cogs, (i) => i.cogs));
-  line(lr, "Laba kotor", pl(is.totals.grossProfit, (i) => i.totals.grossProfit), { bold: true });
-  items(lr, pl(is.opex, (i) => i.opex));
-  line(lr, "Laba usaha", pl(is.totals.operatingProfit, (i) => i.totals.operatingProfit), { bold: true });
-  items(lr, pl(is.other, (i) => i.other));
-  line(lr, "Laba sebelum pajak", pl(is.totals.profitBeforeTax, (i) => i.totals.profitBeforeTax), { bold: true });
-  items(lr, pl(is.tax, (i) => i.tax));
-  line(lr, "Laba bersih", pl(is.totals.netProfit, (i) => i.totals.netProfit), { bold: true });
+  formatted(lr, renderFormat(format.labaRugi, [is, ...(isPrior ? [isPrior] : [])].map(incomeItems)));
+  const pl = <T,>(a: T, pick: () => T) => [a, ...(isPrior ? [pick()] : [])];
   if (!mixed && framework !== "SAK_EMKM") {
     const [oci, ociPrior] = await Promise.all([otherComprehensiveIncome(db, scope, dateOnly(year, 1, 1), asOf), otherComprehensiveIncome(db, scope, dateOnly(year - 1, 1, 1), priorTo)]);
     line(lr, "Penghasilan komprehensif lain", [], { bold: true });
     items(lr, pl(oci.items, () => ociPrior.items));
-    line(lr, "Total penghasilan komprehensif", pl(is.totals.netProfit + oci.total, (i) => i.totals.netProfit + ociPrior.total), { bold: true });
+    line(lr, "Total penghasilan komprehensif", pl(is.totals.netProfit + oci.total, () => isPrior!.totals.netProfit + ociPrior.total), { bold: true });
   }
   if (mixed) return Buffer.from(await wb.xlsx.writeBuffer());
 

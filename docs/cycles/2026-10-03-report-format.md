@@ -108,7 +108,7 @@ The cycle runs without a separate stop. The new dependency (below) is the only g
       migration, client delete. Accept: unit tests (standard renders today's totals; a renamed and reordered format renders; each refusal).
 - [x] T3 Page from the format: Laba Rugi and Neraca, unit line, thousands, last-month column. Accept: e2e statements walk unchanged;
       DB/unit test of a custom format on the page model.
-- [ ] T4 Excel from the format with formulas, unit row, thousands format. Accept: DB test reads formulas back, cached results equal the
+- [x] T4 Excel from the format with formulas, unit row, thousands format. Accept: DB test reads formulas back, cached results equal the
       totals, labels in format order.
 - [ ] T5 Format editor + server action. Accept: DB tests of save/refuse/reset; visual check.
 - [ ] T6 PDF export (pdfkit) + button. Accept: DB test extracts text (labels, period, unit, totals, DRAF).
@@ -142,6 +142,17 @@ The cycle runs without a separate stop. The new dependency (below) is the only g
 
   `FsTable` draws format sections: review colour by the item's `review` flag (SUSPENSE and the *belum terpetakan* lines), caps totals.
   Test: `tests/db/report-format.test.ts`.
+- T4: `financialStatementsWorkbook` writes the Neraca and Laba Rugi from the client's format:
+  - each *Pos* is a row with its accounts beneath;
+  - each subtotal and total is an Excel formula over the rows it sums (`=B8-B10+B12`), with the computed value cached; rows that
+    aren't printed (an empty group or subtotal) are 0 and left out of the formula;
+  - each sheet gets a "Dinyatakan dalam [ribuan ]Rupiah" row;
+  - thousands are a display number format over exact Rupiah cells (`#,##0,`), so formulas stay exact;
+  - ExcelJS doesn't write a cached 0, so the workbook sets `fullCalcOnLoad`.
+
+  Known difference: in thousands the page rounds each line and adds the rounded lines, while Excel shows the rounded exact total, so a
+  total can differ by 1 (ribu) between the two. The file keeps the exact figures. The existing workbook test now reads the format's
+  labels ("Total aset", not the old "JUMLAH ASET").
 
 ## Verification
 - T1: `tests/db/report-unmapped.test.ts` → `Tests 1 passed (1)`; lint + typecheck clean; `npm test` →
@@ -151,5 +162,8 @@ The cycle runs without a separate stop. The new dependency (below) is the only g
   `Test Files 147 passed (147) · Tests 1017 passed (1017)`.
 - T3: `tests/db/report-format.test.ts` → `Tests 1 passed (1)`; lint + typecheck clean; `npm test` →
   `Test Files 148 passed (148) · Tests 1018 passed (1018)`.
+- T4: `tests/db/report-format.test.ts` → `Tests 2 passed (2)`: every formula, worked out from the cells it names, equals its cached
+  result; labels are in format order; unit row and thousands format are present. Lint + typecheck clean; `npm test` →
+  `Test Files 148 passed (148) · Tests 1019 passed (1019)`.
 
 ## Ship Notes
