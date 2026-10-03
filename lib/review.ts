@@ -1,12 +1,12 @@
 import { recordEvent } from "@/lib/audit";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, MoneyError, parseMoney } from "@/lib/money";
 import { isSimpleGuess, simpleGuess } from "@/lib/classify/fallback";
 import type { Db, Tx } from "@/lib/db";
 import type { TaxTag } from "@/lib/generated/prisma/enums";
 import { postBankTransaction } from "@/lib/ledger/bank";
 import { LedgerError } from "@/lib/ledger/post";
 import { isGenericKey } from "@/lib/import/normalize";
-import { ACCOUNT_CODES } from "@/lib/coa/template";
+import { ACCOUNT_CODES, isClassifiable } from "@/lib/coa/template";
 import { defaultTaxMonth } from "@/lib/tax/masa";
 import { checkWithholding, type Withholding } from "@/lib/tax/withholding";
 
@@ -61,10 +61,13 @@ export async function reviewTransactionTx(tx: Tx, args: ReviewArgs) {
   // The withholding stays with the line through a change of account (the tax was withheld whichever account it files to), except in Review.
   const held = t.whtKind && t.whtAmount > 0n ? { kind: t.whtKind, amount: t.whtAmount } : null;
   const withholding = args.withholding === undefined ? (args.accountCode === ACCOUNT_CODES.SUSPENSE ? null : held) : args.withholding && checkWithholding(args.withholding, t.direction);
+  // One account replaces a split (pecah transaksi): the parts go, and the posting moves the difference back onto that account.
+  const parts = await tx.bankTxSplit.findMany({ where: { bankTransactionId: t.id }, orderBy: { position: "asc" }, select: { accountCode: true, amount: true } });
+  if (parts.length) await tx.bankTxSplit.deleteMany({ where: { bankTransactionId: t.id } });
   await postBankTransaction(tx, t.id, { accountCode: args.accountCode, taxTag: args.taxTag, withholding }, { actorId: args.actorId });
   const changed = args.accountCode !== t.suggestedCode || args.taxTag !== t.taxTag;
   // Riwayat (ADR 0013): every decision that moves the line's classification, from where it was to where it goes.
-  const from = { accountCode: t.accountCode, taxTag: t.taxTag, whtKind: t.whtKind, whtAmount: t.whtAmount.toString() };
+  const from = { accountCode: t.accountCode, taxTag: t.taxTag, whtKind: t.whtKind, whtAmount: t.whtAmount.toString(), ...(parts.length ? { parts: parts.map((p) => ({ accountCode: p.accountCode, amount: p.amount.toString() })) } : {}) };
   const to = { accountCode: args.accountCode, taxTag: args.taxTag, whtKind: withholding?.kind ?? null, whtAmount: (withholding?.amount ?? 0n).toString() };
   if (JSON.stringify(from) !== JSON.stringify(to)) {
     const tag = (x: { accountCode: string | null; taxTag: string | null }) => `${x.accountCode ?? "—"}${x.taxTag ? ` (${x.taxTag})` : ""}`;
@@ -199,3 +202,75 @@ export async function unpairTransfer(db: Db, args: { clientId: string; bankTxId:
     return halves.map((h) => h.id);
   });
 }
+
+export type SplitPartInput = { accountCode: string; amount: string; memo?: string | null };
+
+/**
+ * Pecah transaksi (use-case UC-B3): one bank line's classification side split across accounts — a combined transfer ("gaji + ongkos
+ * produksi"). The parts must add up exactly to the line; each is posted as its own leg of a RECLASS of the difference, keeping
+ * `bankTransactionId`, so every part drills to the bank row. Never learned (a combined transfer is a one-off) and never paired.
+ */
+export async function splitTransaction(db: Db, args: { bankTxId: string; parts: SplitPartInput[]; actorId?: string | null }) {
+  return db.$transaction(async (tx) => {
+    const t = await tx.bankTransaction.findUniqueOrThrow({
+      where: { id: args.bankTxId },
+      include: { bankAccount: { include: { entity: true } }, settlements: { select: { invoice: { select: { number: true } } } }, splits: { orderBy: { position: "asc" } } },
+    });
+    const clientId = t.bankAccount.entity.clientId;
+    const currency = t.bankAccount.entity.functionalCurrency;
+    const total = t.amount < 0n ? -t.amount : t.amount;
+    if (t.matchedTxId) throw new LedgerError("Mutasi ini dipasangkan sebagai transfer antar rekening. Lepas pasangannya dulu, lalu pecah.");
+    if (t.settlements.length) throw new LedgerError(`Mutasi ini melunasi ${t.settlements.map((x) => x.invoice.number).join(", ")}. Hapus pencocokannya dulu di Piutang & Utang, lalu pecah.`);
+    if (t.taxTag || t.whtAmount > 0n) throw new LedgerError("Mutasi ini memakai pajak (PPN/PPh). Pecahan belum mendukung pajak per bagian: hapus pajaknya di Review dulu, lalu catat pajaknya lewat jurnal.");
+    const parts = args.parts.filter((p) => p.accountCode || p.amount?.trim());
+    if (parts.length < 2) throw new LedgerError("Pecah ke setidaknya dua akun.");
+
+    const accounts = new Map((await tx.account.findMany({ where: { clientId } })).map((a) => [a.code, a]));
+    const blocked = new Set<string>([ACCOUNT_CODES.SUSPENSE, ACCOUNT_CODES.CLEARING, ACCOUNT_CODES.INTERCOMPANY]);
+    const seen = new Set<string>();
+    const parsed = parts.map((p, i) => {
+      const n = i + 1;
+      const a = accounts.get(p.accountCode);
+      if (!a) throw new LedgerError(`Bagian ${n}: pilih akun.`);
+      if (blocked.has(a.code) || !isClassifiable(a)) throw new LedgerError(`Bagian ${n}: akun ${a.code} ${a.name} tidak bisa dipakai untuk pecahan. Pilih akun pendapatan, beban, aset atau liabilitas.`);
+      if (seen.has(a.code)) throw new LedgerError(`Akun ${a.code} ${a.name} dipakai di dua bagian. Gabungkan nominalnya dalam satu bagian.`);
+      seen.add(a.code);
+      let amount: bigint;
+      try {
+        amount = parseMoney(p.amount ?? "", currency);
+      } catch (e) {
+        throw new LedgerError(`Bagian ${n}: ${e instanceof MoneyError ? e.message : "nominal tidak terbaca."}`);
+      }
+      if (amount <= 0n) throw new LedgerError(`Bagian ${n}: isi nominal lebih dari nol.`);
+      return { accountCode: a.code, amount, memo: p.memo?.trim() || null };
+    });
+    const sum = parsed.reduce((s, p) => s + p.amount, 0n);
+    if (sum !== total) {
+      const gap = total - sum;
+      throw new LedgerError(`Jumlah bagian ${formatMoney(sum, currency)} belum sama dengan nominal mutasi ${formatMoney(total, currency)} (${gap > 0n ? "kurang" : "lebih"} ${formatMoney(gap > 0n ? gap : -gap, currency)}).`);
+    }
+
+    // The largest part names the line for filters and controls (the 6101 leakage control, Review lists); the parts are the posting.
+    const main = parsed.reduce((m, p) => (p.amount > m.amount ? p : m), parsed[0]);
+    await tx.bankTxSplit.deleteMany({ where: { bankTransactionId: t.id } });
+    await tx.bankTxSplit.createMany({ data: parsed.map((p, i) => ({ firmId: t.firmId, bankTransactionId: t.id, position: i, accountCode: p.accountCode, amount: p.amount, memo: p.memo })) });
+    await postBankTransaction(tx, t.id, { accountCode: main.accountCode, parts: parsed }, { actorId: args.actorId });
+    await tx.bankTransaction.update({
+      where: { id: t.id },
+      data: { status: "REVIEWED", accountCode: main.accountCode, taxTag: null, taxMonth: null, method: "MANUAL", reason: `Dipecah ke ${parsed.length} akun` },
+    });
+    const show = (ps: { accountCode: string; amount: bigint }[]) => ps.map((p) => `${p.accountCode} ${formatMoney(p.amount, currency)}`).join(" + ");
+    await recordEvent(tx, {
+      clientId,
+      entityId: t.entityId,
+      kind: "CLASSIFY",
+      subject: `bankTx:${t.id}`,
+      summary: `${t.description.slice(0, 70)} · ${formatMoney(total, currency)}: ${t.splits.length ? `dipecah ${show(t.splits)}` : (t.accountCode ?? "—")} → dipecah ${show(parsed)}`,
+      before: t.splits.length ? { parts: t.splits.map((p) => ({ accountCode: p.accountCode, amount: p.amount.toString() })) } : { accountCode: t.accountCode, taxTag: t.taxTag },
+      after: { parts: parsed.map((p) => ({ accountCode: p.accountCode, amount: p.amount.toString(), memo: p.memo })) },
+      actorId: args.actorId,
+    });
+    return { id: t.id, parts: parsed.length };
+  });
+}
+

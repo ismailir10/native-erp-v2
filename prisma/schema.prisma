@@ -404,6 +404,22 @@ model StatementImport {
   @@unique([evidenceVersionId, evidenceUnitKey])
 }
 
+/// One part of a split bank line (lib/review.ts `splitTransaction`): its account and positive amount; the parts add up to the line.
+model BankTxSplit {
+  id                String          @id @default(cuid())
+  firmId            String
+  bankTransactionId String
+  bankTransaction   BankTransaction @relation(fields: [bankTransactionId], references: [id], onDelete: Cascade)
+  position          Int
+  accountCode       String
+  /// Positive magnitude in the line's currency (minor units); its side follows the bank line.
+  amount            BigInt
+  memo              String?
+  createdAt         DateTime        @default(now())
+
+  @@unique([bankTransactionId, position])
+}
+
 model BankTransaction {
   id            String              @id @default(cuid())
   firmId        String
@@ -443,6 +459,8 @@ model BankTransaction {
   proposals     ProposedEntry[]
   /// Invoices this bank line settles (a subledger link; the line itself already moved the GL).
   settlements   InvoiceSettlement[]
+  /// A combined transfer split across accounts (pecah transaksi): the parts are the classification side; none = one account.
+  splits        BankTxSplit[]
   createdAt     DateTime            @default(now())
 
   @@unique([bankAccountId, hash])

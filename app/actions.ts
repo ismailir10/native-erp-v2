@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { getClientForFirm, getCurrentFirm, getCurrentMember } from "@/lib/tenant";
 import { importStatement, type ImportSummary } from "@/lib/import/pipeline";
 import { resolveProvider } from "@/lib/settings/ai";
-import { acceptSimilar, reviewTransaction, unpairTransfer } from "@/lib/review";
+import { acceptSimilar, reviewTransaction, splitTransaction, unpairTransfer, type SplitPartInput } from "@/lib/review";
 import { CloseError, lockPeriod, runControls, unlockPeriod } from "@/lib/controls";
 import { LedgerError } from "@/lib/ledger/post";
 import { postAdjustment } from "@/lib/ledger/adjustment";
@@ -156,6 +156,18 @@ export async function reviewAction(input: { bankTxId: string; accountCode: strin
 }
 
 /** *Minta saran AI* on Review for lines that only have the simple guess (lib/ai/retry.ts). Suggestions only; nothing posts. */
+/** Pecah transaksi: a combined bank line across accounts; the parts must add up to the line (lib/review.ts). */
+export async function splitTransactionAction(input: { bankTxId: string; parts: SplitPartInput[] }): Promise<Result> {
+  try {
+    const clientId = await assertTxInFirm(input.bankTxId);
+    await splitTransaction(prisma, { bankTxId: input.bankTxId, parts: input.parts, actorId: (await getCurrentMember()).id });
+    revalidatePath(`/clients/${clientId}`, "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
 export async function suggestAgainAction(clientId: string, scope: { entityIds: string[]; period: string }): Promise<Result<{ rows: number; updated: number; note?: string }>> {
   try {
     const client = await getClientForFirm(clientId);

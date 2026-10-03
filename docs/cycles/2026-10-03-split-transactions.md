@@ -58,7 +58,7 @@ each part still drills to the same bank row (rule 5).
 3. Any member (not only an admin) can split, like any review decision.
 
 ## Tasks
-- [ ] T1 Model + posting: `BankTxSplit` (migration, CHECK, client delete), `classificationNets` for parts, `splitTransaction` in
+- [x] T1 Model + posting: `BankTxSplit` (migration, CHECK, client delete), `classificationNets` for parts, `splitTransaction` in
       `lib/review.ts` with every refusal, the guard in `postBankTransaction`, `reviewTransactionTx` clearing a split, and the matcher
       skipping split lines. Accept: DB tests for a 200 jt line split 120/80 (GL by part, drill by `bankTransactionId`), a re-split
       posting only the difference, back to one account, each refusal, and TB balance.
@@ -67,7 +67,29 @@ each part still drills to the same bank row (rule 5).
 - [ ] T3 Rules (rule 5/14 note), README, end-of-cycle gates, review pass, ship.
 
 ## Implementation
+- T1:
+  - `BankTxSplit` (position, accountCode, positive amount with a CHECK, memo) via migration `20261003080000_bank_tx_split`. It cascades
+    with its bank line, so import removal and client deletion need no change.
+  - `classificationNets` takes `parts` (credits for money in, debits for money out).
+  - `postBankTransaction` refuses a one-account posting of a split line.
+  - `splitTransaction` (`lib/review.ts`):
+    - refuses a paired line, a settling line, a line with tax, fewer than two parts, an unknown, unclassifiable, 1999/1199/1190 or
+      duplicate account, a non-positive or unreadable amount, and parts that don't add up (naming the gap, "kurang/lebih");
+    - replaces the parts, posts the difference, marks the line REVIEWED/MANUAL "Dipecah ke n akun" with the largest part as its
+      `accountCode`, and records CLASSIFY;
+    - never touches Memory or rules.
+  - `reviewTransactionTx` clears a split before a one-account decision, and history shows the parts it came from.
+  - The transfer matcher's candidate query skips split lines.
+  - `splitTransactionAction` (scoped by `assertTxInFirm`).
 
 ## Verification
+- T1: `tests/db/split-transactions.test.ts` → `Tests 2 passed (2)`:
+  - 200 jt → 6100 120 jt + 5110 80 jt by `bankTransactionId`; status, reason and parts checked; Neraca balances; no Memory; history
+    summary checked;
+  - a re-split is one RECLASS of ±20 jt;
+  - a one-account re-post is refused, and Review's one-account decision replaces the split (6100 200 jt, no parts left);
+  - each refusal message, and a locked month.
+
+  Lint + typecheck clean; `npm test` → `Test Files 157 passed (157) · Tests 1043 passed (1043)`.
 
 ## Ship Notes
