@@ -1,7 +1,8 @@
 import type { Db } from "@/lib/db";
+import { fiscalEndMonthOfEntities, fiscalYearStart } from "@/lib/fiscal";
 import type { AccountType, NormalBalance } from "@/lib/generated/prisma/enums";
 import type { LedgerRow } from "@/components/app/ledger-table";
-import { dateOnly, formatDate, formatDateTime, toIsoDate } from "@/lib/format";
+import { formatDate, formatDateTime, toIsoDate } from "@/lib/format";
 import { REVERSAL_OWNERS, reversalBlocker } from "@/lib/ledger/reverse";
 import { formatMoney } from "@/lib/money";
 import { formatRateId } from "@/lib/fx/currency";
@@ -11,7 +12,8 @@ import { sourceAccountLabel } from "@/lib/ledger-import/code";
  * One account's ledger for a month: opening balance, lines with running balance, and the source behind each line
  * (bank row, or file `sheet!row`). Either a Buku account (`accountId`) or one of the client's own accounts
  * (`sourceAccountId`). Balances follow `normalBalance`. The opening follows each posted line's own account, as the TBs do:
- * income & expense lines count from 1 January (earlier years sit in the prior-year result), balance-sheet lines from the start.
+ * income & expense lines count from the start of the client's financial year (1 January for a calendar year; earlier years sit in the
+ * prior-year result), balance-sheet lines from the start.
  */
 export async function accountLedger(
   db: Db,
@@ -19,12 +21,13 @@ export async function accountLedger(
 ): Promise<{ opening: bigint; rows: LedgerRow[] }> {
   const which = "accountId" in args ? { accountId: args.accountId } : { sourceAccountId: args.sourceAccountId };
   const PL: AccountType[] = ["PENDAPATAN", "BEBAN"];
+  const yearStart = fiscalYearStart(await fiscalEndMonthOfEntities(db, args.entityIds), args.start);
   const before = await db.journalLine.aggregate({
     where: {
       ...which,
       entityId: { in: args.entityIds },
       date: { lt: args.start },
-      OR: [{ account: { type: { notIn: PL } } }, { account: { type: { in: PL } }, date: { gte: dateOnly(args.start.getUTCFullYear(), 1, 1) } }],
+      OR: [{ account: { type: { notIn: PL } } }, { account: { type: { in: PL } }, date: { gte: yearStart } }],
     },
     _sum: { debit: true, credit: true },
   });

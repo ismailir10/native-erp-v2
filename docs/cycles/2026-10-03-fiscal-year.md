@@ -80,7 +80,7 @@ below are reported back; correct any and the cycle follows.
 ## Tasks
 - [x] T1 `lib/fiscal.ts` + `Client.fiscalYearEndMonth` (migration, CHECK) + settings field + action + history. Accept: unit tests for
       every end month (start, end, the month that wraps, leap February); DB test: set, refused after a lock, recorded.
-- [ ] T2 Ledger core: TB fold, account ledger, source TB, equity changes and cash flow openings. Accept: DB test for a 31 January
+- [x] T2 Ledger core: TB fold, account ledger, source TB, equity changes and cash flow openings. Accept: DB test for a 31 January
       client with Jan and Feb 2026 entries: TB at Agu 2026 has January's P&L in Saldo Laba, and equity changes and cash flow tie to the
       Neraca. Calendar clients are unchanged (existing tests).
 - [ ] T3 Statements: reports page, `statement-set` (Excel, PDF), CALK. Accept: DB test of columns, comparatives and labels for the
@@ -98,9 +98,22 @@ below are reported back; correct any and the cycle follows.
     history kind `FISCAL_YEAR`.
   - `saveFiscalYearEndAction`; `FiscalYearCard` on client settings (12 options "1 Februari – 31 Januari"; disabled with the reason once a
     month is closed; notes that Pajak Badan is calendar-only).
+- T2:
+  - `nativeTrialBalance` folds P&L from before `fiscalYearStart(endMonth, asOf)`.
+  - `accountLedger` counts P&L openings from the financial-year start (`fiscalEndMonthOfEntities`, since it has no client at hand), and
+    so does `sourceTrialBalance`.
+  - `equityChanges` and `cashFlow` open the day before the financial-year start.
+  - Comments that said "1 January" / "31 December" now say financial year.
 
 ## Verification
 - T1: `tests/unit/fiscal.test.ts` (4) + `tests/db/fiscal-settings.test.ts` (1) → `Tests 5 passed (5)`. Migration applied to both DBs.
   Lint + typecheck clean; `npm test` → `Test Files 153 passed (153) · Tests 1032 passed (1032)`.
+- T2: `tests/db/fiscal-ledger.test.ts` → `Tests 2 passed (2)`. For a 31 January client at Agu 2026:
+  - 4100 = 40 jt and 3200 = 100 jt (January folded); laba berjalan 30 jt; Neraca balances;
+  - equity changes open on 31 Jan 2026 at 600 jt and close at 630 jt = Neraca; cash flow 600 → 630;
+  - account ledger opening 40 jt; source TB 40 jt; January's own TB is still 100 jt.
+
+  The calendar client keeps 140 jt in 4100 and 0 in 3200. Lint + typecheck clean; `npm test` →
+  `Test Files 154 passed (154) · Tests 1034 passed (1034)`.
 
 ## Ship Notes

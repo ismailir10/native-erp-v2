@@ -1,7 +1,7 @@
 import type { Db } from "@/lib/db";
 import type { Account } from "@/lib/generated/prisma/client";
 import { ACCOUNT_CODES, FS_LINES, type FsLine } from "@/lib/coa/template";
-import { dateOnly } from "@/lib/format";
+import { fiscalEndMonth, fiscalYearStart } from "@/lib/fiscal";
 import { isMixed, scopeEntities } from "@/lib/reports/fx";
 import { balanceSheet, sumByAccount, type Scope } from "@/lib/reports/ledger";
 
@@ -45,7 +45,7 @@ async function movements(db: Db, scope: Scope, from: Date | undefined, to: Date,
   });
 }
 
-/** Balances at the start of the year: everything to 31 December plus the year's Saldo Awal entries up to `to`, and the first such date. */
+/** Balances at the start of the financial year: everything to the day before it plus the year's Saldo Awal entries up to `to`, and the first such date. */
 async function yearOpening(db: Db, scope: Scope, from: Date, to: Date) {
   const before = new Date(+from - 86_400_000);
   const [prior, inYear] = await Promise.all([movements(db, scope, undefined, before), movements(db, scope, from, to, "only")]);
@@ -89,7 +89,7 @@ const ROW_OF: Record<string, EquityRow> = { MODAL: "capital", SALDO_LABA: "retai
 export type EquityChanges = {
   from: Date;
   to: Date;
-  /** The date of the opening balance: the year's Saldo Awal when the books start inside the year, else 31 December. */
+  /** The date of the opening balance: the year's Saldo Awal when the books start inside the year, else the previous financial-year end. */
   openedAt: Date;
   /** Each column's accounts (for drill-down to their ledgers). */
   columns: { fsLine: FsLine; label: string; codes: string[] }[];
@@ -100,11 +100,11 @@ export type EquityChanges = {
   balanceSheetEquity: bigint;
 };
 
-/** Changes in equity from 1 January of `to`'s year to `to`. Prior-year profit sits in Saldo laba at the opening. */
+/** Changes in equity from the start of the financial year holding `to` (lib/fiscal.ts). Prior-year profit sits in Saldo laba at the opening. */
 export async function equityChanges(db: Db, scope: Scope, to: Date): Promise<EquityChanges> {
   await single(db, scope);
-  const from = dateOnly(to.getUTCFullYear(), 1, 1);
-  const before = dateOnly(to.getUTCFullYear() - 1, 12, 31);
+  const from = fiscalYearStart(await fiscalEndMonth(db, scope.clientId), to);
+  const before = new Date(+from - 86_400_000);
   const [start, moved, bs] = await Promise.all([yearOpening(db, scope, from, to), movements(db, scope, from, to, "exclude"), balanceSheet(db, scope, to)]);
   const opening = start.rows;
   const zero = () => EQUITY_LINES.map(() => 0n);
@@ -137,7 +137,7 @@ export type CashItem = { key: string; label: string; amount: bigint; codes: stri
 export type CashFlow = {
   from: Date;
   to: Date;
-  /** The date of the opening cash: the year's Saldo Awal when the books start inside the year, else 31 December. */
+  /** The date of the opening cash: the year's Saldo Awal when the books start inside the year, else the previous financial-year end. */
   openedAt: Date;
   netProfit: bigint;
   operating: CashItem[];
@@ -282,11 +282,11 @@ async function collectedProceeds(db: Db, entityIds: string[], to: Date, proceeds
   return collected;
 }
 
-/** Indirect cash flow from 1 January of `to`'s year to `to`: net profit and the movement of every other balance-sheet account. */
+/** Indirect cash flow from the start of the financial year holding `to`: net profit and the movement of every other balance-sheet account. */
 export async function cashFlow(db: Db, scope: Scope, to: Date): Promise<CashFlow> {
   await single(db, scope);
-  const from = dateOnly(to.getUTCFullYear(), 1, 1);
-  const before = dateOnly(to.getUTCFullYear() - 1, 12, 31);
+  const from = fiscalYearStart(await fiscalEndMonth(db, scope.clientId), to);
+  const before = new Date(+from - 86_400_000);
   const [moved, start] = await Promise.all([movements(db, scope, from, to, "exclude"), yearOpening(db, scope, from, to)]);
   const opening = start.rows;
   const isPl = (a: Account) => a.type === "PENDAPATAN" || a.type === "BEBAN";

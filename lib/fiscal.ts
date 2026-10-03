@@ -40,6 +40,12 @@ export const fiscalSpan = (endMonth: number) => {
   return `1 ${monthName(startMonth)} – ${endMonth === 2 ? "akhir" : lastDay(2001, endMonth).getUTCDate()} ${monthName(endMonth)}`;
 };
 
+/** The year-end month of the client the entities belong to (an entity's own books, read without the client at hand). */
+export async function fiscalEndMonthOfEntities(db: Db, entityIds: string[]): Promise<number> {
+  const e = await db.entity.findFirst({ where: { id: { in: entityIds } }, select: { client: { select: { fiscalYearEndMonth: true } } } });
+  return e?.client.fiscalYearEndMonth ?? 12;
+}
+
 /** The client's year-end month (12 when none is set). */
 export async function fiscalEndMonth(db: Db, clientId: string): Promise<number> {
   const c = await db.client.findUnique({ where: { id: clientId }, select: { fiscalYearEndMonth: true } });
