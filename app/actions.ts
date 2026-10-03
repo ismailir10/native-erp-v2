@@ -32,6 +32,7 @@ import { dateOnly } from "@/lib/format";
 import { liveUploadFile } from "@/lib/demo/seed";
 import { addBankAccount, addClient, addEntity, OnboardingError, type NewClientInput } from "@/lib/onboarding";
 import { EntitySettingsError, setReportingFramework } from "@/lib/entity-settings";
+import { FormatError, resetReportFormat, saveReportFormat } from "@/lib/reports/format-settings";
 import { OpeningError, postOpening, type OpeningLineInput } from "@/lib/opening";
 import { FindingError, resolveOpeningFinding } from "@/lib/findings";
 import { removeLedgerImport, removeStatementImport, RemoveImportError } from "@/lib/imports/remove";
@@ -65,7 +66,7 @@ function fail(e: unknown): { ok: false; error: string; needsPassword?: boolean; 
   if (e instanceof PdfPasswordError) return { ok: false, error: e.message, needsPassword: true };
   if (e instanceof YearNeededError) return { ok: false, error: e.message, needsYear: true, yearGuess: e.guess };
   if (e instanceof DeleteClientError) return { ok: false, error: e.message };
-  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError || e instanceof FindingError || e instanceof RemoveImportError || e instanceof MoneyError || e instanceof RateError || e instanceof RevaluationError || e instanceof LedgerImportError || e instanceof MappingError || e instanceof EntitySettingsError) return { ok: false, error: e.message };
+  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError || e instanceof FindingError || e instanceof RemoveImportError || e instanceof MoneyError || e instanceof RateError || e instanceof RevaluationError || e instanceof LedgerImportError || e instanceof MappingError || e instanceof EntitySettingsError || e instanceof FormatError) return { ok: false, error: e.message };
   const infra = infraErrorMessage(e);
   console.error(e);
   return { ok: false, error: infra ?? "Terjadi kesalahan tak terduga. Coba lagi." };
@@ -569,6 +570,31 @@ export async function saveReportingFrameworkAction(clientId: string, entityId: s
   try {
     const client = await getClientForFirm(clientId);
     await setReportingFramework(prisma, { clientId: client.id, entityId, framework });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** A client's report format (UC-K3): labels, order, headings and totals of its Laba Rugi and Neraca. Presentation only; refusals name the line. */
+export async function saveReportFormatAction(clientId: string, format: unknown): Promise<Result> {
+  try {
+    const client = await getClientForFirm(clientId);
+    const member = await getCurrentMember();
+    await saveReportFormat(prisma, { clientId: client.id, actorId: member.id, format });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function resetReportFormatAction(clientId: string): Promise<Result> {
+  try {
+    const client = await getClientForFirm(clientId);
+    const member = await getCurrentMember();
+    await resetReportFormat(prisma, { clientId: client.id, actorId: member.id });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
   } catch (e) {

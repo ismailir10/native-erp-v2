@@ -342,7 +342,7 @@ model AuditEvent {
   clientId  String
   client    Client      @relation(fields: [clientId], references: [id])
   entityId  String?
-  /// CLASSIFY · UNPAIR · IMPORT_REMOVED · CONTROL_NOTE · MAPPING · FINDING_RESOLVED
+  /// CLASSIFY · UNPAIR · IMPORT_REMOVED · CONTROL_NOTE · MAPPING · FINDING_RESOLVED · REPORT_FORMAT
   kind      String
   subject   String
   summary   String

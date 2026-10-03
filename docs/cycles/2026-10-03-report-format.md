@@ -110,7 +110,7 @@ The cycle runs without a separate stop. The new dependency (below) is the only g
       DB/unit test of a custom format on the page model.
 - [x] T4 Excel from the format with formulas, unit row, thousands format. Accept: DB test reads formulas back, cached results equal the
       totals, labels in format order.
-- [ ] T5 Format editor + server action. Accept: DB tests of save/refuse/reset; visual check.
+- [x] T5 Format editor + server action. Accept: DB tests of save/refuse/reset; visual check.
 - [ ] T6 PDF export (pdfkit) + button. Accept: DB test extracts text (labels, period, unit, totals, DRAF).
 - [ ] T7 CALK markers, rule 12 amendment, end-of-cycle gates, review pass, ship.
 
@@ -153,6 +153,23 @@ The cycle runs without a separate stop. The new dependency (below) is the only g
   Known difference: in thousands the page rounds each line and adds the rounded lines, while Excel shows the rounded exact total, so a
   total can differ by 1 (ribu) between the two. The file keeps the exact figures. The existing workbook test now reads the format's
   labels ("Total aset", not the old "JUMLAH ASET").
+- T5: `lib/reports/format-settings.ts`:
+  - `saveReportFormat` validates and upserts (source trimmed);
+  - `resetReportFormat` deletes the row, so the standard applies;
+  - both record a `REPORT_FORMAT` event in the client's history;
+  - `formatUniverse` lists the lines each statement must place, by name.
+
+  Actions `saveReportFormatAction` / `resetReportFormatAction` (any member, like the reporting framework); `FormatError` reaches the UI
+  verbatim. `ReportFormatCard` on client settings:
+  - unit and source;
+  - behind *Ubah baris Laba Rugi dan Neraca* (folded, so settings stay short), a tab per statement with each line's kind, label,
+    up/down/remove;
+  - a *Pos*'s Buku lines as chips plus *Tambah pos buku* from the unplaced ones, and *Tampil negatif*;
+  - a total's terms as chips with a +/− toggle plus *Jumlahkan baris* from the lines above, with *Tebal* and *Huruf kapital*;
+  - unplaced lines listed in review colour;
+  - *Simpan format*, *Batalkan perubahan*, and *Kembali ke format standar* (only for a client format).
+
+  Removing a line also removes it from totals that summed it.
 
 ## Verification
 - T1: `tests/db/report-unmapped.test.ts` → `Tests 1 passed (1)`; lint + typecheck clean; `npm test` →
@@ -165,5 +182,14 @@ The cycle runs without a separate stop. The new dependency (below) is the only g
 - T4: `tests/db/report-format.test.ts` → `Tests 2 passed (2)`: every formula, worked out from the cells it names, equals its cached
   result; labels are in format order; unit row and thousands format are present. Lint + typecheck clean; `npm test` →
   `Test Files 148 passed (148) · Tests 1019 passed (1019)`.
+- T5: `tests/db/report-format-settings.test.ts` → `Tests 2 passed (2)` (save, refusal naming *Persediaan*, unreadable shape, the saved
+  format kept after a refusal, reset, history, second client untouched). Visual check (dev server, 1280 and 390 px):
+  - the card is folded by default;
+  - removing *Persediaan* lists it as unplaced, and saving shows "Neraca: Persediaan belum ada di format…";
+  - after adding it back, the save goes through and the reports page shows the caps label;
+  - no horizontal scroll at 390 px;
+  - reset returns to the standard.
+
+  Lint + typecheck clean; `npm test` → `Test Files 149 passed (149) · Tests 1021 passed (1021)`.
 
 ## Ship Notes
