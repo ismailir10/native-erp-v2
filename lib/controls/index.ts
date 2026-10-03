@@ -18,6 +18,7 @@ import { inventoryRows } from "@/lib/inventory";
 import { openingDate, statementCoverage } from "@/lib/controls/coverage";
 import { packApplies, taxPack } from "@/lib/tax/pack";
 import { findingLabel } from "@/lib/findings";
+import { compareSubledger } from "@/lib/reconcile/subledger";
 
 /**
  * Close controls (analog of belifi 16_CONTROLS). PASS / REVIEW / FAIL.
@@ -106,15 +107,22 @@ async function collectControls(db: Db, clientId: string, year: number, month: nu
     }
 
     // Rekonsiliasi subledger (UC-A1): a client's aging that disagrees with the ledger stays REVIEW until its Temuan is explained.
-    const subledger = await db.finding.findMany({ where: { entityId: e.id, kind: "SUBLEDGER_DIFFERENCE", status: "OPEN", date: { lte: periodBounds(year, month).end } }, orderBy: { number: "asc" }, select: { number: true, amount: true } });
+    const subledger = await db.finding.findMany({ where: { entityId: e.id, kind: "SUBLEDGER_DIFFERENCE", status: "OPEN", date: { lte: periodBounds(year, month).end } }, orderBy: { number: "asc" }, select: { number: true, amount: true, subledgerImport: { select: { id: true } } } });
     if (subledger.length) {
       const sKey = `subledger:${e.id}`;
+      // The difference as the ledger stands now (a correcting journal since the import changes it), not the one at import time.
+      const now = await Promise.all(subledger.map(async (f) => (f.subledgerImport ? await compareSubledger(db, clientId, f.subledgerImport.id) : null)));
+      const parts = subledger.map((f, i) => {
+        const c = now[i];
+        const d = c ? c.difference : f.amount;
+        return `${findingLabel(f.number)} ${c && c.status !== "DIFFERENCE" ? "sekarang cocok, tinggal ditutup" : fmt(d < 0n ? -d : d)}`;
+      });
       controls.push({
         key: sKey,
         title: "Rekonsiliasi subledger",
         scope: e.shortName,
         status: "REVIEW",
-        detail: `${subledger.map((f) => `${findingLabel(f.number)} ${fmt(f.amount < 0n ? -f.amount : f.amount)}`).join(", ")}: aging klien berbeda dengan buku besar. Jelaskan penyebabnya di Piutang & Utang → Rekonsiliasi.`,
+        detail: `${parts.join(", ")}: aging klien berbeda dengan buku besar. Jelaskan penyebabnya di Piutang & Utang → Rekonsiliasi.`,
         href: `${base}/receivables?tab=rekonsiliasi&entity=${e.id}`,
         ack: acks.get(sKey),
       });

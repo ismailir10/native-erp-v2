@@ -9,6 +9,7 @@ async function amsFile() {
   ws.getCell("A1").value = "PT AMS";
   ws.getCell("A2").value = "Laporan Umur Piutang per 31 Desember 2023";
   ws.getRow(6).values = ["No", "Nama Pelanggan", "Umur Piutang (hari)", null, null, null, null, null, "Total"];
+  ws.mergeCells("C6:H6");
   ws.getRow(7).values = [null, null, "Not Yet Due", new Date(Date.UTC(2023, 0, 30)), "31-60", "61-90", "91-120", "> 120", null];
   ws.getRow(8).values = [1, "PT Sinar Jaya", "1.000.000,50", "500.000", null, null, null, null, "1.500.000,50"];
   ws.getRow(9).values = [2, "CV Maju", 2_000_000, null, 1_000_000, null, null, 250_000, 3_250_000];
@@ -42,5 +43,51 @@ describe("aging reader (UC-A1)", () => {
   it("refuses a file without a counterparty or a total column, saying which", async () => {
     await expect(readAging(Buffer.from("Tanggal;Keterangan;Total\n01/01/2026;x;100\n"))).rejects.toThrow("tidak ada kolom nama pelanggan/pemasok");
     await expect(readAging(Buffer.from("Nama Pelanggan;Umur\nPT A;100\n"))).rejects.toThrow("tidak ada kolom total/saldo");
+  });
+
+  it("takes the Saldo column as total even under a merged 'Total Umur Piutang' title, and the Nama column over No and Kode", async () => {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("AR");
+    ws.getCell("A1").value = "Daftar Umur Piutang Pelanggan";
+    ws.getRow(3).values = ["No", "Kode Pelanggan", "Nama Pelanggan", "Saldo", "Total Umur Piutang"];
+    ws.mergeCells("E3:H3");
+    ws.getRow(4).values = [null, null, null, null, "1-30", "31-60", "61-90", "> 60"];
+    ws.getRow(5).values = [1, "C001", "PT Sinar Jaya", 100, 60, 40, null, null];
+    ws.getRow(6).values = [2, "C002", "CV Maju", 50, null, null, null, 50];
+    const a = await readAging(Buffer.from(await wb.xlsx.writeBuffer()));
+    expect(a.rows.map((r) => [r.counterparty, r.total])).toEqual([["PT Sinar Jaya", 100n], ["CV Maju", 50n]]);
+    expect(a.notes).toEqual([]);
+  });
+
+  it("prefers the sheet with age columns over a summary sheet, and uses the buckets for a formula total without a result", async () => {
+    const wb = new ExcelJS.Workbook();
+    const sum = wb.addWorksheet("Ringkasan");
+    sum.getRow(1).values = ["Nama Akun", "Total"];
+    sum.getRow(2).values = ["Piutang Usaha", 300];
+    const ws = wb.addWorksheet("Aging");
+    ws.getRow(1).values = ["Nama Pelanggan", "Belum jatuh tempo", "1-30", "Total"];
+    ws.getRow(2).values = ["PT Sinar Jaya", 100, 50, { formula: "B2+C2" } as unknown as ExcelJS.CellValue];
+    ws.getRow(3).values = ["CV Maju", 150, null, 150];
+    const a = await readAging(Buffer.from(await wb.xlsx.writeBuffer()));
+    expect(a.sheet).toBe("Aging");
+    expect(a.rows.map((r) => [r.counterparty, r.total])).toEqual([["PT Sinar Jaya", 150n], ["CV Maju", 150n]]);
+    expect(a.notes).toEqual(["Dibaca dari lembar Aging (yang punya kolom umur dan baris terbanyak).", "1 baris tanpa nilai total (rumus tanpa hasil); dipakai jumlah kolom umurnya."]);
+  });
+
+  it("stops at the grand total (a footer is no counterparty) and reads trailing-minus and CR credits", async () => {
+    const csv = [
+      "Nama Pelanggan;1-30;Total",
+      "PT A;1.000;1.000",
+      "PT B;1.000-;1.000-",
+      "PT C;;500 CR",
+      "PT D;200;300",
+      "Grand Total;;500-",
+      "Saldo menurut GL;;120",
+      "Selisih;;20",
+      "",
+    ].join("\n");
+    const a = await readAging(Buffer.from(csv));
+    expect(a.rows.map((r) => [r.counterparty, r.total])).toEqual([["PT A", 1_000n], ["PT B", -1_000n], ["PT C", -500n], ["PT D", 300n]]);
+    expect(a.notes).toEqual(["1 baris: total tidak sama dengan jumlah kolom umur (mis. CSV!5). Total yang dipakai.", "2 baris di bawah Grand Total dilewati (bukan pelanggan/pemasok)."]);
   });
 });

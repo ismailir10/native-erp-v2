@@ -14,6 +14,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Money } from "@/components/app/money";
 import { StatusPill } from "@/components/app/status";
 import { deleteSubledgerImportAction, importAgingAction, resolveSubledgerFindingAction } from "@/app/actions";
@@ -63,7 +74,9 @@ export function SubledgerRecon({ clientId, base, entities, accountOptions, defau
   views: ReconView[];
 }) {
   const router = useRouter();
-  const [entityId, setEntityId] = useState(entities[0]?.id ?? "");
+  const [chosen, setEntityId] = useState(entities[0]?.id ?? "");
+  // The scope bar can change the entities under a mounted form: a choice outside them falls back to the first.
+  const entityId = entities.some((e) => e.id === chosen) ? chosen : (entities[0]?.id ?? "");
   const [kind, setKind] = useState<Kind>("RECEIVABLE");
   const [asOf, setAsOf] = useState(defaultAsOf);
   const [threshold, setThreshold] = useState("1.000");
@@ -104,6 +117,7 @@ export function SubledgerRecon({ clientId, base, entities, accountOptions, defau
           <CardDescription>Unggah aging piutang atau utang dari sistem klien (XLSX, XLS atau CSV). Buku membandingkan totalnya dengan saldo akun per tanggal itu dan menunjukkan kandidat penyebab selisih.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {entities.length === 0 && <p className="text-sm text-muted-foreground" data-testid="recon-no-entity">Tidak ada entitas berbuku Rupiah di cakupan ini. Pilih entitas lain di atas; rekonsiliasi aging baru untuk pembukuan Rupiah.</p>}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Field>
               <FieldLabel htmlFor="recon-entity">Entitas</FieldLabel>
@@ -159,11 +173,14 @@ export function SubledgerRecon({ clientId, base, entities, accountOptions, defau
       {views.length === 0 ? (
         <p className="rounded-lg border bg-card px-4 py-6 text-center text-sm text-muted-foreground">Belum ada aging yang dibandingkan untuk cakupan ini.</p>
       ) : (
-        views.map((v) => <ReconCard key={v.importId} clientId={clientId} base={base} v={v} />)
+        // What needs attention first (ui-rules 10): an open Temuan, then a difference already explained, then the matching ones.
+        [...views].sort((a, b) => rank(a) - rank(b)).map((v) => <ReconCard key={v.importId} clientId={clientId} base={base} v={v} />)
       )}
     </div>
   );
 }
+
+const rank = (v: ReconView) => (v.finding?.status === "OPEN" ? 0 : v.status === "DIFFERENCE" ? 1 : 2);
 
 function ReconCard({ clientId, base, v }: { clientId: string; base: string; v: ReconView }) {
   const router = useRouter();
@@ -184,7 +201,6 @@ function ReconCard({ clientId, base, v }: { clientId: string; base: string; v: R
     router.refresh();
   }
   async function remove() {
-    if (!window.confirm(`Hapus impor aging ${v.fileName}? Temuannya ikut ditutup.`)) return;
     setBusy(true);
     const r = await deleteSubledgerImportAction(clientId, v.importId);
     setBusy(false);
@@ -204,7 +220,22 @@ function ReconCard({ clientId, base, v }: { clientId: string; base: string; v: R
             </CardTitle>
             <CardDescription>{v.fileName} · {v.rows.length} baris · batas pembulatan {formatMoney(BigInt(v.threshold), "IDR")}</CardDescription>
           </div>
-          <Button variant="ghost" size="icon-sm" aria-label={`Hapus impor ${v.fileName}`} disabled={busy} onClick={remove}><Trash2 /></Button>
+          <AlertDialog>
+            <AlertDialogTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`Hapus impor ${v.fileName}`} disabled={busy} />}><Trash2 /></AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Hapus impor aging {v.fileName}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Baris aging per {v.asOf} ikut terhapus.
+                  {v.finding?.status === "OPEN" && ` ${v.finding.label} ditutup dengan catatan "impor dihapus" dan tercatat di riwayat. Bila selisihnya nyata, jelaskan dulu, jangan dihapus.`}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Batal</AlertDialogCancel>
+                <AlertDialogAction variant="destructive" onClick={remove}>Hapus</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -230,6 +261,9 @@ function ReconCard({ clientId, base, v }: { clientId: string; base: string; v: R
               <span className="font-mono font-medium">{v.finding.label}</span>
               <StatusPill status={v.finding.status === "OPEN" ? "REVIEW" : "PASS"} label={v.finding.status === "OPEN" ? "Terbuka" : "Ditutup"} />
             </div>
+            {v.finding.status === "OPEN" && v.status !== "DIFFERENCE" && (
+              <p className="mt-1 text-pass" data-testid="recon-now-matches">Buku besar sekarang cocok dengan aging ini. Tulis apa yang dikoreksi untuk menutup temuannya.</p>
+            )}
             {v.finding.status === "OPEN" ? (
               <div className="mt-2 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
                 <Field>

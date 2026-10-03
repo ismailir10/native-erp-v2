@@ -142,7 +142,7 @@ export async function listFindings(db: Db, clientId: string, entityIds?: string[
     orderBy: [{ status: "asc" }, { number: "asc" }],
   });
   return rows.map((f) => {
-    // Only an opening difference moves to an account; a subledger difference is explained (its linked entry is the accountant's own).
+    // Only an opening difference moves to an account; a subledger difference is explained, nothing posted.
     const to = f.kind === "OPENING_DIFFERENCE" ? f.resolvedEntry?.lines.find((l) => l.account.code !== ACCOUNT_CODES.OPENING_DIFFERENCE)?.account : undefined;
     return {
       id: f.id,
