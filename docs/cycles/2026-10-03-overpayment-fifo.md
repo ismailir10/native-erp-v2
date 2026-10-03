@@ -114,6 +114,8 @@ it isn't a difference.
   date, per currency, channels largest first and *Tanpa channel* last). `SalesChannels` card on the Piutang tab with the share of the
   year, and a dialog with the suggestions and the channels in use. The page's next step now counts only untagged lines (a tagged line's
   rest is an advance, not a to-do).
+- T5: rule 5c gains *Receipts against notes* (FIFO, contact tagging, advances and unallocated cash in the proof, `overpaid:`, voiding,
+  channels); README's Piutang & Utang row updated.
 
 ## Verification
 - T1: `tests/db/receipts-fifo.test.ts` (4): three notes paid oldest-due first from a line still in Review, 1,5 jt rest kept on the tagged
@@ -133,5 +135,7 @@ it isn't a difference.
   2026, invoices and a FIFO receipt of 379,15 jt for two notes of 250 jt): the aging shows PT Mitra Unggas's (129.150.000) advance
   flagged *kelebihan bayar*; the close lists "Kelebihan bayar pelanggan / pemasok"; the void dialog, the struck-through *Faktur
   dikeluarkan* row and the channel card and dialog render; at 390 px there is no horizontal scroll.
+- T5 end of cycle: lint + typecheck clean; `npm test` → 162 files, 1065 tests; `npm run build` passes; `npm run demo:reset && npm run
+  verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`; e2e runs in CI.
 
 ## Ship Notes

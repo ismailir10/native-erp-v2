@@ -104,8 +104,20 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     receivable/payable account**, in an open month; Σ per invoice ≤ total and Σ per line ≤ its amount under row locks. A line elsewhere
     is first classified through the reviewer's writer (`reviewTransactionTx`, rule 3) in the same transaction. Suggestions (equal open
     amount, contact name or number in the description) are never applied on their own. Open amount at a date = total − settlements by
-    bank lines dated by then; aging by days past due (0 / 1–30 / 31–60 / 61–90 / > 90). Close controls `ar:` / `ap:` compare Σ open
-    invoices with the GL balance of the accounts they use: equal = PASS, else REVIEW with the count of unmatched bank lines.
+    bank lines dated by then; aging by days past due (0 / 1–30 / 31–60 / 61–90 / > 90).
+    **Receipts against notes** (UC-B5):
+    - *Cocokkan FIFO* settles one line against a contact's open documents, oldest due first (then issue date, number), each an ordinary
+      settlement; documents expecting withholding settle for cash only (the tax stays expected);
+    - every settlement tags the line with its contact (`BankTransaction.contactId`); a tagged line's unmatched rest is that contact's
+      **advance** (uang muka / kelebihan bayar), an untagged one's is *Belum dialokasikan*; nothing is posted for either (the GL holds
+      the cash);
+    - close controls `ar:` / `ap:` prove Σ open − advances − unallocated = GL balance of the accounts the documents use (a split line
+      counts its parts there): unequal or unallocated cash = REVIEW; `overpaid:` (REVIEW) lists contacts whose advance exceeds what they
+      owe, never netting a receivable below zero silently;
+    - **a wrong document is voided, never deleted**: a reason (≥ 10 characters), refused while settled, its journal reversed by a mirror
+      INVOICE entry dated on the original (`reversesId`, open month only); a Saldo Awal item is only marked. A voided document leaves open
+      items, aging, CKPN, proofs and sales figures, and stays listed with its reason and audit event;
+    - sales by channel and customer are derived (DPP of non-voided, non-opening sales invoices); the channel is free text on the contact.
     **A client's own aging** (`lib/reconcile`, UC-A1) is evidence, never posted:
     - `SubledgerImport` + rows keep `sheet!row`;
     - its total is compared at its date with the GL balance of the chosen accounts (default: trade receivable / payable), read fresh;
