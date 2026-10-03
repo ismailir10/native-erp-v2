@@ -105,6 +105,21 @@ async function collectControls(db: Db, clientId: string, year: number, month: nu
       });
     }
 
+    // Rekonsiliasi subledger (UC-A1): a client's aging that disagrees with the ledger stays REVIEW until its Temuan is explained.
+    const subledger = await db.finding.findMany({ where: { entityId: e.id, kind: "SUBLEDGER_DIFFERENCE", status: "OPEN", date: { lte: periodBounds(year, month).end } }, orderBy: { number: "asc" }, select: { number: true, amount: true } });
+    if (subledger.length) {
+      const sKey = `subledger:${e.id}`;
+      controls.push({
+        key: sKey,
+        title: "Rekonsiliasi subledger",
+        scope: e.shortName,
+        status: "REVIEW",
+        detail: `${subledger.map((f) => `${findingLabel(f.number)} ${fmt(f.amount < 0n ? -f.amount : f.amount)}`).join(", ")}: aging klien berbeda dengan buku besar. Jelaskan penyebabnya di Piutang & Utang → Rekonsiliasi.`,
+        href: `${base}/receivables?tab=rekonsiliasi&entity=${e.id}`,
+        ack: acks.get(sKey),
+      });
+    }
+
     let statementMissing = false;
     // Books start at the entity's Saldo Awal (else the account's first statement): a month ending before that needs no statement.
     const opening = await openingDate(db, e.id);

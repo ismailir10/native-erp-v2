@@ -76,7 +76,7 @@ Traps: the aging doesn't cover all payables, and a Rp 5 rounding must not flood 
 ## Tasks
 - [x] T1 Model + reader: schema, migration, `lib/reconcile/aging-read.ts`. Accept: unit tests on a synthetic AMS-style file (headers on
       rows 5–7, "1-30" as a date serial, decimal commas, credit row, total row skipped, missing column refused).
-- [ ] T2 Comparison and Temuan: `lib/reconcile/subledger.ts` (import, compare, candidates, Temuan open/update/resolve, delete). Accept:
+- [x] T2 Comparison and Temuan: `lib/reconcile/subledger.ts` (import, compare, candidates, Temuan open/update/resolve, delete). Accept:
       DB tests with three planted differences (cut-off, advance, non-trade payable), a Rp 5 rounding kept as pass, a re-import that
       doesn't duplicate, and resolve text-only.
 - [ ] T3 UI: the *Rekonsiliasi* tab (upload, list by date, comparison card with candidates and per-counterparty table, Temuan resolve),
@@ -98,6 +98,29 @@ Traps: the aging doesn't cover all payables, and a Rp 5 rounding must not flood 
     - parses amounts with `parseCents`, rounds to whole Rupiah per row and notes it;
     - skips (sub)total rows and empty rows, keeps credits, and records `sheet!row`;
     - refuses a file missing either column, naming the missing one.
+- T2: `lib/reconcile/subledger.ts`.
+  - `importAging`:
+    - checks the kind, the date, an IDR entity, the threshold (default Rp 1.000) and the accounts (default: Piutang usaha with a
+      debit balance, or Utang usaha with a credit balance);
+    - under the close lock, replaces an import of the same entity, kind and date, stores the rows, and compares;
+    - Temuan: a DIFFERENCE opens one, or updates the open one carried from the replaced import; MATCH/ROUNDING closes a carried open
+      one, with a resolution naming the new file;
+    - writes a `SUBLEDGER` history event.
+  - `compareSubledger` reads the GL fresh. It returns aging, ledger, difference, percent (one decimal) and status, the accounts with
+    their balances, and the rows. Candidates:
+    - GL lines within ±7 days on the compared accounts, largest first, with their source;
+    - credit rows in the aging;
+    - advance accounts on the other side (by name: uang muka / diterima di muka / dibayar di muka);
+    - non-trade accounts with balances (payables: every other liability; receivables: Piutang lain-lain and other trade accounts).
+
+    It also returns counterparty differences against Buku's own open items when Buku keeps invoices for the entity (names compared
+    without PT/CV/Tbk, case or punctuation).
+  - `resolveSubledgerFinding` takes an explanation of at least 10 characters and optionally a correcting entry of the same entity. It
+    posts nothing.
+  - `deleteSubledgerImport` closes the import's open Temuan, naming the removed file.
+  - Close control "Rekonsiliasi subledger" (REVIEW, ackable) while an open Temuan is dated by the period end. The report-status
+    opening-difference reason now counts OPENING_DIFFERENCE Temuan only.
+  - The CSV reader picks the delimiter by count (Papa's guess fails on two columns).
 
 ## Verification
 - T1: `tests/unit/aging-read.test.ts` → `Tests 3 passed (3)`:
@@ -106,5 +129,14 @@ Traps: the aging doesn't cover all payables, and a Rp 5 rounding must not flood 
   - both refusals.
 
   Lint + typecheck clean; `npm test` → `Test Files 158 passed (158) · Tests 1049 passed (1049)`.
+- T2: `tests/db/subledger-recon.test.ts` → `Tests 3 passed (3)`:
+  - Receivables: aging 14,5 jt vs GL 17 jt (−2,5 jt, −14,7 %), with the 30 Dec 2 jt line as cut-off, the Toko Lancar −500 rb credit
+    row and 2160 500 rb as advance. T-001 opens with the question; a re-import with the missing invoice updates it (−500 rb, still one);
+    the third, matching file closes it.
+  - Payables: 8.000.005 vs 8.000.000 is ROUNDING with no Temuan; 2120 3 jt is listed as non-trade.
+  - Explanation: refused under 10 characters; the close resolves it without posting; the close control shows while it is open.
+  - Deleting a 2024 import closes its Temuan.
+
+  Lint + typecheck clean; `npm test` → `Test Files 159 passed (159) · Tests 1052 passed (1052)`.
 
 ## Ship Notes

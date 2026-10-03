@@ -69,7 +69,11 @@ function cellValue(c: ExcelJS.Cell): Cell {
 /** The file as grids (one per sheet), whatever its kind. */
 async function grids(data: Buffer): Promise<{ name: string; rows: Cell[][] }[]> {
   if (sniffFile(data) === "TEXT") {
-    const parsed = Papa.parse<string[]>(data.toString("utf8").replace(/^﻿/, ""), { skipEmptyLines: false, delimiter: "" });
+    const body = data.toString("utf8").replace(/^\uFEFF/, "");
+    // The delimiter by count in the first lines (Papa's guess fails on a two-column file); Indonesian amounts keep commas inside.
+    const head = body.split(/\r?\n/).slice(0, 15).join("\n");
+    const delimiter = [";", "\t", ","].map((d) => [d, head.split(d).length - 1] as const).sort((a, b) => b[1] - a[1])[0][0];
+    const parsed = Papa.parse<string[]>(body, { skipEmptyLines: false, delimiter });
     return [{ name: "CSV", rows: parsed.data.map((r) => r.map((c) => (c === "" ? null : c))) }];
   }
   const xlsx = asXlsx(data);
