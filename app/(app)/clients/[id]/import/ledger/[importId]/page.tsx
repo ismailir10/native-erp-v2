@@ -1,3 +1,5 @@
+import { getCurrentMember } from "@/lib/tenant";
+import { RemoveImportButton } from "@/components/app/remove-import";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
@@ -45,6 +47,7 @@ export default async function LedgerImportPage({ params, searchParams }: { param
   const entities = [...new Set(sources.map((s) => s.entityId))].map((id) => client.entities.find((e) => e.id === id)!).filter(Boolean);
   const ready = !posted && !openBlock.length && !unmapped.length;
   const kind = imp.mode === "NERACA" ? "neraca" : "buku besar";
+  const isAdmin = (await getCurrentMember()).role === "ADMIN";
 
   return (
     <div className="space-y-6">
@@ -54,7 +57,12 @@ export default async function LedgerImportPage({ params, searchParams }: { param
       <PageHeader
         title={`Impor ${kind}: ${imp.sheetName}`}
         description={`${imp.fileName} · ${formatDate(imp.periodStart)}${+imp.periodEnd !== +imp.periodStart ? ` – ${formatDate(imp.periodEnd)}` : ""} · ${imp.currencyMode === "CONVERT" ? "baris valas dikonversi dengan kurs" : "jumlah dicatat apa adanya"}`}
-        actions={<StatusPill status={posted ? "PASS" : "REVIEW"} label={posted ? "Tercatat" : "Draf, belum dicatat"} />}
+        actions={
+          <div className="flex items-center gap-2">
+            <StatusPill status={posted ? "PASS" : "REVIEW"} label={posted ? "Tercatat" : "Draf, belum dicatat"} />
+            {posted && isAdmin && <RemoveImportButton clientId={client.id} importId={imp.id} kind="ledger" fileName={imp.fileName} onDone={`${base}/import?tab=ledger`} />}
+          </div>
+        }
       />
 
       {posted ? (

@@ -15,7 +15,7 @@ Spec approval: the owner said "proceed" after the plan named this cycle (undo an
 without a separate stop.
 
 ## Spec
-- [ ] **Hapus impor (UC-K4).** An admin removes a posted bank-statement import or ledger/Neraca import, writing a reason (≥ 10 characters).
+- [x] **Hapus impor (UC-K4).** An admin removes a posted bank-statement import or ledger/Neraca import, writing a reason (≥ 10 characters).
       Its bank lines, every journal they or the file produced (bank, reclass, posted corrections) and their drafts go, all in one
       transaction under the client's close lock. The reports return exactly to what they were before the import, and the same file can
       be imported again. Refused with the reason and the way out when:
@@ -24,7 +24,7 @@ without a separate stop.
       - a fixed asset or an adjustment schedule was made from one of its journals.
 
       A transfer partner in another import loses its link and stays on its account, so the clearing control shows the open half.
-- [ ] **The removal is recorded.** One change-log event keeps: the file, the account or entity, the period, the row count, money in and
+- [x] **The removal is recorded.** One change-log event keeps: the file, the account or entity, the period, the row count, money in and
       out, the journal count, the net it took off each account, the reason, who and when. Never edited.
 - [ ] **Change log (UC-C8).** An append-only `AuditEvent` per client (who, when, kind, subject, a Bahasa summary, before → after). It is
       written in the same transaction as:
@@ -61,7 +61,7 @@ immutable).
 ## Tasks
 - [x] T1 Schema + ADR: `AuditEvent` model and migration, `lib/audit.ts` (`recordEvent`, `listEvents`), ADR 0013, accounting-rules rule 3
       amended, `deleteClient` covers the table. Accept: migrate diff empty, tests green.
-- [ ] T2 Hapus impor: `lib/imports/remove.ts` (`removeStatementImport`, `removeLedgerImport`), actions, buttons with a reason dialog on the
+- [x] T2 Hapus impor: `lib/imports/remove.ts` (`removeStatementImport`, `removeLedgerImport`), actions, buttons with a reason dialog on the
       Impor page and the ledger import page. Accept: DB tests (exact restore, re-import, every refusal, partner unlinked, the event).
 - [ ] T3 Change log writers (review, unpair, control note, mapping, Temuan) + *Riwayat perubahan* page + the drawer history. Accept: DB
       tests per writer; page renders.
@@ -73,9 +73,16 @@ immutable).
 - T1: `AuditEvent` + migration `20261003010000_audit_event` (with a trigger that refuses UPDATE: append-only in the database, not only by
   convention), `lib/audit.ts` (`recordEvent`, `listEvents`, kind labels), `lib/clients/delete.ts`, ADR 0013 (+ index). The rule 3
   amendment ships with T2, where removal lands. Test: `tests/db/audit.test.ts`.
+- T2: `lib/imports/remove.ts` (`removeStatementImport`, `removeLedgerImport`: admin + reason; under the close lock; refusals for closed months,
+  settlements, schedules/assets made from its journals, reversed journals; unlinks a transfer partner elsewhere; drops drafts and posted
+  proposals that cite or came from what goes; clears evidence selections; one `IMPORT_REMOVED` event with file, account, period, rows,
+  money in/out, journals and the net per account), `removeImportAction`, `components/app/remove-import.tsx` (reason dialog), admin-only
+  *Hapus* on the Impor page's statement history and on a posted ledger import's page; accounting-rules rule 3 amended. Test:
+  `tests/db/remove-import.test.ts`.
 
 ## Verification
 - T1: `prisma migrate deploy` on both DBs → applied; `prisma migrate diff --from-config-datasource --to-schema` → "This is an empty migration.";
   `npx vitest run tests/db/audit.test.ts` → `Tests 1 passed (1)`; lint + typecheck clean; `npm test` → `Test Files 130 passed (130) · Tests 941 passed (941)`.
+- T2: `npx vitest run tests/db/remove-import.test.ts` → `Tests 3 passed (3)`; lint + typecheck clean; `npm test` → `Test Files 131 passed (131) · Tests 944 passed (944)`.
 
 ## Ship Notes

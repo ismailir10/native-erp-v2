@@ -25,7 +25,9 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
    A bank GL account belongs to one entity (`BankAccount.entityId`): another entity's entry may not use it — money between
    entities goes through 1190 in each entity's own books (rule 10). The only exception clears what older books left there (a
    line moving that entity's balance on the account toward zero); close control `bank-entity:` (REVIEW) shows such leftovers.
-3. **Posted entries are immutable.** Corrections = new entry. Bank lines change via `postBankTransaction()`,
+3. **Posted entries are immutable.** Corrections = new entry. Two named exceptions, both admin only and logged: deleting a client (rule 25)
+   and **removing a whole import** (ADR 0013, `lib/imports/remove.ts`: open months only, a written reason, refused while an invoice
+   settlement, fixed asset or schedule rests on it; the `AuditEvent` keeps what was removed). Bank lines change via `postBankTransaction()`,
    which posts a **RECLASS of the difference** on the classification side only; the bank side never changes.
 3a. **Balik jurnal** (`lib/ledger/reverse.ts`): a manual `ADJUSTMENT` is corrected by a new `ADJUSTMENT` that mirrors every line (debit ↔ credit,
     same accounts and source accounts), dated by the accountant on or after the original, through `postJournal()`; `reversesId` (unique) points
@@ -276,6 +278,6 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
 24. Every row has `firmId`. Server actions resolve the client through `getClientForFirm()` before any write.
 25. **Deleting a client** (`lib/clients/delete.ts`) is not a ledger correction: an admin removes a client entered by mistake or a test
     copy after typing its exact name. Everything that is its books (entities, accounts, periods, journals, bank and ledger imports,
-    memories, client rules, proposals, invoices, assets, schedules, leases, employee benefits, tax records, stock counts, evidence, Temuan) goes in one
+    memories, client rules, proposals, invoices, assets, schedules, leases, employee benefits, tax records, stock counts, evidence, Temuan, change log) goes in one
     transaction; firm rules, rates, mortality tables and
     AI caches stay. A new table that references a client or entity must be added to that function.
