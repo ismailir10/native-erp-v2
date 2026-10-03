@@ -7,7 +7,7 @@ import { formatDate } from "@/lib/format";
 import { loadRates, lookupRate, upsertFileRate } from "@/lib/fx/rates";
 import { formatRate, formatRateId, isCurrency, parseRate } from "@/lib/fx/currency";
 import { ParseError } from "@/lib/import/types";
-import { detectTables, readSheets, readTable, reportKind } from "@/lib/ledger-import/read";
+import { COLUMN_LABEL, columnLetter, detectTables, readSheets, readTable, reportKind } from "@/lib/ledger-import/read";
 import { accountKey, planLedger, planNeraca, type Check, type CurrencyMode, type EntityInfo, type Plan, type PlanEntry } from "@/lib/ledger-import/check";
 import { inferType, learnScheme, suggestMappings } from "@/lib/ledger-import/mapping";
 import type { NeracaRow, TableCandidate } from "@/lib/ledger-import/types";
@@ -157,6 +157,10 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
     }
   }
   plan.checks.push(...(await fileRateChecks(db, input.firmId, [...statedRates.values()], currencyMode, [...fileRates.values()])));
+  // A column read through a typo is shown, so a wrong reading is caught before posting (UC-K2).
+  for (const t of table.typos ?? []) {
+    plan.checks.push({ severity: "INFO", code: "HEADER_TYPO", message: `Kolom "${t.header}" dibaca sebagai ${COLUMN_LABEL[t.key]} (salah ketik di judul kolom).`, refs: [`${table.sheet}!${columnLetter(t.column)}${table.headerRow + 1}`] });
+  }
   // All-zero groups are reported in the checks ("… jurnal bernilai nol dilewati") but not staged, so the draft's
   // "Catat N jurnal" is the number that will post.
   const entries = plan.entries.filter(willPost);

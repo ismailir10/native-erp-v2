@@ -30,6 +30,71 @@ const HEADERS: Record<ColumnKey, RegExp> = {
   notes: /^(notes|catatan|note)$/i,
 };
 const DATE_HEADER = /^\d{1,2}[/.-]\d{1,2}[/.-]\d{4}$/;
+
+/**
+ * Header typos (use-case UC-K2: "TRIAL BALANCI", "Adjusment"): a header that matches no column word exactly is compared with the words Buku
+ * knows, after normalising. One edit (Damerau: a swap counts once) for a word of 5–8 letters, two for longer, none for shorter words —
+ * "Date", "Nama", "Kode" must be spelled right. A header near words of two different columns is left unread.
+ */
+const FUZZY_WORDS: Partial<Record<ColumnKey, string[]>> = {
+  date: ["tanggal", "tanggal transaksi", "tanggal jurnal", "entry date", "posting date", "transaction date"],
+  code: ["kode akun", "kode perkiraan", "nomor akun", "account code", "account number"],
+  name: ["nama akun", "nama perkiraan", "perkiraan", "account name"],
+  debit: ["debit", "debet", "mutasi debit", "mutasi debet"],
+  credit: ["kredit", "credit", "mutasi kredit"],
+  amount: ["saldo akhir", "jumlah", "balance", "amount", "closing balance", "ending balance"],
+  desc: ["keterangan", "deskripsi", "description", "uraian", "narration"],
+  voucher: ["nomor bukti", "voucher", "nomor jurnal", "journal number"],
+  entity: ["entitas", "entity", "perusahaan", "company"],
+  currency: ["mata uang", "currency", "valuta"],
+  rate: ["exchange rate"],
+  notes: ["catatan"],
+};
+export const COLUMN_LABEL: Record<ColumnKey, string> = {
+  date: "Tanggal", level: "Level", code: "Kode akun", name: "Nama akun", debit: "Debit", credit: "Kredit", amount: "Saldo",
+  desc: "Keterangan", voucher: "No. bukti", entity: "Entitas", currency: "Mata uang", rate: "Kurs", notes: "Catatan",
+};
+
+export const normalizeHeader = (t: string) => t.toLowerCase().replace(/\(.*?\)/g, " ").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+
+/** Optimal-string-alignment distance (insert, delete, substitute, swap of neighbours), capped: returns max + 1 once beyond `max`. */
+export function editDistance(a: string, b: string, max: number): number {
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  const d: number[][] = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array<number>(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    let rowMin = Infinity;
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+      rowMin = Math.min(rowMin, d[i][j]);
+    }
+    if (rowMin > max) return max + 1;
+  }
+  return d[a.length][b.length];
+}
+
+const allowance = (word: string) => (word.replace(/ /g, "").length >= 9 ? 2 : word.replace(/ /g, "").length >= 5 ? 1 : 0);
+
+/** The one key whose words are nearest to `text` within their allowance; undefined when none, or when two keys are equally near. */
+export function nearestWord<K extends string>(text: string, words: Partial<Record<K, string[]>>): { key: K; word: string } | undefined {
+  const t = normalizeHeader(text);
+  if (!t) return undefined;
+  let best: { key: K; word: string; d: number } | undefined;
+  let tie = false;
+  for (const [key, list] of Object.entries(words) as [K, string[]][]) {
+    for (const w of list) {
+      const max = allowance(w);
+      if (!max && t !== w) continue;
+      const d = t === w ? 0 : editDistance(t, w, max);
+      if (d > max) continue;
+      if (!best || d < best.d) [best, tie] = [{ key, word: w, d }, false];
+      else if (d === best.d && best.key !== key) tie = true;
+    }
+  }
+  return best && !tie ? { key: best.key, word: best.word } : undefined;
+}
 /** Account codes contain a digit: "1-1000", "11001", "7-PF-BANK TRANSFER BCA", "SKP-UNM-01" — never a heading like "Long-term Liability". */
 const CODE = /^(?=[^ ]*\d)[0-9A-Za-z][0-9A-Za-z.\-_/]*$|^\d+-[0-9A-Za-z\-_. ]+$|^\d+(?: \d+)+$/;
 const EXCEL_ERROR = /^#(VALUE!|REF!|NAME\?|DIV\/0!|N\/A|NULL!|NUM!|ERROR!|SPILL!|CALC!)$/i;
@@ -127,9 +192,12 @@ export function cellDate(c: RawCell | undefined): Date | null {
 /** ERP exports head the amount column "Value"; alone that word says little (pivots), so it counts only beside a "Level" column. */
 const VALUE_HEADER = /^value$/i;
 const hasLevelHeader = (row: RawCell[]) => row.some((c) => HEADERS.level.test(cellText(c).replace(/\s+/g, " ")));
-const headerKey = (t: string, withValue: boolean): ColumnKey | undefined => (Object.keys(HEADERS) as ColumnKey[]).find((k) => HEADERS[k].test(t)) ?? (withValue && VALUE_HEADER.test(t) ? "amount" : undefined);
+const headerKey = (t: string, withValue: boolean): ColumnKey | undefined =>
+  (Object.keys(HEADERS) as ColumnKey[]).find((k) => HEADERS[k].test(t)) ?? (withValue && VALUE_HEADER.test(t) ? "amount" : undefined) ?? nearestWord(t, FUZZY_WORDS)?.key;
 
-function headerColumns(row: RawCell[]): Columns {
+export type HeaderTypo = NonNullable<TableCandidate["typos"]>[number];
+
+function headerColumns(row: RawCell[], typos?: HeaderTypo[]): Columns {
   const cols: Columns = {};
   const withValue = hasLevelHeader(row);
   row.forEach((c, i) => {
@@ -141,7 +209,15 @@ function headerColumns(row: RawCell[]): Columns {
         return;
       }
     }
-    if (cols.amount === undefined && (DATE_HEADER.test(t) || (withValue && VALUE_HEADER.test(t)))) cols.amount = i;
+    if (cols.amount === undefined && (DATE_HEADER.test(t) || (withValue && VALUE_HEADER.test(t)))) {
+      cols.amount = i;
+      return;
+    }
+    const near = nearestWord(t, FUZZY_WORDS);
+    if (near && cols[near.key] === undefined) {
+      cols[near.key] = i;
+      typos?.push({ header: t, key: near.key, column: i });
+    }
   });
   return cols;
 }
@@ -217,17 +293,23 @@ export function detectTables(sheets: RawSheet[]): TableCandidate[] {
     const limit = Math.min(sheet.rows.length, 30);
     let found = false;
     for (let r = 0; r < limit && !found; r++) {
-      const cols = headerColumns(sheet.rows[r] ?? []);
+      const typos: HeaderTypo[] = [];
+      const cols = headerColumns(sheet.rows[r] ?? [], typos);
+      // Only typos the table actually reads (codesInNameColumn may re-assign a column).
+      const used = (c: Columns) => typos.filter((t) => Object.values(c).includes(t.column));
       const hasAccount = cols.code !== undefined || cols.name !== undefined;
       const hasDrCr = cols.debit !== undefined && cols.credit !== undefined;
       const dataRows = sheet.rows.slice(r + 1).filter((row) => row && row.some((c) => !isBlank(c))).length;
       if (cols.date !== undefined && hasAccount && hasDrCr && dataRows > 0) {
-        out.push({ sheet: sheet.name, headerRow: r, mode: "LEDGER", columns: cols, dataRows });
+        out.push({ sheet: sheet.name, headerRow: r, mode: "LEDGER", columns: cols, dataRows, ...(typos.length ? { typos: used(cols) } : {}) });
         found = true;
       } else if (cols.date === undefined && hasAccount && (cols.amount !== undefined || hasDrCr) && dataRows > 0) {
         const panels = headerPanels(sheet.rows[r] ?? []).map((p) => codesInNameColumn(sheet.rows, r, p));
-        if (panels.length > 1) out.push({ sheet: sheet.name, headerRow: r, mode: "NERACA", columns: panels[0], panels, dataRows });
-        else out.push({ sheet: sheet.name, headerRow: r, mode: "NERACA", columns: codesInNameColumn(sheet.rows, r, cols), dataRows });
+        if (panels.length > 1) out.push({ sheet: sheet.name, headerRow: r, mode: "NERACA", columns: panels[0], panels, dataRows, ...(typos.length ? { typos: panels.flatMap(used) } : {}) });
+        else {
+          const columns = codesInNameColumn(sheet.rows, r, cols);
+          out.push({ sheet: sheet.name, headerRow: r, mode: "NERACA", columns, dataRows, ...(typos.length ? { typos: used(columns) } : {}) });
+        }
         found = true;
       }
     }
@@ -347,7 +429,7 @@ function neracaDate(sheet: RawSheet, t: TableCandidate): Date | null {
 }
 
 /** Excel column letters of a 0-based index (0 → A, 26 → AA). */
-function columnLetter(i: number): string {
+export function columnLetter(i: number): string {
   let n = i + 1;
   let out = "";
   while (n > 0) {

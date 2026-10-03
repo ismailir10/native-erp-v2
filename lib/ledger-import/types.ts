@@ -13,7 +13,16 @@ export type Columns = Partial<Record<ColumnKey, number>>;
  * `columns` is the (first) table. A Neraca printed as two panels side by side (Aset | Kewajiban + Ekuitas) lists every panel in `panels`
  * (`columns` is `panels[0]`); rows of such a file carry the panel's column in their ref ("BS!F12").
  */
-export type TableCandidate = { sheet: string; headerRow: number; mode: LedgerMode; columns: Columns; dataRows: number; panels?: Columns[] };
+export type TableCandidate = {
+  sheet: string;
+  headerRow: number;
+  mode: LedgerMode;
+  columns: Columns;
+  dataRows: number;
+  panels?: Columns[];
+  /** Headers read through a typo ("Kredti" → credit), reported on the draft. */
+  typos?: { header: string; key: ColumnKey; column: number }[];
+};
 
 /** One ledger line as read from the file. Amounts are signed sen (debit − credit side kept separately). */
 export type LedgerRow = {
