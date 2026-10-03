@@ -104,6 +104,7 @@ export function checkContinuity(st: ParsedStatement): ContinuityResult {
 const rowLabel = (r: ParsedRow) => (r.sheet ? `${r.sheet}!${r.rowNumber}` : String(r.rowNumber));
 const idr = (n: bigint) => formatMoney(n < 0n ? -n : n, "IDR");
 const monthIndex = (d: Date) => d.getUTCFullYear() * 12 + d.getUTCMonth();
+const ym = (t: number) => ({ y: new Date(t).getUTCFullYear(), m: new Date(t).getUTCMonth() + 1 });
 
 /**
  * A year typo (02/08/2023 in a 2026 statement, use-case UC-B1f): rows more than six months from the main run of months, in another year,
@@ -167,8 +168,9 @@ export function repairStatement(input: ParsedStatement): ParsedStatement {
     st = {
       ...st,
       rows,
-      periodStart: off(st.periodStart) ? new Date(Math.min(...dated)) : st.periodStart,
-      periodEnd: off(st.periodEnd) ? new Date(Math.max(...dated)) : st.periodEnd,
+      // Whole months, as a reader dates a period it takes from its rows.
+      periodStart: off(st.periodStart) ? (({ y, m }) => dateOnly(y, m, 1))(ym(Math.min(...dated))) : st.periodStart,
+      periodEnd: off(st.periodEnd) ? (({ y, m }) => dateOnly(y, m + 1, 0))(ym(Math.max(...dated))) : st.periodEnd,
     };
   }
 

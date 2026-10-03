@@ -45,7 +45,7 @@ describe("repairStatement (UC-B1)", () => {
     const st = repairStatement(statement(rows));
     expect(st.rows[0].date).toEqual(aug(2));
     expect(st.rows[0].written).toEqual({ date: dateOnly(2023, 8, 2) });
-    expect([st.periodStart, st.periodEnd]).toEqual([aug(2), aug(20)]);
+    expect([st.periodStart, st.periodEnd]).toEqual([aug(1), aug(20)]);
     expect(st.notes).toEqual([expect.stringMatching(/tanggal 2 Agu 2023 dibaca 2 Agu 2026 \(tahun salah ketik/)]);
 
     const far = [row(dateOnly(2023, 12, 25), 100n, 10_100n), ...[3, 5, 8, 12, 20].map((d, i) => row(aug(d), 100n, 10_200n + BigInt(i) * 100n))];

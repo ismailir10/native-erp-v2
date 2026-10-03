@@ -2,7 +2,7 @@ import type { Db, Tx } from "@/lib/db";
 import type { ClassifyMethod, Direction } from "@/lib/generated/prisma/enums";
 import { ACCOUNT_CODES, isClassifiable } from "@/lib/coa/template";
 import { parseStatementSections } from "@/lib/import/parsers";
-import { checkContinuity, isGenericKey, merchantKey, repairStatement, rowHashes } from "@/lib/import/normalize";
+import { checkContinuity, isGenericKey, merchantKey, rowHashes } from "@/lib/import/normalize";
 import { AccountMismatchError, ParseError, type ParsedStatement } from "@/lib/import/types";
 import { matchRule, sortRules } from "@/lib/classify/rules";
 import { financingSuggestion, taxPaymentSuggestion } from "@/lib/classify/financing";
@@ -62,10 +62,8 @@ export async function importStatement(
   if (st.section && st.section.currency !== "IDR") {
     throw new ParseError(`Rekening ${st.accountNumber} dalam ${st.section.currency}. Rekening koran valas belum didukung; impor lewat buku besar dengan kurs.`);
   }
-  // The running balance is the source of truth (rule 12): a row it contradicts is repaired only when the whole chain then holds, noted
-  // with what the file wrote; a year typo is read in the statement's year; a year it can't hold refuses the file.
+  // The section as parsed (and repaired against its balance, rule 12): `st` is replaced below, the other sections are told apart from it.
   const chosen = st;
-  st = repairStatement(st);
   // A date that is nowhere near a statement (an Excel serial misread as 1905) must never become a period of the books.
   const odd = st.rows.find((r) => r.date.getUTCFullYear() < 2000 || r.date.getUTCFullYear() > 2100);
   if (odd) throw new ParseError(`Tanggal di baris ${odd.rowNumber}${odd.sheet ? ` (lembar ${odd.sheet})` : ""} tidak masuk akal: ${formatDate(odd.date)}. Periksa kolom tanggal di file.`);

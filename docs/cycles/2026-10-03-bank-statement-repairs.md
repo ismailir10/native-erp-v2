@@ -94,7 +94,7 @@ cycle runs without a separate stop, like cycles 1–4.
 - [x] T1 `repairStatement` (direction, amount from balance, year typo, closing from the chain) + pipeline wiring + the opening-header
       note. Accept: unit tests per repair (incl. a repair the chain refuses), DB test of a repaired import (amount, date, notes, re-import
       dedupes).
-- [ ] T2 Tabular reader: backward year roll, dateless rows, SALDO AWAL with an amount, honest b3 message, sheet-month note, balance-only
+- [x] T2 Tabular reader: backward year roll, dateless rows, SALDO AWAL with an amount, honest b3 message, sheet-month note, balance-only
       rows passed through. Accept: unit tests from the fixtures.
 - [ ] T3 PDF reader: second opening refuses, BCA continuation across a `TANGGAL` line and a page break. Accept: PDF fixture tests.
 - [ ] T4 Accounting-rules rule 12; end-of-cycle gates, review pass, ship.
@@ -118,9 +118,23 @@ cycle runs without a separate stop, like cycles 1–4.
   The ledger import's year-typo window widens the same way. Tests: `tests/unit/statement-repair.test.ts`,
   `tests/db/statement-repair.test.ts`.
 
+- T2: the repair moved into `parseStatementSections`, so every reader of a statement (the import, Dokumen) sees the same repaired rows.
+  The pipeline keeps `chosen` for the other sections. `tabular.ts`:
+  - **(a3)** an undated row that moves money and prints a balance takes the row above's date (noted); without a balance it is named,
+    not lost; with nothing above, it refuses.
+  - **(x1)** a dated row with no amount and a balance is passed as `balanceOnly`.
+  - **(b4/b3)** a SALDO AWAL row whose written amount equals its balance (or whose balance is empty) is the opening, noted.
+  - **(e3)** the yearless cursor rolls back a year only across Jan → Nov/Dec (≥ 10 months), so a sparse Jan → Jul file stays in one year.
+  - **(e1/e2)** a note counts rows dated outside their sheet's month.
+
+  A period moved by a year typo follows the readers' convention (whole months). Test: `tests/unit/statement-reader-b1.test.ts`.
+
 ## Verification
 - T1: new tests `Tests 8 passed (8)`. The first full run failed `smbc-import` (the identity bug above); after the fix, lint +
   typecheck clean, `npm test` → `Test Files 142 passed (142) · Tests 994 passed (994)`, and `demo:reset && verify:books` →
   `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`
+
+- T2: `tests/unit/statement-reader-b1.test.ts` + repair tests → `Tests 12 passed (12)`; lint + typecheck clean; `npm test` →
+  `Test Files 143 passed (143) · Tests 1000 passed (1000)`; `demo:reset && verify:books` → ALL PASS (1765).
 
 ## Ship Notes
