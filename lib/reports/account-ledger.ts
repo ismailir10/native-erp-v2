@@ -53,6 +53,16 @@ export async function accountLedger(
       `${p.bankAccount.entity.shortName} · ${p.bankAccount.label} · ${formatDate(p.date)} · ${formatMoney(p.amount < 0n ? -p.amount : p.amount, p.bankAccount.currency)} · ${p.description}`,
     ]),
   );
+  // Each bank line's own change history (ADR 0013), shown in its drawer.
+  const txIds = [...new Set(lines.map((l) => l.entry.bankTransaction?.id).filter((x): x is string => !!x))];
+  const history = new Map<string, { at: string; actor: string; summary: string }[]>();
+  if (txIds.length) {
+    const events = await db.auditEvent.findMany({ where: { entityId: { in: args.entityIds }, subject: { in: txIds.map((id) => `bankTx:${id}`) } }, include: { actor: { select: { name: true } } }, orderBy: { createdAt: "desc" } });
+    for (const e of events) {
+      const id = e.subject.slice("bankTx:".length);
+      history.set(id, [...(history.get(id) ?? []), { at: formatDateTime(e.createdAt), actor: e.actor?.name ?? "Sistem", summary: e.summary }]);
+    }
+  }
   const sign = args.normalBalance === "DEBIT" ? 1n : -1n;
   const opening = ((before._sum.debit ?? 0n) - (before._sum.credit ?? 0n)) * sign;
   const balances = lines.reduce<bigint[]>((acc, l) => [...acc, (acc.at(-1) ?? opening) + (l.debit - l.credit) * sign], []);
@@ -71,7 +81,7 @@ export async function accountLedger(
       entry: { lines: l.entry.lines.map((x) => ({ code: x.account.code, name: x.account.name, debit: x.debit.toString(), credit: x.credit.toString() })) },
       reversal: l.entry.kind === "ADJUSTMENT" ? { entryId: l.entry.id, blocker: reversalBlocker(l.entry), date: toIsoDate(l.entry.date) } : undefined,
       source: t
-        ? { bankTxId: t.id, accountCode: t.accountCode, taxTag: t.taxTag, whtKind: t.whtKind, whtAmount: t.whtAmount.toString(), fileName: t.import.fileName, sheet: t.sourceSheet, rowNumber: t.rowNumber, rawRow: t.rawRow, description: t.description, amount: t.amount.toString(), bank: `${t.bankAccount.label} · ${t.bankAccount.number}`, method: t.method, reason: t.reason, status: t.status, pairedWith: t.matchedTxId ? (pairs.get(t.matchedTxId) ?? null) : null }
+        ? { bankTxId: t.id, accountCode: t.accountCode, taxTag: t.taxTag, whtKind: t.whtKind, whtAmount: t.whtAmount.toString(), fileName: t.import.fileName, sheet: t.sourceSheet, rowNumber: t.rowNumber, rawRow: t.rawRow, description: t.description, amount: t.amount.toString(), bank: `${t.bankAccount.label} · ${t.bankAccount.number}`, method: t.method, reason: t.reason, status: t.status, pairedWith: t.matchedTxId ? (pairs.get(t.matchedTxId) ?? null) : null, history: history.get(t.id) ?? [] }
         : null,
       fileSource: l.entry.ledgerImport
         ? {
