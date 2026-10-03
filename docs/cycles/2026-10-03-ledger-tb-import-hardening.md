@@ -121,7 +121,7 @@ The cycle runs without a separate stop, like cycles 1–3.
       acceptable fix, rows on/before Saldo Awal refused, GL without Saldo Awal flagged (`check.ts`, `post.ts`, accept button). Accept:
       unit + DB tests per check.
 - [x] T3 Neraca: sign against nature; several period columns → the first read, the rest and missing months named. Accept: unit tests.
-- [ ] T4 TB with column groups: detection, reading, plan of three journals with per-row ties and total tie-out, per-entry kind on
+- [x] T4 TB with column groups: detection, reading, plan of three journals with per-row ties and total tie-out, per-entry kind on
       posting, "Neraca saldo (TB)" label. Accept: DB test posts a TB and the TB report equals its closing column; the ADJUSTMENT entry
       stands alone.
 - [ ] T5 Opening bridge: a Neraca after the first journal stages as an anchor; post computes the bridge; refusals. Accept: DB test,
@@ -148,6 +148,22 @@ The cycle runs without a separate stop, like cycles 1–3.
 - T3: `check.ts` `signChecks` (shared with the TB in T4) in `planNeraca`; `read.ts` `periodHeader` (dates and month headers →
   month end), `periodColumns` on the candidate (`periods`); a month header can now be the amount column and the Neraca date. Also
   `MULTI_PERIOD` (REVIEW): the column read, the others not imported, the missing months. Test: `tests/unit/neraca-k2.test.ts`.
+- T4: `read.ts` `tbLayout` is tried first at every header row:
+  - two rows (labels carried right until the next, then Dr/Cr) or one row ("Saldo Awal Debit");
+  - groups found by phrase (longest first), else by `nearestWord` (a typo, reported);
+  - "Saldo <date>" pairs become the opening and the closing by date.
+
+  `readTb` gives:
+  - per-group signed values;
+  - the Total rows;
+  - the dates: group header, else title, where a period starting on the 1st means the day before;
+  - Neraca rows of the closing balance, so evidence and previews keep working.
+
+  In `check.ts`, `planTb` builds OPENING / ADJUSTMENT / IMPORTED entries (`PlanEntry.kind`), each line citing its column's cell, and adds
+  `TB_ROW_MISMATCH`, `TOTAL_OK` / `TOTAL_MISMATCH` per column, `TB_DERIVED` and the sign checks. `post.ts` handles the TB branch (opening
+  date assumed = previous year end, INFO `TB_OPENING_DATE`; `tb: true` in the saved plan) and posts each entry with its own kind.
+  `code.ts` `importKindLabel` gives "Neraca saldo (TB)" on the Impor list and the draft page. Typos now carry their label and row.
+  Test: `tests/db/ledger-import-tb.test.ts`.
 
 ## Verification
 - T1: `npx vitest run tests/unit/ledger-header-typos.test.ts tests/unit/ledger-read.test.ts` → `Tests 16 passed (16)`; lint + typecheck
@@ -157,5 +173,7 @@ The cycle runs without a separate stop, like cycles 1–3.
   (`Tests 10 passed (10)`), and the full run had no other failure (`952 passed`). Lint + typecheck clean.
 - T3: `tests/unit/neraca-k2.test.ts` + reader / Neraca tests → `Tests 22 passed (22)`; lint + typecheck clean; `npm test` →
   `Test Files 133 passed (133) · Tests 956 passed (956)`.
+- T4: `tests/db/ledger-import-tb.test.ts` + reader tests → `Tests 26 passed (26)`; lint + typecheck clean; `npm test` →
+  `Test Files 134 passed (134) · Tests 960 passed (960)`.
 
 ## Ship Notes

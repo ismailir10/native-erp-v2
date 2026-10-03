@@ -6,7 +6,7 @@ import { dateParts, MONTHS, readCsv } from "@/lib/import/parsers/common";
 import { ParseError } from "@/lib/import/types";
 import { readableXlsx, sniffFile } from "@/lib/import/workbook";
 import type { AccountType } from "@/lib/generated/prisma/enums";
-import type { Columns, ColumnKey, LedgerRow, LedgerTotal, NeracaRow, NeracaTotal, RawCell, RawSheet, ReadResult, TableCandidate } from "@/lib/ledger-import/types";
+import type { Columns, ColumnKey, LedgerRow, LedgerTotal, NeracaRow, NeracaTotal, RawCell, RawSheet, ReadResult, TableCandidate, TbGroup, TbLayout, TbRead, TbRow } from "@/lib/ledger-import/types";
 import { NO_CODE_PREFIX } from "@/lib/ledger-import/code";
 
 /**
@@ -211,7 +211,7 @@ const headerKey = (t: string, withValue: boolean): ColumnKey | undefined =>
 
 export type HeaderTypo = NonNullable<TableCandidate["typos"]>[number];
 
-function headerColumns(row: RawCell[], typos?: HeaderTypo[]): Columns {
+function headerColumns(row: RawCell[], typos?: HeaderTypo[], rowIndex = 0): Columns {
   const cols: Columns = {};
   const withValue = hasLevelHeader(row);
   row.forEach((c, i) => {
@@ -230,7 +230,7 @@ function headerColumns(row: RawCell[], typos?: HeaderTypo[]): Columns {
     const near = nearestWord(t, FUZZY_WORDS);
     if (near && cols[near.key] === undefined) {
       cols[near.key] = i;
-      typos?.push({ header: t, key: near.key, column: i });
+      typos?.push({ header: t, label: COLUMN_LABEL[near.key], column: i, row: rowIndex });
     }
   });
   return cols;
@@ -307,8 +307,18 @@ export function detectTables(sheets: RawSheet[]): TableCandidate[] {
     const limit = Math.min(sheet.rows.length, 30);
     let found = false;
     for (let r = 0; r < limit && !found; r++) {
+      // A trial balance first: its group labels would otherwise read as one Neraca amount column.
+      const tb = tbLayout(sheet.rows, r);
+      if (tb) {
+        const dataRows = sheet.rows.slice(tb.headerRow + 1).filter((row) => row && row.some((c) => !isBlank(c))).length;
+        if (dataRows > 0) {
+          out.push({ sheet: sheet.name, headerRow: tb.headerRow, mode: "NERACA", columns: tb.columns, dataRows, tb: tb.tb, ...(tb.typos.length ? { typos: tb.typos } : {}) });
+          found = true;
+          continue;
+        }
+      }
       const typos: HeaderTypo[] = [];
-      const cols = headerColumns(sheet.rows[r] ?? [], typos);
+      const cols = headerColumns(sheet.rows[r] ?? [], typos, r);
       // Only typos the table actually reads (codesInNameColumn may re-assign a column).
       const used = (c: Columns) => typos.filter((t) => Object.values(c).includes(t.column));
       const hasAccount = cols.code !== undefined || cols.name !== undefined;
@@ -361,6 +371,116 @@ function detectJurnalNeraca(sheet: RawSheet): TableCandidate | null {
     if (coded >= 3) return { sheet: sheet.name, headerRow: r, mode: "NERACA", columns: { code: 0, name: 1, amount: dateCol }, dataRows: coded, ...(periods ? { periods } : {}) };
   }
   return null;
+}
+
+// ─── Trial balance with column groups (use-case UC-K2) ──────────────────────────
+
+/**
+ * A trial balance prints, per account, several balances side by side: last year's, the Adjustment, the adjusted balance, the movement,
+ * the closing balance — each as a Dr/Cr pair or one signed column. The group is named in the header itself ("Adjustment Dr") or on a
+ * label row above the Dr/Cr row (a merged cell, carried to the right until the next label).
+ */
+const TB_GROUP_WORDS: Record<TbGroup, string[]> = {
+  OPENING: ["saldo awal", "beginning balance", "opening balance", "saldo akhir tahun lalu", "akhir tahun lalu", "tahun lalu", "prior year", "previous year"],
+  ADJUSTMENT: ["adjustment", "adjustments", "penyesuaian", "jurnal penyesuaian", "koreksi", "aje", "adj"],
+  ADJUSTED: ["setelah penyesuaian", "saldo setelah penyesuaian", "adjusted balance", "adjusted", "after adjustment", "after adjustments", "audited"],
+  MOVEMENT: ["mutasi", "movement", "movements", "mutation", "transaksi", "perubahan"],
+  CLOSING: ["saldo akhir", "ending balance", "closing balance", "ending", "closing"],
+};
+export const TB_GROUP_LABEL: Record<TbGroup, string> = { OPENING: "Saldo awal", ADJUSTMENT: "Adjustment", ADJUSTED: "Setelah penyesuaian", MOVEMENT: "Mutasi", CLOSING: "Saldo akhir" };
+const TB_PHRASES = (Object.entries(TB_GROUP_WORDS) as [TbGroup, string[]][]).flatMap(([g, ws]) => ws.map((w) => [g, w] as const)).sort((a, b) => b[1].length - a[1].length);
+const SIDE_WORDS = { debit: ["debit", "debet"], credit: ["kredit", "credit"] };
+const SIDE_TOKEN = /^(dr|cr|d|k|db|kr|debit|debet|kredit|credit)$/;
+const DATE_IN_TEXT = /(\d{1,2}[/.-]\d{1,2}[/.-]\d{4}|\d{1,2}\s+[A-Za-z]{3,9}\.?\s+\d{4})/g;
+
+/** The Dr/Cr side a header names ("Dr", "Kredit", "Kredti"), from its own words. */
+function sideOf(text: string): "debit" | "credit" | undefined {
+  for (const tok of normalizeHeader(text).split(" ")) {
+    if (/^(dr|db|d|debit|debet)$/.test(tok)) return "debit";
+    if (/^(cr|kr|k|kredit|credit)$/.test(tok)) return "credit";
+    const near = tok.length >= 5 ? nearestWord(tok, SIDE_WORDS) : undefined;
+    if (near) return near.key;
+  }
+  return undefined;
+}
+
+/** The group a header names, without its side and date words; `typo` when it was read through one. */
+function groupOf(text: string): { group: TbGroup; typo: boolean } | undefined {
+  const words = normalizeHeader(text.replace(DATE_IN_TEXT, " ")).split(" ").filter((w) => w && !SIDE_TOKEN.test(w) && !/^\d+$/.test(w));
+  const rest = ` ${words.join(" ")} `;
+  const hit = TB_PHRASES.find(([, w]) => rest.includes(` ${w} `));
+  if (hit) return { group: hit[0], typo: false };
+  const near = words.length ? nearestWord(words.join(" "), TB_GROUP_WORDS) : undefined;
+  return near ? { group: near.key, typo: true } : undefined;
+}
+
+/** A date written in a header or title ("Saldo 31/12/2025", "Per 30 Juni 2026"). */
+function datesIn(text: string): Date[] {
+  return [...text.matchAll(DATE_IN_TEXT)].flatMap((m) => {
+    const p = dateParts(m[1]);
+    return p?.y ? [dateOnly(p.y, p.m, p.d)] : [];
+  });
+}
+
+/**
+ * The trial-balance layout of a header at row `r`, or null. Two rows (group labels, then Dr/Cr) or one (each header names group and side).
+ * Needs an account column and at least two complete groups (Dr and Cr, or one signed column).
+ */
+function tbLayout(rows: RawCell[][], r: number): { headerRow: number; columns: Columns; tb: TbLayout; typos: HeaderTypo[] } | null {
+  const top = rows[r] ?? [];
+  const next = rows[r + 1] ?? [];
+  const width = Math.max(top.length, next.length);
+  const cols = headerColumns(top);
+  if (cols.date !== undefined) return null;
+  const twoRow = next.filter((c) => { const t = cellText(c); return t && sideOf(t) && normalizeHeader(t).split(" ").length <= 2; }).length >= 4;
+  const below = twoRow ? headerColumns(next) : {};
+  const columns: Columns = { code: cols.code ?? below.code, name: cols.name ?? below.name };
+  if (columns.code === undefined && columns.name === undefined) return null;
+  const groups: TbLayout["groups"] = {};
+  const dates: TbLayout["dates"] = {};
+  const typos: HeaderTypo[] = [];
+  const take = (g: TbGroup, side: "debit" | "credit" | "balance", c: number) => {
+    const slot = (groups[g] ??= {});
+    if (slot[side] === undefined) slot[side] = c;
+  };
+  let label: { group: TbGroup; typo: boolean } | undefined;
+  // "Saldo 31/12/2025" … "Saldo 30/06/2026": balances named by their date, the earlier one opening, the later one closing.
+  const dated: { column: number; date: Date }[] = [];
+  for (let c = 0; c < width; c++) {
+    if (c === columns.code || c === columns.name) {
+      label = undefined;
+      continue;
+    }
+    const t = cellText(top[c]);
+    if (twoRow) {
+      if (t) {
+        label = groupOf(t);
+        if (label?.typo) typos.push({ header: t, label: TB_GROUP_LABEL[label.group], column: c, row: r });
+        const d = label && datesIn(t)[0];
+        if (label && d) dates[label.group] = d;
+      }
+      const side = sideOf(cellText(next[c]));
+      if (label && side) take(label.group, side, c);
+    } else if (t) {
+      const g = groupOf(t);
+      const d0 = datesIn(t)[0];
+      if (!g && d0 && /^(saldo|balance)\b/i.test(normalizeHeader(t))) dated.push({ column: c, date: d0 });
+      if (!g) continue;
+      if (g.typo) typos.push({ header: t, label: TB_GROUP_LABEL[g.group], column: c, row: r });
+      const d = datesIn(t)[0];
+      if (d) dates[g.group] = d;
+      take(g.group, sideOf(t) ?? "balance", c);
+    }
+  }
+  if (dated.length === 2 && +dated[0].date !== +dated[1].date) {
+    const [early, late] = [...dated].sort((a, b) => +a.date - +b.date);
+    if (!groups.OPENING) [groups.OPENING, dates.OPENING] = [{ balance: early.column }, early.date];
+    if (!groups.CLOSING) [groups.CLOSING, dates.CLOSING] = [{ balance: late.column }, late.date];
+  }
+  const complete = (Object.entries(groups) as [TbGroup, TbLayout["groups"][TbGroup]][]).filter(([, s]) => s && ((s.debit !== undefined && s.credit !== undefined) || s.balance !== undefined));
+  if (complete.length < 2) return null;
+  const tb: TbLayout = { groups: Object.fromEntries(complete.map(([g, s]) => [g, s!.debit !== undefined && s!.credit !== undefined ? { debit: s!.debit, credit: s!.credit } : { balance: s!.balance }])), dates };
+  return { headerRow: twoRow ? r + 1 : r, columns, tb, typos };
 }
 
 // ─── Readers ──────────────────────────────────────────────────────────────────
@@ -568,9 +688,69 @@ function guessEquity(label: string, t: AccountType | null): AccountType | null {
   return t;
 }
 
+/** Dates in the title rows above a table ("Periode 1 Januari 2026 s.d. 30 Juni 2026", "Per 30/06/2026"), earliest first. */
+function titleDates(sheet: RawSheet, before: number): Date[] {
+  const out: Date[] = [];
+  for (const row of sheet.rows.slice(0, before)) for (const c of row ?? []) {
+    if (c instanceof Date && Number.isFinite(c.getTime())) out.push(dateOnly(c.getUTCFullYear(), c.getUTCMonth() + 1, c.getUTCDate()));
+    else out.push(...datesIn(cellText(c)));
+  }
+  return out.sort((a, b) => +a - +b);
+}
+
+/**
+ * A trial balance's rows. The closing date is the closing group's header date, else the latest title date; the opening date is the opening
+ * group's header date, else the day before a period's first day in the title ("1 Januari 2026" → 31 Des 2025), else unknown (the import
+ * then assumes the year end before the closing date and says so).
+ */
+export function readTb(sheet: RawSheet, t: TableCandidate): { date: Date | null; rows: NeracaRow[]; tb: TbRead } {
+  const layout = t.tb!;
+  const c = t.columns;
+  const rows: TbRow[] = [];
+  const totals: TbRead["totals"] = [];
+  const groups = Object.entries(layout.groups) as [TbGroup, { debit?: number; credit?: number; balance?: number }][];
+  for (let r = t.headerRow + 1; r < sheet.rows.length; r++) {
+    const row = sheet.rows[r] ?? [];
+    if (row.every(isBlank)) continue;
+    const codeCell = c.code !== undefined ? cellText(row[c.code]) : "";
+    const nameCell = c.name !== undefined ? cellText(row[c.name]) : "";
+    const hasCode = !!codeCell && CODE.test(codeCell);
+    const label = codeCell && !hasCode ? codeCell : nameCell;
+    const cells = groups.flatMap(([, s]) => [s.debit, s.credit, s.balance]).filter((x): x is number => x !== undefined).map((i) => row[i]);
+    if (!hasCode && cells.every(isBlank)) continue; // heading
+    const values: TbRow["values"] = {};
+    const errors: string[] = [];
+    for (const [g, s] of groups) {
+      const parts = s.balance !== undefined ? [cellCents(row[s.balance])] : [cellCents(row[s.debit!]), cellCents(row[s.credit!])];
+      const bad = parts.find((p): p is string => typeof p === "string");
+      if (bad) errors.push(`${TB_GROUP_LABEL[g]} bukan angka: ${bad}`);
+      else values[g] = parts.length === 1 ? (parts[0] as bigint) : (parts[0] as bigint) - (parts[1] as bigint);
+    }
+    const ref = `${sheet.name}!${r + 1}`;
+    if (/^(total|jumlah)\b/i.test(label) && !hasCode) {
+      if (!errors.length) totals.push({ ref, label, values });
+      continue;
+    }
+    if (!hasCode && !errors.length && Object.values(values).every((v) => v === 0n)) continue;
+    rows.push({ ref, row: r + 1, code: hasCode ? codeCell : `${NO_CODE_PREFIX}${label}`, name: hasCode ? nameCell || codeCell : label, coded: hasCode, values, errors });
+  }
+  const titles = titleDates(sheet, t.headerRow);
+  const closing = layout.dates.CLOSING ?? titles[titles.length - 1] ?? null;
+  const first = titles.length > 1 && closing && +titles[0] < +closing ? titles[0] : null;
+  const opening = layout.dates.OPENING ?? (first ? (first.getUTCDate() === 1 ? new Date(+first - 86_400_000) : first) : null);
+  const balance = (r: TbRow) => r.values.CLOSING ?? r.values.ADJUSTED ?? r.values.OPENING ?? 0n;
+  return {
+    date: closing,
+    // The closing balances, so every reader of a Neraca-mode table (evidence, previews) sees the accounts and the date.
+    rows: rows.map((r) => ({ ref: r.ref, row: r.row, code: r.code, name: r.name, amount: balance(r), typeHint: null, termHint: null, coded: r.coded, errors: r.errors })),
+    tb: { layout, rows, totals, opening },
+  };
+}
+
 export function readTable(sheets: RawSheet[], t: TableCandidate): ReadResult {
   const sheet = sheets.find((s) => s.name === t.sheet);
   if (!sheet) throw new ParseError(`Sheet "${t.sheet}" tidak ditemukan`);
+  if (t.tb) return { mode: "NERACA", sheet: t.sheet, totals: [], ...readTb(sheet, t) };
   if (t.mode === "LEDGER") return { mode: "LEDGER", sheet: t.sheet, ...readLedger(sheet, t) };
   return { mode: "NERACA", sheet: t.sheet, ...readNeraca(sheet, t) };
 }

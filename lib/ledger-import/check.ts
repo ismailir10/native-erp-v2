@@ -1,7 +1,8 @@
 import { convertMinor, exponentOf, isCurrency } from "@/lib/fx/currency";
 import { centsToMinor, formatMoney, roundEntry } from "@/lib/money";
 import { dateOnly, formatDate, formatPeriod } from "@/lib/format";
-import type { LedgerRow, LedgerTotal, NeracaRow, NeracaTotal } from "@/lib/ledger-import/types";
+import type { LedgerRow, LedgerTotal, NeracaRow, NeracaTotal, TbGroup, TbRead, TbRow } from "@/lib/ledger-import/types";
+import { columnLetter, TB_GROUP_LABEL } from "@/lib/ledger-import/read";
 import { NO_CODE_PREFIX } from "@/lib/ledger-import/code";
 
 /**
@@ -38,6 +39,8 @@ export type PlanLine = {
 };
 export type PlanEntry = {
   key: string;
+  /** The journal kind when it isn't the import's own (a TB's Adjustment, its movement). */
+  kind?: "OPENING" | "ADJUSTMENT" | "IMPORTED";
   entityKey: string;
   date: Date;
   ref: string;
@@ -502,6 +505,105 @@ export function planNeraca(
     entityKey,
   });
   return { entries: [entry], checks, accounts };
+}
+
+/**
+ * A trial balance (use-case UC-K2): up to three journals, each citing its own column — the opening on the opening date (OPENING), the
+ * Adjustment column on the same date as its own journal (ADJUSTMENT, never merged into the opening), and the movement on the closing date
+ * (IMPORTED). Every row must tie (opening + adjustment = adjusted; adjusted + movement = closing) and every column its Total row.
+ */
+export function planTb(tb: TbRead, opts: { entityKey: string; entity: EntityInfo; opening: Date; closing: Date; existingNames?: Map<string, string> }): Plan {
+  const checks: Check[] = [];
+  const accounts: Plan["accounts"] = new Map();
+  const { entity, entityKey } = opts;
+  const has = (g: TbGroup) => tb.layout.groups[g] !== undefined;
+  const v = (r: TbRow, g: TbGroup) => r.values[g] ?? 0n;
+  const money = (c: bigint) => formatMoney(centsToMinor(c, entity.currency), entity.currency);
+  for (const r of tb.rows) for (const e of r.errors) checks.push({ severity: "BLOCK", code: "ROW_ERROR", message: `${r.ref}: ${e}`, refs: [r.ref], entityKey });
+  const usable = tb.rows.filter((r) => !r.errors.length);
+
+  // Each row's opening, adjustment and movement — from its own columns, or derived when a column is absent (said below).
+  const parts = usable.map((r) => {
+    const adjustment = v(r, "ADJUSTMENT");
+    const opening = has("OPENING") ? v(r, "OPENING") : has("ADJUSTED") ? v(r, "ADJUSTED") - adjustment : v(r, "CLOSING") - v(r, "MOVEMENT") - adjustment;
+    const adjusted = has("ADJUSTED") ? v(r, "ADJUSTED") : opening + adjustment;
+    const movement = has("MOVEMENT") ? v(r, "MOVEMENT") : has("CLOSING") ? v(r, "CLOSING") - adjusted : 0n;
+    const closing = has("CLOSING") ? v(r, "CLOSING") : adjusted + movement;
+    return { r, opening, adjustment, adjusted, movement, closing };
+  });
+  for (const p of parts) {
+    const prev = opts.existingNames?.get(accountKey(entityKey, p.r.code));
+    accounts.set(accountKey(entityKey, p.r.code), { entityKey, code: p.r.code, name: p.r.name, previousNames: prev && !sameName(prev, p.r.name) ? [prev] : [], balance: p.closing, currency: null });
+  }
+
+  // REVIEW: rows that don't tie across their own columns.
+  const tie = (label: string, bad: typeof parts, expected: (p: (typeof parts)[number]) => bigint, actual: (p: (typeof parts)[number]) => bigint) => {
+    if (!bad.length) return;
+    const p = bad[0];
+    checks.push({ severity: "REVIEW", code: "TB_ROW_MISMATCH", message: `${bad.length} baris tidak cocok: ${label}. Contoh ${p.r.ref} ${p.r.code.startsWith(NO_CODE_PREFIX) ? "" : `${p.r.code} `}${p.r.name}: seharusnya ${money(expected(p))}, di file ${money(actual(p))}.`, refs: cap(bad.map((x) => x.r.ref)), entityKey });
+  };
+  if (has("ADJUSTED") && has("OPENING")) {
+    tie("saldo awal + adjustment ≠ saldo setelah penyesuaian", parts.filter((p) => v(p.r, "OPENING") + p.adjustment !== p.adjusted), (p) => v(p.r, "OPENING") + p.adjustment, (p) => p.adjusted);
+  }
+  if (has("CLOSING") && has("MOVEMENT")) {
+    tie("saldo setelah penyesuaian + mutasi ≠ saldo akhir", parts.filter((p) => p.adjusted + p.movement !== p.closing), (p) => p.adjusted + p.movement, (p) => p.closing);
+  }
+  if (!has("OPENING")) checks.push({ severity: "INFO", code: "TB_DERIVED", message: `Kolom saldo awal tidak ada: saldo awal dihitung dari ${has("ADJUSTED") ? "saldo setelah penyesuaian − adjustment" : "saldo akhir − mutasi − adjustment"}.`, refs: [], entityKey });
+  if (!has("MOVEMENT") && has("CLOSING")) checks.push({ severity: "INFO", code: "TB_DERIVED", message: "Kolom mutasi tidak ada: mutasi dihitung dari saldo akhir − saldo setelah penyesuaian.", refs: [], entityKey });
+
+  // The file's own Total row, column by column.
+  const total = tb.totals[tb.totals.length - 1];
+  if (total) {
+    const groups = (Object.keys(tb.layout.groups) as TbGroup[]).filter((g) => total.values[g] !== undefined);
+    const off = groups.filter((g) => usable.reduce((s, r) => s + v(r, g), 0n) !== total.values[g]);
+    if (off.length) {
+      checks.push({ severity: "REVIEW", code: "TOTAL_MISMATCH", message: `"${total.label}" di file tidak sama dengan jumlah baris pada kolom ${off.map((g) => `${TB_GROUP_LABEL[g]} (file ${money(total.values[g]!)}, baris ${money(usable.reduce((s, r) => s + v(r, g), 0n))})`).join(", ")}.`, refs: [total.ref], entityKey });
+    } else if (groups.length) {
+      checks.push({ severity: "INFO", code: "TOTAL_OK", message: `"${total.label}" cocok dengan jumlah baris di setiap kolom (${groups.map((g) => TB_GROUP_LABEL[g]).join(", ")}).`, refs: [total.ref], entityKey });
+    }
+  }
+
+  // The journals, each line citing the cell it came from.
+  const cell = (r: TbRow, g: TbGroup) => {
+    const slot = tb.layout.groups[g];
+    const col = slot?.balance ?? slot?.debit;
+    return col === undefined ? r.ref : `${r.ref.slice(0, r.ref.lastIndexOf("!"))}!${columnLetter(col)}${r.row}`;
+  };
+  const entries: PlanEntry[] = [];
+  const entry = (kind: NonNullable<PlanEntry["kind"]>, key: string, date: Date, memo: string, list: { r: TbRow; amount: bigint; group: TbGroup }[]) => {
+    const lines = list.filter((x) => x.amount !== 0n);
+    if (!lines.length) return;
+    const { rounded, rounding, total: imbalance } = roundEntry(lines.map((x) => x.amount), entity.currency);
+    const e: PlanEntry = {
+      key: `${entityKey}|${key}|${date.toISOString().slice(0, 10)}`,
+      entityKey,
+      date,
+      kind,
+      ref: rangeRef(lines.map((x) => x.r.ref)),
+      memo,
+      lines: lines.map((x, i) => ({ ref: cell(x.r, x.group), code: x.r.code, name: x.r.name, amount: rounded[i], fx: null, memo: null })),
+      imbalance,
+      rounding,
+    };
+    entries.push(e);
+    if (imbalance !== 0n) {
+      checks.push({ severity: "BLOCK", code: "UNBALANCED", message: `${memo} ${entity.name} ${formatDate(date)} tidak seimbang: selisih ${formatMoney(imbalance, entity.currency)} (debit ${imbalance > 0n ? ">" : "<"} kredit). Terima untuk mencatat selisihnya di 1999 Belum Terklasifikasi.`, refs: [], entityKey, date, amount: imbalance, acceptable: true, groupKey: e.key });
+    }
+  };
+  const openingFrom: TbGroup = has("OPENING") ? "OPENING" : has("ADJUSTED") ? "ADJUSTED" : "CLOSING";
+  entry("OPENING", "TB-OPENING", opts.opening, `Saldo awal dari neraca saldo per ${formatDate(opts.opening)}`, parts.map((p) => ({ r: p.r, amount: p.opening, group: openingFrom })));
+  if (has("ADJUSTMENT")) entry("ADJUSTMENT", "TB-ADJUSTMENT", opts.opening, "Adjustment dari neraca saldo (kolom Adjustment)", parts.map((p) => ({ r: p.r, amount: p.adjustment, group: "ADJUSTMENT" as const })));
+  if (has("MOVEMENT") || has("CLOSING")) entry("IMPORTED", "TB-MOVEMENT", opts.closing, `Mutasi ${formatDate(new Date(+opts.opening + 86_400_000))} – ${formatDate(opts.closing)} dari neraca saldo`, parts.map((p) => ({ r: p.r, amount: p.movement, group: has("MOVEMENT") ? ("MOVEMENT" as const) : ("CLOSING" as const) })));
+
+  checks.push(...signChecks(parts.map((p) => ({ ref: cell(p.r, has("CLOSING") ? "CLOSING" : openingFrom), code: p.r.code, name: p.r.name, amount: p.closing })), entity, entityKey));
+  checks.push({
+    severity: "INFO",
+    code: "STATS",
+    message: `${entity.name}: neraca saldo ${usable.length} akun, kolom ${(Object.keys(tb.layout.groups) as TbGroup[]).map((g) => TB_GROUP_LABEL[g]).join(", ")}; ${entries.length} jurnal (${entries.map((e) => (e.kind === "OPENING" ? "saldo awal" : e.kind === "ADJUSTMENT" ? "adjustment" : "mutasi")).join(", ")}).`,
+    refs: [],
+    entityKey,
+  });
+  return { entries, checks, accounts };
 }
 
 function groupBy<T>(list: T[], key: (t: T) => string): Map<string, T[]> {

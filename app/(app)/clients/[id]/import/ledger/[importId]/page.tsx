@@ -14,6 +14,7 @@ import { NextStep, PageHeader, Stat } from "@/components/app/page-header";
 import { StatusPill } from "@/components/app/status";
 import { MappingPanel } from "@/components/app/mapping-panel";
 import { AcceptCheckButton, DiscardDraftButton, PostImportButton } from "@/components/app/ledger-import-actions";
+import { importKindLabel } from "@/lib/ledger-import/code";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
@@ -44,7 +45,7 @@ export default async function LedgerImportPage({ params, searchParams }: { param
   const unmapped = sources.filter((s) => !s.accountId);
   const entities = [...new Set(sources.map((s) => s.entityId))].map((id) => client.entities.find((e) => e.id === id)!).filter(Boolean);
   const ready = !posted && !openBlock.length && !unmapped.length;
-  const kind = imp.mode === "NERACA" ? "neraca" : "buku besar";
+  const kind = importKindLabel(imp).replace(/^./, (c) => c.toLowerCase());
 
   return (
     <div className="space-y-6">

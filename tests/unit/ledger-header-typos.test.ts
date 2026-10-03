@@ -43,7 +43,7 @@ describe("header typos", () => {
     const sheets = await readSheets("gl.xlsx", buf);
     const [t] = detectTables(sheets);
     expect(t).toMatchObject({ mode: "LEDGER" });
-    expect(t.typos?.map((x) => [x.header, x.key])).toEqual([["Tangal", "date"], ["Kredti", "credit"], ["Keteranagn", "desc"]]);
+    expect(t.typos?.map((x) => [x.header, x.label])).toEqual([["Tangal", "Tanggal"], ["Kredti", "Kredit"], ["Keteranagn", "Keterangan"]]);
     const res = readTable(sheets, t);
     if (res.mode !== "LEDGER") throw new Error("mode");
     expect(res.rows.map((r) => [r.code, r.debit, r.credit, r.description])).toEqual([["1101", 50000n, 0n, "setoran"], ["4100", 0n, 50000n, "setoran"]]);

@@ -3,12 +3,12 @@ import type { Db } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { postJournal, type PostLine } from "@/lib/ledger/post";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
-import { formatDate } from "@/lib/format";
+import { dateOnly, formatDate } from "@/lib/format";
 import { loadRates, lookupRate, upsertFileRate } from "@/lib/fx/rates";
 import { formatRate, formatRateId, isCurrency, parseRate } from "@/lib/fx/currency";
 import { ParseError } from "@/lib/import/types";
-import { COLUMN_LABEL, columnLetter, detectTables, readSheets, readTable, reportKind } from "@/lib/ledger-import/read";
-import { accountKey, cap, missingMonths, periodList, planLedger, planNeraca, type Check, type CurrencyMode, type EntityInfo, type Plan, type PlanEntry } from "@/lib/ledger-import/check";
+import { columnLetter, detectTables, readSheets, readTable, reportKind } from "@/lib/ledger-import/read";
+import { accountKey, cap, missingMonths, periodList, planLedger, planNeraca, planTb, type Check, type CurrencyMode, type EntityInfo, type Plan, type PlanEntry } from "@/lib/ledger-import/check";
 import { inferType, learnScheme, suggestMappings } from "@/lib/ledger-import/mapping";
 import type { NeracaRow, TableCandidate } from "@/lib/ledger-import/types";
 
@@ -127,11 +127,21 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
     if (!input.entityId) throw new LedgerImportError("Pilih entitas untuk neraca ini.");
     await assertNoOpening(db, [input.entityId]);
     const date = read.date ?? input.date;
-    if (!date) throw new LedgerImportError("Tanggal neraca tidak tertulis di file. Isi tanggalnya.");
+    if (!date) throw new LedgerImportError(read.tb ? "Tanggal neraca saldo tidak tertulis di file. Isi tanggal saldo akhirnya." : "Tanggal neraca tidak tertulis di file. Isi tanggalnya.");
     entityInfos.set("", info(input.entityId));
     const existingNames = new Map(existing.filter((x) => x.entityId === input.entityId).map((s) => [accountKey("", s.code), s.name]));
-    plan = planNeraca(read.rows, read.totals, { entityKey: "", entity: info(input.entityId), date, sheet: table.sheet, existingNames, periods: table.periods, column: table.columns.amount });
-    periodStart = periodEnd = date;
+    if (read.tb) {
+      // Without a written opening date, last year's balance is taken at the year end before the closing date (cycle 6: fiscal years).
+      const opening = read.tb.opening ?? dateOnly(date.getUTCFullYear() - 1, 12, 31);
+      if (+opening >= +date) throw new LedgerImportError(`Tanggal saldo awal neraca saldo (${formatDate(opening)}) harus sebelum tanggal saldo akhirnya (${formatDate(date)}).`);
+      plan = planTb(read.tb, { entityKey: "", entity: info(input.entityId), opening, closing: date, existingNames });
+      if (!read.tb.opening) plan.checks.push({ severity: "INFO", code: "TB_OPENING_DATE", message: `Tanggal saldo awal tidak tertulis di file: dianggap ${formatDate(opening)} (akhir tahun sebelum ${formatDate(date)}).`, refs: [], entityKey: "" });
+      periodStart = opening;
+    } else {
+      plan = planNeraca(read.rows, read.totals, { entityKey: "", entity: info(input.entityId), date, sheet: table.sheet, existingNames, periods: table.periods, column: table.columns.amount });
+      periodStart = date;
+    }
+    periodEnd = date;
   }
 
   if (input.allowedPeriod && (periodStart.toISOString().slice(0, 10) < input.allowedPeriod.start || periodEnd.toISOString().slice(0, 10) > input.allowedPeriod.end)) throw new LedgerImportError("Rentang sumber harus mencakup seluruh periode file.");
@@ -161,7 +171,7 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
   plan.checks.push(...(await fileRateChecks(db, input.firmId, [...statedRates.values()], currencyMode, [...fileRates.values()])));
   // A column read through a typo is shown, so a wrong reading is caught before posting (UC-K2).
   for (const t of table.typos ?? []) {
-    plan.checks.push({ severity: "INFO", code: "HEADER_TYPO", message: `Kolom "${t.header}" dibaca sebagai ${COLUMN_LABEL[t.key]} (salah ketik di judul kolom).`, refs: [`${table.sheet}!${columnLetter(t.column)}${table.headerRow + 1}`] });
+    plan.checks.push({ severity: "INFO", code: "HEADER_TYPO", message: `Kolom "${t.header}" dibaca sebagai ${t.label} (salah ketik di judul kolom).`, refs: [`${table.sheet}!${columnLetter(t.column)}${t.row + 1}`] });
   }
   // All-zero groups are reported in the checks ("… jurnal bernilai nol dilewati") but not staged, so the draft's
   // "Catat N jurnal" is the number that will post.
@@ -211,7 +221,7 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
           rowCount: read.rows.length,
           groupCount: entries.length,
           roundingTotal: entries.reduce((s, e) => s + (e.rounding < 0n ? -e.rounding : e.rounding), 0n),
-          data: { ...toSaved(entries, entityInfos), rates: [...fileRates.values()], stated: [...statedRates.values()] } as unknown as Prisma.InputJsonValue,
+          data: { ...toSaved(entries, entityInfos), rates: [...fileRates.values()], stated: [...statedRates.values()], ...(read.mode === "NERACA" && read.tb ? { tb: true } : {}) } as unknown as Prisma.InputJsonValue,
           checks: {
             create: plan.checks.map((c) => ({
               severity: c.severity,
@@ -386,7 +396,7 @@ export async function postImport(db: Db, clientId: string, importId: string, act
         await postJournal(tx, {
           entityId,
           date: new Date(`${e.date}T00:00:00.000Z`),
-          kind: imp.mode === "NERACA" ? "OPENING" : "IMPORTED",
+          kind: e.kind ?? (imp.mode === "NERACA" ? "OPENING" : "IMPORTED"),
           memo: `${e.memo} · ${imp.fileName}`.slice(0, 300),
           ledgerImportId: imp.id,
           sourceRef: e.ref,
