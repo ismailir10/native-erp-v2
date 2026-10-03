@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LedgerImportForm } from "@/components/app/ledger-import-form";
+import { importKindLabel } from "@/lib/ledger-import/code";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { getCurrentMember } from "@/lib/tenant";
@@ -74,7 +75,7 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
                         <span className="font-mono text-xs">{i.fileName}</span> <span className="text-muted-foreground">· {i.sheetName}</span>
                       </Link>
                     </TableCell>
-                    <TableCell>{i.mode === "NERACA" ? "Neraca" : "Buku besar"}</TableCell>
+                    <TableCell>{importKindLabel(i)}</TableCell>
                     <TableCell className="hidden text-muted-foreground md:table-cell">{formatDate(i.periodStart)}{+i.periodEnd !== +i.periodStart ? ` – ${formatDate(i.periodEnd)}` : ""}</TableCell>
                     <TableCell className="num text-right">{i.rowCount}</TableCell>
                     <TableCell>

@@ -7,7 +7,7 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { acceptCheckAction, discardLedgerDraftAction, postLedgerImportAction } from "@/app/actions";
 
-export function AcceptCheckButton({ clientId, checkId }: { clientId: string; checkId: string }) {
+export function AcceptCheckButton({ clientId, checkId, kind }: { clientId: string; checkId: string; kind: "difference" | "date" }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   return (
@@ -20,11 +20,11 @@ export function AcceptCheckButton({ clientId, checkId }: { clientId: string; che
         const r = await acceptCheckAction(clientId, checkId);
         setBusy(false);
         if (!r.ok) return toast.error(r.error);
-        toast.success("Selisih akan dicatat ke 1999 Belum Terklasifikasi");
+        toast.success(kind === "date" ? "Baris akan dicatat per tanggal yang diperbaiki" : "Selisih akan dicatat ke 1999 Belum Terklasifikasi");
         router.refresh();
       }}
     >
-      {busy && <Loader2 className="animate-spin" />} Terima & catat selisih ke 1999
+      {busy && <Loader2 className="animate-spin" />} {kind === "date" ? "Terima tanggal yang diperbaiki" : "Terima & catat selisih ke 1999"}
     </Button>
   );
 }

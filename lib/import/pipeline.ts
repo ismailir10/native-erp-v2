@@ -116,6 +116,12 @@ export async function importStatement(
     const first = early.reduce((a, b) => (+b.r.date < +a.r.date ? b : a)).r.date;
     throw new ParseError(`Saldo awal ${entity.shortName} dicatat per ${formatDate(opening.date)}, sudah termasuk transaksi sampai tanggal itu. File ini berisi ${early.length} transaksi bertanggal sampai ${formatDate(opening.date)} (paling awal ${formatDate(first)}). Pilih file yang mulai setelah tanggal itu, atau koreksi saldo awal lewat Jurnal Penyesuaian.`);
   }
+  // A trial balance (a Neraca-mode import's IMPORTED entry) already holds the movement up to its closing date: same refusal.
+  const tbMove = opening ? await db.journalEntry.findFirst({ where: { entityId: entity.id, kind: "IMPORTED", ledgerImport: { mode: "NERACA" } }, orderBy: { date: "desc" }, select: { date: true } }) : null;
+  const covered = tbMove ? fresh.filter(({ r }) => +r.date <= +tbMove.date) : [];
+  if (tbMove && covered.length) {
+    throw new ParseError(`Mutasi ${entity.shortName} sampai ${formatDate(tbMove.date)} sudah dicatat dari neraca saldo. File ini berisi ${covered.length} transaksi bertanggal sampai tanggal itu, yang akan terhitung dua kali. Pilih file yang mulai setelah ${formatDate(tbMove.date)}, atau hapus impor neraca saldo itu bila rekening koran yang dipakai.`);
+  }
 
   // A statement from before the account's first one must hand over to it: its closing balance is that statement's opening balance. One
   // that doesn't (another year, another account's file) would become the account's history and drive Saldo Awal — refused, whole file.

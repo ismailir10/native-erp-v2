@@ -26,6 +26,8 @@ export const REVERSAL_OWNERS = {
 
 type Owned = {
   kind: string;
+  /** A journal from an imported file (a trial balance's Adjustment): changed by importing again, never reversed by hand. */
+  ledgerImportId?: string | null;
   scheduleId: string | null;
   reversesId: string | null;
   reversedBy: { id: string; date: Date } | null;
@@ -45,6 +47,7 @@ type Owned = {
 /** Why an entry can't be reversed here (and where it is changed instead), or null. */
 export function reversalBlocker(e: Owned): string | null {
   if (e.kind !== "ADJUSTMENT") return "Hanya jurnal penyesuaian yang dibalik di sini; mutasi bank diubah lewat Ubah akun, file impor lewat impor ulang.";
+  if (e.ledgerImportId) return "Jurnal dari impor file (kolom Adjustment neraca saldo): ubah lewat impor ulang, atau hapus impornya.";
   if (e.reversedBy) return `Jurnal ini sudah dibalik per ${formatDate(e.reversedBy.date)}.`;
   if (e.reversesId) return "Ini jurnal pembalik; catat jurnal baru bila perlu.";
   if (e.scheduleId) return "Jurnal terjadwal: hentikan atau ubah jadwalnya di Jurnal Penyesuaian.";

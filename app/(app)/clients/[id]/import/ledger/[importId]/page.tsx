@@ -8,7 +8,7 @@ import { loadClientPage } from "@/lib/client-page";
 import type { SearchParams } from "@/lib/scope";
 import { formatDate } from "@/lib/format";
 import { FS_LINES, type FsLine } from "@/lib/coa/template";
-import { importSourceAccounts } from "@/lib/ledger-import/post";
+import { ACCEPTABLE_CHECKS, importSourceAccounts } from "@/lib/ledger-import/post";
 import { NEW_ACCOUNT_FS_LINES } from "@/lib/ledger-import/mapping";
 import { setupProgress } from "@/lib/setup-progress";
 import { resolveAiConfig } from "@/lib/settings/ai";
@@ -16,6 +16,7 @@ import { NextStep, PageHeader, Stat } from "@/components/app/page-header";
 import { StatusPill } from "@/components/app/status";
 import { MappingPanel } from "@/components/app/mapping-panel";
 import { AcceptCheckButton, DiscardDraftButton, PostImportButton } from "@/components/app/ledger-import-actions";
+import { importKindLabel } from "@/lib/ledger-import/code";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
@@ -40,13 +41,13 @@ export default async function LedgerImportPage({ params, searchParams }: { param
   const rank = { BLOCK: 0, REVIEW: 1, INFO: 2 } as const;
   const checks = [...imp.checks].sort((a, b) => rank[a.severity] - rank[b.severity]);
   const openBlock = checks.filter((c) => c.severity === "BLOCK" && !c.accepted);
-  const fixable = openBlock.filter((c) => c.code === "UNBALANCED");
-  const hardBlock = openBlock.filter((c) => c.code !== "UNBALANCED");
+  const fixable = openBlock.filter((c) => ACCEPTABLE_CHECKS.includes(c.code));
+  const hardBlock = openBlock.filter((c) => !ACCEPTABLE_CHECKS.includes(c.code));
   const reviews = checks.filter((c) => c.severity === "REVIEW");
   const unmapped = sources.filter((s) => !s.accountId);
   const entities = [...new Set(sources.map((s) => s.entityId))].map((id) => client.entities.find((e) => e.id === id)!).filter(Boolean);
   const ready = !posted && !openBlock.length && !unmapped.length;
-  const kind = imp.mode === "NERACA" ? "neraca" : "buku besar";
+  const kind = importKindLabel(imp).replace(/^./, (c) => c.toLowerCase());
   const isAdmin = (await getCurrentMember()).role === "ADMIN";
 
   return (
@@ -183,7 +184,7 @@ function CheckRow({ c, clientId, posted }: { c: { id: string; severity: "BLOCK" 
         </div>
         {c.refs.length > 0 && <div className="font-mono text-xs break-all text-muted-foreground">{c.refs.slice(0, 8).join(", ")}{c.refs.length > 8 ? ` … (+${c.refs.length - 8})` : ""}</div>}
       </div>
-      {c.code === "UNBALANCED" && !c.accepted && !posted && <AcceptCheckButton clientId={clientId} checkId={c.id} />}
+      {ACCEPTABLE_CHECKS.includes(c.code) && !c.accepted && !posted && <AcceptCheckButton clientId={clientId} checkId={c.id} kind={c.code === "DATE_TYPO" ? "date" : "difference"} />}
     </div>
   );
 }
