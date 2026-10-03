@@ -190,6 +190,7 @@ model Client {
   leases          Lease[]
   periodUnlocks   PeriodUnlockLog[]
   findings        Finding[]
+  auditEvents     AuditEvent[]
   coaVersion      Int                  @default(1)
 
   @@index([firmId])
@@ -329,6 +330,29 @@ model Finding {
 
   @@unique([clientId, number])
   @@index([entityId, status])
+}
+
+/// Riwayat perubahan (ADR 0013): one row per change a person made to a client's books or their decisions — who, when, what kind, the
+/// subject (`bankTx:<id>`, `import:<id>`, `control:<periodId>:<key>`, …), a Bahasa summary and the before → after. Written in the same
+/// transaction as the change, append-only: never updated, never deleted (except with its client).
+model AuditEvent {
+  id        String      @id @default(cuid())
+  firmId    String
+  clientId  String
+  client    Client      @relation(fields: [clientId], references: [id])
+  entityId  String?
+  /// CLASSIFY · UNPAIR · IMPORT_REMOVED · CONTROL_NOTE · MAPPING · FINDING_RESOLVED
+  kind      String
+  subject   String
+  summary   String
+  before    Json?
+  after     Json?
+  actorId   String?
+  actor     FirmMember? @relation("AuditEventBy", fields: [actorId], references: [id])
+  createdAt DateTime    @default(now())
+
+  @@index([clientId, createdAt])
+  @@index([clientId, subject])
 }
 
 /// Audit trail of reopening a closed month: admin only, with the reason typed at the time. Never edited; kept when the period is locked again.
@@ -939,6 +963,7 @@ model FirmMember {
   taxPostings      TaxPosting[]
   taxLosses        TaxLossCarryforward[]
   findingsOpened   Finding[]             @relation("FindingOpenedBy")
+  auditEvents      AuditEvent[]          @relation("AuditEventBy")
   findingsResolved Finding[]             @relation("FindingResolvedBy")
   proposalsDecided ProposedEntry[]       @relation("ProposalDecidedBy")
 

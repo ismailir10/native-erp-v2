@@ -16,6 +16,8 @@ import { LedgerImportForm } from "@/components/app/ledger-import-form";
 import { importKindLabel } from "@/lib/ledger-import/code";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
+import { getCurrentMember } from "@/lib/tenant";
+import { RemoveImportButton } from "@/components/app/remove-import";
 
 export const metadata = { title: "Impor Mutasi" };
 
@@ -31,6 +33,8 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
   });
   const ledgerImports = await prisma.ledgerImport.findMany({ where: { clientId: client.id }, orderBy: { createdAt: "desc" }, take: 30, include: { _count: { select: { entries: true } }, importedBy: { select: { name: true } }, postedBy: { select: { name: true } } } });
   const hasBanks = banks.length > 0;
+  // Removing an import (ADR 0013) is an admin's decision, like reopening a month.
+  const isAdmin = (await getCurrentMember()).role === "ADMIN";
   const tab = !hasBanks || sp.tab === "ledger" ? "ledger" : "statement";
 
   let sample: { bankAccountId: string; fileName: string } | undefined;
@@ -128,13 +132,14 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
                 <TableHead>Periode</TableHead>
                 <TableHead className="text-right">Baris</TableHead>
                 <TableHead>Saldo berjalan</TableHead>
-                <TableHead className="pr-6">Diimpor</TableHead>
+                <TableHead className={isAdmin ? undefined : "pr-6"}>Diimpor</TableHead>
+                {isAdmin && <TableHead className="w-24 pr-6"><span className="sr-only">Hapus</span></TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {imports.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="pl-6 text-muted-foreground">Belum ada rekening koran yang diimpor untuk klien ini.</TableCell>
+                  <TableCell colSpan={isAdmin ? 7 : 6} className="pl-6 text-muted-foreground">Belum ada rekening koran yang diimpor untuk klien ini.</TableCell>
                 </TableRow>
               )}
               {imports.map((i) => (
@@ -147,7 +152,8 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
                   <TableCell className="text-muted-foreground">{formatDate(i.periodStart)} – {formatDate(i.periodEnd)}</TableCell>
                   <TableCell className="num text-right">{i.rowCount}{i.duplicateCount ? <span className="text-muted-foreground"> ({i.duplicateCount} duplikat)</span> : null}</TableCell>
                   <TableCell><StatusPill status={i.continuityOk ? "PASS" : "REVIEW"} label={i.continuityOk ? "Nyambung" : "Ada celah"} /></TableCell>
-                  <TableCell className="pr-6 text-muted-foreground">{formatDate(i.createdAt)}<span className="block text-xs">oleh {i.importedBy?.name ?? "Sistem"}</span></TableCell>
+                  <TableCell className={isAdmin ? "text-muted-foreground" : "pr-6 text-muted-foreground"}>{formatDate(i.createdAt)}<span className="block text-xs">oleh {i.importedBy?.name ?? "Sistem"}</span></TableCell>
+                  {isAdmin && <TableCell className="pr-6 text-right"><RemoveImportButton clientId={client.id} importId={i.id} kind="statement" fileName={i.fileName} /></TableCell>}
                 </TableRow>
               ))}
             </TableBody>

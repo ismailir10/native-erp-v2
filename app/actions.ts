@@ -34,6 +34,8 @@ import { addBankAccount, addClient, addEntity, OnboardingError, type NewClientIn
 import { EntitySettingsError, setReportingFramework } from "@/lib/entity-settings";
 import { OpeningError, postOpening, type OpeningLineInput } from "@/lib/opening";
 import { FindingError, resolveOpeningFinding } from "@/lib/findings";
+import { removeLedgerImport, removeStatementImport, RemoveImportError } from "@/lib/imports/remove";
+import { saveControlNote } from "@/lib/controls/ack";
 import type { TaxTag, WithholdingKind } from "@/lib/generated/prisma/enums";
 import { RateError, upsertRate, validateRateInput } from "@/lib/fx/rates";
 import { MAX_UPLOAD_BYTES } from "@/lib/upload";
@@ -63,7 +65,7 @@ function fail(e: unknown): { ok: false; error: string; needsPassword?: boolean; 
   if (e instanceof PdfPasswordError) return { ok: false, error: e.message, needsPassword: true };
   if (e instanceof YearNeededError) return { ok: false, error: e.message, needsYear: true, yearGuess: e.guess };
   if (e instanceof DeleteClientError) return { ok: false, error: e.message };
-  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError || e instanceof FindingError || e instanceof MoneyError || e instanceof RateError || e instanceof RevaluationError || e instanceof LedgerImportError || e instanceof MappingError || e instanceof EntitySettingsError) return { ok: false, error: e.message };
+  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError || e instanceof FindingError || e instanceof RemoveImportError || e instanceof MoneyError || e instanceof RateError || e instanceof RevaluationError || e instanceof LedgerImportError || e instanceof MappingError || e instanceof EntitySettingsError) return { ok: false, error: e.message };
   const infra = infraErrorMessage(e);
   console.error(e);
   return { ok: false, error: infra ?? "Terjadi kesalahan tak terduga. Coba lagi." };
@@ -206,8 +208,8 @@ export async function ackControlAction(clientId: string, year: number, month: nu
     const period = await periodFor(clientId, year, month, { mustBeOpen: true });
     const ackedById = (await getCurrentMember()).id;
     // The note answers the control as it reads now; when its detail changes the note stops clearing it (lib/controls runControls).
-    const detail = (await runControls(prisma, clientId, year, month)).find((c) => c.key === controlKey)?.detail ?? null;
-    await prisma.controlAck.upsert({ where: { periodId_controlKey: { periodId: period.id, controlKey } }, create: { periodId: period.id, controlKey, note, detail, ackedById }, update: { note, detail, ackedById } });
+    const control = (await runControls(prisma, clientId, year, month)).find((c) => c.key === controlKey);
+    await saveControlNote(prisma, { clientId, periodId: period.id, year, month, controlKey, title: control ? `${control.title} · ${control.scope}` : undefined, note, detail: control?.detail ?? null, actorId: ackedById });
     revalidatePath(`/clients/${clientId}`, "layout");
     return { ok: true };
   } catch (e) {
@@ -844,6 +846,21 @@ export async function startGoogleAction(...args: Parameters<typeof googleActions
 export async function disconnectGoogleAction(...args: Parameters<typeof googleActions.disconnectGoogleAction>) { return googleActions.disconnectGoogleAction(...args); }
 
 /** Admin only: removes a client and all its books after the typed-name confirmation (lib/clients/delete.ts). */
+/** Hapus impor (ADR 0013): admin only; the lib refuses closed months and imports something else rests on. */
+export async function removeImportAction(input: { clientId: string; importId: string; kind: "statement" | "ledger"; reason: string }): Promise<Result> {
+  try {
+    const client = await getClientForFirm(input.clientId);
+    const member = await getCurrentMember();
+    const args = { clientId: client.id, importId: input.importId, reason: input.reason, actor: { id: member.id, role: member.role } };
+    if (input.kind === "statement") await removeStatementImport(prisma, args);
+    else await removeLedgerImport(prisma, args);
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
 export async function deleteClientAction(clientId: string, confirmName: string): Promise<Result> {
   let member;
   try {

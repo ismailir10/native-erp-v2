@@ -30,7 +30,7 @@ export type LedgerRow = {
   entry: { lines: { code: string; name: string; debit: string; credit: string }[] };
   /** Adjustments: whether *Balik jurnal* applies (blocker = why not, and where it is changed instead), and the entry's date. */
   reversal?: { entryId: string; blocker: string | null; date: string };
-  source: null | { bankTxId: string; accountCode: string | null; taxTag: string | null; whtKind: string | null; whtAmount: string; fileName: string; sheet: string | null; rowNumber: number; rawRow: string; description: string; amount: string; bank: string; method: string; reason: string; status: string; /** The other half of a transfer pair, when it has one. */ pairedWith?: string | null };
+  source: null | { bankTxId: string; accountCode: string | null; taxTag: string | null; whtKind: string | null; whtAmount: string; fileName: string; sheet: string | null; rowNumber: number; rawRow: string; description: string; amount: string; bank: string; method: string; reason: string; status: string; /** The other half of a transfer pair, when it has one. */ pairedWith?: string | null; /** Who changed this line, newest first (ADR 0013). */ history?: { at: string; actor: string; summary: string }[] };
   /** Ledger / Neraca import: file, entry rows, this line's row, the client's own account, and the original fx amount. */
   fileSource?: null | { fileName: string; entryRef: string; lineRef: string | null; sourceAccount: string | null; lineMemo: string | null; fx: string | null };
 };
@@ -151,6 +151,19 @@ export function LedgerTable({ rows, opening, currency = "IDR", accounts }: { row
                       <dt className="text-muted-foreground">Klasifikasi</dt><dd className="col-span-2 flex items-center gap-2"><MethodBadge method={open.source.method} /> <span className="text-xs text-muted-foreground">{open.source.reason}</span></dd>
                     </dl>
                     <pre className="mt-3 overflow-x-auto rounded-md bg-muted p-3 text-xs whitespace-pre-wrap break-all">{open.source.rawRow}</pre>
+                    {open.source.history && open.source.history.length > 0 && (
+                      <div className="mt-4 space-y-2 border-t pt-4" data-testid="line-history">
+                        <h4 className="text-sm font-semibold">Riwayat</h4>
+                        <ul className="space-y-1.5 text-sm">
+                          {open.source.history.map((h, i) => (
+                            <li key={i}>
+                              {h.summary}
+                              <span className="block text-xs text-muted-foreground">{h.actor} · {h.at}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                     {open.source.pairedWith && (
                       <div className="mt-4 space-y-2 border-t pt-4" data-testid="transfer-pair">
                         <h4 className="text-sm font-semibold">Pasangan transfer</h4>

@@ -1,3 +1,4 @@
+import { recordEvent } from "@/lib/audit";
 import { createHash } from "node:crypto";
 import type { Db, Tx } from "@/lib/db";
 import type { AccountTerm, AccountType, MapMethod } from "@/lib/generated/prisma/enums";
@@ -404,7 +405,21 @@ export async function acceptMappings(
         g.ids.push(p.sourceAccountId);
         groups.set(k, g);
       }
+      // Riwayat (ADR 0013): a source account moved from one client account to another (a first mapping is part of its import).
+      const codeOf = new Map((await tx.account.findMany({ where: { clientId }, select: { id: true, code: true, name: true } })).map((a) => [a.id, `${a.code} ${a.name}`]));
       for (const g of groups.values()) {
+        for (const s of sources.filter((x) => g.ids.includes(x.id) && x.accountId && x.accountId !== g.accountId)) {
+          await recordEvent(tx, {
+            clientId,
+            entityId: s.entityId,
+            kind: "MAPPING",
+            subject: `source:${s.id}`,
+            summary: `Akun sumber ${s.code} ${s.name}: ${codeOf.get(s.accountId!) ?? "?"} → ${codeOf.get(g.accountId) ?? "?"} (jurnal yang sudah dicatat tidak ikut pindah)`,
+            before: { account: codeOf.get(s.accountId!) ?? null },
+            after: { account: codeOf.get(g.accountId) ?? null },
+            actorId,
+          });
+        }
         await tx.sourceAccount.updateMany({ where: { id: { in: g.ids }, clientId }, data: { accountId: g.accountId, mappedBy: g.mappedBy, mappedById: actorId ?? null } });
       }
       return { mapped: items.length, created: toCreate.length };

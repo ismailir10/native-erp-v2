@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { BookOpen, Boxes, Building2, ChartColumn, HandCoins, KeyRound, ReceiptText, Warehouse, ChevronDown, ClipboardCheck, Coins, FileSpreadsheet, FolderOpen, Home, Inbox, Landmark, ListFilter, LogOut, NotebookPen, Plus, Scale, Settings2, SlidersHorizontal, Upload, Users } from "lucide-react";
+import { BookOpen, Boxes, Building2, ChartColumn, HandCoins, KeyRound, ReceiptText, Warehouse, ChevronDown, ClipboardCheck, Coins, FileSpreadsheet, FolderOpen, Home, Inbox, Landmark, ListFilter, LogOut, NotebookPen, Plus, Scale, Settings2, SlidersHorizontal, Upload, Users, History } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { BrandMark } from "@/components/app/brand-mark";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
@@ -35,6 +35,7 @@ const ACCOUNTING = [
 const SETUP = [
   { href: "/rates", label: "Kurs", icon: Coins },
   { href: "/settings", label: "Aturan klasifikasi", icon: ListFilter },
+  { href: "/history", label: "Riwayat perubahan", icon: History },
 ];
 
 export function AppSidebar({ firmName, clients, user, documents = true }: { firmName: string; clients: Client[]; user?: { name: string; role: string }; documents?: boolean }) {

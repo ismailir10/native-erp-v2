@@ -1,3 +1,4 @@
+import { recordEvent } from "@/lib/audit";
 import type { Db, Tx } from "@/lib/db";
 import type { FindingKind } from "@/lib/generated/prisma/enums";
 import { postJournal } from "@/lib/ledger/post";
@@ -92,6 +93,16 @@ export async function resolveOpeningFinding(db: Db, input: { clientId: string; f
       });
       entryId = entry.id;
     }
+    await recordEvent(tx, {
+      clientId: input.clientId,
+      entityId: f.entityId,
+      kind: "FINDING_RESOLVED",
+      subject: `finding:${f.id}`,
+      summary: `${findingLabel(f.number)} diselesaikan ke ${target.code} ${target.name}: ${decision}`,
+      before: { status: "OPEN", difference: f.amount.toString() },
+      after: { status: "RESOLVED", accountCode: target.code, moved: balance.toString(), decision },
+      actorId: input.actorId,
+    });
     return tx.finding.update({
       where: { id: f.id },
       data: { status: "RESOLVED", resolution: decision, resolvedEntryId: entryId, resolvedById: input.actorId ?? null, resolvedAt: new Date() },
