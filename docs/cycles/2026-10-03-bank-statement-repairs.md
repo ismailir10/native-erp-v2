@@ -96,7 +96,7 @@ cycle runs without a separate stop, like cycles 1–4.
       dedupes).
 - [x] T2 Tabular reader: backward year roll, dateless rows, SALDO AWAL with an amount, honest b3 message, sheet-month note, balance-only
       rows passed through. Accept: unit tests from the fixtures.
-- [ ] T3 PDF reader: second opening refuses, BCA continuation across a `TANGGAL` line and a page break. Accept: PDF fixture tests.
+- [x] T3 PDF reader: second opening refuses, BCA continuation across a `TANGGAL` line and a page break. Accept: PDF fixture tests.
 - [ ] T4 Accounting-rules rule 12; end-of-cycle gates, review pass, ship.
 
 ## Implementation
@@ -128,6 +128,14 @@ cycle runs without a separate stop, like cycles 1–4.
   - **(e1/e2)** a note counts rows dated outside their sheet's month.
 
   A period moved by a year typo follows the readers' convention (whole months). Test: `tests/unit/statement-reader-b1.test.ts`.
+- T3: `pdf.ts` `parseLines`:
+  - **(d2/d3)** a dated Saldo Awal row after transactions whose balance doesn't continue the last printed balance refuses the file. A
+    month's Saldo Awal that continues it is fine.
+  - **(g1)** a `TANGGAL :dd/mm` line (in the date or the description column) neither ends the row nor enters its description.
+  - **(g2)** BCA only: the last row before a reset is remembered, and undated description lines after the next page's repeated header
+    continue it. SMBC's lead lines are untouched.
+
+  Test: `tests/unit/statement-pdf-b1.test.ts`.
 
 ## Verification
 - T1: new tests `Tests 8 passed (8)`. The first full run failed `smbc-import` (the identity bug above); after the fix, lint +
@@ -136,5 +144,7 @@ cycle runs without a separate stop, like cycles 1–4.
 
 - T2: `tests/unit/statement-reader-b1.test.ts` + repair tests → `Tests 12 passed (12)`; lint + typecheck clean; `npm test` →
   `Test Files 143 passed (143) · Tests 1000 passed (1000)`; `demo:reset && verify:books` → ALL PASS (1765).
+- T3: `tests/unit/statement-pdf-b1.test.ts` → `Tests 2 passed (2)`; lint + typecheck clean; `npm test` →
+  `Test Files 144 passed (144) · Tests 1002 passed (1002)`.
 
 ## Ship Notes
