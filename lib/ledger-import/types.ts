@@ -41,7 +41,14 @@ export type LedgerRow = {
   voucher: string | null;
   /** Problems reading this row (non-numeric amount, missing date/account…) — become BLOCK checks. */
   errors: string[];
+  /** The file wrote a negative amount; it posts on the other side (same number) and is listed on the draft. */
+  negative?: boolean;
+  /** As written, when `negative`: a file total sums the columns as written. */
+  raw?: { debit: bigint; credit: bigint };
 };
+
+/** A grand-total row of a ledger file (Total/Jumlah, no date): compared with the rows. Signed sen. */
+export type LedgerTotal = { ref: string; label: string; debit: bigint; credit: bigint };
 
 export type NeracaRow = {
   ref: string;
@@ -60,5 +67,5 @@ export type NeracaRow = {
 export type NeracaTotal = { ref: string; label: string; amount: bigint; kind: "ASSETS" | "LIAB_EQUITY" | "OTHER" };
 
 export type ReadResult =
-  | { mode: "LEDGER"; sheet: string; rows: LedgerRow[] }
+  | { mode: "LEDGER"; sheet: string; rows: LedgerRow[]; totals?: LedgerTotal[] }
   | { mode: "NERACA"; sheet: string; date: Date | null; rows: NeracaRow[]; totals: NeracaTotal[] };

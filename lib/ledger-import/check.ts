@@ -1,7 +1,7 @@
 import { convertMinor, exponentOf, isCurrency } from "@/lib/fx/currency";
 import { centsToMinor, formatMoney, roundEntry } from "@/lib/money";
-import { formatDate } from "@/lib/format";
-import type { LedgerRow, NeracaRow, NeracaTotal } from "@/lib/ledger-import/types";
+import { dateOnly, formatDate, formatPeriod } from "@/lib/format";
+import type { LedgerRow, LedgerTotal, NeracaRow, NeracaTotal } from "@/lib/ledger-import/types";
 
 /**
  * Source checks + posting plan (accounting-rules §15a). Pure: no DB, no AI.
@@ -55,7 +55,7 @@ export type Plan = { entries: PlanEntry[]; checks: Check[]; accounts: Map<string
 type RateFor = (currency: string, functional: string, date: Date) => string | null;
 
 const MAX_REFS = 50;
-const cap = (refs: string[]) => (refs.length > MAX_REFS ? [...refs.slice(0, MAX_REFS), `… +${refs.length - MAX_REFS} baris`] : refs);
+export const cap = (refs: string[]) => (refs.length > MAX_REFS ? [...refs.slice(0, MAX_REFS), `… +${refs.length - MAX_REFS} baris`] : refs);
 export const accountKey = (entityKey: string, code: string) => `${entityKey}|${code}`;
 
 /** Compress "S!5, S!6, S!7" → "S!5-7" for entry refs. A side-by-side file's refs carry a column ("S!A5", "S!F5") and are grouped per column. */
@@ -101,13 +101,74 @@ const DEBIT_NORMAL = /(piutang|receivable|\bkas\b|\bcash\b|\bbank\b|prepaid|diba
 const NO_SIGN_CHECK = /(revenue|income|expense|pendapatan|beban|biaya|interest|bunga|allowance|penyisihan|akumulasi|accumulat|kontra|contra|non-bank|gain|loss|laba|rugi|in transit)/i;
 const CREDIT_NORMAL = /(\butang\b|\bhutang\b|payable|accrued|masih harus dibayar)/i; // "Piutang" contains "utang"
 
+const monthIndex = (d: Date) => d.getUTCFullYear() * 12 + d.getUTCMonth();
+const periodOf = (i: number) => formatPeriod(Math.floor(i / 12), (i % 12) + 1);
+
+/** Months with no row between the first and the last (indexes as `monthIndex`). */
+export function missingMonths(months: number[]): number[] {
+  const set = new Set(months);
+  const out: number[] = [];
+  for (let m = Math.min(...months) + 1; m < Math.max(...months); m++) if (!set.has(m)) out.push(m);
+  return out;
+}
+export const periodList = (months: number[]) => (months.length > 4 ? `${months.slice(0, 4).map(periodOf).join(", ")} dan ${months.length - 4} bulan lain` : months.map(periodOf).join(", "));
+
+/**
+ * A year typo (2023 in a 2026 file, use-case UC-B1f): rows more than six months from the file's main run of months, when they are few (≤ 5
+ * and under a fifth of the rows). Each gets the one date with the same day and month inside the main run, when there is exactly one.
+ */
+export function dateOutliers(rows: LedgerRow[]): { row: LedgerRow; fix: Date | null; main: { start: Date; end: Date } }[] {
+  const dated = rows.filter((r) => r.date && !r.errors.length);
+  const months = [...new Set(dated.map((r) => monthIndex(r.date!)))].sort((a, b) => a - b);
+  const runs: number[][] = [];
+  for (const m of months) {
+    const last = runs[runs.length - 1];
+    if (last && m - last[last.length - 1] <= 6) last.push(m);
+    else runs.push([m]);
+  }
+  if (runs.length < 2) return [];
+  const size = (run: number[]) => dated.filter((r) => run.includes(monthIndex(r.date!))).length;
+  const main = runs.reduce((a, b) => (size(b) > size(a) ? b : a));
+  const inMain = dated.filter((r) => main.includes(monthIndex(r.date!)));
+  const outliers = dated.filter((r) => !main.includes(monthIndex(r.date!)));
+  if (outliers.length > 5 || outliers.length * 5 >= dated.length) return [];
+  const start = new Date(Math.min(...inMain.map((r) => +r.date!)));
+  const end = new Date(Math.max(...inMain.map((r) => +r.date!)));
+  return outliers.map((row) => {
+    const d = row.date!;
+    const candidates: Date[] = [];
+    for (let y = start.getUTCFullYear(); y <= end.getUTCFullYear(); y++) {
+      const c = dateOnly(y, d.getUTCMonth() + 1, d.getUTCDate());
+      if (c.getUTCDate() === d.getUTCDate() && +c >= +start && +c <= +end) candidates.push(c);
+    }
+    return { row, fix: candidates.length === 1 ? candidates[0] : null, main: { start, end } };
+  });
+}
+
 export function planLedger(
-  rows: LedgerRow[],
-  opts: { entities: Map<string, EntityInfo>; currencyMode: CurrencyMode; rateFor?: RateFor; existingNames?: Map<string, string> },
+  input: LedgerRow[],
+  opts: { entities: Map<string, EntityInfo>; currencyMode: CurrencyMode; rateFor?: RateFor; existingNames?: Map<string, string>; totals?: LedgerTotal[] },
 ): Plan {
   const checks: Check[] = [];
   const accounts: Plan["accounts"] = new Map();
   const entityKeyOf = (r: LedgerRow) => r.entity ?? "";
+
+  // BLOCK: a year typo with one plain fix; accepting it posts the row on the corrected date, its memo keeps the date as written.
+  // A far date with no such fix may be real (an old adjustment): REVIEW, posted as written.
+  const fixes = new Map<LedgerRow, Date>();
+  for (const o of dateOutliers(input)) {
+    const span = `${formatDate(o.main.start)} – ${formatDate(o.main.end)}`;
+    if (o.fix) {
+      fixes.set(o.row, o.fix);
+      checks.push({ severity: "BLOCK", code: "DATE_TYPO", message: `${o.row.ref}: tanggal ${formatDate(o.row.date!)} jauh dari periode file (${span}). Salah ketik tahun? Terima untuk mencatatnya per ${formatDate(o.fix)}; tanggal asli tetap di memo.`, refs: [o.row.ref], entityKey: entityKeyOf(o.row), date: o.fix, acceptable: true });
+    } else {
+      checks.push({ severity: "REVIEW", code: "DATE_OUTLIER", message: `${o.row.ref}: tanggal ${formatDate(o.row.date!)} jauh dari periode file (${span}) dan dicatat apa adanya. Bila salah ketik, perbaiki di file lalu unggah ulang.`, refs: [o.row.ref], entityKey: entityKeyOf(o.row) });
+    }
+  }
+  const rows = input.map((r) => {
+    const fix = fixes.get(r);
+    return fix ? { ...r, date: fix, description: [r.description, `tanggal di file ${formatDate(r.date!)}`].filter(Boolean).join(" · ") } : r;
+  });
 
   // BLOCK: unreadable rows.
   for (const r of rows.filter((x) => x.errors.length)) {
@@ -126,6 +187,28 @@ export function planLedger(
   }
 
   const usable = rows.filter((r) => !r.errors.length && opts.entities.has(entityKeyOf(r)) && (!r.currency || isCurrency(r.currency)));
+
+  // REVIEW: negative amounts posted on the other side — the same number, never made positive on its own side.
+  const negatives = usable.filter((r) => r.negative);
+  if (negatives.length) {
+    checks.push({ severity: "REVIEW", code: "NEGATIVE_AMOUNT", message: `${negatives.length} baris menulis angka negatif. Angkanya dicatat di sisi sebaliknya (debit negatif = kredit), tidak dibuat positif di sisi yang sama. Pastikan itu maksud file.`, refs: cap(negatives.map((r) => r.ref)) });
+  }
+
+  // The file's own grand total (the last Total row) against its rows, summed as written.
+  const grand = opts.totals?.[opts.totals.length - 1];
+  if (grand) {
+    const readable = rows.filter((r) => !r.errors.length);
+    const debit = readable.reduce((s, r) => s + (r.raw?.debit ?? r.debit), 0n);
+    const credit = readable.reduce((s, r) => s + (r.raw?.credit ?? r.credit), 0n);
+    const cur = [...opts.entities.values()][0]?.currency ?? "IDR";
+    const money = (c: bigint) => formatMoney(centsToMinor(c, cur), cur);
+    const largest = opts.totals!.every((t) => t.debit <= grand.debit);
+    if (grand.debit === debit && grand.credit === credit) {
+      checks.push({ severity: "INFO", code: "TOTAL_OK", message: `"${grand.label}" di file cocok dengan jumlah baris: debit ${money(debit)}, kredit ${money(credit)}.`, refs: [grand.ref] });
+    } else if (largest) {
+      checks.push({ severity: "REVIEW", code: "TOTAL_MISMATCH", message: `"${grand.label}" di file: debit ${money(grand.debit)}, kredit ${money(grand.credit)}; jumlah baris yang terbaca: debit ${money(debit)}, kredit ${money(credit)}. Ada baris yang tidak terbaca, atau total file tidak mencakup semua baris.`, refs: [grand.ref] });
+    }
+  }
 
   // Source accounts + REVIEW: same code, different names.
   for (const r of usable) {
@@ -296,6 +379,16 @@ export function planLedger(
         });
         break;
       }
+    }
+  }
+
+  // REVIEW: a month with no row between the file's first and last month, per entity.
+  for (const [ek, info] of opts.entities) {
+    const months = usable.filter((r) => entityKeyOf(r) === ek).map((r) => monthIndex(r.date!));
+    if (!months.length) continue;
+    const gaps = missingMonths(months);
+    if (gaps.length) {
+      checks.push({ severity: "REVIEW", code: "MISSING_MONTH", message: `${info.name}: tidak ada baris di ${periodList(gaps)} (file berisi ${periodOf(Math.min(...months))} – ${periodOf(Math.max(...months))}). Pastikan bulan itu memang tanpa transaksi, bukan hilang dari file.`, refs: [], entityKey: ek });
     }
   }
 

@@ -8,7 +8,7 @@ import { loadRates, lookupRate, upsertFileRate } from "@/lib/fx/rates";
 import { formatRate, formatRateId, isCurrency, parseRate } from "@/lib/fx/currency";
 import { ParseError } from "@/lib/import/types";
 import { COLUMN_LABEL, columnLetter, detectTables, readSheets, readTable, reportKind } from "@/lib/ledger-import/read";
-import { accountKey, planLedger, planNeraca, type Check, type CurrencyMode, type EntityInfo, type Plan, type PlanEntry } from "@/lib/ledger-import/check";
+import { accountKey, cap, missingMonths, periodList, planLedger, planNeraca, type Check, type CurrencyMode, type EntityInfo, type Plan, type PlanEntry } from "@/lib/ledger-import/check";
 import { inferType, learnScheme, suggestMappings } from "@/lib/ledger-import/mapping";
 import type { NeracaRow, TableCandidate } from "@/lib/ledger-import/types";
 
@@ -117,8 +117,10 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
     const existingNames = new Map<string, string>();
     for (const [label, ei] of entityInfos) for (const s of existing.filter((x) => x.entityId === ei.entityId)) existingNames.set(accountKey(label, s.code), s.name);
     const rates = currencyMode === "CONVERT" ? await loadRates(db, input.firmId) : [];
-    plan = planLedger(read.rows, { entities: entityInfos, currencyMode, rateFor: (c, f, d) => lookupRate(rates, c, f, d), existingNames });
-    const dates = read.rows.filter((r) => r.date).map((r) => +r.date!);
+    plan = planLedger(read.rows, { entities: entityInfos, currencyMode, rateFor: (c, f, d) => lookupRate(rates, c, f, d), existingNames, totals: read.totals });
+    plan.checks.push(...(await ledgerBookChecks(db, plan, entityInfos)));
+    // The file's period follows the dates that will post (a year typo, once accepted, posts on its corrected date).
+    const dates = plan.entries.length ? plan.entries.map((e) => +e.date) : read.rows.filter((r) => r.date).map((r) => +r.date!);
     periodStart = new Date(dates.length ? Math.min(...dates) : Date.now());
     periodEnd = new Date(dates.length ? Math.max(...dates) : Date.now());
   } else {
@@ -234,17 +236,74 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
   return { status: "STAGED", importId: imp.id, mode: read.mode, checks: plan.checks, entries: entries.length, sourceAccounts: plan.accounts.size, unmapped };
 }
 
+/**
+ * A GL file against the books it lands in (use-case UC-K2 / UC-B4):
+ * - rows on or before the entity's Saldo Awal are already in it: BLOCK, never counted twice;
+ * - no Saldo Awal yet: INFO naming both ways in (a Neraca on the day before, or a later Neraca as the bridge's anchor). Not REVIEW: a GL
+ *   file often carries its own opening rows, which is why the close asks for Saldo Awal only when no GL was imported;
+ * - months with no GL between this file and the entity's GL already posted: REVIEW.
+ */
+async function ledgerBookChecks(db: Db, plan: Plan, entities: Map<string, EntityInfo>): Promise<Check[]> {
+  const checks: Check[] = [];
+  const monthIndex = (d: Date) => d.getUTCFullYear() * 12 + d.getUTCMonth();
+  for (const [ek, info] of entities) {
+    const mine = plan.entries.filter((e) => e.entityKey === ek);
+    if (!mine.length) continue;
+    const start = new Date(Math.min(...mine.map((e) => +e.date)));
+    const end = new Date(Math.max(...mine.map((e) => +e.date)));
+    const opening = await db.journalEntry.findFirst({ where: { entityId: info.entityId, kind: "OPENING" }, orderBy: { date: "asc" }, select: { date: true } });
+    if (opening) {
+      const before = mine.filter((e) => +e.date <= +opening.date);
+      if (before.length) {
+        const next = new Date(+opening.date + 86_400_000);
+        checks.push({
+          severity: "BLOCK",
+          code: "BEFORE_OPENING",
+          message: `${info.name}: ${before.length} jurnal bertanggal s.d. ${formatDate(opening.date)}, tanggal Saldo Awal. Angkanya sudah termasuk di saldo awal, jadi akan terhitung dua kali. Impor buku besar mulai ${formatDate(next)}; atau, bila Saldo Awal itu dari impor Neraca, hapus impor itu lalu impor ulang Neraca sesudah buku besar ini, sehingga Buku membangun saldo awal dari mutasi.`,
+          refs: cap(before.flatMap((e) => e.lines.map((l) => l.ref))),
+          entityKey: ek,
+        });
+      }
+    } else {
+      const dayBefore = new Date(+start - 86_400_000);
+      checks.push({
+        severity: "INFO",
+        code: "NO_OPENING",
+        message: `${info.name} belum punya Saldo Awal; buku besar ini mulai ${formatDate(start)}. Bila file tidak memuat saldo awal, impor Neraca per ${formatDate(dayBefore)} sebagai Saldo Awal, atau Neraca per tanggal sesudahnya (mis. akhir tahun): Buku lalu membangun saldo awal dari mutasi (opening bridge).`,
+        refs: [],
+        entityKey: ek,
+      });
+    }
+    // Months between this file and the GL already posted for the entity.
+    const [prior, later] = await Promise.all([
+      db.journalEntry.findFirst({ where: { entityId: info.entityId, kind: "IMPORTED", date: { lt: start } }, orderBy: { date: "desc" }, select: { date: true } }),
+      db.journalEntry.findFirst({ where: { entityId: info.entityId, kind: "IMPORTED", date: { gt: end } }, orderBy: { date: "asc" }, select: { date: true } }),
+    ]);
+    for (const [a, b, side] of [[prior?.date, start, "sebelum"], [end, later?.date, "sesudah"]] as const) {
+      if (!a || !b) continue;
+      const gaps = missingMonths([monthIndex(a), monthIndex(b)]);
+      if (gaps.length) {
+        checks.push({ severity: "REVIEW", code: "MISSING_MONTH", message: `${info.name}: buku besar ${periodList(gaps)} belum ada di antara file ini dan buku besar yang sudah dicatat ${side}nya (${formatDate(side === "sebelum" ? a : b)}).`, refs: [], entityKey: ek });
+      }
+    }
+  }
+  return checks;
+}
+
 /** Rule 5: one opening entry per entity. */
 async function assertNoOpening(db: Db, entityIds: string[]) {
   const opening = await db.journalEntry.findFirst({ where: { entityId: { in: entityIds }, kind: "OPENING" } });
   if (opening) throw new LedgerImportError(`Saldo awal entitas ini sudah ada (${formatDate(opening.date)}). Koreksi lewat Jurnal Penyesuaian.`);
 }
 
-/** Accept an acceptable BLOCK (unbalanced group): its difference will post to 1999, visible until fixed. */
+/** BLOCK checks the accountant may accept: an unbalanced group (its difference posts to 1999) or a year typo (posts on the corrected date). */
+export const ACCEPTABLE_CHECKS = ["UNBALANCED", "DATE_TYPO"];
+
+/** Accept an acceptable BLOCK: an unbalanced group's difference posts to 1999, visible until fixed; a year typo posts on the corrected date. */
 export async function acceptCheck(db: Db, clientId: string, checkId: string) {
   const check = await db.importCheck.findFirst({ where: { id: checkId, ledgerImport: { clientId, status: "DRAFT" } } });
   if (!check) throw new LedgerImportError("Pemeriksaan tidak ditemukan");
-  if (check.severity !== "BLOCK" || check.code !== "UNBALANCED") throw new LedgerImportError("Hanya jurnal tidak seimbang yang bisa diterima; perbaiki file untuk masalah lain.");
+  if (check.severity !== "BLOCK" || !ACCEPTABLE_CHECKS.includes(check.code)) throw new LedgerImportError("Hanya jurnal tidak seimbang atau tanggal salah ketik yang bisa diterima; perbaiki file untuk masalah lain.");
   return db.importCheck.update({ where: { id: checkId }, data: { accepted: true } });
 }
 

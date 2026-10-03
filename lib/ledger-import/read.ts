@@ -6,7 +6,7 @@ import { readCsv } from "@/lib/import/parsers/common";
 import { ParseError } from "@/lib/import/types";
 import { readableXlsx, sniffFile } from "@/lib/import/workbook";
 import type { AccountType } from "@/lib/generated/prisma/enums";
-import type { Columns, ColumnKey, LedgerRow, NeracaRow, NeracaTotal, RawCell, RawSheet, ReadResult, TableCandidate } from "@/lib/ledger-import/types";
+import type { Columns, ColumnKey, LedgerRow, LedgerTotal, NeracaRow, NeracaTotal, RawCell, RawSheet, ReadResult, TableCandidate } from "@/lib/ledger-import/types";
 import { NO_CODE_PREFIX } from "@/lib/ledger-import/code";
 
 /**
@@ -341,9 +341,12 @@ function detectJurnalNeraca(sheet: RawSheet): TableCandidate | null {
 
 const RATE_NOTE = /\b(?:rate|kurs)\s*[:=]\s*([0-9][0-9.,]*)/i;
 
-export function readLedger(sheet: RawSheet, t: TableCandidate): LedgerRow[] {
+const TOTAL_LABEL = /^(grand\s+)?(total|jumlah)\b/i;
+
+export function readLedger(sheet: RawSheet, t: TableCandidate): { rows: LedgerRow[]; totals: LedgerTotal[] } {
   const c = t.columns;
   const rows: LedgerRow[] = [];
+  const totals: LedgerTotal[] = [];
   for (let r = t.headerRow + 1; r < sheet.rows.length; r++) {
     const row = sheet.rows[r] ?? [];
     if (row.every(isBlank)) continue;
@@ -355,7 +358,14 @@ export function readLedger(sheet: RawSheet, t: TableCandidate): LedgerRow[] {
     const creditCell = get("credit");
     // Section/total/banner rows: no account and no amounts.
     if (!code && !name && isBlank(debitCell) && isBlank(creditCell)) continue;
-    if (/^total\b/i.test(code || name) && isBlank(dateCell)) continue;
+    // A total row has no date and says Total/Jumlah in its account cells or, with no account, anywhere in the row: kept for the tie-out.
+    const totalLabel = isBlank(dateCell) && (TOTAL_LABEL.test(code || name) || (!code && !name && row.some((x) => TOTAL_LABEL.test(cellText(x)))));
+    if (totalLabel) {
+      const d = cellCents(debitCell);
+      const k = cellCents(creditCell);
+      if (typeof d === "bigint" && typeof k === "bigint") totals.push({ ref: `${sheet.name}!${r + 1}`, label: (code || name || row.map(cellText).find((x) => TOTAL_LABEL.test(x)) || "Total").slice(0, 80), debit: d, credit: k });
+      continue;
+    }
 
     const errors: string[] = [];
     const date = cellDate(dateCell);
@@ -367,7 +377,9 @@ export function readLedger(sheet: RawSheet, t: TableCandidate): LedgerRow[] {
     if (typeof credit === "string") errors.push(`kredit bukan angka: ${credit}`);
     let d = typeof debit === "bigint" ? debit : 0n;
     let k = typeof credit === "bigint" ? credit : 0n;
-    // Negative amounts belong on the other side.
+    // Negative amounts belong on the other side (the same number); the draft lists these rows.
+    const negative = d < 0n || k < 0n;
+    const raw = { debit: d, credit: k };
     if (d < 0n) [d, k] = [0n, k - d];
     if (k < 0n) [d, k] = [d - k, 0n];
     const notes = cellText(get("notes"));
@@ -386,9 +398,10 @@ export function readLedger(sheet: RawSheet, t: TableCandidate): LedgerRow[] {
       description: cellText(get("desc")).replace(/\s+/g, " ").slice(0, 300),
       voucher: cellText(get("voucher")) || null,
       errors,
+      ...(negative ? { negative: true, raw } : {}),
     });
   }
-  return rows;
+  return { rows, totals };
 }
 
 const SECTION_ASSET = /^(assets?|aset|aktiva|harta)\b/i;
@@ -532,6 +545,6 @@ function guessEquity(label: string, t: AccountType | null): AccountType | null {
 export function readTable(sheets: RawSheet[], t: TableCandidate): ReadResult {
   const sheet = sheets.find((s) => s.name === t.sheet);
   if (!sheet) throw new ParseError(`Sheet "${t.sheet}" tidak ditemukan`);
-  if (t.mode === "LEDGER") return { mode: "LEDGER", sheet: t.sheet, rows: readLedger(sheet, t) };
+  if (t.mode === "LEDGER") return { mode: "LEDGER", sheet: t.sheet, ...readLedger(sheet, t) };
   return { mode: "NERACA", sheet: t.sheet, ...readNeraca(sheet, t) };
 }

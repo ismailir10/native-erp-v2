@@ -61,10 +61,10 @@ The cycle runs without a separate stop, like cycles 1–3.
       - So is a gap between this file and the entity's earlier posted GL imports.
       - A Neraca with several period columns reads the earliest as Saldo Awal. A REVIEW names the other columns and any month missing
         between them (*kolom Februari 2026 tidak ada*).
-- [ ] **Year typo (B1f, K2).** A GL row dated more than six months from every other row's month, in a file where such rows are under 2%
-      and at most 5 rows, is BLOCK *Tanggal 05/03/2023 jauh dari periode file (Jan–Jun 2026)*. When the same day and month in the file's
-      year falls inside the file's period, the accountant may **accept** reading it that way. The journal then posts on the corrected date,
-      and its memo keeps the date as written. Otherwise the file must be fixed.
+- [ ] **Year typo (B1f, K2).** A GL row dated more than six months from the file's main run of months is flagged, when such rows are at
+      most 5 and under a fifth of the file. When exactly one date with the same day and month falls inside the file's period, it is BLOCK
+      *tanggal 5 Mar 2023 jauh dari periode file*, and the accountant may **accept** that date. The journal then posts on the corrected
+      date, and its memo keeps the date as written. Otherwise it is REVIEW and posts as written; it may be a real old adjustment.
 - [ ] **No double counting around Saldo Awal (bug).**
       - GL rows dated on or before the entity's Saldo Awal are BLOCK *sudah termasuk di saldo awal*. The way out is named: import from
         the next day, or remove the Saldo Awal import and import that Neraca again as the anchor.
@@ -79,7 +79,8 @@ The cycle runs without a separate stop, like cycles 1–3.
       Neraca has none). An unbalanced anchor is the existing acceptable BLOCK (1999).
 
       The draft says it is a bridge and what that means: the books before the first journal are not known, and its result sits in
-      Saldo Laba. A GL import into an entity without Saldo Awal says so (REVIEW) and names both ways in.
+      Saldo Laba. A GL import into an entity without Saldo Awal says so (INFO: a GL file often carries its own opening rows, which is
+      why the close asks for Saldo Awal only when no GL was imported) and names both ways in.
 - [ ] **Synthetic K2 set (K5 style).** A test builds four files with known final numbers:
       - a GL in journal format with no Saldo Awal;
       - a Neraca anchor after it;
@@ -113,7 +114,7 @@ The cycle runs without a separate stop, like cycles 1–3.
 ## Tasks
 - [x] T1 Header typos: normaliser + variants + bounded edit distance in `lib/ledger-import/read.ts`, header notes → INFO checks stored
       with the import. Accept: unit tests for each listed typo and for words that must not match.
-- [ ] T2 GL checks: negatives listed, grand-total tie-out, missing month (in file and against earlier imports), year typo with an
+- [x] T2 GL checks: negatives listed, grand-total tie-out, missing month (in file and against earlier imports), year typo with an
       acceptable fix, rows on/before Saldo Awal refused, GL without Saldo Awal flagged (`check.ts`, `post.ts`, accept button). Accept:
       unit + DB tests per check.
 - [ ] T3 Neraca: sign against nature; several period columns → earliest read, the rest and missing months named. Accept: unit tests.
@@ -130,9 +131,23 @@ The cycle runs without a separate stop, like cycles 1–3.
 - T1: `lib/ledger-import/read.ts` `normalizeHeader`, `editDistance` (optimal string alignment, capped), `nearestWord` (ties between
   columns refused), `FUZZY_WORDS` as the fallback after the exact header patterns; `TableCandidate.typos` with the column; `post.ts`
   stores one INFO `HEADER_TYPO` per typo, citing the header cell. Test: `tests/unit/ledger-header-typos.test.ts`.
+- T2: the reader keeps a GL's Total rows (`LedgerTotal`) and marks a flipped negative row (`negative`, `raw`); `planLedger` adds
+  `NEGATIVE_AMOUNT` (REVIEW, one per file), `TOTAL_OK` / `TOTAL_MISMATCH` against the last Total row, which must be the largest, summed
+  as written, and `MISSING_MONTH` in the file. It also adds `dateOutliers`: a run of months more than six months from the main run, at
+  most 5 rows and under a fifth of the file. With one fix that is `DATE_TYPO` (BLOCK, acceptable, the plan already posts on the fixed
+  date, memo keeps the written one); without one it is `DATE_OUTLIER` (REVIEW). `post.ts` `ledgerBookChecks` adds:
+  - `BEFORE_OPENING` (BLOCK, not acceptable);
+  - `NO_OPENING` (INFO, not REVIEW: the close already treats a GL import as carrying its own opening rows);
+  - `MISSING_MONTH` between this file and the entity's posted GL.
+
+  The import's period follows the dates that will post. `ACCEPTABLE_CHECKS` (UNBALANCED, DATE_TYPO) drives `acceptCheck`, the draft page
+  and the accept button's wording. Tests: `tests/unit/ledger-checks-k2.test.ts`, `tests/db/ledger-import-k2.test.ts`.
 
 ## Verification
 - T1: `npx vitest run tests/unit/ledger-header-typos.test.ts tests/unit/ledger-read.test.ts` → `Tests 16 passed (16)`; lint + typecheck
   clean; `npm test` → `Test Files 130 passed (130) · Tests 944 passed (944)`.
+- T2: new tests `Tests 9 passed (9)`. The first full run failed one existing test (`ledger-controls`: NO_OPENING as REVIEW added a
+  "temuan" to the import's close control), which led to the INFO decision; that file and the new ones then passed
+  (`Tests 10 passed (10)`), and the full run had no other failure (`952 passed`). Lint + typecheck clean.
 
 ## Ship Notes
