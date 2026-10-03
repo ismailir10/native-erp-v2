@@ -163,5 +163,12 @@ Traps: the aging doesn't cover all payables, and a Rp 5 rounding must not flood 
   - at 390 px there is no horizontal scroll.
 
   Lint + typecheck clean; `npm test` → `Test Files 159 passed (159) · Tests 1052 passed (1052)`.
+- T4:
+  - Rule 5c amended (a client's own aging is evidence, compared and explained, never posted) and README updated.
+  - End of cycle:
+    - `npm run lint && npm run typecheck && npm test` → `Test Files 159 passed (159) · Tests 1052 passed (1052)`;
+    - `npm run build` passes;
+    - `npm run demo:reset && npm run verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`;
+    - e2e runs in CI.
 
 ## Ship Notes
