@@ -54,7 +54,8 @@ it isn't a difference.
     the history.
   - Refused while it has settlements ("hapus pencocokannya dulu").
 - [ ] **Penjualan per channel dan pelanggan.**
-  - A customer can carry a channel: free text with suggestions *Marketplace*, *Reseller*, *Langsung*, set from the invoice list.
+  - A customer can carry a channel: free text with suggestions *Marketplace*, *Reseller*, *Langsung*, set from the customer's row on the sales-by-channel card (build: that card already lists the
+    customers; the invoice list doesn't).
   - The receivables page shows sales (DPP of non-voided sales invoices) for the month and year to date, by channel, then by customer.
     Customers without a channel are grouped as *Tanpa channel*.
 
@@ -85,7 +86,7 @@ it isn't a difference.
       still equals).
 - [x] T3 Void: `voidInvoice` + action + UI. Accept: DB tests (posted invoice reversed and leaves aging and proof; opening one only
       marked; settled refused; locked month refused; history).
-- [ ] T4 Channel: `Contact.channel`, setter action, the sales-by-channel card. Accept: DB test of the totals; visual check.
+- [x] T4 Channel: `Contact.channel`, setter action, the sales-by-channel card. Accept: DB test of the totals; visual check.
 - [ ] T5 Rules (5c), README, gates, review pass, ship.
 
 ## Implementation
@@ -108,6 +109,11 @@ it isn't a difference.
   ("Dokumen dikeluarkan") keeps who and why. Voided documents leave `invoicesAt` (aging, proof, A1 per-name), CKPN, the opening-import
   dependency check, settle and its candidates. A reused number says it belongs to a voided document. UI: *Keluarkan faktur ini…* in an
   unsettled document's row opens a dialog with the reason; a collapsible *Faktur dikeluarkan* card lists them struck through.
+- T4: `lib/receivables/channels.ts`: `setContactChannel` (trimmed, max 40, one spelling per channel: an existing or suggested
+  spelling wins, "" clears) and `salesByChannel` (DPP of non-voided, non-opening sales invoices for the month and the financial year to
+  date, per currency, channels largest first and *Tanpa channel* last). `SalesChannels` card on the Piutang tab with the share of the
+  year, and a dialog with the suggestions and the channels in use. The page's next step now counts only untagged lines (a tagged line's
+  rest is an advance, not a to-do).
 
 ## Verification
 - T1: `tests/db/receipts-fifo.test.ts` (4): three notes paid oldest-due first from a line still in Review, 1,5 jt rest kept on the tagged
@@ -121,5 +127,11 @@ it isn't a difference.
 - T3: `tests/db/invoice-void.test.ts` (2): a 5,55 jt note with PPN voided → mirror on 5 Aug, 1130/4100/2130 back to the kept note only,
   out of the aging and the proof, refused again and for settling, the audit event, the reused number; a settled note refused until
   unsettled, a locked August refused by name, a Saldo Awal item marked with no journal and refused for settling. 1064 tests green.
+- T4: `tests/db/sales-channels.test.ts`: Reseller 8 jt / 12 jt (two customers, the second joining the existing spelling), Marketplace
+  (from "marketplace"), Tanpa channel last; the voided note and the Saldo Awal item not counted; 41 characters refused; clearing moves a
+  customer back; a year ending in July starts the year to date in August. Visual check (dev server, demo Grup Ayam Nusantara, Agustus
+  2026, invoices and a FIFO receipt of 379,15 jt for two notes of 250 jt): the aging shows PT Mitra Unggas's (129.150.000) advance
+  flagged *kelebihan bayar*; the close lists "Kelebihan bayar pelanggan / pemasok"; the void dialog, the struck-through *Faktur
+  dikeluarkan* row and the channel card and dialog render; at 390 px there is no horizontal scroll.
 
 ## Ship Notes

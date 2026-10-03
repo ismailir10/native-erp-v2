@@ -17,6 +17,7 @@ import { cancelLease, createLease, postLeaseMonths, type LeaseInput } from "@/li
 import { deleteEmployee, importCensus, saveBenefitSetting, saveEmployee, uploadMortality, type BenefitSettingInput, type EmployeeInput } from "@/lib/benefits/census";
 import { postBenefits } from "@/lib/benefits/valuation";
 import { createInvoice, voidInvoice, type InvoiceInput } from "@/lib/receivables/invoices";
+import { setContactChannel } from "@/lib/receivables/channels";
 import { settleFifo, settleWithReclass, tagAdvance, unsettle } from "@/lib/receivables/settle";
 import { candidateViews, type CandidateView } from "@/lib/receivables/view";
 import { postCkpn, saveCkpnSetting, type CkpnSettingInput } from "@/lib/receivables/ckpn";
@@ -438,6 +439,18 @@ export async function tagAdvanceAction(input: { clientId: string; bankTransactio
     await tagAdvance(prisma, { clientId: client.id, bankTransactionId: input.bankTransactionId, contactId: input.contactId });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** A customer's sales channel (UC-B5): free text, "" clears it. */
+export async function setContactChannelAction(input: { clientId: string; contactId: string; channel: string }): Promise<Result<{ channel: string | null }>> {
+  try {
+    const client = await getClientForFirm(input.clientId);
+    const c = await setContactChannel(prisma, { clientId: client.id, contactId: input.contactId, channel: String(input.channel ?? "") });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, channel: c.channel };
   } catch (e) {
     return fail(e);
   }

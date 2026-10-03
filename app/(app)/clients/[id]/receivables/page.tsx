@@ -13,7 +13,9 @@ import { ReceivablesTabs } from "@/components/app/receivables-tabs";
 import { SubledgerRecon, type ReconView } from "@/components/app/subledger-recon";
 import { compareSubledger, listSubledgerImports } from "@/lib/reconcile/subledger";
 import { formatDate } from "@/lib/format";
-import { periodKeyOf } from "@/lib/fiscal";
+import { financialYear, fiscalLabel, periodKeyOf } from "@/lib/fiscal";
+import { CHANNEL_SUGGESTIONS, NO_CHANNEL, salesByChannel } from "@/lib/receivables/channels";
+import { SalesChannels } from "@/components/app/sales-channels";
 
 export const metadata = { title: "Piutang & Utang" };
 
@@ -37,9 +39,12 @@ export default async function ReceivablesPage({ params, searchParams }: { params
           .map(async (e) => ckpnView(await ckpn(prisma, client.id, e.id, period.year, period.month), e)),
       )
     : [];
+  const channels = sales ? await salesByChannel(prisma, client.id, entities, client.fiscalYearEndMonth, period.year, period.month) : [];
   const label = formatPeriod(period.year, period.month);
   const word = sales ? "piutang" : "utang";
   const mismatch = view.comparison.filter((c) => !c.equal);
+  // A line tagged with its contact is allocated: its rest is that contact's advance, not a to-do.
+  const loose = view.unsettled.filter((l) => !l.contact);
   const overdue = view.aging.flatMap((a) => (BigInt(a.totals.OVER_90) > 0n ? [`${a.entity} ${formatMoney(BigInt(a.totals.OVER_90), a.currency)}`] : []));
   const pick = (f: (a: (typeof accounts)[number]) => boolean) => accounts.filter(f).map((a) => ({ code: a.code, name: a.name }));
 
@@ -50,8 +55,10 @@ export default async function ReceivablesPage({ params, searchParams }: { params
         description={`${client.name} · daftar ${sales ? "faktur penjualan" : "tagihan pembelian"}, pelunasan dari rekening koran dan umur ${word} per ${label}`}
         actions={<ScopeBar entities={entityOptions} periods={periodOptions} entity={scope.value} period={period.key} />}
       />
-      {view.unsettled.length ? (
-        <NextStep>Cocokkan {view.unsettled.length} {sales ? "penerimaan" : "pembayaran"} di akun {word} ke {sales ? "fakturnya" : "tagihannya"}: buka {sales ? "faktur" : "tagihan"} lalu pilih Cocokkan.</NextStep>
+      {loose.length ? (
+        <NextStep>
+          Alokasikan {loose.length} {sales ? "penerimaan" : "pembayaran"} di akun {word}: pilih {sales ? "pelanggannya" : "pemasoknya"} lalu Cocokkan FIFO, atau tandai sebagai uang muka.
+        </NextStep>
       ) : mismatch.length ? (
         <NextStep>Daftar {word} {mismatch.map((c) => c.entity).join(", ")} berbeda dengan buku besar. Catat {sales ? "faktur" : "tagihan"} yang belum ada, termasuk rincian saldo awal.</NextStep>
       ) : view.invoices.length ? (
@@ -70,6 +77,20 @@ export default async function ReceivablesPage({ params, searchParams }: { params
         }}
         defaultDate={toIsoDate(period.end)}
       />
+      {channels.length > 0 && (
+        <SalesChannels
+          clientId={client.id}
+          views={channels.map((v) => ({
+            currency: v.currency,
+            channels: v.channels.map((c) => ({ channel: c.channel, month: c.month.toString(), ytd: c.ytd.toString(), customers: c.customers.map((x) => ({ id: x.id, name: x.name, month: x.month.toString(), ytd: x.ytd.toString() })) })),
+            total: { month: v.total.month.toString(), ytd: v.total.ytd.toString() },
+          }))}
+          monthLabel={label}
+          yearLabel={fiscalLabel(financialYear(client.fiscalYearEndMonth, period.year, period.month))}
+          suggestions={[...CHANNEL_SUGGESTIONS]}
+          noChannel={NO_CHANNEL}
+        />
+      )}
       {ckpnViews.map((c) => (
         <CkpnCard key={`${c.entityId}:${period.key}`} clientId={client.id} year={period.year} month={period.month} periodKey={period.key} periodLabel={label} view={c} />
       ))}
