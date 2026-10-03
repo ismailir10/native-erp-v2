@@ -237,8 +237,11 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     - the **Adjustment column as its own ADJUSTMENT journal** on that date, never merged into the opening;
     - the movement as IMPORTED on the closing date.
 
-    Every row must tie across its columns, and every column must tie to the Total row. A TB over months that already have journals is
-    BLOCK `TB_OVERLAP`.
+    Every row must tie across its columns, and every column must tie to the Total row. A one-date worksheet (*Sebelum Penyesuaian |
+    Jurnal Penyesuaian | Setelah Penyesuaian*) posts its balances and its adjustments on its own date. A balance column written with
+    presentation signs (liabilities positive) is read debit-positive and said so. A TB over months that already have journals is BLOCK
+    `TB_OVERLAP`. Later GL rows inside a TB's period are BLOCK `TB_COVERS`, and bank rows there are refused, never counted twice. A TB's
+    ADJUSTMENT journal belongs to its import: never reversed by hand. A closed month a draft would post into is BLOCK `PERIOD_LOCKED`.
 
     **Opening bridge** (UC-B4): a Neraca dated after the entity's first journal is an anchor, not a Saldo Awal on its own date. Its
     OPENING entry goes the day before the first journal and holds:

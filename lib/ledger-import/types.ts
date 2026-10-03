@@ -29,7 +29,7 @@ export type TableCandidate = {
 };
 
 /** Trial-balance column groups: last year's balance, the Adjustment, the adjusted balance, the movement, the closing balance. */
-export type TbGroup = "OPENING" | "ADJUSTMENT" | "ADJUSTED" | "MOVEMENT" | "CLOSING";
+export type TbGroup = "OPENING" | "UNADJUSTED" | "ADJUSTMENT" | "ADJUSTED" | "MOVEMENT" | "CLOSING";
 /** Each group as a Dr/Cr pair or one signed column (debit +); a date written in a group's header. */
 export type TbLayout = {
   groups: Partial<Record<TbGroup, { debit?: number; credit?: number; balance?: number }>>;
@@ -37,7 +37,14 @@ export type TbLayout = {
 };
 /** One TB account row: signed sen per group, debit-positive. */
 export type TbRow = { ref: string; row: number; code: string; name: string; coded: boolean; values: Partial<Record<TbGroup, bigint>>; errors: string[] };
-export type TbRead = { layout: TbLayout; rows: TbRow[]; totals: { ref: string; label: string; values: Partial<Record<TbGroup, bigint>> }[]; opening: Date | null };
+export type TbRead = {
+  layout: TbLayout;
+  rows: TbRow[];
+  totals: { ref: string; label: string; values: Partial<Record<TbGroup, bigint>> }[];
+  opening: Date | null;
+  /** One-column groups written with presentation signs (liabilities and equity positive), read debit-positive. */
+  flipped?: TbGroup[];
+};
 
 /** One ledger line as read from the file. Amounts are signed sen (debit − credit side kept separately). */
 export type LedgerRow = {

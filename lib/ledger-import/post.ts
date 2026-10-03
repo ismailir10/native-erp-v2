@@ -4,12 +4,12 @@ import { formatMoney } from "@/lib/money";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { postJournal, type PostLine } from "@/lib/ledger/post";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
-import { dateOnly, formatDate } from "@/lib/format";
+import { dateOnly, formatDate, formatPeriod } from "@/lib/format";
 import { loadRates, lookupRate, upsertFileRate } from "@/lib/fx/rates";
 import { formatRate, formatRateId, isCurrency, parseRate } from "@/lib/fx/currency";
 import { ParseError } from "@/lib/import/types";
 import { columnLetter, detectTables, readSheets, readTable, reportKind } from "@/lib/ledger-import/read";
-import { accountKey, cap, missingMonths, periodList, planLedger, planNeraca, planTb, type Check, type CurrencyMode, type EntityInfo, type Plan, type PlanEntry } from "@/lib/ledger-import/check";
+import { accountKey, cap, missingMonths, periodList, planLedger, planNeraca, planTb, tbIsWorksheet, type Check, type CurrencyMode, type EntityInfo, type Plan, type PlanEntry } from "@/lib/ledger-import/check";
 import { inferType, learnScheme, suggestMappings } from "@/lib/ledger-import/mapping";
 import type { NeracaRow, TableCandidate } from "@/lib/ledger-import/types";
 
@@ -134,11 +134,13 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
     const name = info(input.entityId).name;
     const first = await db.journalEntry.findFirst({ where: { entityId: input.entityId }, orderBy: { date: "asc" }, select: { date: true } });
     if (read.tb) {
-      // Without a written opening date, last year's balance is taken at the year end before the closing date (cycle 6: fiscal years).
-      const opening = read.tb.opening ?? dateOnly(date.getUTCFullYear() - 1, 12, 31);
-      if (+opening >= +date) throw new LedgerImportError(`Tanggal saldo awal neraca saldo (${formatDate(opening)}) harus sebelum tanggal saldo akhirnya (${formatDate(date)}).`);
+      // A one-date worksheet is wholly at its date. Otherwise, without a written opening date, last year's balance is taken at the year
+      // end before the closing date (cycle 6: fiscal years).
+      const worksheet = tbIsWorksheet(read.tb.layout);
+      const opening = worksheet ? date : (read.tb.opening ?? dateOnly(date.getUTCFullYear() - 1, 12, 31));
+      if (!worksheet && +opening >= +date) throw new LedgerImportError(`Tanggal saldo awal neraca saldo (${formatDate(opening)}) harus sebelum tanggal saldo akhirnya (${formatDate(date)}).`);
       plan = planTb(read.tb, { entityKey: "", entity: info(input.entityId), opening, closing: date, existingNames });
-      if (!read.tb.opening) plan.checks.push({ severity: "INFO", code: "TB_OPENING_DATE", message: `Tanggal saldo awal tidak tertulis di file: dianggap ${formatDate(opening)} (akhir tahun sebelum ${formatDate(date)}).`, refs: [], entityKey: "" });
+      if (!worksheet && !read.tb.opening) plan.checks.push({ severity: "INFO", code: "TB_OPENING_DATE", message: `Tanggal saldo awal tidak tertulis di file: dianggap ${formatDate(opening)} (akhir tahun sebelum ${formatDate(date)}).`, refs: [], entityKey: "" });
       // A TB brings the period's movement itself: journals already in that period would count twice.
       if (first && +first.date <= +date) {
         plan.checks.push({ severity: "BLOCK", code: "TB_OVERLAP", message: `Neraca saldo ini mencakup s.d. ${formatDate(date)}, tetapi ${name} sudah punya jurnal sejak ${formatDate(first.date)}: mutasinya akan terhitung dua kali. Impor neraca saldo per tanggal sebelum jurnal pertama, atau Neraca (satu kolom saldo) per ${formatDate(date)} sebagai jangkar opening bridge.`, refs: [], entityKey: "" });
@@ -164,7 +166,12 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
     periodEnd = date;
   }
 
-  if (input.allowedPeriod && (periodStart.toISOString().slice(0, 10) < input.allowedPeriod.start || periodEnd.toISOString().slice(0, 10) > input.allowedPeriod.end)) throw new LedgerImportError("Rentang sumber harus mencakup seluruh periode file.");
+  // A TB is confirmed as a document of its closing date (Dokumen lists a Neraca-mode table by its date); its opening date is derived.
+  const fileStart = read.mode === "NERACA" && read.tb ? periodEnd : periodStart;
+  if (input.allowedPeriod && (fileStart.toISOString().slice(0, 10) < input.allowedPeriod.start || periodEnd.toISOString().slice(0, 10) > input.allowedPeriod.end)) throw new LedgerImportError("Rentang sumber harus mencakup seluruh periode file.");
+
+  // A closed month can't take a journal (rule 4): said on the draft, not only when posting.
+  plan.checks.push(...(await lockedMonthChecks(db, input.clientId, plan.entries)));
 
   if (input.allowedPeriod?.entityIds && [...entityInfos.values()].some(e => !input.allowedPeriod!.entityIds!.includes(e.entityId))) throw new LedgerImportError("File mencakup entitas lain di luar pilihan sumber. Pisahkan sheet atau gunakan impor manual.");
   if (input.allowedPeriod?.currency && [...entityInfos.values()].some(e => e.currency !== input.allowedPeriod!.currency)) throw new LedgerImportError("Mata uang fungsional entitas berbeda dengan pilihan sumber.");
@@ -294,6 +301,18 @@ async function ledgerBookChecks(db: Db, plan: Plan, entities: Map<string, Entity
           entityKey: ek,
         });
       }
+      // A trial balance already brought the movement up to its closing date (one IMPORTED entry of a Neraca-mode import).
+      const tbMove = await db.journalEntry.findFirst({ where: { entityId: info.entityId, kind: "IMPORTED", ledgerImport: { mode: "NERACA" } }, orderBy: { date: "desc" }, select: { date: true } });
+      const covered = tbMove ? mine.filter((e) => +e.date > +opening.date && +e.date <= +tbMove.date) : [];
+      if (tbMove && covered.length) {
+        checks.push({
+          severity: "BLOCK",
+          code: "TB_COVERS",
+          message: `${info.name}: ${covered.length} jurnal bertanggal s.d. ${formatDate(tbMove.date)}, periode yang mutasinya sudah dicatat dari neraca saldo. Angkanya akan terhitung dua kali. Impor buku besar mulai ${formatDate(new Date(+tbMove.date + 86_400_000))}, atau hapus impor neraca saldo itu bila buku besar ini yang dipakai.`,
+          refs: cap(covered.flatMap((e) => e.lines.map((l) => l.ref))),
+          entityKey: ek,
+        });
+      }
     } else {
       const dayBefore = new Date(+start - 86_400_000);
       checks.push({
@@ -330,7 +349,8 @@ async function bridgeLines(tx: Tx, clientId: string, entityId: string, anchor: D
   const first = await tx.journalEntry.findFirst({ where: { entityId }, orderBy: { date: "asc" }, select: { date: true } });
   if (!first || +first.date > +anchor) return { date: anchor, lines: [] };
   const entity = await tx.entity.findUniqueOrThrow({ where: { id: entityId }, select: { functionalCurrency: true } });
-  const anchorAccounts = await tx.account.findMany({ where: { id: { in: anchorLines.map((l) => l.accountId) } } });
+  // Only the file's own lines: a rounding line (7190) or an accepted source difference (1999) is not a mapping.
+  const anchorAccounts = await tx.account.findMany({ where: { id: { in: anchorLines.filter((l) => l.sourceAccountId).map((l) => l.accountId) } } });
   const pl = anchorAccounts.find((a) => a.type === "PENDAPATAN" || a.type === "BEBAN");
   if (pl) throw new LedgerImportError(`Baris Neraca dipetakan ke akun laba rugi ${pl.code} ${pl.name}. Neraca jangkar hanya berisi aset, liabilitas dan ekuitas: petakan laba tahun berjalan ke 3200 Saldo Laba.`);
   const moved = await tx.journalLine.groupBy({ by: ["accountId"], where: { entityId, date: { lte: anchor } }, _sum: { debit: true, credit: true } });
@@ -353,6 +373,17 @@ async function bridgeLines(tx: Tx, clientId: string, entityId: string, anchor: D
     lines.push({ accountId: retained.id, debit: result < 0n ? -result : 0n, credit: result > 0n ? result : 0n, memo: `Laba rugi di buku s.d. ${when} (opening bridge)` });
   }
   return { date: new Date(+first.date - 86_400_000), lines };
+}
+
+/** BLOCK per closed month a planned journal would land in (rule 4); reopening it is logged in Tutup Buku. */
+async function lockedMonthChecks(db: Db, clientId: string, entries: PlanEntry[]): Promise<Check[]> {
+  const months = [...new Map(entries.map((e) => [`${e.date.getUTCFullYear()}-${e.date.getUTCMonth() + 1}`, { year: e.date.getUTCFullYear(), month: e.date.getUTCMonth() + 1 }])).values()];
+  if (!months.length) return [];
+  const locked = await db.period.findMany({ where: { clientId, status: "LOCKED", OR: months }, orderBy: [{ year: "asc" }, { month: "asc" }] });
+  return locked.map((p) => {
+    const refs = entries.filter((e) => e.date.getUTCFullYear() === p.year && e.date.getUTCMonth() + 1 === p.month).map((e) => e.ref);
+    return { severity: "BLOCK" as const, code: "PERIOD_LOCKED", message: `Bulan ${formatPeriod(p.year, p.month)} sudah ditutup: ${refs.length} jurnal dari file ini jatuh di bulan itu. Buka kembali dulu di Tutup Buku (tercatat dengan alasannya), lalu unggah ulang.`, refs: cap(refs) };
+  });
 }
 
 /** Rule 5: one opening entry per entity. */

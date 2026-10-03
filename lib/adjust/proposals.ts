@@ -25,7 +25,7 @@ export async function priorCorrection(db: Db | Tx, t: { entityId: string; date: 
   if (!t.accountCode) return null;
   const abs = t.amount < 0n ? -t.amount : t.amount;
   const line = await db.journalLine.findFirst({
-    where: { entityId: t.entityId, account: { code: t.accountCode }, date: { gte: t.date, lte: until }, entry: { kind: "ADJUSTMENT", bankTransactionId: null }, ...(t.amount < 0n ? { credit: abs } : { debit: abs }) },
+    where: { entityId: t.entityId, account: { code: t.accountCode }, date: { gte: t.date, lte: until }, entry: { kind: "ADJUSTMENT", bankTransactionId: null, ledgerImportId: null }, ...(t.amount < 0n ? { credit: abs } : { debit: abs }) },
     select: { date: true, entry: { select: { memo: true, entity: { select: { functionalCurrency: true } } } } },
     orderBy: { date: "asc" },
   });

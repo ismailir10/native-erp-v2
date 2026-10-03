@@ -46,6 +46,7 @@ async function entriesOf(tx: Tx, where: { bankTransactionId?: { in: string[] }; 
   return {
     ids: entries.map((e) => e.id),
     openings: entries.filter((e) => e.kind === "OPENING").map((e) => ({ entityId: e.entityId, date: e.date })),
+    dated: entries.map((e) => ({ entityId: e.entityId, date: e.date })),
     lineIds: entries.flatMap((e) => e.lines.map((l) => l.id)),
     // What the import put on each account (debit +), so the log says what its removal took off.
     nets: Object.fromEntries([...nets].filter(([, v]) => v !== 0n).map(([k, v]) => [k, formatMoney(v, cur)])),
@@ -69,6 +70,22 @@ async function dropProposals(tx: Tx, ids: { entryIds: string[]; lineIds: string[
  * A Saldo Awal from a file is what fixed assets from before the books and opening invoices stand on (their amounts are already in that
  * opening entry). Removing it under them would leave a register and a subledger with no GL behind: they go first.
  */
+/**
+ * An opening bridge (rule 15a) took the books' movement up to its anchor date into Saldo Awal: removing journals from that span would
+ * leave the Neraca at the anchor date no longer equal to its file, silently. The bridge goes first.
+ */
+async function refuseBridgeDependents(tx: Tx, dated: { entityId: string; date: Date }[], ownImportId?: string) {
+  if (!dated.length) return;
+  const bridges = await tx.journalEntry.findMany({
+    where: { entityId: { in: [...new Set(dated.map((d) => d.entityId))] }, kind: "OPENING", ledgerImportId: { not: ownImportId ?? null }, lines: { some: { memo: { contains: "(opening bridge)" } } } },
+    select: { entityId: true, ledgerImport: { select: { fileName: true, periodEnd: true } } },
+  });
+  for (const b of bridges) {
+    if (!b.ledgerImport || !dated.some((d) => d.entityId === b.entityId && +d.date <= +b.ledgerImport!.periodEnd)) continue;
+    throw new RemoveImportError(`Saldo awal entitas ini dibangun dari Neraca ${b.ledgerImport.fileName} per ${formatDate(b.ledgerImport.periodEnd)} dengan mutasi buku sampai tanggal itu, termasuk jurnal dari impor ini. Hapus dulu impor Neraca itu, lalu impor ulang setelah buku diperbaiki.`);
+  }
+}
+
 async function refuseOpeningDependents(tx: Tx, openings: { entityId: string; date: Date }[]) {
   if (!openings.length) return;
   const entityIds = [...new Set(openings.map((o) => o.entityId))];
@@ -97,6 +114,7 @@ export async function removeStatementImport(db: Db, input: { clientId: string; i
       const txIds = txs.map((t) => t.id);
       const currency = imp.bankAccount.entity.functionalCurrency;
       const entries = await entriesOf(tx, { bankTransactionId: { in: txIds } }, () => currency);
+      await refuseBridgeDependents(tx, entries.dated);
 
       // The other half of a transfer in another import stays where it is; the clearing control shows it open — which a closed month's
       // controls must not start doing after the fact.
@@ -154,6 +172,7 @@ export async function removeLedgerImport(db: Db, input: { clientId: string; impo
       const currency = (entityId: string) => entities.find((e) => e.id === entityId)?.functionalCurrency ?? "IDR";
       const entries = await entriesOf(tx, { ledgerImportId: imp.id }, currency);
       await refuseOpeningDependents(tx, entries.openings);
+      await refuseBridgeDependents(tx, entries.dated, imp.id);
       await dropProposals(tx, { entryIds: entries.ids, lineIds: entries.lineIds });
       await tx.journalEntry.deleteMany({ where: { ledgerImportId: imp.id } });
       await tx.evidenceSelection.updateMany({ where: { importId: imp.id }, data: { importId: null } });

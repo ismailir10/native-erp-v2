@@ -136,7 +136,9 @@ export function dateOutliers(rows: LedgerRow[]): { row: LedgerRow; fix: Date | n
   const size = (run: number[]) => dated.filter((r) => run.includes(monthIndex(r.date!))).length;
   const main = runs.reduce((a, b) => (size(b) > size(a) ? b : a));
   const inMain = dated.filter((r) => main.includes(monthIndex(r.date!)));
-  const outliers = dated.filter((r) => !main.includes(monthIndex(r.date!)));
+  // Only another year can be a year typo: a sparse file with a far month of the same year is just sparse.
+  const mainYears = new Set(main.map((m) => Math.floor(m / 12)));
+  const outliers = dated.filter((r) => !main.includes(monthIndex(r.date!)) && !mainYears.has(r.date!.getUTCFullYear()));
   if (outliers.length > 5 || outliers.length * 5 >= dated.length) return [];
   const start = new Date(Math.min(...inMain.map((r) => +r.date!)));
   const end = new Date(Math.max(...inMain.map((r) => +r.date!)));
@@ -448,7 +450,10 @@ export function planNeraca(
   if (opts.periods && opts.periods.length > 1) {
     const read = opts.periods.find((p) => p.column === opts.column);
     const others = opts.periods.filter((p) => p !== read);
-    const gaps = missingMonths(opts.periods.map((p) => monthIndex(p.date)));
+    // Missing months are claimed only for a monthly series (two columns a month apart), never between yearly comparatives.
+    const months = opts.periods.map((p) => monthIndex(p.date)).sort((a, b) => a - b);
+    const monthly = months.some((m, i) => i > 0 && m - months[i - 1] === 1);
+    const gaps = monthly ? missingMonths(months) : [];
     checks.push({
       severity: "REVIEW",
       code: "MULTI_PERIOD",
@@ -510,6 +515,12 @@ export function planNeraca(
 }
 
 /**
+ * A worksheet at one date (Sebelum Penyesuaian | Jurnal Penyesuaian | Setelah Penyesuaian): no last-year balance, no movement, no closing.
+ * Its balances and adjustments are all at the worksheet date — never pushed to the year before.
+ */
+export const tbIsWorksheet = (layout: TbRead["layout"]) => !layout.groups.OPENING && !layout.groups.MOVEMENT && !layout.groups.CLOSING;
+
+/**
  * A trial balance (use-case UC-K2): up to three journals, each citing its own column — the opening on the opening date (OPENING), the
  * Adjustment column on the same date as its own journal (ADJUSTMENT, never merged into the opening), and the movement on the closing date
  * (IMPORTED). Every row must tie (opening + adjustment = adjusted; adjusted + movement = closing) and every column its Total row.
@@ -524,10 +535,18 @@ export function planTb(tb: TbRead, opts: { entityKey: string; entity: EntityInfo
   for (const r of tb.rows) for (const e of r.errors) checks.push({ severity: "BLOCK", code: "ROW_ERROR", message: `${r.ref}: ${e}`, refs: [r.ref], entityKey });
   const usable = tb.rows.filter((r) => !r.errors.length);
 
+  // The balance before adjustments: last year's (OPENING) or, in a one-date worksheet, the unadjusted balance at that date.
+  const base: TbGroup | null = has("OPENING") ? "OPENING" : has("UNADJUSTED") ? "UNADJUSTED" : null;
+  if (has("OPENING") && has("UNADJUSTED")) {
+    checks.push({ severity: "BLOCK", code: "TB_LAYOUT", message: "File berisi kolom saldo awal dan kolom sebelum penyesuaian sekaligus: tidak jelas mana yang menjadi saldo awal. Sisakan salah satu, lalu unggah ulang.", refs: [], entityKey });
+  }
+  // Adjustment from its own column, else implied by adjusted − before (said below) so the books still equal the adjusted column.
+  const derivedAdjustment = !has("ADJUSTMENT") && has("ADJUSTED") && base !== null;
+
   // Each row's opening, adjustment and movement — from its own columns, or derived when a column is absent (said below).
   const parts = usable.map((r) => {
-    const adjustment = v(r, "ADJUSTMENT");
-    const opening = has("OPENING") ? v(r, "OPENING") : has("ADJUSTED") ? v(r, "ADJUSTED") - adjustment : v(r, "CLOSING") - v(r, "MOVEMENT") - adjustment;
+    const adjustment = derivedAdjustment ? v(r, "ADJUSTED") - v(r, base!) : v(r, "ADJUSTMENT");
+    const opening = base ? v(r, base) : has("ADJUSTED") ? v(r, "ADJUSTED") - adjustment : v(r, "CLOSING") - v(r, "MOVEMENT") - adjustment;
     const adjusted = has("ADJUSTED") ? v(r, "ADJUSTED") : opening + adjustment;
     const movement = has("MOVEMENT") ? v(r, "MOVEMENT") : has("CLOSING") ? v(r, "CLOSING") - adjusted : 0n;
     const closing = has("CLOSING") ? v(r, "CLOSING") : adjusted + movement;
@@ -544,19 +563,22 @@ export function planTb(tb: TbRead, opts: { entityKey: string; entity: EntityInfo
     const p = bad[0];
     checks.push({ severity: "REVIEW", code: "TB_ROW_MISMATCH", message: `${bad.length} baris tidak cocok: ${label}. Contoh ${p.r.ref} ${p.r.code.startsWith(NO_CODE_PREFIX) ? "" : `${p.r.code} `}${p.r.name}: seharusnya ${money(expected(p))}, di file ${money(actual(p))}.`, refs: cap(bad.map((x) => x.r.ref)), entityKey });
   };
-  if (has("ADJUSTED") && has("OPENING")) {
-    tie("saldo awal + adjustment ≠ saldo setelah penyesuaian", parts.filter((p) => v(p.r, "OPENING") + p.adjustment !== p.adjusted), (p) => v(p.r, "OPENING") + p.adjustment, (p) => p.adjusted);
+  if (has("ADJUSTED") && base && has("ADJUSTMENT")) {
+    tie(`${TB_GROUP_LABEL[base].toLowerCase()} + adjustment ≠ saldo setelah penyesuaian`, parts.filter((p) => p.opening + p.adjustment !== p.adjusted), (p) => p.opening + p.adjustment, (p) => p.adjusted);
   }
   if (has("CLOSING") && has("MOVEMENT")) {
     tie("saldo setelah penyesuaian + mutasi ≠ saldo akhir", parts.filter((p) => p.adjusted + p.movement !== p.closing), (p) => p.adjusted + p.movement, (p) => p.closing);
   }
-  if (!has("OPENING")) checks.push({ severity: "INFO", code: "TB_DERIVED", message: `Kolom saldo awal tidak ada: saldo awal dihitung dari ${has("ADJUSTED") ? "saldo setelah penyesuaian − adjustment" : "saldo akhir − mutasi − adjustment"}.`, refs: [], entityKey });
+  if (!base) checks.push({ severity: "INFO", code: "TB_DERIVED", message: `Kolom saldo awal tidak ada: saldo awal dihitung dari ${has("ADJUSTED") ? "saldo setelah penyesuaian − adjustment" : "saldo akhir − mutasi − adjustment"}.`, refs: [], entityKey });
+  if (derivedAdjustment) checks.push({ severity: "INFO", code: "TB_DERIVED", message: `Kolom Adjustment tidak ada: adjustment dihitung dari saldo setelah penyesuaian − ${TB_GROUP_LABEL[base!].toLowerCase()}, dan dicatat sebagai jurnal penyesuaiannya sendiri.`, refs: [], entityKey });
+  for (const g of tb.flipped ?? []) checks.push({ severity: "INFO", code: "TB_PRESENTATION_SIGN", message: `Kolom ${TB_GROUP_LABEL[g]} ditulis dengan tanda penyajian (liabilitas dan ekuitas positif): dibaca dengan liabilitas dan ekuitas di kredit.`, refs: [], entityKey });
   if (!has("MOVEMENT") && has("CLOSING")) checks.push({ severity: "INFO", code: "TB_DERIVED", message: "Kolom mutasi tidak ada: mutasi dihitung dari saldo akhir − saldo setelah penyesuaian.", refs: [], entityKey });
 
   // The file's own Total row, column by column.
   const total = tb.totals[tb.totals.length - 1];
   if (total) {
-    const groups = (Object.keys(tb.layout.groups) as TbGroup[]).filter((g) => total.values[g] !== undefined);
+    // A presentation-signed column's Total is a section total, not a trial-balance sum: not compared.
+    const groups = (Object.keys(tb.layout.groups) as TbGroup[]).filter((g) => total.values[g] !== undefined && !tb.flipped?.includes(g));
     const off = groups.filter((g) => usable.reduce((s, r) => s + v(r, g), 0n) !== total.values[g]);
     if (off.length) {
       checks.push({ severity: "REVIEW", code: "TOTAL_MISMATCH", message: `"${total.label}" di file tidak sama dengan jumlah baris pada kolom ${off.map((g) => `${TB_GROUP_LABEL[g]} (file ${money(total.values[g]!)}, baris ${money(usable.reduce((s, r) => s + v(r, g), 0n))})`).join(", ")}.`, refs: [total.ref], entityKey });
@@ -592,9 +614,10 @@ export function planTb(tb: TbRead, opts: { entityKey: string; entity: EntityInfo
       checks.push({ severity: "BLOCK", code: "UNBALANCED", message: `${memo} ${entity.name} ${formatDate(date)} tidak seimbang: selisih ${formatMoney(imbalance, entity.currency)} (debit ${imbalance > 0n ? ">" : "<"} kredit). Terima untuk mencatat selisihnya di 1999 Belum Terklasifikasi.`, refs: [], entityKey, date, amount: imbalance, acceptable: true, groupKey: e.key });
     }
   };
-  const openingFrom: TbGroup = has("OPENING") ? "OPENING" : has("ADJUSTED") ? "ADJUSTED" : "CLOSING";
-  entry("OPENING", "TB-OPENING", opts.opening, `Saldo awal dari neraca saldo per ${formatDate(opts.opening)}`, parts.map((p) => ({ r: p.r, amount: p.opening, group: openingFrom })));
-  if (has("ADJUSTMENT")) entry("ADJUSTMENT", "TB-ADJUSTMENT", opts.opening, "Adjustment dari neraca saldo (kolom Adjustment)", parts.map((p) => ({ r: p.r, amount: p.adjustment, group: "ADJUSTMENT" as const })));
+  const openingFrom: TbGroup = base ?? (has("ADJUSTED") ? "ADJUSTED" : "CLOSING");
+  const worksheet = tbIsWorksheet(tb.layout);
+  entry("OPENING", "TB-OPENING", opts.opening, worksheet ? `Saldo sebelum penyesuaian dari neraca saldo per ${formatDate(opts.opening)}` : `Saldo awal dari neraca saldo per ${formatDate(opts.opening)}`, parts.map((p) => ({ r: p.r, amount: p.opening, group: openingFrom })));
+  if (has("ADJUSTMENT") || derivedAdjustment) entry("ADJUSTMENT", "TB-ADJUSTMENT", opts.opening, derivedAdjustment ? "Adjustment dari neraca saldo (setelah penyesuaian − sebelumnya)" : "Adjustment dari neraca saldo (kolom Adjustment)", parts.map((p) => ({ r: p.r, amount: p.adjustment, group: derivedAdjustment ? ("ADJUSTED" as const) : ("ADJUSTMENT" as const) })));
   if (has("MOVEMENT") || has("CLOSING")) entry("IMPORTED", "TB-MOVEMENT", opts.closing, `Mutasi ${formatDate(new Date(+opts.opening + 86_400_000))} – ${formatDate(opts.closing)} dari neraca saldo`, parts.map((p) => ({ r: p.r, amount: p.movement, group: has("MOVEMENT") ? ("MOVEMENT" as const) : ("CLOSING" as const) })));
 
   checks.push(...signChecks(parts.map((p) => ({ ref: cell(p.r, has("CLOSING") ? "CLOSING" : openingFrom), code: p.r.code, name: p.r.name, amount: p.closing })), entity, entityKey));

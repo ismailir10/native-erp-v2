@@ -28,12 +28,12 @@ Spec approval: the owner approved the plan that named this cycle (*import harden
 The cycle runs without a separate stop, like cycles 1–3.
 
 ## Spec
-- [ ] **Header typos (K2).** Headers are matched after normalising (case, spacing, punctuation). Then a fixed list of known variants is
+- [x] **Header typos (K2).** Headers are matched after normalising (case, spacing, punctuation). Then a fixed list of known variants is
       tried, then a bounded edit distance: one edit for a word of 5–8 letters, two for longer, never for words under 5. Each column read
       through a typo is reported as an INFO check *Kolom "Adjusment" dibaca sebagai Adjustment*, which is stored with the import.
       Examples: Adjusment → Adjustment, Kredti → Kredit, Debet/Debit, Keteranagn → Keterangan, Saldo Akhri → Saldo Akhir.
       "TRIAL BALANCI" in a title row marks the sheet as a trial balance.
-- [ ] **TB with column groups (K2).** A table with account columns and two or more Dr/Cr (or signed balance) column groups is a
+- [x] **TB with column groups (K2).** A table with account columns and two or more Dr/Cr (or signed balance) column groups is a
       *Neraca saldo* (TB). Groups are labelled on a row above the Dr/Cr headers or in the header itself ("Adjustment Dr"). The groups
       are: saldo awal/akhir tahun lalu, Adjustment/penyesuaian, setelah penyesuaian, mutasi, saldo akhir. It posts as up to three
       journals, all under the import and citing their cells:
@@ -50,26 +50,26 @@ The cycle runs without a separate stop, like cycles 1–3.
 
       When the opening date is not written, it is 31 December of the year before the closing date, and an INFO check says so. A TB with
       a single Dr/Cr pair stays a plain Neraca as today.
-- [ ] **Negatives flagged, never made positive (K2).**
+- [x] **Negatives flagged, never made positive (K2).**
       - In a GL row, a negative amount still posts on the other side (the same number), but one REVIEW check per file lists those rows.
       - A Neraca or TB balance against its account's nature (negative receivable, cash or prepaid; debit payable) is REVIEW
         *Saldo berlawanan dengan sifat akun*, posted as written.
-- [ ] **File totals (K2).** A GL's grand-total row (Total/Jumlah with debit and credit, no date) is compared with Σ debit and Σ credit of
+- [x] **File totals (K2).** A GL's grand-total row (Total/Jumlah with debit and credit, no date) is compared with Σ debit and Σ credit of
       the rows: INFO when it ties, REVIEW naming both numbers when it doesn't.
-- [ ] **Missing month (K2, B4).**
+- [x] **Missing month (K2, B4).**
       - A GL file with no rows in a month between its first and last is REVIEW *Tidak ada baris di Februari 2026*, per entity.
       - So is a gap between this file and the entity's earlier posted GL imports.
       - A Neraca with several period columns (dates, or month headers like "Jan 2026") reads the first, as today, as Saldo Awal. A
         REVIEW names the other columns, which are not imported, and any month missing between them (*Kolom Februari 2026 tidak ada*).
-- [ ] **Year typo (B1f, K2).** A GL row dated more than six months from the file's main run of months is flagged, when such rows are at
+- [x] **Year typo (B1f, K2).** A GL row dated more than six months from the file's main run of months is flagged, when such rows are at
       most 5 and under a fifth of the file. When exactly one date with the same day and month falls inside the file's period, it is BLOCK
       *tanggal 5 Mar 2023 jauh dari periode file*, and the accountant may **accept** that date. The journal then posts on the corrected
       date, and its memo keeps the date as written. Otherwise it is REVIEW and posts as written; it may be a real old adjustment.
-- [ ] **No double counting around Saldo Awal (bug).**
+- [x] **No double counting around Saldo Awal (bug).**
       - GL rows dated on or before the entity's Saldo Awal are BLOCK *sudah termasuk di saldo awal*. The way out is named: import from
         the next day, or remove the Saldo Awal import and import that Neraca again as the anchor.
       - A Neraca dated after the entity's first journal is not a Saldo Awal on its own date: it becomes an **anchor** (next item).
-- [ ] **Opening bridge (K2, B4).** An entity with journals and no Saldo Awal, given a Neraca dated after its first journal, gets Saldo
+- [x] **Opening bridge (K2, B4).** An entity with journals and no Saldo Awal, given a Neraca dated after its first journal, gets Saldo
       Awal (OPENING) dated the day before that first journal. When posted, the entry holds:
       - every anchor line (mapped, citing its cell);
       - per account, the movement the books already hold up to the anchor date, reversed (memo *mutasi buku s.d. 31 Des 2023*);
@@ -81,7 +81,7 @@ The cycle runs without a separate stop, like cycles 1–3.
       The draft says it is a bridge and what that means: the books before the first journal are not known, and its result sits in
       Saldo Laba. A GL import into an entity without Saldo Awal says so (INFO: a GL file often carries its own opening rows, which is
       why the close asks for Saldo Awal only when no GL was imported) and names both ways in.
-- [ ] **Synthetic K2 set (K5 style).** A test builds four files with known final numbers:
+- [x] **Synthetic K2 set (K5 style).** A test builds four files with known final numbers:
       - a GL in journal format with no Saldo Awal;
       - a Neraca anchor after it;
       - a TB with typo headers and an Adjustment column;
@@ -127,7 +127,7 @@ The cycle runs without a separate stop, like cycles 1–3.
 - [x] T5 Opening bridge: a Neraca after the first journal stages as an anchor; post computes the bridge; refusals. Accept: DB test,
       Neraca at the anchor date equals the file; no double counting.
 - [x] T6 Synthetic K2 set end-to-end + accounting-rules 15a. Accept: the four-file test passes to the rupiah.
-- [ ] T7 End-of-cycle gates, review pass, ship.
+- [x] T7 End-of-cycle gates, review pass, ship.
 
 ## Implementation
 - Plan: T1–T7 sequential, inline (each builds on the reader and the plan of the one before).
@@ -184,6 +184,42 @@ The cycle runs without a separate stop, like cycles 1–3.
   readable date" wherever its label sits. Accounting-rules rule 15a gains the paragraphs on files from old systems, the TB and the
   opening bridge.
 
+- T7 review pass (second-model review, probes against the branch and `main`). Fixed, each with a test in
+  `tests/db/ledger-import-review.test.ts`:
+  - **H1** A textbook worksheet (*Sebelum Penyesuaian | Jurnal Penyesuaian | Setelah Penyesuaian*) was read as Adjustment + adjusted
+    and posted the whole unadjusted TB as an Adjustment a year early. Now:
+    - a group UNADJUSTED ("sebelum penyesuaian", "unadjusted", "before adjustment") exists;
+    - a layout without saldo awal, mutasi and saldo akhir is a one-date worksheet: OPENING + ADJUSTMENT on its own date
+      (`tbIsWorksheet`);
+    - saldo awal together with sebelum penyesuaian is BLOCK `TB_LAYOUT`.
+  - **H2** A GL (or bank statement) imported after a TB double-counted the TB's period. GL rows in (Saldo Awal, TB closing] are BLOCK
+    `TB_COVERS`; the bank pipeline refuses such rows the same way it refuses rows before Saldo Awal.
+  - **M1/L4** "Saldo Awal | Debit | Kredit | Saldo Akhir" under Aset/Liabilitas/Ekuitas headings regressed to two unbalanced BLOCKs.
+    Now:
+    - a plain one-word Debit/Kredit pair beside named groups is the movement;
+    - a one-column group that balances only with liabilities and equity turned around is read debit-positive (INFO
+      `TB_PRESENTATION_SIGN`), and its section Total is not compared;
+    - section headings type the rows.
+  - **M2** A print date ("Dicetak: 15/07/2026") became the closing date. Title rows that name a period win, print/export rows never
+    count, and an opening date comes only from the closing's own row.
+  - **M3** A TB from Dokumen could never stage (its derived opening fell outside the confirmed date). A TB is checked against the window
+    of its closing date.
+  - **M4** Saldo awal + setelah penyesuaian without an Adjustment column posted balances unequal to the file's closing. The implied
+    adjustment is derived and posted as its own ADJUSTMENT (INFO).
+  - **M5** A Neraca anchor with sen (a 7190 rounding line) was refused as "mapped to income". Only the file's own lines are checked.
+  - **M6** A TB's ADJUSTMENT journal could be reversed from the ledger page, and could suppress a 1999 correction proposal.
+    `reversalBlocker` refuses entries with `ledgerImportId`; `priorCorrection` ignores them.
+  - **L1** A closed month is BLOCK `PERIOD_LOCKED` on the draft, not only at posting.
+  - **L2** Removing a GL or statement whose journals a bridge took into Saldo Awal is refused (`refuseBridgeDependents`).
+  - **L3** Missing months between period columns are claimed only for a monthly series.
+  - **L5** A far month of the same year is not a year typo.
+  - **L6** Typos in a TB's account headers are reported.
+
+  The first full run after the fixes failed `evidence-workbook` (2 tests): the bare-pair rule read "Mvt Dr / Mvt Cr" in a derived engine
+  sheet as movement. It now takes only a plain side word.
+
+  Kept: L7 (a dateless, accountless row saying Total is a total).
+
 ## Verification
 - T1: `npx vitest run tests/unit/ledger-header-typos.test.ts tests/unit/ledger-read.test.ts` → `Tests 16 passed (16)`; lint + typecheck
   clean; `npm test` → `Test Files 130 passed (130) · Tests 944 passed (944)`.
@@ -200,4 +236,25 @@ The cycle runs without a separate stop, like cycles 1–3.
 - T6: `tests/db/k2-files.test.ts` → `Tests 1 passed (1)` (failed first on the Total row above); lint + typecheck clean; `npm test` →
   `Test Files 136 passed (136) · Tests 964 passed (964)`.
 
+- T7: `tests/db/ledger-import-review.test.ts` → `Tests 11 passed (11)`. End of cycle:
+  - lint + typecheck clean;
+  - `npm test` → `Test Files 140 passed (140) · Tests 986 passed (986)`;
+  - `npm run build` ok;
+  - `demo:reset && verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`;
+  - e2e runs in CI.
+
+  Visual check (local, Chromium): a staged TB with typos shows "Impor neraca saldo (TB): TB", 31 Des 2025 – 30 Jun 2026, the typo cited at
+  TB!E3, "Catat 3 jurnal", and "Neraca saldo (TB)" on the Impor list. No overflow at 390 px, no console errors.
+
 ## Ship Notes
+- **Migration:** none. A TB is a Neraca-mode import (`data.tb`), each entry with its kind in the saved plan.
+- **Behaviour:**
+  - GL, Neraca and TB drafts gain checks: header typos, negatives, Total tie, missing months, year typos (acceptable fix), closed months,
+    Saldo Awal and TB overlaps, sign against nature, extra period columns.
+  - A TB posts opening + Adjustment + movement; a one-date worksheet posts its balances and adjustments on its date.
+  - A Neraca after the first journal becomes an opening bridge.
+  - The bank import refuses rows inside a TB's period.
+  - A TB's Adjustment can't be reversed by hand.
+- **Rollback:** revert the merge. Journals posted from a TB or a bridge stay valid entries (OPENING / ADJUSTMENT / IMPORTED under their
+  import) and can be removed with *Hapus impor*.
+
