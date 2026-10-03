@@ -115,7 +115,18 @@ export async function trialBalanceMovement(db: Db, scope: Scope, start: Date, en
   });
 }
 
-export type FsItem = { fsLine: FsLine | "LABA_BERJALAN" | "UTANG_ANTAR_ENTITAS"; label: string; amount: bigint; accounts: { code: string; name: string; amount: bigint }[] };
+/** Lines no FS_LINES key names: current-year profit, a credit intercompany balance, and accounts whose FS line doesn't fit their statement. */
+export type PseudoLine = "LABA_BERJALAN" | "UTANG_ANTAR_ENTITAS" | "UNMAPPED_INCOME" | "UNMAPPED_EXPENSE" | "UNMAPPED_ASSET" | "UNMAPPED_LIABILITY" | "UNMAPPED_EQUITY";
+export const PSEUDO_LABEL: Record<PseudoLine, string> = {
+  LABA_BERJALAN: "Laba (rugi) tahun berjalan",
+  UTANG_ANTAR_ENTITAS: "Utang antar entitas",
+  UNMAPPED_INCOME: "Pos pendapatan belum terpetakan",
+  UNMAPPED_EXPENSE: "Pos beban belum terpetakan",
+  UNMAPPED_ASSET: "Pos aset belum terpetakan",
+  UNMAPPED_LIABILITY: "Pos liabilitas belum terpetakan",
+  UNMAPPED_EQUITY: "Pos ekuitas belum terpetakan",
+};
+export type FsItem = { fsLine: FsLine | PseudoLine; label: string; amount: bigint; accounts: { code: string; name: string; amount: bigint }[] };
 export type IncomeStatement = {
   revenue: FsItem[];
   cogs: FsItem[];
@@ -142,6 +153,23 @@ function group(rows: { account: Account; amount: bigint }[], lines: FsLine[]): F
 /** FS lines of a Neraca section, in template order — derived so no account can fall out of the balance sheet. */
 const linesOf = (section: string) => (Object.keys(FS_LINES) as FsLine[]).filter((k) => FS_LINES[k].section === section);
 
+/** The FS lines an account of each type may sit on; anything else would drop out of its statement. */
+const LINES_FOR_TYPE: Record<Account["type"], Set<string>> = {
+  PENDAPATAN: new Set(linesOf("LABA_RUGI")),
+  BEBAN: new Set(linesOf("LABA_RUGI")),
+  ASET: new Set([...linesOf("ASET_LANCAR"), ...linesOf("ASET_TIDAK_LANCAR")]),
+  LIABILITAS: new Set([...linesOf("LIABILITAS_JANGKA_PENDEK"), ...linesOf("LIABILITAS_JANGKA_PANJANG")]),
+  EKUITAS: new Set(linesOf("EKUITAS")),
+};
+/** An account whose FS line isn't a line of its own statement (a mistyped or foreign line): shown on a "belum terpetakan" line, never dropped. */
+export const isUnmapped = (a: Pick<Account, "type" | "fsLine">) => !LINES_FOR_TYPE[a.type].has(a.fsLine);
+
+function unmappedItem(rows: { account: Account; amount: bigint }[], line: PseudoLine): FsItem[] {
+  const accs = rows.filter((r) => isUnmapped(r.account) && r.amount !== 0n);
+  if (!accs.length) return [];
+  return [{ fsLine: line, label: PSEUDO_LABEL[line], amount: accs.reduce((s, r) => s + r.amount, 0n), accounts: accs.map((r) => ({ code: r.account.code, name: r.account.name, amount: r.amount })) }];
+}
+
 const sum = (items: FsItem[]) => items.reduce((s, i) => s + i.amount, 0n);
 
 /** Laba Rugi for [from, to]. Income positive, expenses positive; net = income − expenses. */
@@ -167,8 +195,10 @@ export async function incomeStatement(db: Db, scope: Scope, from: Date, to: Date
   const revenue = group(rows, ["PENDAPATAN_USAHA"]);
   const cogs = group(rows, ["HPP"]);
   const opex = group(rows, ["BEBAN_PENJUALAN", "BEBAN_UMUM_ADM"]);
-  const otherIncome = group(rows, ["PENDAPATAN_LAIN"]);
-  const otherExpense = group(rows, ["BEBAN_LAIN"]).map((i) => ({ ...i, amount: -i.amount, accounts: i.accounts.map((a) => ({ ...a, amount: -a.amount })) }));
+  const negate = (i: FsItem): FsItem => ({ ...i, amount: -i.amount, accounts: i.accounts.map((a) => ({ ...a, amount: -a.amount })) });
+  // Accounts on a line outside the Laba Rugi still count: in other income / other expense by their type, named "belum terpetakan".
+  const otherIncome = [...group(rows, ["PENDAPATAN_LAIN"]), ...unmappedItem(rows.filter((r) => r.account.type === "PENDAPATAN"), "UNMAPPED_INCOME")];
+  const otherExpense = [...group(rows, ["BEBAN_LAIN"]), ...unmappedItem(rows.filter((r) => r.account.type === "BEBAN"), "UNMAPPED_EXPENSE")].map(negate);
   const tax = group(rows, ["BEBAN_PAJAK"]);
   const tRevenue = sum(revenue);
   const gross = tRevenue - sum(cogs);
@@ -206,15 +236,15 @@ export async function balanceSheet(db: Db, scope: Scope, asOf: Date): Promise<Ba
   const liabRows = bs.filter((r) => r.account.type === "LIABILITAS").map((r) => ({ account: r.account, amount: -r.net }));
   const eqRows = bs.filter((r) => r.account.type === "EKUITAS").map((r) => ({ account: r.account, amount: -r.net }));
 
-  const currentAssets = group(assets, linesOf("ASET_LANCAR"));
+  const currentAssets = [...group(assets, linesOf("ASET_LANCAR")), ...unmappedItem(assets, "UNMAPPED_ASSET")];
   const nonCurrentAssets = group(assets, linesOf("ASET_TIDAK_LANCAR"));
-  const currentLiabilities = group(liabRows, linesOf("LIABILITAS_JANGKA_PENDEK"));
+  const currentLiabilities = [...group(liabRows, linesOf("LIABILITAS_JANGKA_PENDEK")), ...unmappedItem(liabRows, "UNMAPPED_LIABILITY")];
   const nonCurrentLiabilities = group(liabRows, linesOf("LIABILITAS_JANGKA_PANJANG"));
   if (icCredit.length) {
     const amount = icCredit.reduce((s, r) => s - r.amount, 0n);
     currentLiabilities.push({ fsLine: "UTANG_ANTAR_ENTITAS", label: "Utang antar entitas", amount, accounts: icCredit.map((r) => ({ code: r.account.code, name: r.account.name, amount: -r.amount })) });
   }
-  const equity = group(eqRows, linesOf("EKUITAS"));
+  const equity = [...group(eqRows, linesOf("EKUITAS")), ...unmappedItem(eqRows, "UNMAPPED_EQUITY")];
   const ytdProfit = tb.filter((r) => isPL(r.account)).reduce((s, r) => s - r.net, 0n);
   equity.push({ fsLine: "LABA_BERJALAN", label: "Laba (rugi) tahun berjalan", amount: ytdProfit, accounts: [] });
 
