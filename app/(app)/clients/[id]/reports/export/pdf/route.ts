@@ -1,19 +1,20 @@
 import { prisma } from "@/lib/db";
-import { financialStatementsWorkbook, statementsFileName } from "@/lib/reports/workbook";
+import { statementsFileName } from "@/lib/reports/workbook";
+import { financialStatementsPdf } from "@/lib/reports/pdf";
 import { FxMissingError } from "@/lib/reports/fx";
 import { exportContext } from "@/lib/reports/export-context";
 
-/** GET ?entity=<id|combined>&period=YYYY-MM — the financial statements as one Excel workbook (accounting-rules 12). */
+/** GET ?entity=<id|combined>&period=YYYY-MM — the financial statements as one PDF ready to send (UC-K3). */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   try {
     const ctx = await exportContext(req, id);
     if (!ctx) return new Response("Klien tidak ditemukan", { status: 404 });
-    const body = await financialStatementsWorkbook(prisma, ctx.scope, ctx.period.year, ctx.period.month, ctx.meta);
+    const body = await financialStatementsPdf(prisma, ctx.scope, ctx.period.year, ctx.period.month, ctx.meta);
     return new Response(new Uint8Array(body), {
       headers: {
-        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": `attachment; filename="${statementsFileName(ctx.title, ctx.period.year, ctx.period.month)}"`,
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${statementsFileName(ctx.title, ctx.period.year, ctx.period.month, "pdf")}"`,
         "Cache-Control": "no-store",
       },
     });

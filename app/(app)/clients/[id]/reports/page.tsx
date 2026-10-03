@@ -157,9 +157,14 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
       <ReportStatusBar status={status} base={base} q={q} />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <NextStep>Pilih nama akun untuk menelusuri buku besar sampai baris sumbernya.</NextStep>
-        <a href={withParams(`${base}/reports/export`, { period: period.key, entity: scope.value })} className={buttonVariants({ variant: "outline", size: "sm" })} download data-testid="fs-download">
-          <Download /> Unduh laporan keuangan (Excel)
-        </a>
+        <div className="flex flex-wrap gap-2">
+          <a href={withParams(`${base}/reports/export/pdf`, { period: period.key, entity: scope.value })} className={buttonVariants({ variant: "outline", size: "sm" })} download data-testid="fs-download-pdf">
+            <Download /> Unduh PDF
+          </a>
+          <a href={withParams(`${base}/reports/export`, { period: period.key, entity: scope.value })} className={buttonVariants({ variant: "outline", size: "sm" })} download data-testid="fs-download">
+            <Download /> Unduh Excel
+          </a>
+        </div>
       </div>
       {scope.mode === "combined" && <p className="text-sm text-muted-foreground">{combinedNote}</p>}
       <UrlTabs defaultValue={tab}>

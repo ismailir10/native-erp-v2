@@ -111,7 +111,7 @@ The cycle runs without a separate stop. The new dependency (below) is the only g
 - [x] T4 Excel from the format with formulas, unit row, thousands format. Accept: DB test reads formulas back, cached results equal the
       totals, labels in format order.
 - [x] T5 Format editor + server action. Accept: DB tests of save/refuse/reset; visual check.
-- [ ] T6 PDF export (pdfkit) + button. Accept: DB test extracts text (labels, period, unit, totals, DRAF).
+- [x] T6 PDF export (pdfkit) + button. Accept: DB test extracts text (labels, period, unit, totals, DRAF).
 - [ ] T7 CALK markers, rule 12 amendment, end-of-cycle gates, review pass, ship.
 
 ## Implementation
@@ -170,6 +170,25 @@ The cycle runs without a separate stop. The new dependency (below) is the only g
   - *Simpan format*, *Batalkan perubahan*, and *Kembali ke format standar* (only for a client format).
 
   Removing a line also removes it from totals that summed it.
+- T6: `lib/reports/statement-set.ts` is the one model both downloads draw:
+  - `statementSet` holds the statements as rows; Neraca and Laba Rugi come from the format via `formatRows`, with a total's terms kept;
+  - account rows are marked `detail`.
+
+  `financialStatementsWorkbook` now writes that set: same output, formulas from the terms, and the format's unit on all four statement
+  sheets.
+
+  `lib/reports/pdf.ts` `financialStatementsPdf` (pdfkit, standard Helvetica, A4):
+  - a header on every page (entity, statement, period, unit) and a DRAF line while open;
+  - statement lines without account detail; CALK paragraphs and tables (in Rupiah); the directors' statement;
+  - footer with the firm, time and *Halaman n dari N*;
+  - `printedValues` rounds each line in thousands, and a total adds the printed lines (as on the page).
+
+  Other changes:
+  - Route `reports/export/pdf`; both export routes share `lib/reports/export-context.ts`.
+  - *Unduh PDF* beside *Unduh Excel*.
+  - `pdfkit` in `serverExternalPackages`; the build traces its AFM font files.
+  - Dependency note: npm can't reach `cdn.sheetjs.com` here, so the lockfile was written with `--package-lock-only` and the
+    packages copied from a scratch install. CI's `npm ci` installs from the lockfile as usual.
 
 ## Verification
 - T1: `tests/db/report-unmapped.test.ts` → `Tests 1 passed (1)`; lint + typecheck clean; `npm test` →
@@ -191,5 +210,14 @@ The cycle runs without a separate stop. The new dependency (below) is the only g
   - reset returns to the standard.
 
   Lint + typecheck clean; `npm test` → `Test Files 149 passed (149) · Tests 1021 passed (1021)`.
+- T6: `tests/db/report-pdf.test.ts` → `Tests 2 passed (2)`:
+  - text extracted with unpdf: statement names, unit, caps label, "Total aset";
+  - every page has the entity, the DRAF line and *Halaman n dari N*;
+  - the thousands total is 3.001 (the printed lines), not 3.000;
+  - no account rows on the Laba Rugi page.
+
+  The existing workbook tests pass unchanged after the refactor. A demo PDF (PT Ayam Nusantara Digital, Aug 2026, 8 pages) was
+  rendered with pdftoppm and checked by eye. Lint + typecheck clean; `npm test` → `Test Files 150 passed (150) · Tests 1023 passed
+  (1023)`; `npm run build` passes, and the route's trace includes `pdfkit/js/data/*.afm`.
 
 ## Ship Notes
