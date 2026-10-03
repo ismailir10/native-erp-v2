@@ -2,7 +2,9 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { db, resetDb } from "../helpers";
-import { GOLDEN_END, GOLDEN_PETTY_CASH, goldenKey, goldenScenario, seedGolden } from "@/lib/demo/golden";
+import { randomUUID } from "node:crypto";
+import { GOLDEN_END, GOLDEN_PETTY_CASH, goldenKey, goldenScenario, reviewWithTruth, seedGolden } from "@/lib/demo/golden";
+import { removeStatementImport } from "@/lib/imports/remove";
 import { runControls } from "@/lib/controls";
 import { reportStatus } from "@/lib/reports/status";
 import { resolveOpeningFinding } from "@/lib/findings";
@@ -135,5 +137,27 @@ describe("golden dataset with the old Neraca's petty cash left out (UC-B4)", () 
     expect(await appKey(ids.clientId, ids.ptId, ids.ownerId)).toEqual(committed);
     expect((await runControls(db, ids.clientId, 2026, 4)).find((c) => c.key.startsWith("opening-diff:"))).toBeUndefined();
     expect((await reportStatus(db, ids.clientId, [ids.ptId], 2026, 6)).reasons.find((r) => r.kind === "findings")).toBeUndefined();
+  }, 180_000);
+});
+
+describe("golden dataset: removing a statement and importing it again (UC-K4)", () => {
+  const sc = goldenScenario();
+
+  it("removing June's PT BCA statement gives exactly the key without that file; importing it again gives the key", async () => {
+    await resetDb();
+    const g = await seedGolden(db, sc);
+    const ids = { clientId: g.client.id, ptId: g.entities[0].entity.id, ownerId: g.entities[1].entity.id };
+    const admin = await db.firmMember.create({ data: { firmId: g.firm.id, userId: randomUUID(), email: "admin-golden@example.test", name: "Admin", role: "ADMIN" } });
+    const june = g.imported.find((f) => f.fileName.includes("2026-06") && f.bankAccountId === g.entities[0].banks[0].id)!;
+    const imp = await db.statementImport.findFirstOrThrow({ where: { bankAccountId: june.bankAccountId, fileName: june.fileName } });
+
+    await removeStatementImport(db, { clientId: ids.clientId, importId: imp.id, reason: "Uji: hapus lalu impor ulang", actor: { id: admin.id, role: "ADMIN" } });
+    // The key of the same group without that file, from the generator alone: the June BCA lines simply never happened.
+    const without = { ...sc, lines: sc.lines.filter((l) => !(l.bankKey === "pt-bca" && l.date.getUTCMonth() + 1 === 6)) };
+    expect(await appKey(ids.clientId, ids.ptId, ids.ownerId)).toEqual(goldenKey(without));
+
+    await importStatement(db, { ...june, provider: null });
+    await reviewWithTruth(db, sc, ids.clientId);
+    expect(await appKey(ids.clientId, ids.ptId, ids.ownerId)).toEqual(committed);
   }, 180_000);
 });

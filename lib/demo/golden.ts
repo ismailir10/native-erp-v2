@@ -210,6 +210,22 @@ export function goldenOpeningLines(sc: ClientScenario, entity: number, opts: { o
   return [...banks, ...others].filter((o) => o.amount !== 0n).map((o) => ({ accountCode: o.code, debit: o.amount > 0n ? plain(o.amount) : "", credit: o.amount < 0n ? plain(o.amount) : "" }));
 }
 
+/** Decides every line still in Review with the generator's truth, as the accountant would (Memory learns). */
+export async function reviewWithTruth(db: Db, sc: ClientScenario, clientId: string) {
+  const keyOf = (number: string, date: Date, amount: bigint, description: string) => `${number}|${date.toISOString().slice(0, 10)}|${amount}|${description}`;
+  const truth = new Map<string, Truth>();
+  for (const l of sc.lines) {
+    const b = sc.banks[l.bankKey];
+    truth.set(keyOf(sc.spec.entities[b.entity].banks[b.bank].number, l.date, l.amount, l.description), l.truth);
+  }
+  const pending = await db.bankTransaction.findMany({ where: { bankAccount: { entity: { clientId } }, status: "NEEDS_REVIEW" }, include: { bankAccount: true } });
+  for (const t of pending) {
+    const tr = truth.get(keyOf(t.bankAccount.number, t.date, t.amount, t.description));
+    if (!tr) throw new Error(`Golden: tidak ada truth untuk ${t.description}`);
+    await reviewTransaction(db, { bankTxId: t.id, accountCode: tr.accountCode, taxTag: tr.taxTag, learn: true });
+  }
+}
+
 /**
  * Builds the golden client through the real path: Saldo Awal typed through `postOpening`, every statement imported month by month
  * through `importStatement` (no AI), every line still in Review decided with the truth (Memory learns, as the accountant's work would).
@@ -219,12 +235,6 @@ export async function seedGolden(db: Db, sc: ClientScenario, opts: { omitPettyCa
   const { client, entities } = await db.$transaction((tx) => createClient(tx, firm.id, sc.spec));
   for (let i = 0; i < entities.length; i++) {
     await postOpening(db, { clientId: client.id, entityId: entities[i].entity.id, date: GOLDEN_OPENING_DATE, lines: goldenOpeningLines(sc, i, i === 0 ? opts : {}) });
-  }
-  const truth = new Map<string, Truth>();
-  const keyOf = (number: string, date: Date, amount: bigint, description: string) => `${number}|${date.toISOString().slice(0, 10)}|${amount}|${description}`;
-  for (const l of sc.lines) {
-    const b = sc.banks[l.bankKey];
-    truth.set(keyOf(sc.spec.entities[b.entity].banks[b.bank].number, l.date, l.amount, l.description), l.truth);
   }
   const files = statementFiles(sc, GOLDEN_MONTHS);
   const imported: { bankAccountId: string; fileName: string; data: Buffer }[] = [];
@@ -236,12 +246,7 @@ export async function seedGolden(db: Db, sc: ClientScenario, opts: { omitPettyCa
       await importStatement(db, { bankAccountId, fileName, data, provider: null });
       imported.push({ bankAccountId, fileName, data });
     }
-    const pending = await db.bankTransaction.findMany({ where: { bankAccount: { entity: { clientId: client.id } }, status: "NEEDS_REVIEW" }, include: { bankAccount: true } });
-    for (const t of pending) {
-      const tr = truth.get(keyOf(t.bankAccount.number, t.date, t.amount, t.description));
-      if (!tr) throw new Error(`Golden: tidak ada truth untuk ${t.description}`);
-      await reviewTransaction(db, { bankTxId: t.id, accountCode: tr.accountCode, taxTag: tr.taxTag, learn: true });
-    }
+    await reviewWithTruth(db, sc, client.id);
   }
   return { firm, client, entities, imported };
 }

@@ -36,7 +36,7 @@ without a separate stop.
       - a Temuan resolved.
 - [x] **Where it shows.** A client page *Riwayat perubahan*, newest first, filterable by kind. The ledger drawer shows a bank line's own
       history.
-- [ ] **Golden proof (UC-K4).** In the golden test, removing one month's statement brings every key number back to what it was before
+- [x] **Golden proof (UC-K4).** In the golden test, removing one month's statement brings every key number back to what it was before
       that file, and importing it again brings back the key.
 
 **Non-goals:** account merge. Buku has no merge, and the risky case in the document (cash merged into another account so it no longer ties
@@ -65,7 +65,7 @@ immutable).
       Impor page and the ledger import page. Accept: DB tests (exact restore, re-import, every refusal, partner unlinked, the event).
 - [x] T3 Change log writers (review, unpair, control note, mapping, Temuan) + *Riwayat perubahan* page + the drawer history. Accept: DB
       tests per writer; page renders.
-- [ ] T4 Golden removal proof. Accept: the golden test removes and re-imports one statement.
+- [x] T4 Golden removal proof. Accept: the golden test removes and re-imports one statement.
 - [ ] T5 End-of-cycle gates, review pass, ship.
 
 ## Implementation
@@ -84,6 +84,9 @@ immutable).
   event's *before*), `acceptMappings` (remaps only — a first mapping belongs to its import), `resolveOpeningFinding`. Page
   `/clients/[id]/history` (*Riwayat perubahan*, filter by kind, under *Pengaturan klien*); ledger drawer *Riwayat* for a bank line
   (`lib/reports/account-ledger.ts`). Test: `tests/db/audit-writers.test.ts`.
+- T4: `lib/demo/golden.ts` `reviewWithTruth` (factored out of `seedGolden`); `tests/db/golden.test.ts` removes June's PT BCA statement — the app
+  then equals `goldenKey` of the same scenario without those lines (the generator's own answer, not a snapshot) — and imports it again to
+  the committed key. The trap's withdrawal and a 1199 sweep and the PT → owner loan are in that file, so their other halves stay behind.
 
 ## Verification
 - T1: `prisma migrate deploy` on both DBs → applied; `prisma migrate diff --from-config-datasource --to-schema` → "This is an empty migration.";
@@ -91,5 +94,6 @@ immutable).
 - T2: `npx vitest run tests/db/remove-import.test.ts` → `Tests 3 passed (3)`; lint + typecheck clean; `npm test` → `Test Files 131 passed (131) · Tests 944 passed (944)`.
 - T3: `npx vitest run tests/db/audit-writers.test.ts` → `Tests 2 passed (2)`; lint + typecheck clean; `npm test` → `Test Files 132 passed (132) · Tests 946 passed (946)`;
   `demo:reset && verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`
+- T4: `npx vitest run tests/db/golden.test.ts` → `Tests 8 passed (8)`.
 
 ## Ship Notes
