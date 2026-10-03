@@ -33,7 +33,8 @@ it isn't a difference.
   - Each allocation is an ordinary settlement (rule 5c): row locks, open month, the same refusals.
   - A line still in Review or on another account is classified to the invoices' receivable/payable account first, through the
     reviewer's writer, as *Klasifikasikan lalu cocokkan* does today.
-  - Invoices expecting withholding are settled for cash only; the tax stays expected, as for a manual settlement without tax.
+  - An invoice expecting withholding closes at its net with its tax booked, as a manual settlement does; a part payment is cash only
+    and the tax stays expected (review pass: cash-only left such notes open by the tax forever).
   - The result names the invoices settled and the remainder.
 - [ ] **The rest is the contact's advance (uang muka).**
   - A FIFO (or manual) match tags the bank line with its contact (`BankTransaction.contactId`).
@@ -87,7 +88,7 @@ it isn't a difference.
 - [x] T3 Void: `voidInvoice` + action + UI. Accept: DB tests (posted invoice reversed and leaves aging and proof; opening one only
       marked; settled refused; locked month refused; history).
 - [x] T4 Channel: `Contact.channel`, setter action, the sales-by-channel card. Accept: DB test of the totals; visual check.
-- [ ] T5 Rules (5c), README, gates, review pass, ship.
+- [x] T5 Rules (5c), README, gates, review pass, ship.
 
 ## Implementation
 - T1: migration `20261003100000_receipts_advances` (all of the cycle's columns, so later tasks need none: `BankTransaction.contactId`,
@@ -135,7 +136,30 @@ it isn't a difference.
   2026, invoices and a FIFO receipt of 379,15 jt for two notes of 250 jt): the aging shows PT Mitra Unggas's (129.150.000) advance
   flagged *kelebihan bayar*; the close lists "Kelebihan bayar pelanggan / pemasok"; the void dialog, the struck-through *Faktur
   dikeluarkan* row and the channel card and dialog render; at 390 px there is no horizontal scroll.
-- T5 end of cycle: lint + typecheck clean; `npm test` → 162 files, 1065 tests; `npm run build` passes; `npm run demo:reset && npm run
+- T5 end of cycle: lint + typecheck clean; `npm test` → 162 files, 1065 tests (1070 after the review pass); `npm run build` passes; `npm run demo:reset && npm run
   verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`; e2e runs in CI.
+
+## Review pass
+An independent review found 10 issues (2 H, 4 M, 4 L), most reproduced with probes. All fixed:
+- **H — proof broke when an advance paid a later invoice.** `unmatchedLines` subtracted every settlement on a line, but the month's list
+  only holds documents issued by then: an advance in August that pays a September note made August unequal. Now only settlements of
+  documents already in the subledger at the date are subtracted. Test: the same line proven at 31 Aug (8 jt advance) and 30 Sep (3 jt).
+- **H — FIFO failed for a currency with cents.** It passed minor units as a typed (major) amount. `settleTx` now takes `cashMinor` /
+  `withheldMinor` from internal callers. Test: S$ 100,50 settled on an SGD entity.
+- **M — deadlock between a manual match and FIFO on the same line** (opposite lock order). The bank line is locked first everywhere.
+  Test: four rounds of both at once; it fails with the old order (40P01) and passes now.
+- **M — FIFO re-tagged another contact's line**, moving their advance. FIFO and manual settling now refuse a line tagged with another
+  contact ("Mutasi ini milik … Hapus tandanya dulu").
+- **M — a refund on 1130 was *Belum dialokasikan* with no way to allocate it.** The unmatched card now lists lines the other way
+  (pengembalian) and split lines with a part on the account, with only the tag action.
+- **M — a bill feeding the asset register (or a schedule) could be voided** under the asset. Refused, naming the asset; a voided or
+  reversed entry is no longer an asset-purchase candidate. Test added.
+- **L — `tagAdvance`** now runs under the line's lock, refuses a locked month, and writes an audit event ("Uang muka ditandai").
+- **L — clearing the tag of a settled line** now says the tag follows its settlements, naming the documents.
+- **L — tax recorded on an unmatched line by hand** now counts on the account (the posting books it gross), so the proof stays equal.
+- **L — withholding in FIFO** (design): see the spec change above; test updated to the tax booked (200 rb PPh 23, the line carries it).
+
+Verification: `tests/db/receipts-fifo.test.ts` 10 (adds the month-end advance, SGD, refund tagging with lock and audit, the concurrency
+round), `tests/db/invoice-void.test.ts` 3 (adds the asset-register refusal and candidates).
 
 ## Ship Notes

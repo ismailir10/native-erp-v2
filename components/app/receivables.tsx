@@ -563,7 +563,7 @@ function UnsettledLine({ clientId, line, contacts, party, onDone }: { clientId: 
     const r = await tagAdvanceAction({ clientId, bankTransactionId: line.id, contactId: id });
     setBusy(false);
     if (!r.ok) return void toast.error(r.error);
-    toast.success(id ? "Ditandai sebagai uang muka" : "Tanda uang muka dihapus");
+    toast.success(id ? (line.refund ? "Ditandai sebagai pengembalian" : "Ditandai sebagai uang muka") : "Tanda dihapus");
     onDone();
   }
   return (
@@ -572,7 +572,9 @@ function UnsettledLine({ clientId, line, contacts, party, onDone }: { clientId: 
         <div className="text-sm">{line.description}</div>
         <div className="text-xs text-muted-foreground">
           {line.entity} · {line.date} · {line.accountCode}
-          {line.contact && <span className="font-medium text-foreground"> · uang muka {line.contact.name}</span>}
+          {line.refund && <span className="text-review"> · pengembalian (uang keluar)</span>}
+          {line.split && <span> · bagian dari mutasi yang dipecah</span>}
+          {line.contact && <span className="font-medium text-foreground"> · {line.refund ? "pengembalian ke" : "uang muka"} {line.contact.name}</span>}
         </div>
       </div>
       <Money className="text-sm" value={BigInt(line.free)} currency={line.currency} />
@@ -581,11 +583,11 @@ function UnsettledLine({ clientId, line, contacts, party, onDone }: { clientId: 
           <SelectTrigger size="sm" className="w-56 max-w-full" aria-label={`Pilih ${party}`}><SelectValue placeholder={`Pilih ${party}`} /></SelectTrigger>
           <SelectContent>{contacts.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
         </Select>
-        <Button size="sm" variant="outline" disabled={busy || !contactId} onClick={fifo} data-testid="fifo">Cocokkan FIFO</Button>
+        {!line.refund && !line.split && <Button size="sm" variant="outline" disabled={busy || !contactId} onClick={fifo} data-testid="fifo">Cocokkan FIFO</Button>}
         {line.contact ? (
           <Button size="sm" variant="ghost" disabled={busy} onClick={() => tag(null)}>Hapus tanda</Button>
         ) : (
-          <Button size="sm" variant="ghost" disabled={busy || !contactId} onClick={() => tag(contactId)}>Uang muka</Button>
+          <Button size="sm" variant="ghost" disabled={busy || !contactId} onClick={() => tag(contactId)}>{line.refund ? "Tandai pengembalian" : "Uang muka"}</Button>
         )}
       </div>
     </div>

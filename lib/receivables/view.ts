@@ -41,7 +41,7 @@ export type AgingView = {
   unallocatedLines: number;
 };
 export type ComparisonView = { entityId: string; entity: string; currency: string; accounts: string[]; subledger: string; ledger: string; unsettledLines: number; equal: boolean };
-export type UnsettledLineView = { id: string; entityId: string; entity: string; currency: string; date: string; description: string; free: string; accountCode: string; /** The contact this line was matched for: its unmatched rest is their advance (UC-B5). */ contact: { id: string; name: string } | null };
+export type UnsettledLineView = { id: string; entityId: string; entity: string; currency: string; date: string; description: string; free: string; accountCode: string; /** The contact this line was matched for: its unmatched rest is their advance (UC-B5). */ contact: { id: string; name: string } | null; /** Money the other way on the account (a refund to a customer, from a supplier): tagged, never settled. */ refund: boolean; /** A split line: only its part here, tagged, never settled. */ split: boolean };
 /** A document taken out (UC-B5): listed struck through with its reason; it counts nowhere. */
 export type VoidedView = { id: string; entity: string; currency: string; contact: string; number: string; issued: string; total: string; opening: boolean; reason: string; voidedAt: string; by: string | null };
 export type CandidateView = { bankTransactionId: string; date: string; description: string; free: string; exact: boolean; named: boolean; onAccount: boolean; advance: boolean };
@@ -118,14 +118,31 @@ export async function receivablesView(db: Db, clientId: string, direction: Invoi
   // Bank lines on the receivable/payable accounts not (fully) matched to an invoice yet.
   const codes = [...new Set([...comparisons.flatMap((c) => c.accounts), direction === "SALES" ? "1130" : "2110"])];
   const lines = await db.bankTransaction.findMany({
-    where: { entityId: { in: ids }, direction: direction === "SALES" ? "IN" : "OUT", date: { lte: asOf }, accountCode: { in: codes }, status: { not: "NEEDS_REVIEW" } },
-    include: { settlements: { select: { amount: true, withheld: true } }, contact: { select: { id: true, name: true } } },
+    where: { entityId: { in: ids }, date: { lte: asOf }, status: { not: "NEEDS_REVIEW" }, OR: [{ accountCode: { in: codes }, splits: { none: {} } }, { splits: { some: { accountCode: { in: codes } } } }] },
+    include: { settlements: { select: { amount: true, withheld: true } }, contact: { select: { id: true, name: true } }, splits: { select: { accountCode: true, amount: true } } },
     orderBy: [{ date: "asc" }, { rowNumber: "asc" }],
   });
+  const settling = direction === "SALES" ? "IN" : "OUT";
   const unsettled: UnsettledLineView[] = lines
-    .map((t) => ({ t, free: (t.amount < 0n ? -t.amount : t.amount) - t.settlements.reduce((u, x) => u + x.amount - x.withheld, 0n) }))
+    .map((t) => ({
+      t,
+      // Cash still free on the line (a split line: its part on these accounts, never settled).
+      free: t.splits.length ? t.splits.filter((p) => codes.includes(p.accountCode)).reduce((u, p) => u + p.amount, 0n) : (t.amount < 0n ? -t.amount : t.amount) - t.settlements.reduce((u, x) => u + x.amount - x.withheld, 0n),
+    }))
     .filter((x) => x.free > 0n)
-    .map(({ t, free }) => ({ id: t.id, entityId: t.entityId, entity: ent.get(t.entityId)!.shortName, currency: ent.get(t.entityId)!.functionalCurrency, date: formatDate(t.date), description: t.description, free: free.toString(), accountCode: t.accountCode ?? "", contact: t.contact }));
+    .map(({ t, free }) => ({
+      id: t.id,
+      entityId: t.entityId,
+      entity: ent.get(t.entityId)!.shortName,
+      currency: ent.get(t.entityId)!.functionalCurrency,
+      date: formatDate(t.date),
+      description: t.description,
+      free: free.toString(),
+      accountCode: t.splits.length ? t.splits.filter((p) => codes.includes(p.accountCode)).map((p) => p.accountCode).join(", ") : (t.accountCode ?? ""),
+      contact: t.contact,
+      refund: t.direction !== settling,
+      split: t.splits.length > 0,
+    }));
   const voidedRows = await db.invoice.findMany({
     where: { clientId, direction, entityId: { in: ids }, voidedAt: { not: null }, issueDate: { lte: asOf } },
     include: { contact: { select: { name: true } }, voidedBy: { select: { name: true } } },

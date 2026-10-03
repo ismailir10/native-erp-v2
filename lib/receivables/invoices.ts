@@ -181,13 +181,16 @@ export async function voidInvoice(db: Db, input: { clientId: string; invoiceId: 
     await tx.$queryRaw`SELECT id FROM "Invoice" WHERE id = ${input.invoiceId} FOR UPDATE`;
     const inv = await tx.invoice.findFirst({
       where: { id: input.invoiceId, clientId: input.clientId },
-      include: { contact: true, entity: true, settlements: { select: { id: true } }, entry: { include: { lines: true } } },
+      include: { contact: true, entity: true, settlements: { select: { id: true } }, entry: { include: { lines: true, assetsFrom: { select: { name: true } }, schedulesFrom: { select: { id: true } } } } },
     });
     if (!inv) throw new LedgerError("Faktur tidak ditemukan.");
     const sales = inv.direction === "SALES";
     const doc = `${sales ? "Faktur" : "Tagihan"} ${inv.number}`;
     if (inv.voidedAt) throw new LedgerError(`${doc} sudah dikeluarkan.`);
     if (inv.settlements.length) throw new LedgerError(`${doc} sudah dicocokkan ke ${inv.settlements.length} mutasi bank. Hapus pencocokannya dulu, lalu keluarkan.`);
+    // Its journal feeds a register: reversing it underneath would leave the asset or the schedule running on nothing.
+    if (inv.entry?.assetsFrom.length) throw new LedgerError(`${doc} tercatat sebagai aset tetap (${inv.entry.assetsFrom.map((x) => x.name).join(", ")}). Hapus atau lepas asetnya dulu di Aset Tetap.`);
+    if (inv.entry?.schedulesFrom.length) throw new LedgerError(`${doc} dipakai jadwal jurnal (amortisasi). Hentikan jadwalnya dulu di Jurnal Penyesuaian.`);
     let voidEntryId: string | null = null;
     if (inv.entry) {
       const { date } = inv.entry;

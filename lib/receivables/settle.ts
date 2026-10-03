@@ -5,6 +5,7 @@ import type { WithholdingKind } from "@/lib/generated/prisma/enums";
 import { checkWithholding, WITHHOLDING_LABEL } from "@/lib/tax/withholding";
 import { formatPeriod } from "@/lib/format";
 import { formatMoney, parseMoney } from "@/lib/money";
+import { recordEvent } from "@/lib/audit";
 
 /**
  * Settlements (accounting-rules 5c): a bank line settles (part of) an invoice. The bank line already moved the GL when it was
@@ -26,6 +27,9 @@ type SettleInput = {
   withheld?: string | null;
   /** The tax, when the invoice doesn't name one. */
   whtKind?: WithholdingKind | null;
+  /** Internal callers (FIFO) pass minor units directly: no round trip through a typed amount. */
+  cashMinor?: bigint;
+  withheldMinor?: bigint;
   actorId?: string | null;
 };
 
@@ -39,18 +43,21 @@ async function lockedMonths(db: Db | Tx, clientId: string) {
 }
 
 async function load(tx: Tx, input: SettleInput) {
-  // Lock both rows: two clicks settling the same invoice or the same receipt serialise here.
-  await tx.$queryRaw`SELECT id FROM "Invoice" WHERE id = ${input.invoiceId} FOR UPDATE`;
+  // Lock both rows: two clicks settling the same invoice or the same receipt serialise here. The bank line first, everywhere
+  // (settleFifo and unsettle lock it before any invoice), so two paths over the same line never wait on each other in reverse.
   await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${input.bankTransactionId} FOR UPDATE`;
+  await tx.$queryRaw`SELECT id FROM "Invoice" WHERE id = ${input.invoiceId} FOR UPDATE`;
   const invoice = await tx.invoice.findFirst({ where: { id: input.invoiceId, clientId: input.clientId }, include: { arApAccount: true, entity: true, settlements: { select: { amount: true, withheld: true } } } });
   if (!invoice) throw new LedgerError("Faktur tidak ditemukan.");
   if (invoice.voidedAt) throw new LedgerError(`${invoice.direction === "SALES" ? "Faktur" : "Tagihan"} ${invoice.number} sudah dikeluarkan.`);
-  const t = await tx.bankTransaction.findFirst({ where: { id: input.bankTransactionId, entityId: invoice.entityId }, include: { settlements: { select: { amount: true, withheld: true } } } });
+  const t = await tx.bankTransaction.findFirst({ where: { id: input.bankTransactionId, entityId: invoice.entityId }, include: { settlements: { select: { amount: true, withheld: true } }, contact: { select: { name: true } } } });
   if (!t) throw new LedgerError("Mutasi bank tidak ditemukan untuk entitas faktur ini.");
   // A split line moved the receivable/payable by one part only: settling its full amount would leave the subledger above the ledger.
   if (await tx.bankTxSplit.count({ where: { bankTransactionId: t.id } })) throw new LedgerError("Mutasi ini dipecah ke beberapa akun, jadi tidak bisa dicocokkan ke faktur. Gabungkan dulu ke satu akun di Buku Besar.");
   const sales = invoice.direction === "SALES";
   if (t.direction !== (sales ? "IN" : "OUT")) throw new LedgerError(sales ? "Pelunasan piutang harus uang masuk." : "Pembayaran utang harus uang keluar.");
+  // A line tagged with another contact is their money (their advance, UC-B5): it can't pay this contact's document.
+  if (t.contactId && t.contactId !== invoice.contactId) throw new LedgerError(`Mutasi ini milik ${t.contact?.name ?? "kontak lain"} (uang muka atau pelunasannya). Hapus tandanya dulu bila memang salah.`);
   if ((await lockedMonths(tx, input.clientId)).has(monthKey(t.date))) throw new LedgerError(`${formatPeriod(t.date.getUTCFullYear(), t.date.getUTCMonth() + 1)} sudah ditutup. Buka periode dulu untuk mencocokkan mutasi ini.`);
   return { invoice, t };
 }
@@ -65,7 +72,7 @@ async function settleTx(tx: Tx, input: SettleInput) {
   const free = abs(t.amount) - cashUsed(t.settlements);
   if (open <= 0n) throw new LedgerError(`${invoice.number} sudah lunas.`);
   if (free <= 0n) throw new LedgerError("Mutasi ini sudah habis dicocokkan ke faktur lain.");
-  const explicitWht = input.withheld?.trim() ? parseMoney(input.withheld, cur) : null;
+  const explicitWht = input.withheldMinor ?? (input.withheld?.trim() ? parseMoney(input.withheld, cur) : null);
   if (explicitWht !== null && explicitWht < 0n) throw new LedgerError("Pemotongan pajak tidak boleh negatif.");
   // Cash: what was asked, else the most both can take (less the expected withholding when that is what closes the invoice).
   const expected = invoice.whtAmount - invoice.settlements.reduce((s, x) => s + x.withheld, 0n);
@@ -73,7 +80,8 @@ async function settleTx(tx: Tx, input: SettleInput) {
   const pool = t.whtAmount - t.settlements.reduce((s, x) => s + x.withheld, 0n);
   const expectedTax = pool > expected ? pool : expected;
   let cash: bigint;
-  if (input.amount?.trim()) cash = parseMoney(input.amount, cur);
+  if (input.cashMinor !== undefined) cash = input.cashMinor;
+  else if (input.amount?.trim()) cash = parseMoney(input.amount, cur);
   else if (explicitWht !== null) cash = open - explicitWht < free ? open - explicitWht : free;
   else cash = open < free ? open : free;
   if (cash <= 0n) throw new LedgerError("Nominal pencocokan harus lebih dari nol.");
@@ -121,15 +129,17 @@ export async function settleWithReclass(db: Db, input: SettleInput) {
 /**
  * Cocokkan FIFO (UC-B5): one receipt (or payment) across the contact's open invoices of the entity, oldest due first (then issue date and
  * number), until the line's free amount or the invoices run out. Each allocation is an ordinary settlement (same locks and refusals).
- * Invoices expecting withholding take cash only (the tax stays expected). What is left on the line is the contact's advance.
+ * An invoice expecting withholding closes at its net with its tax booked, as by hand; a part payment of it is cash only. What is left on
+ * the line is the contact's advance. A line tagged with another contact is refused.
  */
 export async function settleFifo(db: Db, input: { clientId: string; bankTransactionId: string; contactId: string; actorId?: string | null }) {
   return db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${input.bankTransactionId} FOR UPDATE`;
-    const t = await tx.bankTransaction.findFirst({ where: { id: input.bankTransactionId, bankAccount: { entity: { clientId: input.clientId } } }, include: { settlements: { select: { invoiceId: true, amount: true, withheld: true } } } });
+    const t = await tx.bankTransaction.findFirst({ where: { id: input.bankTransactionId, bankAccount: { entity: { clientId: input.clientId } } }, include: { settlements: { select: { invoiceId: true, amount: true, withheld: true } }, contact: { select: { name: true } } } });
     if (!t) throw new LedgerError("Mutasi bank tidak ditemukan.");
     const contact = await tx.contact.findFirst({ where: { id: input.contactId, clientId: input.clientId } });
     if (!contact) throw new LedgerError("Pilih pelanggan atau pemasok.");
+    if (t.contactId && t.contactId !== contact.id) throw new LedgerError(`Mutasi ini milik ${t.contact?.name ?? "kontak lain"} (uang muka atau pelunasannya). Hapus tandanya dulu bila memang salah.`);
     let free = abs(t.amount) - cashUsed(t.settlements);
     if (free <= 0n) throw new LedgerError("Mutasi ini sudah habis dicocokkan.");
     const direction = t.direction === "IN" ? "SALES" : "PURCHASE";
@@ -149,12 +159,15 @@ export async function settleFifo(db: Db, input: { clientId: string; bankTransact
     const settled: { number: string; amount: bigint }[] = [];
     for (const x of open) {
       if (free <= 0n) break;
-      // Cash only: an invoice the counterparty withholds on closes at its net; its tax stays expected.
-      const due = x.tax > 0n ? x.open - x.tax : x.open;
+      // An invoice the counterparty withholds on is paid at its net: when the cash reaches it, the expected tax closes it as a manual
+      // settlement would (the tax leg booked); a part payment is cash only and the tax stays expected.
+      const tax = x.tax > 0n ? x.tax : 0n;
+      const due = x.open - tax;
+      if (due <= 0n) continue;
       const cash = free < due ? free : due;
-      if (cash <= 0n) continue;
-      await settleTx(tx, { clientId: input.clientId, invoiceId: x.i.id, bankTransactionId: t.id, amount: cash.toString(), withheld: "0", actorId: input.actorId });
-      settled.push({ number: x.i.number, amount: cash });
+      const withheld = cash === due ? tax : 0n;
+      await settleTx(tx, { clientId: input.clientId, invoiceId: x.i.id, bankTransactionId: t.id, cashMinor: cash, withheldMinor: withheld, actorId: input.actorId });
+      settled.push({ number: x.i.number, amount: cash + withheld });
       free -= cash;
     }
     await tx.bankTransaction.update({ where: { id: t.id }, data: { contactId: contact.id } });
@@ -162,16 +175,37 @@ export async function settleFifo(db: Db, input: { clientId: string; bankTransact
   });
 }
 
-/** Tags a bank line as a contact's (its unmatched rest is their advance), or clears the tag (null). Nothing is posted. */
-export async function tagAdvance(db: Db, input: { clientId: string; bankTransactionId: string; contactId: string | null }) {
-  const t = await db.bankTransaction.findFirst({ where: { id: input.bankTransactionId, bankAccount: { entity: { clientId: input.clientId } } }, include: { settlements: { select: { invoice: { select: { contactId: true } } } } } });
-  if (!t) throw new LedgerError("Mutasi bank tidak ditemukan.");
-  if (input.contactId) {
-    const contact = await db.contact.findFirst({ where: { id: input.contactId, clientId: input.clientId } });
-    if (!contact) throw new LedgerError("Pilih pelanggan atau pemasok.");
-  }
-  if (t.settlements.some((s) => s.invoice.contactId !== input.contactId)) throw new LedgerError("Mutasi ini sudah dicocokkan ke faktur pelanggan lain. Hapus pencocokannya dulu.");
-  return db.bankTransaction.update({ where: { id: t.id }, data: { contactId: input.contactId } });
+/**
+ * Tags a bank line as a contact's (its unmatched rest is their advance, or a refund to them), or clears the tag (null). Nothing is
+ * posted, but the tag moves the month's subledger proof: refused in a locked month, under the line's lock, and kept in the history.
+ */
+export async function tagAdvance(db: Db, input: { clientId: string; bankTransactionId: string; contactId: string | null; actorId?: string | null }) {
+  return db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${input.bankTransactionId} FOR UPDATE`;
+    const t = await tx.bankTransaction.findFirst({
+      where: { id: input.bankTransactionId, bankAccount: { entity: { clientId: input.clientId } } },
+      include: { contact: { select: { name: true } }, settlements: { select: { invoice: { select: { contactId: true, number: true } } } } },
+    });
+    if (!t) throw new LedgerError("Mutasi bank tidak ditemukan.");
+    const contact = input.contactId ? await tx.contact.findFirst({ where: { id: input.contactId, clientId: input.clientId } }) : null;
+    if (input.contactId && !contact) throw new LedgerError("Pilih pelanggan atau pemasok.");
+    if (t.settlements.length && t.settlements.some((s) => s.invoice.contactId !== input.contactId)) {
+      throw new LedgerError(`Mutasi ini sudah dicocokkan ke ${t.settlements.map((s) => s.invoice.number).join(", ")}; tandanya mengikuti pencocokan itu. Hapus pencocokannya dulu bila salah.`);
+    }
+    if ((await lockedMonths(tx, input.clientId)).has(monthKey(t.date))) throw new LedgerError(`${formatPeriod(t.date.getUTCFullYear(), t.date.getUTCMonth() + 1)} sudah ditutup. Buka periode dulu untuk mengubah tanda mutasi ini.`);
+    const updated = await tx.bankTransaction.update({ where: { id: t.id }, data: { contactId: contact?.id ?? null } });
+    await recordEvent(tx, {
+      clientId: input.clientId,
+      entityId: t.entityId,
+      kind: "ADVANCE",
+      subject: `bank-tx:${t.id}`,
+      summary: `${t.description.slice(0, 70)}: ${contact ? `ditandai milik ${contact.name}` : `tanda ${t.contact?.name ?? ""} dihapus`}`.trim(),
+      before: { contact: t.contact?.name ?? null },
+      after: { contact: contact?.name ?? null },
+      actorId: input.actorId,
+    });
+    return updated;
+  });
 }
 
 export async function unsettle(db: Db, input: { clientId: string; settlementId: string }) {

@@ -124,16 +124,21 @@ export async function unmatchedLines(db: Db | Tx, entityId: string, direction: I
       amount: true,
       direction: true,
       contact: { select: { id: true, name: true } },
+      whtAmount: true,
       splits: { select: { accountCode: true, amount: true } },
-      settlements: { select: { amount: true, withheld: true } },
+      settlements: { select: { amount: true, invoice: { select: { entityId: true, issueDate: true, opening: true } } } },
     },
     orderBy: [{ date: "asc" }, { rowNumber: "asc" }],
   });
   const settling = direction === "SALES" ? "IN" : "OUT";
+  const openings = await openingDates(db, lines.some((t) => t.settlements.some((s) => s.invoice.opening)) ? [entityId] : []);
   return lines.flatMap((t) => {
-    // A split line puts only its parts on these accounts there (and is never settled); a whole line all of it, less what it settled.
-    const onAccount = t.splits.length ? t.splits.filter((p) => codes.includes(p.accountCode)).reduce((s, p) => s + p.amount, 0n) : t.amount < 0n ? -t.amount : t.amount;
-    const free = onAccount - t.settlements.reduce((u, x) => u + x.amount - x.withheld, 0n);
+    // What the line put on these accounts: a split line its parts there (never settled); a whole line its cash plus any tax withheld on
+    // it, which the posting books on the same account (gross).
+    const onAccount = t.splits.length ? t.splits.filter((p) => codes.includes(p.accountCode)).reduce((s, p) => s + p.amount, 0n) : (t.amount < 0n ? -t.amount : t.amount) + t.whtAmount;
+    // Less what it cleared on documents already in the subledger at the date: an advance that pays next month's invoice is still an
+    // advance at this month-end (the invoice isn't in this month's list).
+    const free = onAccount - t.settlements.filter((x) => +subledgerFrom(x.invoice, openings) <= +asOf).reduce((u, x) => u + x.amount, 0n);
     if (free <= 0n) return [];
     return [{ id: t.id, entityId: t.entityId, date: t.date, description: t.description, contact: t.contact, amount: t.direction === settling ? free : -free }];
   });

@@ -6,6 +6,7 @@ import { invoicesAt, subledgerVsLedger } from "@/lib/receivables/aging";
 import { settle, settleWithReclass, unsettle } from "@/lib/receivables/settle";
 import { postOpening } from "@/lib/opening";
 import { dateOnly } from "@/lib/format";
+import { assetCandidates, createAsset } from "@/lib/assets/register";
 
 type G = Awaited<ReturnType<typeof makeGroup>>;
 
@@ -66,5 +67,18 @@ describe("keluarkan dokumen (UC-B5)", () => {
     expect([v.voidEntryId, await db.journalEntry.count()]).toEqual([null, entries]);
     expect((await invoicesAt(db, g.client.id, "SALES", dateOnly(2026, 8, 31))).map((i) => i.number)).toEqual(["N-1"]);
     await expect(settle(db, { clientId: g.client.id, invoiceId: o.id, bankTransactionId: receipt.id })).rejects.toThrow("sudah dikeluarkan");
+  });
+
+  it("refuses a bill whose journal the asset register uses, and a voided bill is no asset purchase", async () => {
+    const g = await makeGroup();
+    const bill = (number: string) =>
+      createInvoice(db, { clientId: g.client.id, entityId: g.pt.entity.id, direction: "PURCHASE", contactName: "PT Komputer", number, issueDate: "2026-08-10", dpp: "48000000", counterCode: "1210" });
+    const laptop = await bill("B-1");
+    await createAsset(db, { clientId: g.client.id, entityId: g.pt.entity.id, taxGroup: "KELOMPOK_1", fiscalMethod: "GARIS_LURUS", assetAccountCode: "1210", name: "Laptop kantor", acquiredOn: "2026-08-10", cost: "48000000", sourceEntryId: laptop.entryId! });
+    await expect(voidInvoice(db, { clientId: g.client.id, invoiceId: laptop.id, reason: "Dobel dengan tagihan lain" })).rejects.toThrow("Tagihan B-1 tercatat sebagai aset tetap (Laptop kantor).");
+    const dup = await bill("B-2");
+    expect((await assetCandidates(db, g.client.id)).map((c) => c.entryId)).toEqual([dup.entryId]);
+    await voidInvoice(db, { clientId: g.client.id, invoiceId: dup.id, reason: "Dobel dengan tagihan B-1" });
+    expect(await assetCandidates(db, g.client.id)).toEqual([]);
   });
 });

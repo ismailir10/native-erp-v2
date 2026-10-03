@@ -436,7 +436,7 @@ export async function settleFifoAction(input: { clientId: string; bankTransactio
 export async function tagAdvanceAction(input: { clientId: string; bankTransactionId: string; contactId: string | null }): Promise<Result> {
   try {
     const client = await getClientForFirm(input.clientId);
-    await tagAdvance(prisma, { clientId: client.id, bankTransactionId: input.bankTransactionId, contactId: input.contactId });
+    await tagAdvance(prisma, { clientId: client.id, bankTransactionId: input.bankTransactionId, contactId: input.contactId, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
   } catch (e) {
