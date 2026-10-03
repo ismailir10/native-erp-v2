@@ -26,7 +26,7 @@ without a separate stop.
       A transfer partner in another import loses its link and stays on its account, so the clearing control shows the open half.
 - [x] **The removal is recorded.** One change-log event keeps: the file, the account or entity, the period, the row count, money in and
       out, the journal count, the net it took off each account, the reason, who and when. Never edited.
-- [ ] **Change log (UC-C8).** An append-only `AuditEvent` per client (who, when, kind, subject, a Bahasa summary, before → after). It is
+- [x] **Change log (UC-C8).** An append-only `AuditEvent` per client (who, when, kind, subject, a Bahasa summary, before → after). It is
       written in the same transaction as:
       - a reviewer moving a bank line to another account or tax tag;
       - *Lepas pasangan*;
@@ -34,7 +34,7 @@ without a separate stop.
       - a control note written or replaced (the replaced note is kept);
       - a source-account mapping changed;
       - a Temuan resolved.
-- [ ] **Where it shows.** A client page *Riwayat perubahan*, newest first, filterable by kind. The ledger drawer shows a bank line's own
+- [x] **Where it shows.** A client page *Riwayat perubahan*, newest first, filterable by kind. The ledger drawer shows a bank line's own
       history.
 - [ ] **Golden proof (UC-K4).** In the golden test, removing one month's statement brings every key number back to what it was before
       that file, and importing it again brings back the key.
@@ -63,7 +63,7 @@ immutable).
       amended, `deleteClient` covers the table. Accept: migrate diff empty, tests green.
 - [x] T2 Hapus impor: `lib/imports/remove.ts` (`removeStatementImport`, `removeLedgerImport`), actions, buttons with a reason dialog on the
       Impor page and the ledger import page. Accept: DB tests (exact restore, re-import, every refusal, partner unlinked, the event).
-- [ ] T3 Change log writers (review, unpair, control note, mapping, Temuan) + *Riwayat perubahan* page + the drawer history. Accept: DB
+- [x] T3 Change log writers (review, unpair, control note, mapping, Temuan) + *Riwayat perubahan* page + the drawer history. Accept: DB
       tests per writer; page renders.
 - [ ] T4 Golden removal proof. Accept: the golden test removes and re-imports one statement.
 - [ ] T5 End-of-cycle gates, review pass, ship.
@@ -79,10 +79,17 @@ immutable).
   money in/out, journals and the net per account), `removeImportAction`, `components/app/remove-import.tsx` (reason dialog), admin-only
   *Hapus* on the Impor page's statement history and on a posted ledger import's page; accounting-rules rule 3 amended. Test:
   `tests/db/remove-import.test.ts`.
+- T3: events written in the same transaction by `reviewTransactionTx` (only when account, tax or withholding actually change),
+  `unpairTransfer` (one per half), `lib/controls/ack.ts` `saveControlNote` (the action now goes through it; a replaced note is the
+  event's *before*), `acceptMappings` (remaps only — a first mapping belongs to its import), `resolveOpeningFinding`. Page
+  `/clients/[id]/history` (*Riwayat perubahan*, filter by kind, under *Pengaturan klien*); ledger drawer *Riwayat* for a bank line
+  (`lib/reports/account-ledger.ts`). Test: `tests/db/audit-writers.test.ts`.
 
 ## Verification
 - T1: `prisma migrate deploy` on both DBs → applied; `prisma migrate diff --from-config-datasource --to-schema` → "This is an empty migration.";
   `npx vitest run tests/db/audit.test.ts` → `Tests 1 passed (1)`; lint + typecheck clean; `npm test` → `Test Files 130 passed (130) · Tests 941 passed (941)`.
 - T2: `npx vitest run tests/db/remove-import.test.ts` → `Tests 3 passed (3)`; lint + typecheck clean; `npm test` → `Test Files 131 passed (131) · Tests 944 passed (944)`.
+- T3: `npx vitest run tests/db/audit-writers.test.ts` → `Tests 2 passed (2)`; lint + typecheck clean; `npm test` → `Test Files 132 passed (132) · Tests 946 passed (946)`;
+  `demo:reset && verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`
 
 ## Ship Notes

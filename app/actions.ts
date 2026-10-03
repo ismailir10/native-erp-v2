@@ -35,6 +35,7 @@ import { EntitySettingsError, setReportingFramework } from "@/lib/entity-setting
 import { OpeningError, postOpening, type OpeningLineInput } from "@/lib/opening";
 import { FindingError, resolveOpeningFinding } from "@/lib/findings";
 import { removeLedgerImport, removeStatementImport, RemoveImportError } from "@/lib/imports/remove";
+import { saveControlNote } from "@/lib/controls/ack";
 import type { TaxTag, WithholdingKind } from "@/lib/generated/prisma/enums";
 import { RateError, upsertRate, validateRateInput } from "@/lib/fx/rates";
 import { MAX_UPLOAD_BYTES } from "@/lib/upload";
@@ -207,8 +208,8 @@ export async function ackControlAction(clientId: string, year: number, month: nu
     const period = await periodFor(clientId, year, month, { mustBeOpen: true });
     const ackedById = (await getCurrentMember()).id;
     // The note answers the control as it reads now; when its detail changes the note stops clearing it (lib/controls runControls).
-    const detail = (await runControls(prisma, clientId, year, month)).find((c) => c.key === controlKey)?.detail ?? null;
-    await prisma.controlAck.upsert({ where: { periodId_controlKey: { periodId: period.id, controlKey } }, create: { periodId: period.id, controlKey, note, detail, ackedById }, update: { note, detail, ackedById } });
+    const control = (await runControls(prisma, clientId, year, month)).find((c) => c.key === controlKey);
+    await saveControlNote(prisma, { clientId, periodId: period.id, year, month, controlKey, title: control ? `${control.title} · ${control.scope}` : undefined, note, detail: control?.detail ?? null, actorId: ackedById });
     revalidatePath(`/clients/${clientId}`, "layout");
     return { ok: true };
   } catch (e) {

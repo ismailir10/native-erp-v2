@@ -1,3 +1,5 @@
+import { recordEvent } from "@/lib/audit";
+import { formatMoney } from "@/lib/money";
 import { isSimpleGuess, simpleGuess } from "@/lib/classify/fallback";
 import type { Db, Tx } from "@/lib/db";
 import type { TaxTag } from "@/lib/generated/prisma/enums";
@@ -61,6 +63,22 @@ export async function reviewTransactionTx(tx: Tx, args: ReviewArgs) {
   const withholding = args.withholding === undefined ? (args.accountCode === ACCOUNT_CODES.SUSPENSE ? null : held) : args.withholding && checkWithholding(args.withholding, t.direction);
   await postBankTransaction(tx, t.id, { accountCode: args.accountCode, taxTag: args.taxTag, withholding }, { actorId: args.actorId });
   const changed = args.accountCode !== t.suggestedCode || args.taxTag !== t.taxTag;
+  // Riwayat (ADR 0013): every decision that moves the line's classification, from where it was to where it goes.
+  const from = { accountCode: t.accountCode, taxTag: t.taxTag, whtKind: t.whtKind, whtAmount: t.whtAmount.toString() };
+  const to = { accountCode: args.accountCode, taxTag: args.taxTag, whtKind: withholding?.kind ?? null, whtAmount: (withholding?.amount ?? 0n).toString() };
+  if (JSON.stringify(from) !== JSON.stringify(to)) {
+    const tag = (x: { accountCode: string | null; taxTag: string | null }) => `${x.accountCode ?? "—"}${x.taxTag ? ` (${x.taxTag})` : ""}`;
+    await recordEvent(tx, {
+      clientId,
+      entityId: t.entityId,
+      kind: "CLASSIFY",
+      subject: `bankTx:${t.id}`,
+      summary: `${t.description.slice(0, 70)} · ${formatMoney(t.amount < 0n ? -t.amount : t.amount, t.bankAccount.currency)}: ${tag(from)} → ${tag(to)}`,
+      before: from,
+      after: to,
+      actorId: args.actorId,
+    });
+  }
   // A paired half moved off the transfer accounts is no longer half of a transfer (UC-B2): the link goes, and this line is never paired
   // again; its old partner may still find its real other half.
   const leavesPair = t.matchedTxId !== null && args.accountCode !== ACCOUNT_CODES.CLEARING && args.accountCode !== ACCOUNT_CODES.INTERCOMPANY;
@@ -150,7 +168,18 @@ export async function unpairTransfer(db: Db, args: { clientId: string; bankTxId:
     // A half that settles invoices stays where they are paid (rule 5c): unsettle first.
     const settled = halves.flatMap((h) => h.settlements.map((x) => x.invoice.number));
     if (settled.length) throw new LedgerError(`Mutasi ini melunasi ${settled.join(", ")}. Hapus pencocokannya dulu di Piutang & Utang sebelum melepas pasangannya.`);
+    await recordEvent(tx, {
+      clientId: args.clientId,
+      entityId: t.entityId,
+      kind: "UNPAIR",
+      subject: `bankTx:${t.id}`,
+      summary: `Pasangan transfer dilepas: ${halves.map((h) => `${h.description.slice(0, 50)} (${h.accountCode})`).join(" ↔ ")}; keduanya kembali ke Review`,
+      before: { pair: halves.map((h) => ({ id: h.id, accountCode: h.accountCode })) },
+      after: { accountCode: ACCOUNT_CODES.SUSPENSE },
+      actorId: args.actorId,
+    });
     for (const h of halves) {
+      if (h.id !== t.id) await recordEvent(tx, { clientId: args.clientId, entityId: h.entityId, kind: "UNPAIR", subject: `bankTx:${h.id}`, summary: `Pasangan transfer dilepas (bersama ${t.description.slice(0, 50)}); kembali ke Review`, before: { accountCode: h.accountCode }, after: { accountCode: ACCOUNT_CODES.SUSPENSE }, actorId: args.actorId });
       await postBankTransaction(tx, h.id, { accountCode: ACCOUNT_CODES.SUSPENSE }, { actorId: args.actorId });
       await tx.bankTransaction.update({
         where: { id: h.id },
