@@ -154,5 +154,16 @@ below are reported back; correct any and the cycle follows.
 
   `tests/unit/fiscal.test.ts` adds `monthsIntoYear` and `periodFrom`. Lint + typecheck clean; `npm test` → `Test Files 156 passed
   (156) · Tests 1041 passed (1041)`.
+- T5:
+  - Rule 1 amended (the year is the client's financial year; Pajak Badan and FX average rates stay calendar-only); README updated.
+  - Visual check on a copy of the demo group (Grup Ayam Nusantara set locally to 31 January, then reset):
+    - Laba Rugi Agu 2026 reads "1 Maret – akhir Agustus 2026" (the books start 1 March, inside the year);
+    - the settings card shows "1 Februari – 31 Januari", disabled with its reason (months are closed);
+    - Pajak Badan shows the notice.
+  - End of cycle:
+    - `npm run lint && npm run typecheck && npm test` → `Test Files 156 passed (156) · Tests 1041 passed (1041)`;
+    - `npm run build` passes;
+    - `npm run demo:reset && npm run verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`;
+    - e2e runs in CI (the local setup needs the Supabase secret key).
 
 ## Ship Notes
