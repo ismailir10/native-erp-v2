@@ -5,6 +5,7 @@ export async function proxy(request: NextRequest) {
   return updateSession(request);
 }
 
+// /deck is the public product deck (static files in public/deck): no session refresh, no auth round trip.
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)"],
+  matcher: ["/((?!deck(?:/|$)|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)"],
 };
