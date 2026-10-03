@@ -2,7 +2,7 @@ import ExcelJS from "exceljs";
 import { dateOnly } from "@/lib/format";
 import { parseCents } from "@/lib/money";
 import { normalizeLedgerRate } from "@/lib/fx/currency";
-import { readCsv } from "@/lib/import/parsers/common";
+import { dateParts, MONTHS, readCsv } from "@/lib/import/parsers/common";
 import { ParseError } from "@/lib/import/types";
 import { readableXlsx, sniffFile } from "@/lib/import/workbook";
 import type { AccountType } from "@/lib/generated/prisma/enums";
@@ -189,6 +189,20 @@ export function cellDate(c: RawCell | undefined): Date | null {
 
 // ─── Table detection ──────────────────────────────────────────────────────────
 
+/** A period column header: a date ("31/01/2026", a date cell, "31 Jan 2026") or a month ("Jan 2026", "Januari 2026", "Feb-26" → month end). */
+export function periodHeader(c: RawCell | undefined): Date | null {
+  const d = cellDate(c);
+  if (d) return d;
+  const t = cellText(c);
+  const p = dateParts(t);
+  if (p?.y) return dateOnly(p.y, p.m, p.d);
+  const m = t.match(/^([A-Za-z]{3,9})\.?[\s/-]+(\d{2}|\d{4})$/);
+  const month = m ? MONTHS[m[1].toLowerCase()] : undefined;
+  if (!m || !month) return null;
+  const y = Number(m[2].length === 2 ? `20${m[2]}` : m[2]);
+  return dateOnly(y, month + 1, 0); // day 0 of the next month = the month's last day
+}
+
 /** ERP exports head the amount column "Value"; alone that word says little (pivots), so it counts only beside a "Level" column. */
 const VALUE_HEADER = /^value$/i;
 const hasLevelHeader = (row: RawCell[]) => row.some((c) => HEADERS.level.test(cellText(c).replace(/\s+/g, " ")));
@@ -209,7 +223,7 @@ function headerColumns(row: RawCell[], typos?: HeaderTypo[]): Columns {
         return;
       }
     }
-    if (cols.amount === undefined && (DATE_HEADER.test(t) || (withValue && VALUE_HEADER.test(t)))) {
+    if (cols.amount === undefined && (DATE_HEADER.test(t) || periodHeader(c) || (withValue && VALUE_HEADER.test(t)))) {
       cols.amount = i;
       return;
     }
@@ -308,7 +322,8 @@ export function detectTables(sheets: RawSheet[]): TableCandidate[] {
         if (panels.length > 1) out.push({ sheet: sheet.name, headerRow: r, mode: "NERACA", columns: panels[0], panels, dataRows, ...(typos.length ? { typos: panels.flatMap(used) } : {}) });
         else {
           const columns = codesInNameColumn(sheet.rows, r, cols);
-          out.push({ sheet: sheet.name, headerRow: r, mode: "NERACA", columns, dataRows, ...(typos.length ? { typos: used(columns) } : {}) });
+          const periods = periodColumns(sheet.rows[r] ?? [], columns.amount);
+          out.push({ sheet: sheet.name, headerRow: r, mode: "NERACA", columns, dataRows, ...(typos.length ? { typos: used(columns) } : {}), ...(periods ? { periods } : {}) });
         }
         found = true;
       }
@@ -319,6 +334,16 @@ export function detectTables(sheets: RawSheet[]): TableCandidate[] {
     }
   }
   return out;
+}
+
+/** A header with several period columns (Jan … Jun): all of them, when the column read is one of them and there are two or more. */
+function periodColumns(row: RawCell[], read: number | undefined): { column: number; date: Date }[] | undefined {
+  if (read === undefined) return undefined;
+  const periods = row.flatMap((c, column) => {
+    const date = periodHeader(c);
+    return date ? [{ column, date }] : [];
+  });
+  return periods.length > 1 && periods.some((p) => p.column === read) ? periods : undefined;
 }
 
 /**
@@ -332,7 +357,8 @@ function detectJurnalNeraca(sheet: RawSheet): TableCandidate | null {
     const dateCol = row.findIndex((c, i) => i > 0 && (DATE_HEADER.test(cellText(c)) || c instanceof Date));
     if (dateCol < 0) continue;
     const coded = sheet.rows.slice(r + 1).filter((x) => x && CODE.test(cellText(x[0])) && !isBlank(x[1]) && typeof cellCents(x[dateCol]) === "bigint").length;
-    if (coded >= 3) return { sheet: sheet.name, headerRow: r, mode: "NERACA", columns: { code: 0, name: 1, amount: dateCol }, dataRows: coded };
+    const periods = periodColumns(row, dateCol);
+    if (coded >= 3) return { sheet: sheet.name, headerRow: r, mode: "NERACA", columns: { code: 0, name: 1, amount: dateCol }, dataRows: coded, ...(periods ? { periods } : {}) };
   }
   return null;
 }
@@ -423,7 +449,7 @@ const PERIOD_LABEL = /^(period|periode|per|as of|as at|tanggal|date|posisi)\s*:?
 /** The Neraca date: the amount header when it is a date, else a date beside a "Periode/Period/Per" label, else the first date above the table. */
 function neracaDate(sheet: RawSheet, t: TableCandidate): Date | null {
   const header = sheet.rows[t.headerRow] ?? [];
-  const fromHeader = t.columns.amount !== undefined ? cellDate(header[t.columns.amount]) : null;
+  const fromHeader = t.columns.amount !== undefined ? periodHeader(header[t.columns.amount]) : null;
   if (fromHeader) return fromHeader;
   const above = sheet.rows.slice(0, t.headerRow);
   for (const row of above) {

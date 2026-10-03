@@ -20,6 +20,8 @@ export type TableCandidate = {
   columns: Columns;
   dataRows: number;
   panels?: Columns[];
+  /** Every period column of a Neraca header (a date or "Jan 2026"), the one read included; the others are named on the draft. */
+  periods?: { column: number; date: Date }[];
   /** Headers read through a typo ("Kredti" → credit), reported on the draft. */
   typos?: { header: string; key: ColumnKey; column: number }[];
 };

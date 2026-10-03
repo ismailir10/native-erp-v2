@@ -130,7 +130,7 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
     if (!date) throw new LedgerImportError("Tanggal neraca tidak tertulis di file. Isi tanggalnya.");
     entityInfos.set("", info(input.entityId));
     const existingNames = new Map(existing.filter((x) => x.entityId === input.entityId).map((s) => [accountKey("", s.code), s.name]));
-    plan = planNeraca(read.rows, read.totals, { entityKey: "", entity: info(input.entityId), date, sheet: table.sheet, existingNames });
+    plan = planNeraca(read.rows, read.totals, { entityKey: "", entity: info(input.entityId), date, sheet: table.sheet, existingNames, periods: table.periods, column: table.columns.amount });
     periodStart = periodEnd = date;
   }
 

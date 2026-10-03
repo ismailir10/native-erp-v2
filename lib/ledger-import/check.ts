@@ -2,6 +2,7 @@ import { convertMinor, exponentOf, isCurrency } from "@/lib/fx/currency";
 import { centsToMinor, formatMoney, roundEntry } from "@/lib/money";
 import { dateOnly, formatDate, formatPeriod } from "@/lib/format";
 import type { LedgerRow, LedgerTotal, NeracaRow, NeracaTotal } from "@/lib/ledger-import/types";
+import { NO_CODE_PREFIX } from "@/lib/ledger-import/code";
 
 /**
  * Source checks + posting plan (accounting-rules §15a). Pure: no DB, no AI.
@@ -410,16 +411,47 @@ export function planLedger(
   return { entries, checks, accounts };
 }
 
+/** Saldo against the account's nature (a negative receivable or cash, a debit payable): REVIEW, posted as written, never flipped. */
+function signChecks(rows: { ref: string; code: string; name: string; amount: bigint }[], entity: EntityInfo, entityKey: string): Check[] {
+  const out: Check[] = [];
+  for (const r of rows) {
+    if (NO_SIGN_CHECK.test(r.name)) continue;
+    const debitNormal = DEBIT_NORMAL.test(r.name) && !CREDIT_NORMAL.test(r.name);
+    const creditNormal = CREDIT_NORMAL.test(r.name) && !DEBIT_NORMAL.test(r.name);
+    if ((debitNormal && r.amount < 0n) || (creditNormal && r.amount > 0n)) {
+      const bal = centsToMinor(r.amount < 0n ? -r.amount : r.amount, entity.currency);
+      const code = r.code.startsWith(NO_CODE_PREFIX) ? "" : `${r.code} `;
+      out.push({ severity: "REVIEW", code: "SIGN_AGAINST_TYPE", message: `${entity.name} ${code}${r.name}: saldo di file ${debitNormal ? "kredit" : "debit"} ${formatMoney(bal, entity.currency)}, berlawanan dengan sifat akunnya. Dicatat apa adanya, tidak dibalik; periksa di file sumber.`, refs: [r.ref], entityKey, amount: r.amount });
+    }
+  }
+  return out;
+}
+
 export function planNeraca(
   rows: NeracaRow[],
   totals: NeracaTotal[],
-  opts: { entityKey: string; entity: EntityInfo; date: Date; sheet: string; existingNames?: Map<string, string> },
+  opts: { entityKey: string; entity: EntityInfo; date: Date; sheet: string; existingNames?: Map<string, string>; periods?: { column: number; date: Date }[]; column?: number },
 ): Plan {
   const checks: Check[] = [];
   const accounts: Plan["accounts"] = new Map();
   const { entity, entityKey, date } = opts;
   for (const r of rows) for (const e of r.errors) checks.push({ severity: "BLOCK", code: "ROW_ERROR", message: `${r.ref}: ${e}`, refs: [r.ref], entityKey });
   const usable = rows.filter((r) => !r.errors.length);
+  checks.push(...signChecks(usable, entity, entityKey));
+
+  // REVIEW: several period columns — the one read is Saldo Awal, the others are not imported; a month missing between them is named.
+  if (opts.periods && opts.periods.length > 1) {
+    const read = opts.periods.find((p) => p.column === opts.column);
+    const others = opts.periods.filter((p) => p !== read);
+    const gaps = missingMonths(opts.periods.map((p) => monthIndex(p.date)));
+    checks.push({
+      severity: "REVIEW",
+      code: "MULTI_PERIOD",
+      message: `File berisi ${opts.periods.length} kolom periode. Dibaca sebagai Saldo Awal: ${read ? formatDate(read.date) : "kolom pertama"}; tidak diimpor: ${others.map((p) => formatDate(p.date)).join(", ")} (mutasinya datang dari buku besar atau rekening koran).${gaps.length ? ` Kolom ${periodList(gaps)} tidak ada di file.` : ""}`,
+      refs: [],
+      entityKey,
+    });
+  }
   for (const r of usable) {
     const k = accountKey(entityKey, r.code);
     const prev = opts.existingNames?.get(k);

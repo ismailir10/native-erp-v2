@@ -59,8 +59,8 @@ The cycle runs without a separate stop, like cycles 1–3.
 - [ ] **Missing month (K2, B4).**
       - A GL file with no rows in a month between its first and last is REVIEW *Tidak ada baris di Februari 2026*, per entity.
       - So is a gap between this file and the entity's earlier posted GL imports.
-      - A Neraca with several period columns reads the earliest as Saldo Awal. A REVIEW names the other columns and any month missing
-        between them (*kolom Februari 2026 tidak ada*).
+      - A Neraca with several period columns (dates, or month headers like "Jan 2026") reads the first, as today, as Saldo Awal. A
+        REVIEW names the other columns, which are not imported, and any month missing between them (*Kolom Februari 2026 tidak ada*).
 - [ ] **Year typo (B1f, K2).** A GL row dated more than six months from the file's main run of months is flagged, when such rows are at
       most 5 and under a fifth of the file. When exactly one date with the same day and month falls inside the file's period, it is BLOCK
       *tanggal 5 Mar 2023 jauh dari periode file*, and the accountant may **accept** that date. The journal then posts on the corrected
@@ -108,8 +108,11 @@ The cycle runs without a separate stop, like cycles 1–3.
 1. A typo is accepted only against the column words Buku already knows; a header that is not near any of them stays unread, as today.
 2. The bridge's income and expense before the first journal fold into 3200: Laba Rugi for that year starts at the first journal. The
    draft and the entry memo say so.
-3. A year-typo fix is offered only for a single day/month that falls inside the file's own period; anything else is a file fix.
+3. A year-typo fix is offered only for a single day/month that falls inside the file's own period; any other far date is REVIEW and
+   posts as written.
 4. TB dates without a written opening date assume the calendar year (cycle 6 generalises).
+5. Of several period columns the first is read, as today. Picking the earliest instead would change a comparative Neraca (current year
+   first) that already imports correctly.
 
 ## Tasks
 - [x] T1 Header typos: normaliser + variants + bounded edit distance in `lib/ledger-import/read.ts`, header notes → INFO checks stored
@@ -117,7 +120,7 @@ The cycle runs without a separate stop, like cycles 1–3.
 - [x] T2 GL checks: negatives listed, grand-total tie-out, missing month (in file and against earlier imports), year typo with an
       acceptable fix, rows on/before Saldo Awal refused, GL without Saldo Awal flagged (`check.ts`, `post.ts`, accept button). Accept:
       unit + DB tests per check.
-- [ ] T3 Neraca: sign against nature; several period columns → earliest read, the rest and missing months named. Accept: unit tests.
+- [x] T3 Neraca: sign against nature; several period columns → the first read, the rest and missing months named. Accept: unit tests.
 - [ ] T4 TB with column groups: detection, reading, plan of three journals with per-row ties and total tie-out, per-entry kind on
       posting, "Neraca saldo (TB)" label. Accept: DB test posts a TB and the TB report equals its closing column; the ADJUSTMENT entry
       stands alone.
@@ -142,6 +145,9 @@ The cycle runs without a separate stop, like cycles 1–3.
 
   The import's period follows the dates that will post. `ACCEPTABLE_CHECKS` (UNBALANCED, DATE_TYPO) drives `acceptCheck`, the draft page
   and the accept button's wording. Tests: `tests/unit/ledger-checks-k2.test.ts`, `tests/db/ledger-import-k2.test.ts`.
+- T3: `check.ts` `signChecks` (shared with the TB in T4) in `planNeraca`; `read.ts` `periodHeader` (dates and month headers →
+  month end), `periodColumns` on the candidate (`periods`); a month header can now be the amount column and the Neraca date. Also
+  `MULTI_PERIOD` (REVIEW): the column read, the others not imported, the missing months. Test: `tests/unit/neraca-k2.test.ts`.
 
 ## Verification
 - T1: `npx vitest run tests/unit/ledger-header-typos.test.ts tests/unit/ledger-read.test.ts` → `Tests 16 passed (16)`; lint + typecheck
@@ -149,5 +155,7 @@ The cycle runs without a separate stop, like cycles 1–3.
 - T2: new tests `Tests 9 passed (9)`. The first full run failed one existing test (`ledger-controls`: NO_OPENING as REVIEW added a
   "temuan" to the import's close control), which led to the INFO decision; that file and the new ones then passed
   (`Tests 10 passed (10)`), and the full run had no other failure (`952 passed`). Lint + typecheck clean.
+- T3: `tests/unit/neraca-k2.test.ts` + reader / Neraca tests → `Tests 22 passed (22)`; lint + typecheck clean; `npm test` →
+  `Test Files 133 passed (133) · Tests 956 passed (956)`.
 
 ## Ship Notes
