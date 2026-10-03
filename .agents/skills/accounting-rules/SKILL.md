@@ -47,7 +47,12 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
    - paired and settling lines are refused;
    - it is never learned and never paired.
 
-   While split, `postBankTransaction` refuses a one-account posting from any other path; a one-account review decision replaces it.
+   While split, the line refuses every other writer:
+   - `postBankTransaction` refuses a one-account posting;
+   - `reviewTransactionTx` refuses unless the caller passes `replaceSplit`, which only Buku Besar's *Gabungkan ke akun ini* does;
+   - settling refuses, since a part can't carry a subledger.
+
+   Controls and the AI close review read a split line by its parts (`byPart`).
 3a. **Balik jurnal** (`lib/ledger/reverse.ts`): a manual `ADJUSTMENT` is corrected by a new `ADJUSTMENT` that mirrors every line (debit ↔ credit,
     same accounts and source accounts), dated by the accountant on or after the original, through `postJournal()`; `reversesId` (unique) points
     at the original, so an entry is reversed once and a reversal is never reversed. An entry a schedule, register, pack, stock count or lease

@@ -46,6 +46,8 @@ async function load(tx: Tx, input: SettleInput) {
   if (!invoice) throw new LedgerError("Faktur tidak ditemukan.");
   const t = await tx.bankTransaction.findFirst({ where: { id: input.bankTransactionId, entityId: invoice.entityId }, include: { settlements: { select: { amount: true, withheld: true } } } });
   if (!t) throw new LedgerError("Mutasi bank tidak ditemukan untuk entitas faktur ini.");
+  // A split line moved the receivable/payable by one part only: settling its full amount would leave the subledger above the ledger.
+  if (await tx.bankTxSplit.count({ where: { bankTransactionId: t.id } })) throw new LedgerError("Mutasi ini dipecah ke beberapa akun, jadi tidak bisa dicocokkan ke faktur. Gabungkan dulu ke satu akun di Buku Besar.");
   const sales = invoice.direction === "SALES";
   if (t.direction !== (sales ? "IN" : "OUT")) throw new LedgerError(sales ? "Pelunasan piutang harus uang masuk." : "Pembayaran utang harus uang keluar.");
   if ((await lockedMonths(tx, input.clientId)).has(monthKey(t.date))) throw new LedgerError(`${formatPeriod(t.date.getUTCFullYear(), t.date.getUTCMonth() + 1)} sudah ditutup. Buka periode dulu untuk mencocokkan mutasi ini.`);

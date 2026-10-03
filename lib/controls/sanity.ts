@@ -130,16 +130,29 @@ export async function sanityControls(db: Db, a: Args): Promise<Control[]> {
 /** Words in the client's *Bidang usaha* that mean it resells goods (so revenue without cost of sales is odd). */
 export const TRADING = /dagang|perdagangan|toko|retail|ritel|distribut|grosir|jual[ -]?beli|trading|reseller/i;
 
+type SplitLine = { amount: bigint; accountCode: string | null; description: string; splits: { accountCode: string; amount: bigint }[] };
+/**
+ * A bank line as the rows a check reads: one per part when it is split (pecah transaksi), each with that part's account and signed
+ * amount, so a 200 jt line split 120/80 is never read as 200 jt on its largest part. `only`: keep the parts on these accounts.
+ */
+export function byPart<T extends SplitLine>(t: T, only?: Set<string>): T[] {
+  if (!t.splits.length) return [t];
+  return t.splits
+    .filter((p) => !only || only.has(p.accountCode))
+    .map((p) => ({ ...t, accountCode: p.accountCode, amount: t.amount < 0n ? -p.amount : p.amount, description: `${t.description} (bagian ${p.accountCode})` }));
+}
+
 /** Bank rows behind the financing and guess checks; shared with the AI close review so both see the same rows. */
 export async function flaggedBankRows(db: Db, clientId: string, entityId: string, start: Date, end: Date) {
   const txs = await db.bankTransaction.findMany({
     where: { entityId, date: { gte: start, lte: end }, status: { in: ["POSTED", "REVIEWED"] }, accountCode: { not: null } },
+    include: { splits: { orderBy: { position: "asc" } } },
     orderBy: [{ date: "asc" }, { rowNumber: "asc" }],
   });
   const plCodes = new Set((await db.account.findMany({ where: { clientId, type: { in: ["PENDAPATAN", "BEBAN"] } }, select: { code: true } })).map((x) => x.code));
   return {
     txs,
-    financing: txs.filter((t) => plCodes.has(t.accountCode!) && FINANCING.test(t.description) && !FINANCING_COST.test(t.description)),
+    financing: txs.flatMap((t) => byPart(t)).filter((t) => plCodes.has(t.accountCode!) && FINANCING.test(t.description) && !FINANCING_COST.test(t.description)),
     guesses: txs.filter((t) => t.status === "REVIEWED" && (t.method === "HEURISTIC" || (t.method === "AI" && t.confidence < GUESS_CONFIDENCE))),
   };
 }

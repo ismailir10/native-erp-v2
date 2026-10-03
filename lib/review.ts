@@ -1,5 +1,6 @@
 import { recordEvent } from "@/lib/audit";
 import { formatMoney, MoneyError, parseMoney } from "@/lib/money";
+import { formatPeriod } from "@/lib/format";
 import { isSimpleGuess, simpleGuess } from "@/lib/classify/fallback";
 import type { Db, Tx } from "@/lib/db";
 import type { TaxTag } from "@/lib/generated/prisma/enums";
@@ -26,6 +27,11 @@ type ReviewArgs = {
    * classification side (accounting-rules 5h). undefined keeps what the line has; null removes it.
    */
   withholding?: Withholding | null;
+  /**
+   * The reviewer chose one account for a split line (Buku Besar's *Simpan*): the parts go. Any other caller — settling, proposals,
+   * similar lines — is refused while a split stands, so its parts never vanish silently.
+   */
+  replaceSplit?: boolean;
 };
 
 /**
@@ -38,6 +44,8 @@ export async function reviewTransaction(db: Db, args: ReviewArgs) {
 
 /** The same decision inside a caller's transaction (a posted proposal records the RECLASS it produced atomically). */
 export async function reviewTransactionTx(tx: Tx, args: ReviewArgs) {
+  // One writer at a time per bank line (a split, a review and a settlement serialise here).
+  await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${args.bankTxId} FOR UPDATE`;
   const t = await tx.bankTransaction.findUniqueOrThrow({
     where: { id: args.bankTxId },
     include: { bankAccount: { include: { entity: true } }, settlements: { select: { withheld: true, invoice: { select: { number: true, arApAccount: { select: { code: true } } } } } } },
@@ -63,14 +71,16 @@ export async function reviewTransactionTx(tx: Tx, args: ReviewArgs) {
   const withholding = args.withholding === undefined ? (args.accountCode === ACCOUNT_CODES.SUSPENSE ? null : held) : args.withholding && checkWithholding(args.withholding, t.direction);
   // One account replaces a split (pecah transaksi): the parts go, and the posting moves the difference back onto that account.
   const parts = await tx.bankTxSplit.findMany({ where: { bankTransactionId: t.id }, orderBy: { position: "asc" }, select: { accountCode: true, amount: true } });
+  if (parts.length && !args.replaceSplit) throw new LedgerError("Mutasi ini dipecah ke beberapa akun. Ubah lewat Pecah transaksi, atau gabungkan dulu ke satu akun di Buku Besar.");
   if (parts.length) await tx.bankTxSplit.deleteMany({ where: { bankTransactionId: t.id } });
   await postBankTransaction(tx, t.id, { accountCode: args.accountCode, taxTag: args.taxTag, withholding }, { actorId: args.actorId });
-  const changed = args.accountCode !== t.suggestedCode || args.taxTag !== t.taxTag;
+  // Merging a split back is a decision too, even onto the account first suggested.
+  const changed = args.accountCode !== t.suggestedCode || args.taxTag !== t.taxTag || parts.length > 0;
   // Riwayat (ADR 0013): every decision that moves the line's classification, from where it was to where it goes.
   const from = { accountCode: t.accountCode, taxTag: t.taxTag, whtKind: t.whtKind, whtAmount: t.whtAmount.toString(), ...(parts.length ? { parts: parts.map((p) => ({ accountCode: p.accountCode, amount: p.amount.toString() })) } : {}) };
   const to = { accountCode: args.accountCode, taxTag: args.taxTag, whtKind: withholding?.kind ?? null, whtAmount: (withholding?.amount ?? 0n).toString() };
   if (JSON.stringify(from) !== JSON.stringify(to)) {
-    const tag = (x: { accountCode: string | null; taxTag: string | null }) => `${x.accountCode ?? "—"}${x.taxTag ? ` (${x.taxTag})` : ""}`;
+    const tag = (x: { accountCode: string | null; taxTag: string | null; parts?: unknown[] }) => `${x.parts ? "dipecah " : ""}${x.accountCode ?? "—"}${x.taxTag ? ` (${x.taxTag})` : ""}`;
     await recordEvent(tx, {
       clientId,
       entityId: t.entityId,
@@ -97,7 +107,7 @@ export async function reviewTransactionTx(tx: Tx, args: ReviewArgs) {
       whtKind: withholding?.kind ?? null,
       whtAmount: withholding?.amount ?? 0n,
       method: changed ? "MANUAL" : t.method,
-      reason: changed ? "Diubah oleh reviewer" : t.reason,
+      reason: parts.length ? `Pecahan digabung ke ${args.accountCode}` : changed ? "Diubah oleh reviewer" : t.reason,
       ...(leavesPair ? { matchedTxId: null, pairRefused: true } : {}),
     },
   });
@@ -212,12 +222,19 @@ export type SplitPartInput = { accountCode: string; amount: string; memo?: strin
  */
 export async function splitTransaction(db: Db, args: { bankTxId: string; parts: SplitPartInput[]; actorId?: string | null }) {
   return db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${args.bankTxId} FOR UPDATE`;
     const t = await tx.bankTransaction.findUniqueOrThrow({
       where: { id: args.bankTxId },
       include: { bankAccount: { include: { entity: true } }, settlements: { select: { invoice: { select: { number: true } } } }, splits: { orderBy: { position: "asc" } } },
     });
+    // Checked here, not left to the posting: an unchanged re-split posts nothing, and a closed month's parts must not move either.
+    const month = { year: t.date.getUTCFullYear(), month: t.date.getUTCMonth() + 1 };
+    if (await tx.period.findFirst({ where: { clientId: t.bankAccount.entity.clientId, ...month, status: "LOCKED" }, select: { id: true } })) {
+      throw new LedgerError(`${formatPeriod(month.year, month.month)} sudah dikunci. Buka kunci bulan itu dulu untuk memecah mutasi ini.`);
+    }
     const clientId = t.bankAccount.entity.clientId;
-    const currency = t.bankAccount.entity.functionalCurrency;
+    // The line's own currency: the one its amount is shown in (Review, Buku Besar) and the one the parts are typed in.
+    const currency = t.bankAccount.currency;
     const total = t.amount < 0n ? -t.amount : t.amount;
     if (t.matchedTxId) throw new LedgerError("Mutasi ini dipasangkan sebagai transfer antar rekening. Lepas pasangannya dulu, lalu pecah.");
     if (t.settlements.length) throw new LedgerError(`Mutasi ini melunasi ${t.settlements.map((x) => x.invoice.number).join(", ")}. Hapus pencocokannya dulu di Piutang & Utang, lalu pecah.`);
@@ -253,6 +270,8 @@ export async function splitTransaction(db: Db, args: { bankTxId: string; parts: 
 
     // The largest part names the line for filters and controls (the 6101 leakage control, Review lists); the parts are the posting.
     const main = parsed.reduce((m, p) => (p.amount > m.amount ? p : m), parsed[0]);
+    const same = t.splits.length === parsed.length && t.splits.every((p, i) => p.accountCode === parsed[i].accountCode && p.amount === parsed[i].amount && (p.memo ?? null) === parsed[i].memo);
+    if (same) return { id: t.id, parts: parsed.length };
     await tx.bankTxSplit.deleteMany({ where: { bankTransactionId: t.id } });
     await tx.bankTxSplit.createMany({ data: parsed.map((p, i) => ({ firmId: t.firmId, bankTransactionId: t.id, position: i, accountCode: p.accountCode, amount: p.amount, memo: p.memo })) });
     await postBankTransaction(tx, t.id, { accountCode: main.accountCode, parts: parsed }, { actorId: args.actorId });

@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { db, makeGroup, resetDb } from "../helpers";
 import { importStatement } from "@/lib/import/pipeline";
 import { reviewTransaction, splitTransaction } from "@/lib/review";
+import { createInvoice } from "@/lib/receivables/invoices";
+import { settle, settleWithReclass } from "@/lib/receivables/settle";
+import { byPart } from "@/lib/controls/sanity";
 import { postBankTransaction } from "@/lib/ledger/bank";
 import { balanceSheet } from "@/lib/reports/ledger";
 import { listEvents } from "@/lib/audit";
@@ -60,10 +63,15 @@ describe("pecah transaksi", () => {
 
     // Another path re-posting it with one account is refused while the split stands…
     await expect(db.$transaction((tx) => postBankTransaction(tx, t.id, { accountCode: "6101" }))).rejects.toThrow("Mutasi ini dipecah ke beberapa akun.");
-    // …but choosing one account in Review replaces the split.
-    await reviewTransaction(db, { bankTxId: t.id, accountCode: "6100", taxTag: null });
+    // …and so is a decision that didn't ask to merge (settling, proposals, similar lines all go through it).
+    await expect(reviewTransaction(db, { bankTxId: t.id, accountCode: "6100", taxTag: null })).rejects.toThrow("Mutasi ini dipecah ke beberapa akun.");
+    // Buku Besar's "Gabungkan ke akun ini" replaces the split, even onto the account first suggested, and says so.
+    await reviewTransaction(db, { bankTxId: t.id, accountCode: "6100", taxTag: null, replaceSplit: true });
     expect(await byAccount(t.id, bankCode)).toEqual({ "6100": 200n * J });
     expect(await db.bankTxSplit.count({ where: { bankTransactionId: t.id } })).toBe(0);
+    const merged = await db.bankTransaction.findUniqueOrThrow({ where: { id: t.id } });
+    expect([merged.method, merged.reason]).toEqual(["MANUAL", "Pecahan digabung ke 6100"]);
+    expect((await listEvents(db, g.client.id, { subject: `bankTx:${t.id}` }))[0].summary).toContain(": dipecah 6100 → 6100");
   });
 
   it("refuses an unbalanced, single, duplicate, unclassified or paired split, and a closed month, naming what to do", async () => {
@@ -82,8 +90,40 @@ describe("pecah transaksi", () => {
     await reviewTransaction(db, { bankTxId: t.id, accountCode: "6100", taxTag: "PPN_MASUKAN" });
     await expect(split([{ accountCode: "6100", amount: "120.000.000" }, { accountCode: "5110", amount: "80.000.000" }])).rejects.toThrow("Mutasi ini memakai pajak (PPN/PPh).");
     await reviewTransaction(db, { bankTxId: t.id, accountCode: "6100", taxTag: null });
+    // The transfer accounts are refused on an unpaired line too.
+    await expect(split([{ accountCode: "6100", amount: "100.000.000" }, { accountCode: "1199", amount: "100.000.000" }])).rejects.toThrow("Bagian 2: akun 1199");
     await db.period.update({ where: { clientId_year_month: { clientId: g.client.id, year: 2026, month: 8 } }, data: { status: "LOCKED", lockedAt: new Date() } });
     await expect(split([{ accountCode: "6100", amount: "120.000.000" }, { accountCode: "5110", amount: "80.000.000" }])).rejects.toThrow(/dikunci|ditutup/);
     expect(await db.bankTxSplit.count()).toBe(0);
+  });
+
+  it("a split in a month that is then closed stays put, even re-split with the same parts", async () => {
+    const { g, t } = await books();
+    const parts = [{ accountCode: "6100", amount: "120.000.000" }, { accountCode: "5110", amount: "80.000.000" }];
+    await splitTransaction(db, { bankTxId: t.id, parts });
+    await db.period.update({ where: { clientId_year_month: { clientId: g.client.id, year: 2026, month: 8 } }, data: { status: "LOCKED", lockedAt: new Date() } });
+    await expect(splitTransaction(db, { bankTxId: t.id, parts: parts.map((p) => ({ ...p, memo: "catatan baru" })) })).rejects.toThrow("Agustus 2026 sudah dikunci.");
+    expect((await db.bankTxSplit.findMany()).map((p) => p.memo)).toEqual([null, null]);
+  });
+
+  it("money in splits into credits; a split line can't settle an invoice, by either path", async () => {
+    const g = await makeGroup();
+    await importStatement(db, { bankAccountId: g.pt.banks[0].id, fileName: "in.csv", data: file("0,00", "07/08/2026;SETORAN CV PELANGGAN JAYA DP DAN SEWA ALAT;0,00;50.000.000,00;50.000.000,00"), provider: null });
+    const t = await db.bankTransaction.findFirstOrThrow({ where: { description: { contains: "PELANGGAN" } } });
+    await splitTransaction(db, { bankTxId: t.id, parts: [{ accountCode: "1130", amount: "30.000.000" }, { accountCode: "4100", amount: "20.000.000" }] });
+    const bankCode = (await db.account.findUniqueOrThrow({ where: { id: g.pt.banks[0].accountId } })).code;
+    expect(await byAccount(t.id, bankCode)).toEqual({ "1130": -30n * J, "4100": -20n * J });
+    const inv = await createInvoice(db, { clientId: g.client.id, entityId: g.pt.entity.id, direction: "SALES", contactName: "CV Pelanggan Jaya", number: "INV-9", issueDate: "2026-08-01", dpp: "30000000", counterCode: "4100" });
+    const input = { clientId: g.client.id, invoiceId: inv.id, bankTransactionId: t.id };
+    for (const run of [settle, settleWithReclass]) await expect(run(db, input)).rejects.toThrow("Mutasi ini dipecah ke beberapa akun, jadi tidak bisa dicocokkan ke faktur.");
+    expect(await db.invoiceSettlement.count()).toBe(0);
+    expect(await byAccount(t.id, bankCode)).toEqual({ "1130": -30n * J, "4100": -20n * J });
+  });
+
+  it("controls read a split line by its parts", () => {
+    const line = { amount: -200n * J, accountCode: "6100", description: "TRSF", splits: [{ accountCode: "6100", amount: 120n * J }, { accountCode: "1210", amount: 80n * J }] };
+    expect(byPart(line).map((r) => [r.accountCode, r.amount])).toEqual([["6100", -120n * J], ["1210", -80n * J]]);
+    expect(byPart(line, new Set(["1210"])).map((r) => r.amount)).toEqual([-80n * J]);
+    expect(byPart({ ...line, splits: [] })).toEqual([{ ...line, splits: [] }]);
   });
 });

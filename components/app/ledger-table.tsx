@@ -80,7 +80,8 @@ export function LedgerTable({ rows, opening, currency = "IDR", accounts }: { row
       setSaving(false);
       return void toast.error("Isi nominal pajak yang dipotong.");
     }
-    const r = await reviewAction({ bankTxId: open.source.bankTxId, accountCode: newCode, taxTag: open.source.taxTag as never, ...(whtChanged ? { withholding: whtKind ? { kind: whtKind as WithholdingKind, amount: whtAmount } : null } : {}) });
+    const split = Boolean(open.source.splits?.length);
+    const r = await reviewAction({ bankTxId: open.source.bankTxId, accountCode: newCode, taxTag: open.source.taxTag as never, ...(split ? { replaceSplit: true } : whtChanged ? { withholding: whtKind ? { kind: whtKind as WithholdingKind, amount: whtAmount } : null } : {}) });
     setSaving(false);
     if (!r.ok) return void toast.error(r.error);
     toast.success(`Dipindah ke ${newCode}`, { description: "Reklasifikasi dicatat · Buku Besar diperbarui" });
@@ -180,7 +181,7 @@ export function LedgerTable({ rows, opening, currency = "IDR", accounts }: { row
                         <p className="text-xs text-muted-foreground">Sisi bank tetap; Buku mencatat reklasifikasi selisihnya dan mengingat pilihan ini.</p>
                         <div className="flex flex-wrap items-center gap-2">
                           <AccountPicker value={newCode} onChange={setNewCode} options={accounts} ariaLabel="Akun baru" className="w-80 max-w-full" />
-                          <Button size="sm" disabled={saving || !newCode || (newCode === open.source.accountCode && !whtChanged && !open.source.splits?.length)} onClick={reclass}>Simpan</Button>
+                          <Button size="sm" disabled={saving || !newCode || (newCode === open.source.accountCode && !whtChanged && !open.source.splits?.length)} onClick={reclass}>{open.source.splits?.length ? "Gabungkan ke akun ini" : "Simpan"}</Button>
                           {!open.source.pairedWith && (
                             <SplitDialog
                               bankTxId={open.source.bankTxId}
@@ -196,7 +197,9 @@ export function LedgerTable({ rows, opening, currency = "IDR", accounts }: { row
                             />
                           )}
                         </div>
-                        {open.source.splits && open.source.splits.length > 0 && <p className="text-xs text-muted-foreground">Memilih satu akun lalu Simpan menggabungkan pecahan kembali ke akun itu.</p>}
+                        {open.source.splits && open.source.splits.length > 0 ? (
+                          <p className="text-xs text-muted-foreground">Mutasi ini dipecah. “Gabungkan ke akun ini” mengembalikan seluruh nominal ke satu akun; pajak yang dipotong bisa dicatat setelah digabung.</p>
+                        ) : (<>
                         <div className="flex flex-wrap items-center gap-2 pt-2" data-testid="withholding">
                           <SimpleSelect
                             label="Pajak yang dipotong"
@@ -211,6 +214,7 @@ export function LedgerTable({ rows, opening, currency = "IDR", accounts }: { row
                             ? "Pelanggan memotong pajak dari pembayarannya (mis. PPh 23): nominal ini tidak ada di mutasi bank; dicatat sebagai pajak dibayar di muka (PPh 4(2) final: beban pajak final) dan ikut melunasi piutang."
                             : "Anda memotong pajak dari pembayaran ini (mis. sewa dengan PPh 4(2)): nominal ini tidak ada di mutasi bank; dicatat sebagai utang pajak sampai disetor, dan ikut melunasi biaya atau utangnya."}
                         </p>
+                        </>)}
                       </div>
                     )}
                   </section>

@@ -36,8 +36,8 @@ each part still drills to the same bank row (rule 5).
   - Memory and rules never learn from a split (a combined transfer is a one-off).
   - The transfer matcher never pairs a split line.
   - The split is recorded in the history (CLASSIFY, before/after with the parts).
-  - Any other path that would re-post the line with one account (settling, the transfer matcher, suspense tools) is refused while the
-    split stands, so the parts can't silently vanish.
+  - Any other path that would re-post the line with one account (settling, proposals, the transfer matcher, suspense tools) is refused
+    while the split stands, so the parts can't silently vanish; only Buku Besar's explicit merge replaces it.
 - [ ] **Seen where it matters.**
   - Review and Buku Besar show a split line as "Dipecah: 6101 Rp 120.000.000 · 5110 Rp 80.000.000".
   - Each part's ledger line links back to the bank row, as today.
@@ -123,4 +123,36 @@ each part still drills to the same bank row (rule 5).
     - `npm run demo:reset && npm run verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`;
     - e2e runs in CI.
 
+## Review pass
+Advisor review: 11 findings; 10 fixed and 1 noted. Then `npm run lint && npm run typecheck && npm test` all pass.
+1. **H, settling merged a split.** `settleWithReclass` went through `reviewTransactionTx`, which cleared the parts. Now
+   `reviewTransactionTx` keeps a split unless the caller passes `replaceSplit` (only Buku Besar's *Gabungkan ke akun ini* does).
+2. **H, plain settle over-settled.** It settled the full line against an AR/AP part. Settling now refuses a split line in `load`
+   (both paths). Test: no settlement, and the parts are unchanged.
+3. **H, posting a proposal merged a split.** It used the same path as 1, so it is now refused.
+4. **M, a tax change merged a split.** Changing withholding in Buku Besar merged the split. On a split line the tax controls are hidden,
+   and the button reads *Gabungkan ke akun ini*.
+5. **M, wrong reason after a merge.** A merged line kept the reason "Dipecah ke n akun". A merge now counts as a change: reason
+   "Pecahan digabung ke X", and history shows "dipecah X → Y".
+6. **M, controls read the largest part.** The P&L-financing control and the AI close review rows took a split line at its full amount on
+   its largest part. `byPart` now gives one row per part (amount and account); the AI nature rows find lines by their parts.
+7. **M, lock bypass.** An identical re-split slipped past the period lock and wrote a no-op event. `splitTransaction` now checks the lock
+   first, and returns without writing when the parts are unchanged.
+8. **L, concurrent splits.** A second split at the same time failed with a raw unique-constraint error. `splitTransaction` and
+   `reviewTransactionTx` now lock the bank row (`FOR UPDATE`).
+9. **L, currency.** The dialog parsed in the bank account's currency and the server in the entity's. The server now uses the bank
+   account's, the one the line is shown in.
+10. **L, coverage.** Tests added: an unpaired 1199 refusal, a money-in split (credits), and `byPart`.
+11. **L, commit author.** Noted only: the review flagged the commits' author name as a tool name. That comes from the environment's git
+    configuration, not this change.
+
 ## Ship Notes
+- **Migration:** `20261003080000_bank_tx_split` adds the `BankTxSplit` table. It is additive, cascades with its bank line, and the Vercel
+  build applies it.
+- **Behaviour:**
+  - *Pecah* is new in Review and Buku Besar.
+  - A split line refuses settling, proposals and one-account re-posting until it is merged back in Buku Besar.
+  - Controls read split lines by part.
+- **Rollback:** revert the merge. Split lines keep their posted parts in the GL (journals are immutable). With the code reverted, their
+  `BankTxSplit` rows are unused; the line's `accountCode` already names the largest part.
+

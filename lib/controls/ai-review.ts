@@ -2,7 +2,7 @@ import { aiAccounts } from "@/lib/ai/classify";
 import { createHash } from "node:crypto";
 import type { Db } from "@/lib/db";
 import { runControls, type Control } from "@/lib/controls";
-import { flaggedBankRows } from "@/lib/controls/sanity";
+import { byPart, flaggedBankRows } from "@/lib/controls/sanity";
 import { scanLedger, sourceLabel } from "@/lib/controls/anomaly";
 import { formatMonthShort, formatPeriod, periodBounds } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
@@ -87,7 +87,14 @@ export async function gather(db: Db, clientId: string, year: number, month: numb
         flaggedCodes = candidates.filter((a) => listed.has(a.code)).map((a) => a.code);
         bankCodes = flaggedCodes;
       }
-      const txs = await db.bankTransaction.findMany({ where: { entityId: e.id, date: { gte: start, lte: end }, accountCode: { in: bankCodes } } });
+      // A split line counts by its parts on these accounts (byPart), never at its full amount on its largest part.
+      const codes = new Set(bankCodes);
+      const txs = (
+        await db.bankTransaction.findMany({
+          where: { entityId: e.id, date: { gte: start, lte: end }, OR: [{ accountCode: { in: bankCodes }, splits: { none: {} } }, { splits: { some: { accountCode: { in: bankCodes } } } }] },
+          include: { splits: { orderBy: { position: "asc" } } },
+        })
+      ).flatMap((t) => byPart(t, codes));
       rows.push(...take(bySize(txs)).map((t) => bankRow(t, e.functionalCurrency, e.id)));
       // Ledger-fed balances: the client's own accounts that make up each flagged Buku account.
       const parts = await db.journalLine.groupBy({

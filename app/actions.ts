@@ -137,7 +137,7 @@ export async function unpairTransferAction(input: { bankTxId: string }): Promise
   }
 }
 
-export async function reviewAction(input: { bankTxId: string; accountCode: string; taxTag: TaxTag | null; createRule?: boolean; /** Tax withheld (major units); undefined keeps the line's, null removes it. */ withholding?: { kind: WithholdingKind; amount: string } | null }): Promise<Result<{ learned: boolean }>> {
+export async function reviewAction(input: { bankTxId: string; accountCode: string; taxTag: TaxTag | null; createRule?: boolean; /** Tax withheld (major units); undefined keeps the line's, null removes it. */ withholding?: { kind: WithholdingKind; amount: string } | null; /** Merge a split line back onto this one account (Buku Besar). */ replaceSplit?: boolean }): Promise<Result<{ learned: boolean }>> {
   try {
     const clientId = await assertTxInFirm(input.bankTxId);
     const { withholding, ...rest } = input;
