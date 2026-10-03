@@ -74,7 +74,7 @@ Traps: the aging doesn't cover all payables, and a Rp 5 rounding must not flood 
 3. Name matching is exact after normalising case, spaces and PT/CV/Tbk.
 
 ## Tasks
-- [ ] T1 Model + reader: schema, migration, `lib/reconcile/aging-read.ts`. Accept: unit tests on a synthetic AMS-style file (headers on
+- [x] T1 Model + reader: schema, migration, `lib/reconcile/aging-read.ts`. Accept: unit tests on a synthetic AMS-style file (headers on
       rows 5–7, "1-30" as a date serial, decimal commas, credit row, total row skipped, missing column refused).
 - [ ] T2 Comparison and Temuan: `lib/reconcile/subledger.ts` (import, compare, candidates, Temuan open/update/resolve, delete). Accept:
       DB tests with three planted differences (cut-off, advance, non-trade payable), a Rp 5 rounding kept as pass, a re-import that
@@ -84,7 +84,27 @@ Traps: the aging doesn't cover all payables, and a Rp 5 rounding must not flood 
 - [ ] T4 Rules, README, gates, review pass, ship.
 
 ## Implementation
+- T1:
+  - Schema:
+    - `SubledgerImport` (entity, kind, asOf, file, accountCodes, threshold ≥ 0 CHECK, findingId), unique per entity, kind and date;
+    - `SubledgerRow` (position, counterparty, signed total, bucket JSON, `sheet!row`, rounded), cascading with its import;
+    - `FindingKind.SUBLEDGER_DIFFERENCE`.
+  - Migration `20261003090000_subledger_recon`; client deletion removes the imports.
+  - `lib/reconcile/aging-read.ts` `readAging`:
+    - reads XLSX/XLS via `asXlsx`, or CSV via papaparse;
+    - finds a counterparty column and a total column within the first 15 rows, labelling each column with the two rows above it and
+      extending the block downward while rows have text but no name (bucket titles under a merged "Umur");
+    - maps buckets by words; a date header of 30 January, or its serial as a number or text, is "1-30";
+    - parses amounts with `parseCents`, rounds to whole Rupiah per row and notes it;
+    - skips (sub)total rows and empty rows, keeps credits, and records `sheet!row`;
+    - refuses a file missing either column, naming the missing one.
 
 ## Verification
+- T1: `tests/unit/aging-read.test.ts` → `Tests 3 passed (3)`:
+  - an AMS-style xlsx (title rows, headers on rows 6–7, "1-30" as a date, decimal commas, a credit row, a Grand Total row);
+  - a semicolon CSV with a text serial;
+  - both refusals.
+
+  Lint + typecheck clean; `npm test` → `Test Files 158 passed (158) · Tests 1049 passed (1049)`.
 
 ## Ship Notes
