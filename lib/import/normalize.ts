@@ -102,13 +102,14 @@ export function checkContinuity(st: ParsedStatement): ContinuityResult {
 }
 
 const rowLabel = (r: ParsedRow) => (r.sheet ? `${r.sheet}!${r.rowNumber}` : String(r.rowNumber));
-const idr = (n: bigint) => formatMoney(n < 0n ? -n : n, "IDR");
 const monthIndex = (d: Date) => d.getUTCFullYear() * 12 + d.getUTCMonth();
-const ym = (t: number) => ({ y: new Date(t).getUTCFullYear(), m: new Date(t).getUTCMonth() + 1 });
+const minOf = (xs: number[]) => xs.reduce((a, b) => (b < a ? b : a));
+const maxOf = (xs: number[]) => xs.reduce((a, b) => (b > a ? b : a));
 
 /**
- * A year typo (02/08/2023 in a 2026 statement, use-case UC-B1f): rows more than six months from the main run of months, in another year,
- * at most 5 and under a fifth of the rows. Each gets the one date with the same day and month inside the main run, or null.
+ * A year typo (02/08/2023 in a 2026 statement, use-case UC-B1f): rows more than six months from the statement's main run of months, at
+ * most 5 and fewer than half the rows. Each gets the one date with the same day and month inside the run's months, in another year; a row
+ * of the run's own year with no such date is a sparse statement, not a typo, and is left alone.
  */
 function yearTypos(rows: ParsedRow[]): { row: ParsedRow; fix: Date | null; start: Date; end: Date }[] {
   const months = [...new Set(rows.map((r) => monthIndex(r.date)))].sort((a, b) => a - b);
@@ -123,34 +124,40 @@ function yearTypos(rows: ParsedRow[]): { row: ParsedRow; fix: Date | null; start
   const main = runs.reduce((a, b) => (size(b) > size(a) ? b : a));
   const years = new Set(main.map((m) => Math.floor(m / 12)));
   const inMain = rows.filter((r) => main.includes(monthIndex(r.date)));
-  const far = rows.filter((r) => !main.includes(monthIndex(r.date)) && !years.has(r.date.getUTCFullYear()));
-  if (!far.length || far.length > 5 || far.length * 5 >= rows.length) return [];
-  const start = new Date(Math.min(...inMain.map((r) => +r.date)));
-  const end = new Date(Math.max(...inMain.map((r) => +r.date)));
-  return far.map((row) => {
+  const far = rows.filter((r) => !main.includes(monthIndex(r.date)));
+  if (!far.length || far.length > 5 || far.length * 2 >= rows.length) return [];
+  const start = new Date(minOf(inMain.map((r) => +r.date)));
+  const end = new Date(maxOf(inMain.map((r) => +r.date)));
+  return far.flatMap((row): { row: ParsedRow; fix: Date | null; start: Date; end: Date }[] => {
     const fixes: Date[] = [];
     for (let y = start.getUTCFullYear(); y <= end.getUTCFullYear(); y++) {
+      if (y === row.date.getUTCFullYear()) continue;
       const c = dateOnly(y, row.date.getUTCMonth() + 1, row.date.getUTCDate());
       // Inside the run's months (a typo on the period's first day is before the other rows).
       if (c.getUTCDate() === row.date.getUTCDate() && +c >= +dateOnly(start.getUTCFullYear(), start.getUTCMonth() + 1, 1) && +c <= +dateOnly(end.getUTCFullYear(), end.getUTCMonth() + 2, 0)) fixes.push(c);
     }
-    return { row, fix: fixes.length === 1 ? fixes[0] : null, start, end };
+    if (fixes.length === 1) return [{ row, fix: fixes[0], start, end }];
+    // No single fix: a year the statement can't hold refuses the file; a far month of the run's own year is just a sparse statement.
+    return years.has(row.date.getUTCFullYear()) ? [] : [{ row, fix: null, start, end }];
   });
 }
 
 /**
- * The running balance is the statement's source of truth (accounting-rules 12, use-case UC-B1). Pure; run right after parsing, before the
- * zero-row filter and the hashes, so the same file always repairs the same way.
- * - A year typo with one fix inside the statement's run of months is read with that year; a far date with no fix refuses the file.
+ * The running balance is the statement's source of truth (accounting-rules 12, use-case UC-B1). Pure; applied to every parsed section
+ * before the zero-row filter and the hashes, so the same file always repairs the same way.
+ * - A year typo with one fix inside the statement's months is read with that year; a year it can't hold refuses the file.
  * - A row where previous balance − amount equals its printed balance had its direction written the wrong way: flipped.
  * - A balance-only row (a date, no amount) whose balance moved takes the move as its amount; one whose balance didn't move is dropped.
  * - When every printed balance chains and only the closing header disagrees, the running balance is the closing.
- * Direction and amount repairs are kept only when every printed balance then chains; otherwise the rows stay as written (the import shows
- * the break). Every repair is noted with the value the file wrote; the row keeps it in `written` and its `rawRow`.
+ * A direction or amount repair needs a later printed balance that confirms it (one balance alone can be the typo) and is kept only when
+ * every printed balance then chains; otherwise the rows stay as written, the import shows the break, and a note names what was not
+ * repaired. Every repair is noted with the value the file wrote; the row keeps it in `written` and its `rawRow`.
  */
 export function repairStatement(input: ParsedStatement): ParsedStatement {
   const notes: string[] = [];
   let st = input;
+  const currency = st.section?.currency ?? "IDR";
+  const money = (n: bigint) => formatMoney(n < 0n ? -n : n, currency);
 
   // 1. Year typos (dates only: the balance chain doesn't depend on them).
   const typos = yearTypos(st.rows.filter((r) => !r.balanceOnly));
@@ -164,58 +171,63 @@ export function repairStatement(input: ParsedStatement): ParsedStatement {
     for (const t of typos) notes.push(`Baris ${rowLabel(t.row)}: tanggal ${formatDate(t.row.date)} dibaca ${formatDate(t.fix!)} (tahun salah ketik; tanggal tertulis tetap di baris sumber).`);
     // A period the reader took from a mistyped row moves with it.
     const dated = rows.filter((r) => !r.balanceOnly).map((r) => +r.date);
-    const off = (d: Date) => !typos.some((t) => t.start.getUTCFullYear() <= d.getUTCFullYear() && d.getUTCFullYear() <= t.end.getUTCFullYear());
-    st = {
-      ...st,
-      rows,
-      // Whole months, as a reader dates a period it takes from its rows.
-      periodStart: off(st.periodStart) ? (({ y, m }) => dateOnly(y, m, 1))(ym(Math.min(...dated))) : st.periodStart,
-      periodEnd: off(st.periodEnd) ? (({ y, m }) => dateOnly(y, m + 1, 0))(ym(Math.max(...dated))) : st.periodEnd,
-    };
+    const lo = dateOnly(new Date(minOf(dated)).getUTCFullYear(), new Date(minOf(dated)).getUTCMonth() + 1, 1);
+    const hi = dateOnly(new Date(maxOf(dated)).getUTCFullYear(), new Date(maxOf(dated)).getUTCMonth() + 2, 0);
+    // Whole months, as a reader dates a period it takes from its rows.
+    st = { ...st, rows, periodStart: +st.periodStart < +lo || +st.periodStart > +hi ? lo : st.periodStart, periodEnd: +st.periodEnd > +hi || +st.periodEnd < +lo ? hi : st.periodEnd };
   }
 
-  // 2. Direction and amount from the balance, kept only if the whole chain then holds.
+  // 2. Direction and amount from the balance: each needs a later printed balance, and all are kept only if the whole chain then holds.
+  const confirmedAfter = st.rows.map((_, i) => st.rows.slice(i + 1).some((r) => r.balance !== null && !r.balanceOnly));
   let running = st.openingBalance;
   const repaired: ParsedRow[] = [];
   const chainNotes: string[] = [];
-  for (const r of st.rows) {
+  const unrepaired: string[] = [];
+  st.rows.forEach((r, i) => {
     if (r.balanceOnly) {
-      if (r.balance !== null && r.balance !== running) {
-        const amount = r.balance - running;
+      if (r.balance === null || r.balance === running) return;
+      const amount = r.balance - running;
+      if (confirmedAfter[i]) {
         repaired.push({ ...r, amount, balanceOnly: undefined, written: { ...r.written, amount: 0n } });
-        chainNotes.push(`Baris ${rowLabel(r)}: nominal kosong tetapi saldo ${amount > 0n ? "naik" : "turun"} ${idr(amount)}; dicatat ${amount > 0n ? "masuk" : "keluar"} ${idr(amount)} dari selisih saldo.`);
-        running = r.balance;
+        chainNotes.push(`Baris ${rowLabel(r)}: nominal kosong tetapi saldo ${amount > 0n ? "naik" : "turun"} ${money(amount)}; dicatat ${amount > 0n ? "masuk" : "keluar"} ${money(amount)} dari selisih saldo.`);
       }
-      continue;
+      unrepaired.push(`Baris ${rowLabel(r)}: nominal kosong tetapi saldo bergerak ${money(amount)}; tidak dicatat karena saldo berjalan tidak bisa memastikannya. Periksa baris itu di file.`);
+      running = r.balance;
+      return;
     }
     const next = running + r.amount;
     if (r.balance !== null && r.balance !== next && r.amount !== 0n && running - r.amount === r.balance) {
-      repaired.push({ ...r, amount: -r.amount, written: { ...r.written, amount: r.amount } });
-      chainNotes.push(`Baris ${rowLabel(r)}: arah dibalik — file menulis ${r.amount > 0n ? "masuk" : "keluar"} ${idr(r.amount)}, tetapi saldo ${r.amount > 0n ? "turun" : "naik"} sebesar itu. Dicatat mengikuti saldo; nilai tertulis tetap di baris sumber.`);
+      if (confirmedAfter[i]) {
+        repaired.push({ ...r, amount: -r.amount, written: { ...r.written, amount: r.amount } });
+        chainNotes.push(`Baris ${rowLabel(r)}: arah dibalik — file menulis ${r.amount > 0n ? "masuk" : "keluar"} ${money(r.amount)}, tetapi saldo ${r.amount > 0n ? "turun" : "naik"} sebesar itu. Dicatat mengikuti saldo; nilai tertulis tetap di baris sumber.`);
+      } else repaired.push(r);
+      unrepaired.push(`Baris ${rowLabel(r)}: saldo menunjukkan arah kebalikan dari yang tertulis (${r.amount > 0n ? "masuk" : "keluar"} ${money(r.amount)}); tidak diubah karena saldo berjalan tidak bisa memastikannya. Periksa baris itu di file.`);
       running = r.balance;
-      continue;
+      return;
     }
     repaired.push(r);
     running = r.balance ?? next;
-  }
+  });
   const withoutBalanceOnly = st.rows.filter((r) => !r.balanceOnly);
-  if (chainNotes.length) {
-    const trial = { ...st, rows: repaired };
-    const check = checkContinuity(trial);
-    const last = repaired[repaired.length - 1];
-    const holds = check.brokenRows.length === 0 && (check.ok || (last?.balance ?? null) !== null);
-    if (holds) {
-      st = trial;
-      notes.push(...chainNotes);
-    } else st = { ...st, rows: withoutBalanceOnly };
-  } else st = { ...st, rows: withoutBalanceOnly };
+  const trial = { ...st, rows: repaired };
+  const check = checkContinuity(trial);
+  const last = repaired[repaired.length - 1];
+  const holds = chainNotes.length > 0 && check.brokenRows.length === 0 && (check.ok || (last?.balance ?? null) !== null);
+  if (holds) {
+    st = trial;
+    notes.push(...chainNotes);
+  } else {
+    st = { ...st, rows: withoutBalanceOnly };
+    // Never silent: what the balance suggested but couldn't prove is named (the import shows the break).
+    notes.push(...unrepaired);
+  }
 
-  // 3. The closing header against a chain that holds everywhere: the chain wins, the header is reported.
+  // 3. The closing header against a chain that holds everywhere, unproven repairs aside: the chain wins, the header is reported.
   const after = checkContinuity(st);
-  const last = st.rows[st.rows.length - 1];
-  if (!after.ok && after.brokenRows.length === 0 && last && last.balance !== null && last.balance !== st.closingBalance) {
-    notes.push(`Saldo akhir di file ${formatMoney(st.closingBalance, "IDR")} ≠ saldo berjalan ${formatMoney(last.balance, "IDR")}; saldo berjalan dipakai. Periksa saldo akhir di file.`);
-    st = { ...st, closingBalance: last.balance };
+  const end = st.rows[st.rows.length - 1];
+  if (!after.ok && after.brokenRows.length === 0 && end && end.balance !== null && end.balance !== st.closingBalance) {
+    notes.push(`Saldo akhir di file ${formatMoney(st.closingBalance, currency)} ≠ saldo berjalan ${formatMoney(end.balance, currency)}; saldo berjalan dipakai. Periksa saldo akhir di file.`);
+    st = { ...st, closingBalance: end.balance };
   }
   return notes.length ? { ...st, notes: [...(st.notes ?? []), ...notes] } : st;
 }

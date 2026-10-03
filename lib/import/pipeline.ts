@@ -64,6 +64,7 @@ export async function importStatement(
   }
   // The section as parsed (and repaired against its balance, rule 12): `st` is replaced below, the other sections are told apart from it.
   const chosen = st;
+  if (st.error) throw new ParseError(st.error);
   // A date that is nowhere near a statement (an Excel serial misread as 1905) must never become a period of the books.
   const odd = st.rows.find((r) => r.date.getUTCFullYear() < 2000 || r.date.getUTCFullYear() > 2100);
   if (odd) throw new ParseError(`Tanggal di baris ${odd.rowNumber}${odd.sheet ? ` (lembar ${odd.sheet})` : ""} tidak masuk akal: ${formatDate(odd.date)}. Periksa kolom tanggal di file.`);
@@ -107,7 +108,9 @@ export async function importStatement(
   // Dedupe against what's already imported for this bank account (see `dedupe`); checked again under the account's lock when writing.
   const hashes = rowHashes(st.rows);
   // A repaired row is also known by what the file wrote: a file imported before the repair existed dedupes, never doubles.
-  const written = st.rows.map((r) => (r.written ? rowHashes([{ ...r, amount: r.written.amount ?? r.amount, date: r.written.date ?? r.date }])[0] : null));
+  // Hashed as one list, like the file was hashed before (two identical written rows keep their ordinals).
+  const asWrittenHashes = rowHashes(st.rows.map((r) => (r.written ? { ...r, amount: r.written.amount ?? r.amount, date: r.written.date ?? r.date } : r)));
+  const written = st.rows.map((r, i) => (r.written ? asWrittenHashes[i] : null));
   const seen = await dedupe(db, bankAccount.id, st, hashes, written);
   const fresh = st.rows.map((r, i) => ({ r, hash: hashes[i] })).filter((_, i) => !seen.duplicate[i]);
   const notes = [...(st.notes ?? []), ...seen.notes];

@@ -25,7 +25,16 @@ export async function parseStatement(fileName: string, data: Buffer, opts: Parse
  */
 export async function parseStatementSections(fileName: string, data: Buffer, opts: ParseOptions = {}): Promise<ParsedStatement[]> {
   try {
-    return (await parseAny(fileName, data, opts)).map(repairStatement);
+    const sections = await parseAny(fileName, data, opts);
+    // One account's refusal (a year it can't hold) doesn't refuse the file's other accounts: it travels on its own section.
+    return sections.map((st) => {
+      try {
+        return repairStatement(st);
+      } catch (e) {
+        if (sections.length === 1 || !(e instanceof ParseError)) throw e;
+        return { ...st, error: e.message };
+      }
+    });
   } catch (e) {
     if (e instanceof ParseError) throw e;
     throw new ParseError(`File tidak bisa dibaca: ${(e as Error).message}`);

@@ -30,7 +30,8 @@ describe("repairStatement (UC-B1)", () => {
     const rows = [row(aug(1), 1000n, 11_000n), row(aug(2), 500n, 10_500n), row(aug(3), 2000n, 99_999n)];
     const st = repairStatement(statement(rows, 10_000n, 99_999n));
     expect(st.rows.map((r) => r.amount)).toEqual([1000n, 500n, 2000n]);
-    expect(st.notes).toBeUndefined();
+    // Never silent: what the balance suggested but couldn't prove is named.
+    expect(st.notes).toEqual([expect.stringMatching(/^Baris \d+: saldo menunjukkan arah kebalikan dari yang tertulis \(masuk Rp 500\); tidak diubah/)]);
     expect(checkContinuity(st).ok).toBe(false);
   });
 

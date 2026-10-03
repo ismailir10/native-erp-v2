@@ -390,8 +390,13 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
       if (OPENING.test(desc) && nums.every((n) => n.kind === "balance")) {
         // A second Saldo Awal after transactions that doesn't continue the balance is another account read into this one (an SMBC
         // sub-product whose title wasn't recognised, UC-B1d): refused rather than merged. A month's Saldo Awal that continues is fine.
-        const before = [...drafts].reverse().find((d) => d.balance !== null)?.balance ?? null;
-        if (bal && opening !== null && drafts.length && before !== null && bal.value !== before) {
+        // "Continues": equal to the last printed balance, or to it plus the signed rows after it (a month whose last row prints none).
+        const lastPrinted = drafts.map((d) => d.balance !== null).lastIndexOf(true);
+        const abs = (v: bigint) => (v < 0n ? -v : v);
+        const signed = (d: Draft) => (d.flag === "DB" ? -abs(d.amount) : d.flag === "CR" ? abs(d.amount) : d.amount);
+        const before = lastPrinted >= 0 ? drafts[lastPrinted].balance! : opening;
+        const running = before === null ? null : drafts.slice(lastPrinted + 1).reduce((sum, d) => sum + signed(d), before);
+        if (bal && opening !== null && drafts.length && before !== null && bal.value !== before && bal.value !== running) {
           throw new ParseError(`File ini tampaknya berisi lebih dari satu rekening: ada baris Saldo Awal kedua di halaman ${line.page} (${desc.slice(0, 40)}) yang tidak melanjutkan saldo sebelumnya. Pisahkan file per rekening, atau kirim contoh judul bagiannya agar formatnya bisa ditambahkan.`);
         }
         if (bal) opening ??= bal.value;

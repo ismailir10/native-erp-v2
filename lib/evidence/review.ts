@@ -179,6 +179,7 @@ async function prepare(db: Db, firmId: string, intakeId: string, versionId: stri
     const digits = (value: string | null) => (value ?? "").replace(/\D/g, "");
     const st = sections.find(s => digits(s.accountNumber) === digits(bank.number)) ?? (sections.length === 1 && !sections[0].accountNumber ? sections[0] : null);
     if (!st) throw new Error("Nomor rekening tidak ditemukan pada file atau berbeda dengan rekening terpilih.");
+    if (st.error) throw new Error(st.error);
     if ((st.section?.currency ?? "IDR") !== selection.currency) throw new Error("Mata uang rekening di file berbeda dengan pilihan sumber.");
     const dates = [st.periodStart, st.periodEnd, ...st.rows.map(row => row.date)].map(date => date.toISOString().slice(0, 10));
     if (dates.some(date => date < selection.periodStart! || date > selection.periodEnd!)) throw new Error("Rentang sumber harus mencakup seluruh periode file.");

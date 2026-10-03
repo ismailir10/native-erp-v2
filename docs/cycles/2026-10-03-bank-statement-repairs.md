@@ -36,7 +36,7 @@ Spec approval: the owner approved the plan that put the bank items of UC-B1 afte
 cycle runs without a separate stop, like cycles 1–4.
 
 ## Spec
-- [ ] **One repair step, trusted only when the chain proves it.** `repairStatement` in `lib/import/normalize.ts` is pure. It runs in the
+- [x] **One repair step, trusted only when the chain proves it.** `repairStatement` in `lib/import/normalize.ts` is pure. It runs in the
       pipeline right after the section is chosen, before the zero-row filter and the row hashes, so a file imported twice repairs the same
       way and dedupes. A repair is kept only when **every printed balance and the closing then chain**; otherwise everything is left as
       parsed, and the import shows *Ada celah* as today. Each repair adds a note naming the row and the value as written. The note goes to
@@ -48,10 +48,10 @@ cycle runs without a separate stop, like cycles 1–4.
         same day and month inside that run, gets that date. Rows like this are at most 5 and under a fifth of the rows. The chain doesn't
         depend on dates, so this is decided by the dates alone. A far date with no single fix refuses the file, naming the row (a statement
         has no legitimate row a year away). The period is recomputed from the repaired rows when the parser took it from a row.
-- [ ] **Header totals (trust the chain).** When every printed balance chains and only the closing header disagrees with the running
+- [x] **Header totals (trust the chain).** When every printed balance chains and only the closing header disagrees with the running
       balance, the running balance is the closing balance. A note gives both numbers. A wrong *opening* header can't be decided (a typo,
       or a row missing before the first): the note says both readings and the opening they imply, and the import stays *Ada celah*.
-- [ ] **Tabular reader.**
+- [x] **Tabular reader.**
       - **(e3)** A yearless month far *before* the previous one in a file read backwards rolls the year back (Jan → Dec of the year
         before).
       - **(a3)** A row with no date that moves money or the balance takes the previous row's date, with a note. With no previous row it
@@ -61,13 +61,13 @@ cycle runs without a separate stop, like cycles 1–4.
       - **(b3)** The error says what it saw.
       - **(e1/e2)** Rows dated in another month than their sheet's name are posted by their date, with a note naming the count, the sheet
         and the month.
-- [ ] **PDF reader.**
+- [x] **PDF reader.**
       - **(d2/d3)** A second Saldo Awal row after transactions in one account section refuses the file. The message says it looks like
         more than one account and asks for the accounts to be split. Guessing an unseen title layout could swallow again.
       - **(g)** A line with neither date nor amount no longer ends the row it follows. A `TANGGAL :DD/MM` token is not part of a
         description. After a repeated column header, undated description lines before the first dated row continue the last row of the
         previous page.
-- [ ] **Each case has a test** built from the review's fixtures that failed before. `verify:books` still ALL PASS; no existing test
+- [x] **Each case has a test** built from the review's fixtures that failed before. `verify:books` still ALL PASS; no existing test
       weakened.
 
 **Non-goals:**
@@ -97,7 +97,7 @@ cycle runs without a separate stop, like cycles 1–4.
 - [x] T2 Tabular reader: backward year roll, dateless rows, SALDO AWAL with an amount, honest b3 message, sheet-month note, balance-only
       rows passed through. Accept: unit tests from the fixtures.
 - [x] T3 PDF reader: second opening refuses, BCA continuation across a `TANGGAL` line and a page break. Accept: PDF fixture tests.
-- [ ] T4 Accounting-rules rule 12; end-of-cycle gates, review pass, ship.
+- [x] T4 Accounting-rules rule 12; end-of-cycle gates, review pass, ship.
 
 ## Implementation
 - Plan: T1–T4 sequential, inline. The repair step first: T2 feeds it the balance-only rows.
@@ -136,6 +136,32 @@ cycle runs without a separate stop, like cycles 1–4.
     continue it. SMBC's lead lines are untouched.
 
   Test: `tests/unit/statement-pdf-b1.test.ts`.
+- T4: rule 12 gains the running-balance paragraph. Review pass (second-model review, probes through the real parse path, each checked
+  against `main`). Fixed, with tests in `tests/unit/statement-review-b1.test.ts`:
+  - **H1** An undated summary line with a balance (`Mutasi Kredit … 10.500`, `Rekap Mutasi`) became a transaction. Summary and
+    balance-print text (`SUMMARY_TEXT`) is never a transaction, nor named as a skipped one.
+  - **H2** A slip in the *last* printed balance flipped a correct row and overrode a correct closing header. A direction or amount repair
+    now needs a later printed balance to confirm it; an unconfirmed one is named, not applied.
+  - **M1** A sparse Jan → Nov yearless file rolled November back a year (an inverted period). The roll-back applies only to the first row
+    right after a sheet's SALDO AWAL (the real e3 shape).
+  - **M2** In a statement written from the books' side, a balance-only row counted as a break both ways, so the direction vote failed.
+    It is now a checkpoint in `breaks()`.
+  - **M3/L1** A year typo in a Dec–Jan statement, or in a four-row file, was left alone. "Far" is now by month distance with a fix in
+    another year; a far month of the run's own year with no fix is a sparse statement, left alone; the count rule is "fewer than half".
+  - **M4** A dated "SALDO PER 01/08" line with a moved balance became a transaction. It is now a checkpoint.
+  - **M5** In the books' direction, a SALDO AWAL amount written in Debet opened negative. Its sign is now settled with the verdict, and
+    `b === −written` is accepted.
+  - **M6** A two-month PDF whose first month ended on a row without a balance was refused as two accounts. A Saldo Awal that equals the
+    running total (last printed balance plus the signed rows after it) continues.
+  - **M7** One account's refusal refused the whole file. It travels as `error` on its own section; the import and Dokumen refuse only
+    that account. Notes use the section's currency.
+  - **M8** A balance-only row or flip candidate dropped when the chain broke elsewhere was silent. Each is now named.
+  - **L2** A sheet named for a range ("Jan-Mar 2026") raised the month note. The note now needs exactly one month in the name.
+  - **L3** Written hashes are computed over the whole list (ordinals kept).
+  - **L4** Min/max use a reduce (no spread on large files).
+
+  Kept, as a known blind spot (spec assumption 1): **L5**, a genuine row preceded by a missing row of exactly −2× its amount is
+  indistinguishable from an inverted row. **L6** follows from M4.
 
 ## Verification
 - T1: new tests `Tests 8 passed (8)`. The first full run failed `smbc-import` (the identity bug above); after the fix, lint +
@@ -146,5 +172,27 @@ cycle runs without a separate stop, like cycles 1–4.
   `Test Files 143 passed (143) · Tests 1000 passed (1000)`; `demo:reset && verify:books` → ALL PASS (1765).
 - T3: `tests/unit/statement-pdf-b1.test.ts` → `Tests 2 passed (2)`; lint + typecheck clean; `npm test` →
   `Test Files 144 passed (144) · Tests 1002 passed (1002)`.
+- T4: `tests/unit/statement-review-b1.test.ts` → `Tests 10 passed (10)`. End of cycle:
+  - lint + typecheck clean;
+  - `npm test` → `Test Files 145 passed (145) · Tests 1012 passed (1012)`;
+  - `npm run build` ok;
+  - `demo:reset && verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`;
+  - e2e runs in CI.
+
+  No UI change: repairs show as import notes on the existing Impor page.
 
 ## Ship Notes
+- **Migration:** none (`ParsedRow.balanceOnly` / `written` and `ParsedStatement.error` are in-memory; notes go to the existing
+  `StatementImport.parseNotes`).
+- **Behaviour:**
+  - Statement rows the running balance proves wrong are repaired and noted with what the file wrote: a direction typed backwards, an
+    amount missing beside a moved balance, a year typo. What it can't prove is named instead.
+  - A wrong closing header gives way to a chain that holds.
+  - Undated ditto rows and SALDO AWAL rows with an amount are read.
+  - December rows after a January SALDO AWAL get the year before.
+  - A PDF section hiding a second account is refused.
+  - BCA PDFs keep the counterparty after `TANGGAL :` lines and page breaks.
+  - Files imported before keep deduping.
+- **Rollback:** revert the merge. Rows imported with a repair keep their repaired amounts and dates; re-importing after a rollback dedupes
+  them by date and amount only when the written value equals the repaired one, so remove such an import first (*Hapus impor*) if needed.
+

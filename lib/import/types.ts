@@ -30,6 +30,8 @@ export type ParsedStatement = {
   notes?: string[];
   /** Workbook sources: the sheets read into this statement, in date order. */
   sheets?: string[];
+  /** This section can't be imported (its repair refused it, rule 12); the other sections of the file still can. */
+  error?: string;
   /** Time deposits the file lists besides the transactions (SMBC "Detail Produk Deposito"): file-level, same on every section. */
   deposits?: DepositProduct[];
 };
