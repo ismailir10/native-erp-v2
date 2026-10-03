@@ -74,4 +74,20 @@ describe("report format (UC-K3)", () => {
     const thousands = [item("PENDAPATAN_USAHA", 1_000_600n), item("HPP", 400_600n)];
     expect(totalsOf(standardFormat().labaRugi, [thousands], "RIBUAN")["Laba kotor"]).toEqual([600n]);
   });
+
+  it("names a half-done editor line in Bahasa, and refuses a total that counts a line twice", () => {
+    const f = belifi();
+    f.labaRugi = [...f.labaRugi.slice(0, 3), { key: "baru", kind: "GROUP", label: "Pos baru", lines: [] }, ...f.labaRugi.slice(3)];
+    expect(() => validateFormat(f)).toThrow('Laba Rugi: pos "Pos baru" belum memuat pos buku. Tambahkan pos buku atau hapus barisnya.');
+    const g = belifi();
+    g.labaRugi = [...g.labaRugi, { key: "t", kind: "TOTAL", label: "Total baru", terms: [] }];
+    expect(() => validateFormat(g)).toThrow('Laba Rugi: total "Total baru" belum menjumlahkan baris apa pun.');
+    const h = belifi();
+    h.neraca = h.neraca.map((l, i) => (i === 1 ? { ...l, label: "  " } : l));
+    expect(() => validateFormat(h)).toThrow("Neraca: baris ke-2 belum diberi label.");
+    const twice = belifi();
+    twice.labaRugi = twice.labaRugi.map((l) => (l.key === "kotor" && l.kind === "TOTAL" ? { ...l, terms: [...l.terms, { key: "jual", sign: 1 as const }] } : l));
+    expect(() => validateFormat(twice)).toThrow('Laba Rugi: total "LABA KOTOR" menjumlahkan baris yang sama dua kali.');
+    expect(() => validateFormat({ ...belifi(), unit: "DOLLAR" })).toThrow("Format laporan tidak terbaca (bagian unit). Muat ulang halaman, atau kembali ke format standar.");
+  });
 });

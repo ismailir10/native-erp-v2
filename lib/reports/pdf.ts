@@ -23,6 +23,26 @@ const RULE = "#C9CFD8";
 const REVIEW = "#8A5300";
 const MANUAL_ONE = /^\[isi oleh manajemen: [^\]]*\]$/;
 
+/**
+ * The standard PDF fonts speak WinAnsi only: "−", "≤" or "→" would print as garbage. Known signs get their ASCII spelling; anything else
+ * outside WinAnsi becomes "?" rather than a wrong glyph.
+ */
+const ASCII: Record<string, string> = { "\u2212": "-", "\u2264": "<=", "\u2265": ">=", "\u2192": "->", "\u2190": "<-", "\u2248": "~", "\u2260": "!=", "\u2011": "-", "\u2010": "-", "\u202f": " ", "\u2009": " " };
+const CP1252 = new Set([..."€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ"]);
+export const winAnsi = (s: string) =>
+  [...s].map((ch) => {
+    const c = ch.codePointAt(0)!;
+    if (c === 9 || c === 10 || (c >= 0x20 && c <= 0x7e) || (c >= 0xa0 && c <= 0xff) || CP1252.has(ch)) return ch;
+    return ASCII[ch] ?? "?";
+  }).join("");
+/** Every string in a value (plain objects and arrays), made WinAnsi; dates and amounts as they are. */
+function clean<T>(v: T): T {
+  if (typeof v === "string") return winAnsi(v) as T;
+  if (Array.isArray(v)) return v.map(clean) as T;
+  if (v && typeof v === "object" && Object.getPrototypeOf(v) === Object.prototype) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, clean(x)])) as T;
+  return v;
+}
+
 const amount = (v: bigint | null) => (v === null ? "" : v === 0n ? "–" : formatRupiah(v, { bare: true, accounting: true }));
 
 /** The values a statement prints: per line in its unit, a format total as the sum of the printed lines it names. */
@@ -37,8 +57,9 @@ export function printedValues(rows: SetRow[], unit: StatementSet["unit"]): (bigi
   });
 }
 
-export async function financialStatementsPdf(db: Db, scope: Scope, year: number, month: number, meta: { firm: string; title: string; draft?: string }): Promise<Buffer> {
-  const set = await statementSet(db, scope, year, month);
+export async function financialStatementsPdf(db: Db, scope: Scope, year: number, month: number, rawMeta: { firm: string; title: string; draft?: string }): Promise<Buffer> {
+  const set = clean(await statementSet(db, scope, year, month));
+  const meta = clean(rawMeta);
   const asOf = formatDate(periodBounds(year, month).end);
   const doc = new PDFDocument({ size: "A4", margins: M, autoFirstPage: false, bufferPages: true, info: { Title: `Laporan keuangan ${meta.title} ${asOf}`, Author: meta.firm, Creator: "Buku" } });
   const chunks: Buffer[] = [];
@@ -48,7 +69,7 @@ export async function financialStatementsPdf(db: Db, scope: Scope, year: number,
   const bottom = A4.height - M.bottom;
 
   // The page header follows the part being printed; every new page (one per part, and overflow) draws it.
-  let header = { title: "", subtitle: "", unit: "", columns: [] as string[], colWidth: 0 };
+  let header = { title: "", subtitle: "", unit: "", columns: [] as string[], colWidth: 0, size: 9 };
   doc.on("pageAdded", () => drawHeader());
   function drawHeader() {
     doc.x = M.left;
@@ -61,9 +82,9 @@ export async function financialStatementsPdf(db: Db, scope: Scope, year: number,
     doc.moveDown(0.6).fillColor(INK);
     if (header.columns.length) {
       const y = doc.y;
-      doc.font("Helvetica-Bold").fontSize(8.5);
-      header.columns.forEach((c, i) => doc.text(c, colX(i), y, { width: header.colWidth, align: "right" }));
-      doc.y = y + doc.heightOfString(header.columns[0] ?? "", { width: header.colWidth }) + 3;
+      doc.font("Helvetica-Bold").fontSize(Math.min(8.5, header.size));
+      header.columns.forEach((c, i) => doc.text(c, colX(i) + 4, y, { width: header.colWidth - 4, align: "right" }));
+      doc.y = y + Math.max(...header.columns.map((c) => doc.heightOfString(c, { width: header.colWidth - 4 }))) + 3;
       doc.moveTo(M.left, doc.y).lineTo(A4.width - M.right, doc.y).strokeColor(RULE).lineWidth(0.5).stroke();
       doc.y += 4;
     }
@@ -71,7 +92,7 @@ export async function financialStatementsPdf(db: Db, scope: Scope, year: number,
   }
   const colX = (i: number) => A4.width - M.right - (header.columns.length - i) * header.colWidth;
   const startPart = (h: Partial<typeof header>) => {
-    header = { title: "", subtitle: "", unit: "", columns: [], colWidth: 0, ...h };
+    header = { title: "", subtitle: "", unit: "", columns: [], colWidth: 0, size: 9, ...h };
     doc.addPage();
   };
   const ensure = (h: number) => {
@@ -83,16 +104,21 @@ export async function financialStatementsPdf(db: Db, scope: Scope, year: number,
 
   function statement(st: SetStatement) {
     const n = Math.max(1, st.columns.length, ...st.rows.map((r) => r.values.length));
-    const colWidth = Math.min(95, (width * 0.55) / n);
-    startPart({ title: st.title, subtitle: st.subtitle, unit: unitLine, columns: st.columns, colWidth });
-    const labelWidth = width - n * colWidth - 8;
     const values = printedValues(st.rows, set.unit);
+    // Columns as wide as the widest printed amount (bold, at 9 pt); when they'd squeeze the labels below 30% of the line, the type shrinks.
+    doc.font("Helvetica-Bold").fontSize(9);
+    const widest = Math.max(0, ...values.flatMap((vs, i) => (st.rows[i].detail ? [] : vs.map((v) => doc.widthOfString(amount(v)))))) + 8;
+    const room = (width * 0.7) / n;
+    const size = widest > room ? Math.max(6, (9 * room) / widest) : 9;
+    const colWidth = Math.min(room, Math.max(widest, Math.min(95, (width * 0.55) / n)));
+    startPart({ title: st.title, subtitle: st.subtitle, unit: unitLine, columns: st.columns, colWidth, size });
+    const labelWidth = width - n * colWidth - 8;
     st.rows.forEach((row, i) => {
       if (row.detail) return;
       const font = row.bold ? "Helvetica-Bold" : "Helvetica";
-      doc.font(font).fontSize(9);
+      doc.font(font).fontSize(size);
       const indent = (row.indent ?? 0) * 10;
-      const h = doc.heightOfString(row.label, { width: labelWidth - indent }) + 3;
+      const h = Math.max(doc.heightOfString(row.label, { width: labelWidth - indent }), doc.currentLineHeight()) + 3;
       const total = Boolean(row.terms);
       // A section heading (a bold line without figures) gets air above it.
       if (i > 0 && row.bold && row.values.length === 0) doc.y += 5;
@@ -103,7 +129,7 @@ export async function financialStatementsPdf(db: Db, scope: Scope, year: number,
       }
       const y = doc.y;
       doc.fillColor(INK).text(row.label, M.left + indent, y, { width: labelWidth - indent });
-      values[i].forEach((v, c) => doc.text(amount(v), A4.width - M.right - (values[i].length - c) * colWidth, y, { width: colWidth, align: "right" }));
+      values[i].forEach((v, c) => doc.text(amount(v), A4.width - M.right - (values[i].length - c) * colWidth, y, { width: colWidth, align: "right", lineBreak: false }));
       doc.y = y + h;
       doc.x = M.left;
     });

@@ -35,7 +35,7 @@ export default async function SettingsPage({ params, searchParams }: { params: P
     resolveAiConfig(prisma),
     loadReportFormat(prisma, client.id),
   ]);
-  const { custom: customFormat, ...formatValue } = reportFormat;
+  const { custom: customFormat, stale: staleFormat, ...formatValue } = reportFormat;
   const accounts = new Map((await prisma.account.findMany({ where: { clientId: client.id } })).map((a) => [a.code, a.name]));
   const clientRules = rules.filter((r) => r.clientId);
   const firmRules = rules.filter((r) => !r.clientId);
@@ -56,7 +56,8 @@ export default async function SettingsPage({ params, searchParams }: { params: P
       </div>
       <EntitiesCard clientId={client.id} entities={client.entities.map((e) => ({ id: e.id, name: e.name, kind: e.kind, banks: e.bankAccounts.map((b) => ({ id: b.id, label: b.label, number: b.number, code: b.account.code, isOverdraft: b.isOverdraft })) }))} />
       <FrameworkCard clientId={client.id} entities={client.entities.map((e) => ({ id: e.id, name: e.name, framework: e.reportingFramework }))} />
-      <ReportFormatCard clientId={client.id} initial={formatValue} custom={customFormat} universe={formatUniverse()} />
+      {/* Keyed on what's saved: after a save or a reset the editor starts again from the server's format. */}
+      <ReportFormatCard key={JSON.stringify(reportFormat)} clientId={client.id} initial={formatValue} custom={customFormat} stale={staleFormat} universe={formatUniverse()} />
       <Card>
         <CardHeader>
           <CardTitle>Batas pemakaian</CardTitle>

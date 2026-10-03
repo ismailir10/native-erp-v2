@@ -94,12 +94,12 @@ export function standardFormat(): ReportFormat {
 
 const lineSchema = z.discriminatedUnion("kind", [
   z.object({ key: z.string().min(1).max(60), kind: z.literal("HEADING"), label: z.string().trim().min(1).max(120) }),
-  z.object({ key: z.string().min(1).max(60), kind: z.literal("GROUP"), label: z.string().trim().min(1).max(120), lines: z.array(z.string()).min(1), sign: z.union([z.literal(1), z.literal(-1)]).optional() }),
+  z.object({ key: z.string().min(1).max(60), kind: z.literal("GROUP"), label: z.string().trim().min(1).max(120), lines: z.array(z.string()).min(1).max(60), sign: z.union([z.literal(1), z.literal(-1)]).optional() }),
   z.object({
     key: z.string().min(1).max(60),
     kind: z.literal("TOTAL"),
     label: z.string().trim().min(1).max(120),
-    terms: z.array(z.object({ key: z.string(), sign: z.union([z.literal(1), z.literal(-1)]) })).min(1),
+    terms: z.array(z.object({ key: z.string(), sign: z.union([z.literal(1), z.literal(-1)]) })).min(1).max(100),
     strong: z.boolean().optional(),
     caps: z.boolean().optional(),
     subtotal: z.boolean().optional(),
@@ -142,6 +142,7 @@ function checkStatement(name: string, statement: StatementKey, lines: FormatLine
     }
     if (l.kind === "TOTAL") {
       for (const t of l.terms) {
+        if (l.terms.filter((x) => x.key === t.key).length > 1) throw new FormatError(`${name}: total "${l.label}" menjumlahkan baris yang sama dua kali.`);
         if (!seenKeys.has(t.key)) throw new FormatError(`${name}: total "${l.label}" menjumlahkan baris yang belum ada di atasnya.`);
         if (lines.find((x) => x.key === t.key)?.kind === "HEADING") throw new FormatError(`${name}: total "${l.label}" menjumlahkan judul, bukan pos.`);
       }
@@ -163,24 +164,47 @@ function checkStatement(name: string, statement: StatementKey, lines: FormatLine
   }
 }
 
+/** What the editor can leave half-done (a new line without a label, a *Pos* without Buku lines, a total over nothing), named in Bahasa. */
+function precheck(input: unknown) {
+  if (!input || typeof input !== "object") return;
+  const statements: [string, unknown][] = [["Laba Rugi", (input as Record<string, unknown>).labaRugi], ["Neraca", (input as Record<string, unknown>).neraca]];
+  for (const [name, lines] of statements) {
+    if (!Array.isArray(lines)) continue;
+    lines.forEach((raw, i) => {
+      const l = (raw ?? {}) as { kind?: unknown; label?: unknown; lines?: unknown; terms?: unknown };
+      const label = typeof l.label === "string" ? l.label.trim() : "";
+      if (!label) throw new FormatError(`${name}: baris ke-${i + 1} belum diberi label.`);
+      if (label.length > 120) throw new FormatError(`${name}: label "${label.slice(0, 40)}…" terlalu panjang (maks. 120 huruf).`);
+      if (l.kind === "GROUP" && (!Array.isArray(l.lines) || l.lines.length === 0)) throw new FormatError(`${name}: pos "${label}" belum memuat pos buku. Tambahkan pos buku atau hapus barisnya.`);
+      if (l.kind === "TOTAL" && (!Array.isArray(l.terms) || l.terms.length === 0)) throw new FormatError(`${name}: total "${label}" belum menjumlahkan baris apa pun.`);
+    });
+  }
+}
+
 /** A format as stored or submitted, checked: the shape, then each statement; refusals name the line, in Bahasa. */
 export function validateFormat(input: unknown): ReportFormat {
+  precheck(input);
   const parsed = formatSchema.safeParse(input);
-  if (!parsed.success) throw new FormatError(`Format laporan tidak terbaca: ${parsed.error.issues[0]?.message ?? "bentuknya salah"}.`);
+  if (!parsed.success) {
+    const at = parsed.error.issues[0]?.path.join(".");
+    throw new FormatError(`Format laporan tidak terbaca${at ? ` (bagian ${at})` : ""}. Muat ulang halaman, atau kembali ke format standar.`);
+  }
   const f = parsed.data as ReportFormat;
   checkStatement("Laba Rugi", "labaRugi", f.labaRugi);
   checkStatement("Neraca", "neraca", f.neraca);
   return f;
 }
 
-export async function loadReportFormat(db: Db, clientId: string): Promise<ReportFormat & { custom: boolean }> {
+/** `stale`: why the client's stored format no longer applies (shown in settings); the standard is used meanwhile. */
+export async function loadReportFormat(db: Db, clientId: string): Promise<ReportFormat & { custom: boolean; stale?: string }> {
   const row = await db.reportFormat.findUnique({ where: { clientId } });
   if (!row) return { ...standardFormat(), custom: false };
   try {
     return { ...validateFormat(row.format), custom: true };
-  } catch {
-    // A stored format the current rules no longer accept (a new FS line since it was saved) falls back to the standard, never drops a line.
-    return { ...standardFormat(), custom: false };
+  } catch (e) {
+    // A stored format the current rules no longer accept (a new FS line since it was saved) falls back to the standard, never drops a
+    // line, and says so where the format is edited.
+    return { ...standardFormat(), custom: false, stale: e instanceof FormatError ? e.message : "Format laporan klien tidak terbaca." };
   }
 }
 

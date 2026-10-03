@@ -239,4 +239,34 @@ The cycle runs without a separate stop. The new dependency (below) is the only g
   - `npm run demo:reset && npm run verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`;
   - `npm run test:e2e` can't run here (its setup needs `SUPABASE_SECRET_KEY`, which this sandbox doesn't have), so CI runs it.
 
+## Review pass
+Advisor review of the branch: 11 findings. All are fixed or documented, and checked again with `npm run lint && npm run typecheck && npm test`
+→ `Test Files 151 passed (151) · Tests 1027 passed (1027)`, `npm run build`, `npm run verify:books` → ALL PASS (1765).
+
+1. **H, hidden subtotal.** A *Jumlah …* whose section printed no line was left out even when its terms weren't zero (a heading moved
+   below its lines). Excel's formula and the PDF then dropped it from Total aset. Now a subtotal is hidden only when it is zero too
+   (`statement-set.ts`, `FsTable`). Test: a moved heading gives Total aset 150 jt on the page, in Excel (the formula worked out from its
+   cells) and in the PDF.
+2. **M, PDF glyphs.** The standard fonts are WinAnsi, so "−", "≤" and "→" in the CALK printed as garbage. `winAnsi` and `clean` now spell
+   them in ASCII (anything else outside WinAnsi becomes "?"). Unit test.
+3. **M, PDF columns.** Perubahan Ekuitas amounts wrapped over the next row. Columns now size to the widest printed amount, the type
+   shrinks (down to 6 pt) when columns would leave labels under 30% of the line, amounts never wrap, and the header height is the
+   tallest column title. Checked by eye on the combined group's 3 + 1 columns.
+4. **M, English refusals.** A new empty *Pos* or total from the editor got zod's English message. `precheck` now names the line in
+   Bahasa (no label, a *Pos* without Buku lines, a total over nothing). Other shape errors read "Format laporan tidak terbaca (bagian …)".
+   A total that counts a line twice is refused. `lines` is capped at 60 and `terms` at 100.
+5. **M, reset left the edits.** The settings card is keyed on the saved format, so after *Simpan* or *Kembali ke format standar* it
+   restarts from the server's format.
+6. **L/M, dead-end link.** The *belum terpetakan* draft reason linked to settings, where nothing edits an account's line. It now opens
+   the first such account's Buku Besar.
+7. **L, silent fallback.** A stored format the rules no longer accept fell back silently. `loadReportFormat` now returns `stale` (the
+   refusal), settings show it in review colour, and *Kembali ke format standar* stays offered. DB test.
+8. **L, thousands.** Total comprehensive income now adds the printed lines (the format's net profit plus each OCI line) on the page, in
+   the PDF and as an Excel formula. Still documented: in thousands the Neraca's two totals can differ by a rounding unit while the
+   *Seimbang* pill reads the exact totals.
+9. **L, empty column.** The last-month column showed when the month held only the Saldo Awal. It now needs income or expense lines.
+10. **L, beyond 2^53.** An amount beyond 2^53 is a text cell in Excel, so a formula over it fails. This predates the cycle and stays a
+    known limit (Rp 9 kuadriliun).
+11. **L, shape limits.** Covered with 4.
+
 ## Ship Notes

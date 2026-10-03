@@ -6,6 +6,8 @@ import { balanceItems, incomeItems, loadReportFormat, renderFormat, standardForm
 import { dateOnly } from "@/lib/format";
 import { financialStatementsWorkbook } from "@/lib/reports/workbook";
 import ExcelJS from "exceljs";
+import { extractText, getDocumentProxy } from "unpdf";
+import { financialStatementsPdf } from "@/lib/reports/pdf";
 
 /** UC-K3: the format renders the GL's own statements; its totals are the statements' totals, whatever the client calls them. */
 describe("report format over the books", () => {
@@ -101,5 +103,54 @@ describe("report format over the books", () => {
     expect(net.cells[0].numFmt).toBe('#,##0,;(#,##0,);"–"');
     const nr = rows("Neraca");
     expect([value(nr.find((r) => r.label === "Total aset")!.cells[0]), value(nr.find((r) => r.label === "Total liabilitas & ekuitas")!.cells[0])]).toEqual([12_300_400, 12_300_400]);
+  });
+
+  it("a subtotal over lines above its heading still counts: page, Excel and PDF agree on Total aset", async () => {
+    const g = await makeGroup();
+    const acc = async (code: string) => (await db.account.findUniqueOrThrow({ where: { clientId_code: { clientId: g.client.id, code } } })).id;
+    await db.$transaction(async (tx) =>
+      postJournal(tx, { entityId: g.pt.entity.id, date: dateOnly(2026, 3, 15), kind: "ADJUSTMENT", memo: "uji", lines: [
+        { accountId: await acc("1110"), debit: 100_000_000n, credit: 0n },
+        { accountId: await acc("1210"), debit: 50_000_000n, credit: 0n },
+        { accountId: await acc("3100"), debit: 0n, credit: 150_000_000n },
+      ] }),
+    );
+    // The "Aset tidak lancar" heading moved below its own lines: its section holds no line, its subtotal still sums them.
+    const moved = standardFormat();
+    const heading = moved.neraca.find((l) => l.key === "h_aset_tidak_lancar")!;
+    const rest = moved.neraca.filter((l) => l !== heading);
+    rest.splice(rest.findIndex((l) => l.key === "jumlah_aset_tidak_lancar"), 0, heading);
+    moved.neraca = rest;
+    await db.reportFormat.create({ data: { firmId: g.firm.id, clientId: g.client.id, format: moved } });
+    const scope = { clientId: g.client.id, entityIds: [g.pt.entity.id] };
+
+    const page = renderFormat((await loadReportFormat(db, g.client.id)).neraca, [balanceItems(await balanceSheet(db, scope, dateOnly(2026, 3, 31)))]);
+    expect(page.find((x) => x.total?.key === "jumlah_aset_tidak_lancar")!.total!.values).toEqual([50_000_000n]);
+    expect(page.find((x) => x.total?.key === "total_aset")!.total!.values).toEqual([150_000_000n]);
+
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load((await financialStatementsWorkbook(db, scope, 2026, 3, { firm: "KJA Uji", title: "PT Uji" })) as unknown as ArrayBuffer);
+    const ws = wb.getWorksheet("Neraca")!;
+    const cell = (label: string) => {
+      let found: ExcelJS.Cell | null = null;
+      ws.eachRow((r) => {
+        if (String(r.getCell(1).value ?? "").trim() === label) found = r.getCell(2);
+      });
+      return found! as ExcelJS.Cell;
+    };
+    const valueOf = (c: ExcelJS.Cell): number => (c.value && typeof c.value === "object" && "formula" in c.value ? Number(c.value.result ?? 0) : Number(c.value ?? 0));
+    const recalc = (c: ExcelJS.Cell): number => {
+      const v = c.value as ExcelJS.CellFormulaValue;
+      return [...String(v.formula).matchAll(/([+-]?)([A-Z])(\d+)/g)].reduce((sum, [, sign, col, row]) => {
+        const ref = ws.getCell(`${col}${row}`);
+        const x = ref.value && typeof ref.value === "object" && "formula" in ref.value ? recalc(ref) : valueOf(ref);
+        return sum + (sign === "-" ? -1 : 1) * x;
+      }, 0);
+    };
+    expect([valueOf(cell("Jumlah aset tidak lancar")), recalc(cell("Total aset"))]).toEqual([50_000_000, 150_000_000]);
+
+    const pdf = await getDocumentProxy(new Uint8Array(await financialStatementsPdf(db, scope, 2026, 3, { firm: "KJA Uji", title: "PT Uji" })));
+    const { text } = await extractText(pdf, { mergePages: true });
+    expect(text).toMatch(/Total aset\s+150\.000\.000/);
   });
 });

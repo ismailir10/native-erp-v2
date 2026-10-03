@@ -123,7 +123,8 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
   const isPrior = prior instanceof FxMissingError ? null : prior;
   // Last month beside this one (UC-K3): a comparative even when the books start this year.
   const prevMonth = (await entryBy(prevEnd, prevStart)) ? await withFx(() => incomeStatement(prisma, s, prevStart, prevEnd)) : null;
-  const isPrev = prevMonth instanceof FxMissingError ? null : prevMonth;
+  // Only when last month has income or expense: a month holding just the Saldo Awal would be a column of dashes.
+  const isPrev = prevMonth instanceof FxMissingError || !prevMonth || incomeItems(prevMonth).length === 0 ? null : prevMonth;
   // The client's own format (labels, order, headings, subtotals, unit): presentation only, numbers stay the GL's.
   const format = await loadReportFormat(prisma, client.id);
   const status = await reportStatus(prisma, client.id, scope.entityIds, period.year, period.month);
@@ -141,10 +142,14 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
   const scaled = (items: FsItem[]): FsItem[] => (format.unit === "RUPIAH" ? items : items.map((i) => ({ ...i, amount: toUnit(i.amount, format.unit), accounts: i.accounts.map((a) => ({ ...a, amount: toUnit(a.amount, format.unit) })) })));
   const scaledParts = (parts: FsParts | undefined): FsParts | undefined =>
     parts && format.unit !== "RUPIAH" ? Object.fromEntries(Object.entries(parts).map(([k, rows]) => [k, rows.map((r) => ({ ...r, amount: toUnit(r.amount, format.unit) }))])) : parts;
+  const plFormat = renderFormat(format.labaRugi, plColumns.map((c) => incomeItems(c.is)), format.unit);
+  // Total comprehensive income adds the printed lines (the format's net profit and each OCI line), so thousands add up on the page.
+  const netKey = format.labaRugi.filter((l) => l.kind === "TOTAL").at(-1)!.key;
+  const netShown = plFormat.find((sec) => sec.total?.key === netKey)!.total!.values;
   const plSections = [
-    ...renderFormat(format.labaRugi, plColumns.map((c) => incomeItems(c.is)), format.unit),
+    ...plFormat,
     ...(hasOci
-      ? [{ title: "Penghasilan komprehensif lain", items: plColumns.map((c) => scaled(c.oci?.items ?? [])), total: { label: "Total penghasilan komprehensif", values: plColumns.map((c) => toUnit(c.is.totals.netProfit, format.unit) + toUnit(c.oci?.total ?? 0n, format.unit)), strong: true } }]
+      ? [{ title: "Penghasilan komprehensif lain", items: plColumns.map((c) => scaled(c.oci?.items ?? [])), total: { label: "Total penghasilan komprehensif", values: plColumns.map((c, i) => netShown[i] + scaled(c.oci?.items ?? []).reduce((sum, x) => sum + x.amount, 0n)), strong: true } }]
       : []),
   ];
   const bsSections = renderFormat(format.neraca, [bs, ...shown.map((c) => c.bs)].map(balanceItems), format.unit);

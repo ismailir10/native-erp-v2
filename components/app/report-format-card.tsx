@@ -28,7 +28,7 @@ const STATEMENTS: { key: StatementKey; label: string }[] = [
  * *Format laporan* (UC-K3): the client's own labels, order, headings and totals for the Laba Rugi and the Neraca. Presentation only; the
  * server checks every save (each Buku line exactly once, totals over lines above them, the results right) and names the line it refuses.
  */
-export function ReportFormatCard({ clientId, initial, custom, universe }: { clientId: string; initial: ReportFormat; custom: boolean; universe: Universe }) {
+export function ReportFormatCard({ clientId, initial, custom, stale, universe }: { clientId: string; initial: ReportFormat; custom: boolean; stale?: string; universe: Universe }) {
   const router = useRouter();
   const [format, setFormat] = useState<ReportFormat>(initial);
   const [error, setError] = useState<string | null>(null);
@@ -85,6 +85,11 @@ export function ReportFormatCard({ clientId, initial, custom, universe }: { clie
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {stale && (
+          <p role="status" className="text-sm text-review" data-testid="format-stale">
+            Format klien yang tersimpan tidak berlaku lagi, jadi laporan memakai format standar: {stale} Susun ulang formatnya, atau kembali ke format standar.
+          </p>
+        )}
         <div className="grid gap-4 sm:grid-cols-2">
           <Field>
             <FieldLabel htmlFor="format-unit">Satuan</FieldLabel>
@@ -135,7 +140,7 @@ export function ReportFormatCard({ clientId, initial, custom, universe }: { clie
         <div className="flex flex-wrap gap-2 border-t pt-4">
           <Button onClick={save} disabled={busy || !dirty}>Simpan format</Button>
           {dirty && <Button variant="ghost" onClick={() => { setFormat(initial); setError(null); }} disabled={busy}>Batalkan perubahan</Button>}
-          {custom && <Button variant="outline" onClick={reset} disabled={busy}>Kembali ke format standar</Button>}
+          {(custom || stale) && <Button variant="outline" onClick={reset} disabled={busy}>Kembali ke format standar</Button>}
         </div>
       </CardContent>
     </Card>

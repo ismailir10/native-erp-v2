@@ -29,6 +29,11 @@ describe("report format settings", () => {
     await expect(saveReportFormat(db, { clientId: g.client.id, format: { unit: "RIBUAN" } })).rejects.toThrow(/Format laporan tidak terbaca/);
     expect((await loadReportFormat(db, g.client.id)).unit).toBe("RIBUAN");
 
+    // A stored format the rules no longer accept: the standard applies, and settings say why.
+    await db.reportFormat.update({ where: { clientId: g.client.id }, data: { format: { ...mine, labaRugi: mine.labaRugi.filter((l) => l.key !== "beban_pajak") } } });
+    const stale = await loadReportFormat(db, g.client.id);
+    expect([stale.custom, stale.stale]).toEqual([false, 'Laba Rugi: total "LABA BERSIH" menjumlahkan baris yang belum ada di atasnya.']);
+
     await resetReportFormat(db, { clientId: g.client.id, actorId: member.id });
     expect((await loadReportFormat(db, g.client.id)).custom).toBe(false);
     expect((await listEvents(db, g.client.id, { kind: "REPORT_FORMAT" })).map((e) => e.summary)).toEqual([

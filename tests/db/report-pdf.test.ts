@@ -3,7 +3,7 @@ import { extractText, getDocumentProxy } from "unpdf";
 import { db, makeGroup, resetDb } from "../helpers";
 import { postJournal } from "@/lib/ledger/post";
 import { standardFormat } from "@/lib/reports/format";
-import { financialStatementsPdf, printedValues } from "@/lib/reports/pdf";
+import { financialStatementsPdf, printedValues, winAnsi } from "@/lib/reports/pdf";
 import { dateOnly } from "@/lib/format";
 
 /** UC-K3: the send-ready PDF — the client's format, a header and page number on every page, DRAF while open, totals of the printed lines. */
@@ -54,5 +54,10 @@ describe("statements PDF", () => {
     ];
     expect(printedValues(rows, "RIBUAN")).toEqual([[1n], [1n], [2n]]);
     expect(printedValues(rows, "RUPIAH")).toEqual([[1_499n], [1_499n], [2_998n]]);
+  });
+
+  it("keeps the standard fonts' WinAnsi: signs get their ASCII spelling, Rupiah text stays", () => {
+    expect(winAnsi("Diskonto −1% · ≤ 12 bulan → “final” – Rp 1.000 é")).toBe("Diskonto -1% · <= 12 bulan -> “final” – Rp 1.000 é");
+    expect(winAnsi("日本")).toBe("??");
   });
 });

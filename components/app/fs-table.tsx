@@ -10,7 +10,7 @@ const HIDE_ON_PHONE = "hidden sm:table-cell";
 
 /**
  * Financial-statement table: section → line of the client's format → accounts (each links to its ledger). Sections come from
- * `renderFormat` (lib/reports/format.ts). `total.subtotal`: a "Jumlah …" line shown only when the section has lines (an empty "Jumlah aset
+ * `renderFormat` (lib/reports/format.ts). `total.subtotal`: a "Jumlah …" line shown only when the section has lines or a figure (an empty "Jumlah aset
  * tidak lancar –" says nothing); `total.caps`: printed in capitals, as bank-style statements write "JUMLAH".
  */
 export type FsSection = Pick<FormatSection, "title"> & { items: FormatItem[][]; total?: { label: string; values: bigint[]; strong?: boolean; subtotal?: boolean; caps?: boolean } };
@@ -99,7 +99,7 @@ function SectionRows({ section, keys, accountHref, currency, parts }: { section:
           </Fragment>
         );
       })}
-      {section.total && !(section.total.subtotal && keys.length === 0) && (
+      {section.total && !(section.total.subtotal && keys.length === 0 && section.total.values.every((v) => v === 0n)) && (
         <TableRow className="border-t-2 border-b-0 border-foreground/15 hover:bg-transparent">
           <TableCell className={cn("py-2 pl-6", section.total.strong ? "font-semibold" : "font-medium", section.total.caps && "uppercase")}>{section.total.label}</TableCell>
           {section.total.values.map((v, i) => (

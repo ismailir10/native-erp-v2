@@ -51,18 +51,19 @@ export function formatRows(sections: FormatSection[]): SetRow[] {
       }
     }
     const t = sec.total;
-    if (!t || (t.subtotal && !keys.length)) continue;
+    // An empty "Jumlah …" is left out only when it is zero too: a subtotal over lines above it (a heading moved below its lines) still counts.
+    if (!t || (t.subtotal && !keys.length && t.values.every((v) => v === 0n))) continue;
     rows.push({ label: t.caps ? t.label.toUpperCase() : t.label, values: t.values, bold: Boolean(t.strong || t.caps), key: t.key, terms: t.terms });
   }
   return rows;
 }
 
-const itemRows = (cols: (FsItem[] | undefined)[]): SetRow[] => {
+const itemRows = (cols: (FsItem[] | undefined)[], prefix: string): SetRow[] => {
   const rows: SetRow[] = [];
   const keys = [...new Set(cols.flatMap((c) => (c ?? []).map((i) => i.fsLine)))];
   for (const k of keys) {
     const cells = cols.map((c) => c?.find((i) => i.fsLine === k));
-    rows.push({ label: cells.find(Boolean)!.label, values: cells.map((c) => c?.amount ?? 0n), indent: 1 });
+    rows.push({ label: cells.find(Boolean)!.label, values: cells.map((c) => c?.amount ?? 0n), indent: 1, key: `${prefix}${k}` });
     const codes = [...new Set(cells.flatMap((c) => c?.accounts.map((a) => a.code) ?? []))];
     for (const code of codes) {
       const name = cells.flatMap((c) => c?.accounts ?? []).find((a) => a.code === code)!.name;
@@ -108,8 +109,17 @@ export async function statementSet(db: Db, scope: Scope, year: number, month: nu
   if (!mixed && framework !== "SAK_EMKM") {
     const [oci, ociPrior] = await Promise.all([otherComprehensiveIncome(db, scope, dateOnly(year, 1, 1), asOf), otherComprehensiveIncome(db, scope, dateOnly(year - 1, 1, 1), priorTo)]);
     lr.push({ label: "Penghasilan komprehensif lain", values: [], bold: true });
-    lr.push(...itemRows(pl(oci.items, () => ociPrior.items)));
-    lr.push({ label: "Total penghasilan komprehensif", values: pl(is.totals.netProfit + oci.total, () => isPrior!.totals.netProfit + ociPrior.total), bold: true });
+    const ociRows = itemRows(pl(oci.items, () => ociPrior.items), "oci:");
+    lr.push(...ociRows);
+    // Net profit (the format's last total) plus each OCI line: a formula in Excel, the printed lines' sum in the PDF.
+    const net = format.labaRugi.filter((l) => l.kind === "TOTAL").at(-1)!.key;
+    lr.push({
+      label: "Total penghasilan komprehensif",
+      values: pl(is.totals.netProfit + oci.total, () => isPrior!.totals.netProfit + ociPrior.total),
+      bold: true,
+      key: "oci:total",
+      terms: [{ key: net, sign: 1 }, ...ociRows.filter((r) => r.key).map((r) => ({ key: r.key!, sign: 1 as const }))],
+    });
   }
   statements.push({
     name: "Laba Rugi",

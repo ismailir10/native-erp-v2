@@ -24,7 +24,7 @@ export function ReportStatusBar({ status, base, q }: { status: ReportStatus; bas
     : r.kind === "suspense" ? withParams(`${base}/ledger/1999`, q)
     : r.kind === "statements" ? `${base}/import`
     : r.kind === "schedules" ? withParams(`${base}/journals/new`, { period: q.period })
-    : r.kind === "unmapped" ? `${base}/settings`
+    : r.kind === "unmapped" ? withParams(`${base}/ledger/${r.accounts[0].split(" ")[0]}`, q)
     : withParams(`${base}/inventory`, q);
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-review/40 bg-review-subtle px-4 py-2.5 text-sm" data-testid="report-status" data-state="draft">
