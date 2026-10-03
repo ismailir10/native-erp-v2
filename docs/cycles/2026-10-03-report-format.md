@@ -104,7 +104,7 @@ The cycle runs without a separate stop. The new dependency (below) is the only g
 ## Tasks
 - [x] T1 Never drop: synthetic unmapped lines in `incomeStatement` / `balanceSheet`, REVIEW reason in `reportStatus`. Accept: DB test
       (expense on a BS line, asset on an unknown line → shown, IS net = BS laba berjalan, reason present).
-- [ ] T2 Format core: `lib/reports/format.ts` (types, standard format, symbolic validation, render to rows) + `ReportFormat` model,
+- [x] T2 Format core: `lib/reports/format.ts` (types, standard format, symbolic validation, render to rows) + `ReportFormat` model,
       migration, client delete. Accept: unit tests (standard renders today's totals; a renamed and reordered format renders; each refusal).
 - [ ] T3 Page from the format: Laba Rugi and Neraca, unit line, thousands, last-month column. Accept: e2e statements walk unchanged;
       DB/unit test of a custom format on the page model.
@@ -124,9 +124,22 @@ The cycle runs without a separate stop. The new dependency (below) is the only g
 
   `reportStatus` gains `unmapped` (accounts with lines in scope, by code), and the draft banner links it to client settings. Test:
   `tests/db/report-unmapped.test.ts`.
+- T2: `lib/reports/format.ts`:
+  - `FormatLine` (HEADING / GROUP / TOTAL) and `ReportFormat`;
+  - `standardFormat()` line for line with today's page;
+  - `validateFormat`: zod shape, then per statement every FS line exactly once (and synthetic lines), totals only over earlier
+    non-heading lines, and per-line coefficient vectors over FS lines (the Laba Rugi's last total = the net-profit vector; the Neraca
+    has the assets vector and the liabilities + equity vector);
+  - `loadReportFormat` (an invalid stored format falls back to standard);
+  - `renderFormat` to FsTable-shaped sections, totals from the rendered lines, and `toUnit` for thousands.
+
+  `ReportFormat` model + migration `20261003060000_report_format`; `deleteClient` deletes it. Test: `tests/unit/report-format.test.ts`.
 
 ## Verification
 - T1: `tests/db/report-unmapped.test.ts` → `Tests 1 passed (1)`; lint + typecheck clean; `npm test` →
   `Test Files 146 passed (146) · Tests 1013 passed (1013)`.
+- T2: `tests/unit/report-format.test.ts` → `Tests 4 passed (4)`. Migration applied to both DBs; `prisma migrate diff
+  --from-config-datasource --to-schema` → "This is an empty migration." Lint + typecheck clean; `npm test` →
+  `Test Files 147 passed (147) · Tests 1017 passed (1017)`.
 
 ## Ship Notes
