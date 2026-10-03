@@ -49,6 +49,7 @@ export async function registerViews(db: Db, clientId: string, year: number, mont
     .map((e) => {
       const mine = rows.filter((r) => r.entity.id === e.id);
       const idr = e.functionalCurrency === "IDR";
+      const fiscal = idr && mine.some((r) => r.fiscalYtd !== null);
       const cmp = ledger.find((l) => l.entityId === e.id);
       return {
         entity: { id: e.id, name: e.name, shortName: e.shortName, currency: e.functionalCurrency },
@@ -78,8 +79,9 @@ export async function registerViews(db: Db, clientId: string, year: number, mont
           accumulated: sum(mine.map((r) => r.accumulated)).toString(),
           bookValue: sum(mine.map((r) => r.bookValue)).toString(),
           bookYtd: sum(mine.map((r) => r.bookYtd)).toString(),
-          fiscalYtd: idr ? sum(mine.map((r) => r.fiscalYtd ?? 0n)).toString() : null,
-          difference: idr ? sum(mine.map((r) => r.difference ?? 0n)).toString() : null,
+          // Tax depreciation only where the register computed it (IDR, calendar tahun buku: lib/fiscal.ts): never a column of zeros.
+          fiscalYtd: fiscal ? sum(mine.map((r) => r.fiscalYtd ?? 0n)).toString() : null,
+          difference: fiscal ? sum(mine.map((r) => r.difference ?? 0n)).toString() : null,
         },
         ledger: cmp ? { cost: cmp.ledger.cost.toString(), accumulated: cmp.ledger.accumulated.toString(), assetAccounts: cmp.assetAccounts, accumulatedAccounts: cmp.accumulatedAccounts, equal: cmp.equal } : null,
       };

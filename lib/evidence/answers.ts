@@ -198,7 +198,7 @@ export async function askEvidence(db: Db, firmId: string, intakeId: string, inpu
         if (rows.length > MAX_RESULTS) answer.limitations.push(`${entity.shortName}: hanya ${MAX_RESULTS} akun pertama; sebutkan kode akun.`);
       }
       answer.text = `Saldo dari buku Buku per ${range.end.toISOString().slice(0, 10)}. Tiap entitas ditampilkan dalam mata uangnya.`;
-      answer.limitations.push("Saldo laba/rugi mengikuti periode pembukuan Buku (tahun kalender); angka dokumen unggahan tetap terpisah.");
+      answer.limitations.push("Saldo laba/rugi mengikuti periode pembukuan Buku (tahun buku klien); angka dokumen unggahan tetap terpisah.");
     } else if (plan.intent === "TRANSACTIONS") {
       const contentTerms = plan.terms.filter((t) => !STOP.has(t.toLowerCase()) && t !== plan.accountCode);
       const lines = await db.journalLine.findMany({ where: { ...(contentTerms.length ? { OR: contentTerms.flatMap((term) => [{ memo: { contains: term, mode: "insensitive" as const } }, { entry: { memo: { contains: term, mode: "insensitive" as const } } }, { account: { name: { contains: term, mode: "insensitive" as const } } }]) } : {}), firmId, entityId: { in: selectedEntities.map((e) => e.id) }, date: { gte: range.start, lte: range.end }, ...(plan.accountCode ? { account: { firmId, clientId: intake.clientId, code: plan.accountCode } } : {}) }, include: { account: { select: { code: true, name: true } }, entry: { select: { memo: true, sourceRef: true, bankTransactionId: true } } }, orderBy: [{ date: "desc" }, { id: "desc" }], take: MAX_RESULTS + 1 });

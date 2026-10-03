@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
+import { periodKeyOf, priorYearEnd } from "@/lib/fiscal";
 import { clientAccountsView, loadClientPage } from "@/lib/client-page";
 import { sourceTrialBalance } from "@/lib/reports/source";
 import { AccountViewTabs } from "@/components/app/account-view-tabs";
@@ -62,7 +63,7 @@ export default async function LedgerIndex({ params, searchParams }: { params: Pr
                       {rows.map((r) => (
                         <TableRow key={r.key}>
                           <TableCell className="pl-6 whitespace-normal">
-                            <Link href={r.key === "prior" ? withParams(`${base}/reports`, { period: `${period.year - 1}-12`, entity: scope.value, tab: "pl" }) : r.sourceAccountId ? withParams(`${base}/ledger/akun/${r.sourceAccountId}`, q) : withParams(`${base}/ledger/${r.accountCode}`, q)} className="underline decoration-border underline-offset-4 hover:text-primary hover:decoration-primary" data-testid="client-account-link">
+                            <Link href={r.key === "prior" ? withParams(`${base}/reports`, { period: periodKeyOf(priorYearEnd(client.fiscalYearEndMonth, period.year, period.month)), entity: scope.value, tab: "pl" }) : r.sourceAccountId ? withParams(`${base}/ledger/akun/${r.sourceAccountId}`, q) : withParams(`${base}/ledger/${r.accountCode}`, q)} className="underline decoration-border underline-offset-4 hover:text-primary hover:decoration-primary" data-testid="client-account-link">
                               {r.code && <span className="num text-muted-foreground">{r.code}</span>} {r.name}
                             </Link>
                             <div className="text-xs text-muted-foreground">{r.clientAccount ? `→ ${r.clientAccount.code} ${r.clientAccount.name}` : r.key === "prior" ? "dari pendapatan & beban tahun lalu · buka Laba Rugi" : "tanpa akun klien"}</div>

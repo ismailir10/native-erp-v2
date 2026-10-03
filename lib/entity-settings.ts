@@ -1,6 +1,7 @@
 import type { Db } from "@/lib/db";
 import { isFramework } from "@/lib/reports/framework";
 import { recordEvent } from "@/lib/audit";
+import { closeLock } from "@/lib/adjust/schedules";
 import { fiscalSpan, isFiscalEndMonth } from "@/lib/fiscal";
 import { formatPeriod } from "@/lib/format";
 
@@ -22,6 +23,8 @@ export async function setFiscalYearEnd(db: Db, input: { clientId: string; endMon
   if (!isFiscalEndMonth(input.endMonth)) throw new EntitySettingsError("Pilih bulan akhir tahun buku.");
   const endMonth = input.endMonth;
   return db.$transaction(async (tx) => {
+    // The close's own lock: a month can't be locked between this check and the change (lib/controls lockPeriod).
+    await closeLock(tx, input.clientId);
     const client = await tx.client.findUniqueOrThrow({ where: { id: input.clientId }, select: { fiscalYearEndMonth: true } });
     if (client.fiscalYearEndMonth === endMonth) return;
     const locked = await tx.period.findFirst({ where: { clientId: input.clientId, status: "LOCKED" }, orderBy: [{ year: "desc" }, { month: "desc" }], select: { year: true, month: true } });
