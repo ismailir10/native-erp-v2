@@ -64,7 +64,8 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
 
   const findings = await listFindings(prisma, client.id);
   const completeness = await completenessMatrix(prisma, client.id, period.year, period.month);
-  const openFindings = findings.filter((f) => f.status === "OPEN");
+  // Only an opening difference holds the close; a subledger difference is a REVIEW control explained under Rekonsiliasi.
+  const openFindings = findings.filter((f) => f.status === "OPEN" && f.kind === "OPENING_DIFFERENCE");
   const targets = openFindings.length ? openingTargetOptions(await prisma.account.findMany({ where: { clientId: client.id }, orderBy: { code: "asc" } })) : [];
 
   const monthKey = (m: { year: number; month: number }) => `${m.year}-${String(m.month).padStart(2, "0")}`;
@@ -97,6 +98,8 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
             accounts={targets}
             items={findings.map((f) => ({
               id: f.id,
+              kind: f.kind,
+              href: `${base}/receivables?tab=rekonsiliasi`,
               label: f.label,
               entity: f.entity,
               currency: f.currency,

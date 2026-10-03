@@ -112,6 +112,7 @@ export async function resolveOpeningFinding(db: Db, input: { clientId: string; f
 
 export type FindingView = {
   id: string;
+  kind: FindingKind;
   label: string;
   entity: string;
   currency: string;
@@ -141,9 +142,11 @@ export async function listFindings(db: Db, clientId: string, entityIds?: string[
     orderBy: [{ status: "asc" }, { number: "asc" }],
   });
   return rows.map((f) => {
-    const to = f.resolvedEntry?.lines.find((l) => l.account.code !== ACCOUNT_CODES.OPENING_DIFFERENCE)?.account;
+    // Only an opening difference moves to an account; a subledger difference is explained (its linked entry is the accountant's own).
+    const to = f.kind === "OPENING_DIFFERENCE" ? f.resolvedEntry?.lines.find((l) => l.account.code !== ACCOUNT_CODES.OPENING_DIFFERENCE)?.account : undefined;
     return {
       id: f.id,
+      kind: f.kind,
       label: findingLabel(f.number),
       entity: f.entity.shortName,
       currency: f.entity.functionalCurrency,

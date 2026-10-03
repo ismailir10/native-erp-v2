@@ -3,6 +3,7 @@ import { db, makeGroup, resetDb } from "../helpers";
 import { postJournal } from "@/lib/ledger/post";
 import { compareSubledger, deleteSubledgerImport, importAging, resolveSubledgerFinding } from "@/lib/reconcile/subledger";
 import { runControls } from "@/lib/controls";
+import { reportStatus } from "@/lib/reports/status";
 import { dateOnly } from "@/lib/format";
 
 const J = 1_000_000n;
@@ -69,6 +70,8 @@ describe("rekonsiliasi subledger", () => {
     const { g, base } = await books();
     const r = await importAging(db, { ...base, kind: "RECEIVABLE", fileName: "aging.csv", data: csv("PT Sinar Jaya;10.000.000;10.000.000") });
     const f = await db.finding.findFirstOrThrow({ where: { kind: "SUBLEDGER_DIFFERENCE" } });
+    // Not an opening difference: the report's draft reasons don't call it one.
+    expect((await reportStatus(db, g.client.id, [g.pt.entity.id], 2023, 12)).reasons.map((x) => x.kind)).not.toContain("findings");
     const controls = await runControls(db, g.client.id, 2023, 12);
     expect(controls.find((x) => x.key === `subledger:${g.pt.entity.id}`)).toMatchObject({ status: "REVIEW", title: "Rekonsiliasi subledger" });
     await expect(resolveSubledgerFinding(db, { clientId: g.client.id, findingId: f.id, explanation: "cut-off" })).rejects.toThrow("Tulis penjelasannya");

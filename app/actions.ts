@@ -33,6 +33,7 @@ import { liveUploadFile } from "@/lib/demo/seed";
 import { addBankAccount, addClient, addEntity, OnboardingError, type NewClientInput } from "@/lib/onboarding";
 import { EntitySettingsError, setFiscalYearEnd, setReportingFramework } from "@/lib/entity-settings";
 import { FormatError, resetReportFormat, saveReportFormat } from "@/lib/reports/format-settings";
+import { deleteSubledgerImport, importAging, resolveSubledgerFinding, SubledgerError } from "@/lib/reconcile/subledger";
 import { OpeningError, postOpening, type OpeningLineInput } from "@/lib/opening";
 import { FindingError, resolveOpeningFinding } from "@/lib/findings";
 import { removeLedgerImport, removeStatementImport, RemoveImportError } from "@/lib/imports/remove";
@@ -66,7 +67,7 @@ function fail(e: unknown): { ok: false; error: string; needsPassword?: boolean; 
   if (e instanceof PdfPasswordError) return { ok: false, error: e.message, needsPassword: true };
   if (e instanceof YearNeededError) return { ok: false, error: e.message, needsYear: true, yearGuess: e.guess };
   if (e instanceof DeleteClientError) return { ok: false, error: e.message };
-  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError || e instanceof FindingError || e instanceof RemoveImportError || e instanceof MoneyError || e instanceof RateError || e instanceof RevaluationError || e instanceof LedgerImportError || e instanceof MappingError || e instanceof EntitySettingsError || e instanceof FormatError) return { ok: false, error: e.message };
+  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError || e instanceof FindingError || e instanceof RemoveImportError || e instanceof MoneyError || e instanceof RateError || e instanceof RevaluationError || e instanceof LedgerImportError || e instanceof MappingError || e instanceof EntitySettingsError || e instanceof FormatError || e instanceof SubledgerError) return { ok: false, error: e.message };
   const infra = infraErrorMessage(e);
   console.error(e);
   return { ok: false, error: infra ?? "Terjadi kesalahan tak terduga. Coba lagi." };
@@ -595,6 +596,54 @@ export async function saveFiscalYearEndAction(clientId: string, endMonth: number
     const client = await getClientForFirm(clientId);
     const member = await getCurrentMember();
     await setFiscalYearEnd(prisma, { clientId: client.id, endMonth, actorId: member.id });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Rekonsiliasi subledger (UC-A1): a client's aging file at a date, compared with the ledger. */
+export async function importAgingAction(formData: FormData): Promise<Result<{ status: string; difference: string; notes: string[]; rows: number }>> {
+  try {
+    const client = await getClientForFirm(String(formData.get("clientId")));
+    const file = formData.get("file");
+    if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Pilih file aging (XLSX, XLS atau CSV)." };
+    if (file.size > MAX_UPLOAD) return { ok: false, error: "File terlalu besar (maks. 5 MB)." };
+    const kind = String(formData.get("kind"));
+    const r = await importAging(prisma, {
+      clientId: client.id,
+      entityId: String(formData.get("entityId")),
+      kind: kind as "RECEIVABLE" | "PAYABLE",
+      asOf: String(formData.get("asOf") ?? ""),
+      fileName: file.name,
+      data: Buffer.from(await file.arrayBuffer()),
+      accountCodes: formData.getAll("accounts").map(String).filter(Boolean),
+      threshold: String(formData.get("threshold") ?? ""),
+      actorId: (await getCurrentMember()).id,
+    });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, status: r.status, difference: r.difference.toString(), notes: r.notes, rows: r.rows };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function resolveSubledgerFindingAction(input: { clientId: string; findingId: string; explanation: string }): Promise<Result> {
+  try {
+    const client = await getClientForFirm(input.clientId);
+    await resolveSubledgerFinding(prisma, { clientId: client.id, findingId: input.findingId, explanation: input.explanation, actorId: (await getCurrentMember()).id });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function deleteSubledgerImportAction(clientId: string, importId: string): Promise<Result> {
+  try {
+    const client = await getClientForFirm(clientId);
+    await deleteSubledgerImport(prisma, { clientId: client.id, importId, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
   } catch (e) {

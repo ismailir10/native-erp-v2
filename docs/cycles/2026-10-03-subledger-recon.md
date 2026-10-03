@@ -79,7 +79,7 @@ Traps: the aging doesn't cover all payables, and a Rp 5 rounding must not flood 
 - [x] T2 Comparison and Temuan: `lib/reconcile/subledger.ts` (import, compare, candidates, Temuan open/update/resolve, delete). Accept:
       DB tests with three planted differences (cut-off, advance, non-trade payable), a Rp 5 rounding kept as pass, a re-import that
       doesn't duplicate, and resolve text-only.
-- [ ] T3 UI: the *Rekonsiliasi* tab (upload, list by date, comparison card with candidates and per-counterparty table, Temuan resolve),
+- [x] T3 UI: the *Rekonsiliasi* tab (upload, list by date, comparison card with candidates and per-counterparty table, Temuan resolve),
       the Temuan card on the close handles the new kind, and the close control. Accept: visual check 1280/390; action tests.
 - [ ] T4 Rules, README, gates, review pass, ship.
 
@@ -121,6 +121,23 @@ Traps: the aging doesn't cover all payables, and a Rp 5 rounding must not flood 
   - Close control "Rekonsiliasi subledger" (REVIEW, ackable) while an open Temuan is dated by the period end. The report-status
     opening-difference reason now counts OPENING_DIFFERENCE Temuan only.
   - The CSV reader picks the delimiter by count (Papa's guess fails on two columns).
+- T3: Piutang & Utang gains a third tab, *Rekonsiliasi* (`ReceivablesTabs`, shared with the Piutang/Utang view).
+  - Upload card: entity (IDR only), kind, "per" date, threshold, accounts as checkboxes (trade ticked: 1130 for receivables, 2110 for
+    payables, plus the other receivable/payable lines to choose from), and the file.
+  - One card per import:
+    - status pill (Cocok / Pembulatan Rp x / Selisih), aging, GL with per-account links to Buku Besar at that month, and the
+      difference with its percent;
+    - the Temuan: explanation form, or the closed explanation;
+    - candidate sections (± 7 days, advances and credit rows, accounts outside the aging), with hints worded per kind;
+    - the per-counterparty table when Buku has invoices, and the aging rows with `sheet!row` (folded);
+    - a delete button with a confirm.
+  - NextStep names the open Temuan.
+  - The close page:
+    - the Temuan card labels a subledger difference and links it to Rekonsiliasi instead of a resolve form (one place to explain);
+    - the "tutup buku tertahan" NextStep counts opening differences only;
+    - the control links to the tab.
+  - Actions: `importAgingAction` (FormData, 5 MB), `resolveSubledgerFindingAction`, `deleteSubledgerImportAction`, all
+    firm-scoped.
 
 ## Verification
 - T1: `tests/unit/aging-read.test.ts` → `Tests 3 passed (3)`:
@@ -136,6 +153,14 @@ Traps: the aging doesn't cover all payables, and a Rp 5 rounding must not flood 
   - Payables: 8.000.005 vs 8.000.000 is ROUNDING with no Temuan; 2120 3 jt is listed as non-trade.
   - Explanation: refused under 10 characters; the close resolves it without posting; the close control shows while it is open.
   - Deleting a 2024 import closes its Temuan.
+
+  Lint + typecheck clean; `npm test` → `Test Files 159 passed (159) · Tests 1052 passed (1052)`.
+- T3: the test adds that a subledger Temuan isn't reported as an opening difference. Visual check (dev server, demo Grup Ayam
+  Nusantara, Agustus 2026):
+  - a CSV aging of 310 jt vs 1130 420 jt shows Selisih (110 jt), −26,2 %, T-001 open, the Toko Sumber Rejeki (10 jt) credit row, and
+    1190 under "Piutang di luar aging";
+  - the close shows "Rekonsiliasi subledger";
+  - at 390 px there is no horizontal scroll.
 
   Lint + typecheck clean; `npm test` → `Test Files 159 passed (159) · Tests 1052 passed (1052)`.
 
