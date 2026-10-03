@@ -270,3 +270,15 @@ Advisor review of the branch: 11 findings. All are fixed or documented, and chec
 11. **L, shape limits.** Covered with 4.
 
 ## Ship Notes
+- **Migration:** `20261003060000_report_format` adds the `ReportFormat` table (one row per client, JSON). It is additive, and the Vercel
+  build applies it.
+- **Dependency:** `pdfkit` (server only, external in `serverExternalPackages`).
+- **Behaviour:**
+  - Clients without a format see the same Laba Rugi and Neraca, plus a last-month column when last month has income or expense.
+  - An account on an FS line outside its statement now shows as *belum terpetakan* and keeps the report a draft.
+  - Excel totals are formulas; each sheet has a unit row.
+  - *Unduh PDF* is new.
+  - The CALK carries *[isi oleh manajemen: …]* markers, counted on its tab.
+- **Rollback:** revert the merge. The `ReportFormat` table can stay (nothing else reads it). Drop it with
+  `DROP TABLE "ReportFormat";` only if the migration is reverted too.
+
