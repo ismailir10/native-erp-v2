@@ -19,6 +19,13 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
    `Entity.reportingFramework` (SAK EMKM / EP / Umum, default EP; a group takes the most demanding) decides **wording only** — the standard the CALK
    names, statement titles, which policies are described (EMKM has no PSAK 109 matrix, right-of-use, deferred tax or OCI wording) and
    who signs (Direksi for PT / foreign, Pemilik/Pengurus for CV / individual) — through `lib/reports/framework.ts`; no figure may depend on it.
+   A client's **report format** (`ReportFormat`, `lib/reports/format.ts`, use-case UC-K3) is **presentation only**: labels, order,
+   headings, subtotals and the unit (Rupiah or thousands, rounded per line for display) of the Laba Rugi and Neraca. It is validated
+   symbolically on save (every FS line exactly once, totals only over lines above, the Laba Rugi's last total = net profit, the Neraca
+   has total assets and total liabilities + equity), so it holds for every period. **No account may drop out of a statement:** an
+   account whose FS line isn't a line of its type's statement shows on *Pos … belum terpetakan* and makes the report a draft
+   (`lib/reports/status.ts`). The page renders the format with `renderFormat`; the Excel workbook and the PDF draw the same rows
+   (`lib/reports/statement-set.ts`).
 2. **`postJournal()` (`lib/ledger/post.ts`) is the only writer.** It enforces Σdebit = Σcredit, ≥2 lines,
    one positive side per line, open period, accounts in the entity's client COA. The DB also CHECKs
    `debit>=0, credit>=0, (debit=0) <> (credit=0)` (init migration). Never `prisma.journalLine.create` elsewhere.

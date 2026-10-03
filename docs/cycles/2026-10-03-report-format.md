@@ -1,0 +1,284 @@
+# Report format per client, Excel with formulas, PDF (use-case feedback, cycle 6)
+
+## Context
+UC-K3 of the owner's use-case document: a client's statements follow *its own* latest final report — account names, order, grouping,
+titles, subtotals — and are never redesigned; the FS mapping is only a bridge. Belifi uses bank-accounting style ("JUMLAH" rows, Laba Kotor
+= Penjualan − HPP, negatives in parentheses).
+
+Pass criteria:
+- the layout and labels equal the final reference, and one client can differ from another;
+- comparatives show;
+- negatives are in parentheses and the unit is clear (Rupiah or thousands);
+- the Excel export keeps its formulas;
+- a PDF is ready to send;
+- CALK is filled from data, with the manual parts marked.
+
+Traps: redesigning names or order, and a report that drops unmapped accounts.
+
+A second-model gap analysis read the reports code and probed it. Passing today:
+- negatives in parentheses (page and Excel);
+- equity, cash flow and CALK exist;
+- Neraca comparatives.
+
+Failing:
+- **Format is Buku's, not the client's.** Line labels are constants (`FS_LINES`); section titles and totals are typed in the page and the
+  workbook. No client can have its own labels, order or subtotals.
+- **Excel has no formulas** (0 formula cells: every subtotal is a precomputed number) and no unit line.
+- **No PDF** (no library, no print styles).
+- **The Laba Rugi has no comparative** when the books start this year (the prior-year column needs prior-year entries; there is no
+  last-month column).
+- **An account with an FS line outside its statement silently drops.** An expense mapped to a balance-sheet line vanishes from the
+  Laba Rugi while the Neraca's *laba berjalan* still counts it: two statements disagree without a word. An asset with an unknown line
+  drops from the Neraca, which only shows as *Selisih*.
+- **CALK manual parts are not marked** beyond going concern and the signatures.
+
+Spec approval: the owner approved the plan naming this cycle (per-client FS template, PDF, Excel with formulas) and said "get them done".
+The cycle runs without a separate stop. The new dependency (below) is the only gate-reopener; it serves the approved PDF item.
+
+## Spec
+- [ ] **No account ever drops out (trap).**
+      - A P&L account whose FS line is not a Laba Rugi line lands on *Pos laba rugi belum terpetakan*: other income or other expense by
+        its type.
+      - A balance-sheet account whose FS line is not a line of its type lands on *Pos … belum terpetakan* in its section.
+      - The report status gets a REVIEW reason naming the accounts, so the draft banner and the close show it.
+      - The Laba Rugi's net profit always equals the Neraca's *laba berjalan*.
+- [ ] **A format per client (presentation only).** `ReportFormat` (one per client, JSON, validated on save) holds the unit (Rupiah or
+      ribuan) and, for the Laba Rugi and the Neraca, an ordered list of lines:
+      - *Judul* (a heading);
+      - *Pos* (a label for one or more FS lines, with a presentation sign);
+      - *Subtotal* / *Total* (a label, a sum of earlier lines with +/−, bold or caps).
+
+      A client without a row uses the **standard format**, derived from today's layout, so nothing changes until someone edits it.
+      Numbers stay derived from the GL (rule 1); the format only arranges them. Saving refuses, naming the line, a format that:
+      - leaves an FS line out or puts one twice;
+      - sums a later line;
+      - is a Laba Rugi whose last total isn't net profit;
+      - is a Neraca without a total equal to total assets and one equal to total liabilities + equity.
+
+      These are checked symbolically, so they hold for every period.
+- [ ] **The page renders the format.** Laba Rugi and Neraca on the reports page follow the client's labels, order, headings and
+      subtotals, with the accounts under each line as today. The unit line says Rupiah or *ribuan Rupiah* (thousands round per line for
+      display only). The Laba Rugi gains a **last-month column** when last month has entries, beside this month, year-to-date and last
+      year.
+- [ ] **Excel keeps formulas.**
+      - The Laba Rugi and Neraca sheets follow the format: labels, order, headings.
+      - Every subtotal and total is a formula over the cells it sums, with its value cached so the file opens with numbers.
+      - A unit line under the title.
+      - Thousands use a thousands number format.
+- [ ] **PDF ready to send.** *Unduh PDF* beside the Excel button produces one document:
+      - a header per page (entity, statement, period, unit);
+      - the Laba Rugi and Neraca in the client's format;
+      - Perubahan Ekuitas, Arus Kas and CALK;
+      - a *DRAF* banner while the month isn't closed;
+      - page numbers.
+- [ ] **Format editor.** *Pengaturan klien → Format laporan*:
+      - a line list per statement (label, kind, order up/down, FS lines for a *Pos*, terms for a total, bold);
+      - *Kembali ke format standar*;
+      - a *source* note ("Laporan Keuangan 2025 final");
+      - refusals in Bahasa naming the line.
+
+      A second client is untouched.
+- [ ] **CALK manual parts marked.** Akta pendirian, alamat, kegiatan usaha and peristiwa setelah periode pelaporan carry an *[isi oleh
+      manajemen: …]* marker, shown in review colour and counted on the CALK tab.
+
+**Non-goals:**
+- Non-calendar fiscal year (next cycle; Chickin's 31 January).
+- EBITDA and computed KPI lines (UC-A4): a later line kind on the same format.
+- Formats for Perubahan Ekuitas and Arus Kas (structural statements), and per-account regrouping (a *Pos* sums FS lines).
+- Per-entity formats.
+- Free-text CALK editing in Buku.
+- Comparing the PDF visually with the client's reference automatically.
+
+**Gate-reopeners (flagged):**
+- **Schema migration:** `ReportFormat` (additive).
+- **New dependency:** `pdfkit` (pure JS, standard fonts built in, server-side in the export route) for the send-ready PDF. The alternative
+  (browser print CSS) is not send-ready: browser headers, no page numbers, a user step.
+- **Accounting invariant:** rule 12 (reports) gains: a format is presentation only, and no account may drop out of a statement.
+
+**Assumptions:**
+1. A format belongs to the client (all its entities and the combined view share it), like its chart of accounts.
+2. Thousands are display and export only: each line rounds half away from zero; totals of rounded lines may differ by a unit from the
+   rounded total, as in published statements. The PDF says *dalam ribuan Rupiah*.
+3. The standard format reproduces today's page exactly (the e2e walk and the statement tests don't change).
+
+## Tasks
+- [x] T1 Never drop: synthetic unmapped lines in `incomeStatement` / `balanceSheet`, REVIEW reason in `reportStatus`. Accept: DB test
+      (expense on a BS line, asset on an unknown line → shown, IS net = BS laba berjalan, reason present).
+- [x] T2 Format core: `lib/reports/format.ts` (types, standard format, symbolic validation, render to rows) + `ReportFormat` model,
+      migration, client delete. Accept: unit tests (standard renders today's totals; a renamed and reordered format renders; each refusal).
+- [x] T3 Page from the format: Laba Rugi and Neraca, unit line, thousands, last-month column. Accept: e2e statements walk unchanged;
+      DB/unit test of a custom format on the page model.
+- [x] T4 Excel from the format with formulas, unit row, thousands format. Accept: DB test reads formulas back, cached results equal the
+      totals, labels in format order.
+- [x] T5 Format editor + server action. Accept: DB tests of save/refuse/reset; visual check.
+- [x] T6 PDF export (pdfkit) + button. Accept: DB test extracts text (labels, period, unit, totals, DRAF).
+- [x] T7 CALK markers, rule 12 amendment, end-of-cycle gates, review pass, ship.
+
+## Implementation
+- Plan: T1–T7 sequential, inline.
+- T1: `lib/reports/ledger.ts`:
+  - `PseudoLine` + `PSEUDO_LABEL`;
+  - `isUnmapped` (an account's FS line isn't a line of its type's statement);
+  - `unmappedItem` adds *Pos pendapatan / beban belum terpetakan* to the Laba Rugi's other income / other expense, and *Pos aset /
+    liabilitas / ekuitas belum terpetakan* to the Neraca's current assets, current liabilities and equity.
+
+  `reportStatus` gains `unmapped` (accounts with lines in scope, by code), and the draft banner links it to client settings. Test:
+  `tests/db/report-unmapped.test.ts`.
+- T2: `lib/reports/format.ts`:
+  - `FormatLine` (HEADING / GROUP / TOTAL) and `ReportFormat`;
+  - `standardFormat()` line for line with today's page;
+  - `validateFormat`: zod shape, then per statement every FS line exactly once (and synthetic lines), totals only over earlier
+    non-heading lines, and per-line coefficient vectors over FS lines (the Laba Rugi's last total = the net-profit vector; the Neraca
+    has the assets vector and the liabilities + equity vector);
+  - `loadReportFormat` (an invalid stored format falls back to standard);
+  - `renderFormat` to FsTable-shaped sections, totals from the rendered lines, and `toUnit` for thousands.
+
+  `ReportFormat` model + migration `20261003060000_report_format`; `deleteClient` deletes it. Test: `tests/unit/report-format.test.ts`.
+- T3: the reports page loads the client's format (`loadReportFormat`) and renders the Laba Rugi and Neraca with `renderFormat`:
+  - Laba Rugi columns: this month, last month (when it has entries), year to date, the same months last year;
+  - the OCI section is appended in the same unit;
+  - client-account rows and the unit line ("ribuan Rupiah") are scaled;
+  - the card description names a client format and its source.
+
+  `FsTable` draws format sections: review colour by the item's `review` flag (SUSPENSE and the *belum terpetakan* lines), caps totals.
+  Test: `tests/db/report-format.test.ts`.
+- T4: `financialStatementsWorkbook` writes the Neraca and Laba Rugi from the client's format:
+  - each *Pos* is a row with its accounts beneath;
+  - each subtotal and total is an Excel formula over the rows it sums (`=B8-B10+B12`), with the computed value cached; rows that
+    aren't printed (an empty group or subtotal) are 0 and left out of the formula;
+  - each sheet gets a "Dinyatakan dalam [ribuan ]Rupiah" row;
+  - thousands are a display number format over exact Rupiah cells (`#,##0,`), so formulas stay exact;
+  - ExcelJS doesn't write a cached 0, so the workbook sets `fullCalcOnLoad`.
+
+  Known difference: in thousands the page rounds each line and adds the rounded lines, while Excel shows the rounded exact total, so a
+  total can differ by 1 (ribu) between the two. The file keeps the exact figures. The existing workbook test now reads the format's
+  labels ("Total aset", not the old "JUMLAH ASET").
+- T5: `lib/reports/format-settings.ts`:
+  - `saveReportFormat` validates and upserts (source trimmed);
+  - `resetReportFormat` deletes the row, so the standard applies;
+  - both record a `REPORT_FORMAT` event in the client's history;
+  - `formatUniverse` lists the lines each statement must place, by name.
+
+  Actions `saveReportFormatAction` / `resetReportFormatAction` (any member, like the reporting framework); `FormatError` reaches the UI
+  verbatim. `ReportFormatCard` on client settings:
+  - unit and source;
+  - behind *Ubah baris Laba Rugi dan Neraca* (folded, so settings stay short), a tab per statement with each line's kind, label,
+    up/down/remove;
+  - a *Pos*'s Buku lines as chips plus *Tambah pos buku* from the unplaced ones, and *Tampil negatif*;
+  - a total's terms as chips with a +/− toggle plus *Jumlahkan baris* from the lines above, with *Tebal* and *Huruf kapital*;
+  - unplaced lines listed in review colour;
+  - *Simpan format*, *Batalkan perubahan*, and *Kembali ke format standar* (only for a client format).
+
+  Removing a line also removes it from totals that summed it.
+- T6: `lib/reports/statement-set.ts` is the one model both downloads draw:
+  - `statementSet` holds the statements as rows; Neraca and Laba Rugi come from the format via `formatRows`, with a total's terms kept;
+  - account rows are marked `detail`.
+
+  `financialStatementsWorkbook` now writes that set: same output, formulas from the terms, and the format's unit on all four statement
+  sheets.
+
+  `lib/reports/pdf.ts` `financialStatementsPdf` (pdfkit, standard Helvetica, A4):
+  - a header on every page (entity, statement, period, unit) and a DRAF line while open;
+  - statement lines without account detail; CALK paragraphs and tables (in Rupiah); the directors' statement;
+  - footer with the firm, time and *Halaman n dari N*;
+  - `printedValues` rounds each line in thousands, and a total adds the printed lines (as on the page).
+
+  Other changes:
+  - Route `reports/export/pdf`; both export routes share `lib/reports/export-context.ts`.
+  - *Unduh PDF* beside *Unduh Excel*.
+  - `pdfkit` in `serverExternalPackages`; the build traces its AFM font files.
+  - Dependency note: npm can't reach `cdn.sheetjs.com` here, so the lockfile was written with `--package-lock-only` and the
+    packages copied from a scratch install. CI's `npm ci` installs from the lockfile as usual.
+- T7:
+  - CALK: `manual(hint)` writes *[isi oleh manajemen: …]*, and `manualCount` counts the markers.
+    - *Umum* gains, per entity (named when combined): *Pendirian* (not for a person), *Alamat* and *Kegiatan usaha*.
+    - A last note, *Peristiwa setelah periode pelaporan*, carries a marker.
+    - The going-concern plan uses the same marker.
+  - The page shows markers in review colour and the CALK tab shows "· n diisi manajemen". The PDF prints them in review colour; the Excel
+    file keeps them as text.
+  - Rule amendment: the reports invariant is **rule 1** in `accounting-rules` (the spec said 12, after stale "accounting-rules 12"
+    comments in `lib/reports/*`; those now say 1). It gains the report format paragraph: presentation only, symbolic checks, no account
+    drops out (the *belum terpetakan* lines plus the draft reason), and both downloads draw one set.
+  - e2e `statements.spec.ts` also downloads the PDF.
+
+## Verification
+- T1: `tests/db/report-unmapped.test.ts` → `Tests 1 passed (1)`; lint + typecheck clean; `npm test` →
+  `Test Files 146 passed (146) · Tests 1013 passed (1013)`.
+- T2: `tests/unit/report-format.test.ts` → `Tests 4 passed (4)`. Migration applied to both DBs; `prisma migrate diff
+  --from-config-datasource --to-schema` → "This is an empty migration." Lint + typecheck clean; `npm test` →
+  `Test Files 147 passed (147) · Tests 1017 passed (1017)`.
+- T3: `tests/db/report-format.test.ts` → `Tests 1 passed (1)`; lint + typecheck clean; `npm test` →
+  `Test Files 148 passed (148) · Tests 1018 passed (1018)`.
+- T4: `tests/db/report-format.test.ts` → `Tests 2 passed (2)`: every formula, worked out from the cells it names, equals its cached
+  result; labels are in format order; unit row and thousands format are present. Lint + typecheck clean; `npm test` →
+  `Test Files 148 passed (148) · Tests 1019 passed (1019)`.
+- T5: `tests/db/report-format-settings.test.ts` → `Tests 2 passed (2)` (save, refusal naming *Persediaan*, unreadable shape, the saved
+  format kept after a refusal, reset, history, second client untouched). Visual check (dev server, 1280 and 390 px):
+  - the card is folded by default;
+  - removing *Persediaan* lists it as unplaced, and saving shows "Neraca: Persediaan belum ada di format…";
+  - after adding it back, the save goes through and the reports page shows the caps label;
+  - no horizontal scroll at 390 px;
+  - reset returns to the standard.
+
+  Lint + typecheck clean; `npm test` → `Test Files 149 passed (149) · Tests 1021 passed (1021)`.
+- T6: `tests/db/report-pdf.test.ts` → `Tests 2 passed (2)`:
+  - text extracted with unpdf: statement names, unit, caps label, "Total aset";
+  - every page has the entity, the DRAF line and *Halaman n dari N*;
+  - the thousands total is 3.001 (the printed lines), not 3.000;
+  - no account rows on the Laba Rugi page.
+
+  The existing workbook tests pass unchanged after the refactor. A demo PDF (PT Ayam Nusantara Digital, Aug 2026, 8 pages) was
+  rendered with pdftoppm and checked by eye. Lint + typecheck clean; `npm test` → `Test Files 150 passed (150) · Tests 1023 passed
+  (1023)`; `npm run build` passes, and the route's trace includes `pdfkit/js/data/*.afm`.
+- T7: `tests/db/notes-manual.test.ts` → `Tests 1 passed (1)`: PT 4 markers, person 3, combined 6 with names. The PDF test sees the
+  markers and the new note. Visual check (CALK tab, combined Grup Ayam Nusantara): tab "CALK · 6 diisi manajemen", markers in review
+  colour.
+- End of cycle:
+  - `npm run lint && npm run typecheck && npm test` → `Test Files 151 passed (151) · Tests 1024 passed (1024)`;
+  - `npm run build` passes;
+  - `npm run demo:reset && npm run verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`;
+  - `npm run test:e2e` can't run here (its setup needs `SUPABASE_SECRET_KEY`, which this sandbox doesn't have), so CI runs it.
+
+## Review pass
+Advisor review of the branch: 11 findings. All are fixed or documented, and checked again with `npm run lint && npm run typecheck && npm test`
+→ `Test Files 151 passed (151) · Tests 1027 passed (1027)`, `npm run build`, `npm run verify:books` → ALL PASS (1765).
+
+1. **H, hidden subtotal.** A *Jumlah …* whose section printed no line was left out even when its terms weren't zero (a heading moved
+   below its lines). Excel's formula and the PDF then dropped it from Total aset. Now a subtotal is hidden only when it is zero too
+   (`statement-set.ts`, `FsTable`). Test: a moved heading gives Total aset 150 jt on the page, in Excel (the formula worked out from its
+   cells) and in the PDF.
+2. **M, PDF glyphs.** The standard fonts are WinAnsi, so "−", "≤" and "→" in the CALK printed as garbage. `winAnsi` and `clean` now spell
+   them in ASCII (anything else outside WinAnsi becomes "?"). Unit test.
+3. **M, PDF columns.** Perubahan Ekuitas amounts wrapped over the next row. Columns now size to the widest printed amount, the type
+   shrinks (down to 6 pt) when columns would leave labels under 30% of the line, amounts never wrap, and the header height is the
+   tallest column title. Checked by eye on the combined group's 3 + 1 columns.
+4. **M, English refusals.** A new empty *Pos* or total from the editor got zod's English message. `precheck` now names the line in
+   Bahasa (no label, a *Pos* without Buku lines, a total over nothing). Other shape errors read "Format laporan tidak terbaca (bagian …)".
+   A total that counts a line twice is refused. `lines` is capped at 60 and `terms` at 100.
+5. **M, reset left the edits.** The settings card is keyed on the saved format, so after *Simpan* or *Kembali ke format standar* it
+   restarts from the server's format.
+6. **L/M, dead-end link.** The *belum terpetakan* draft reason linked to settings, where nothing edits an account's line. It now opens
+   the first such account's Buku Besar.
+7. **L, silent fallback.** A stored format the rules no longer accept fell back silently. `loadReportFormat` now returns `stale` (the
+   refusal), settings show it in review colour, and *Kembali ke format standar* stays offered. DB test.
+8. **L, thousands.** Total comprehensive income now adds the printed lines (the format's net profit plus each OCI line) on the page, in
+   the PDF and as an Excel formula. Still documented: in thousands the Neraca's two totals can differ by a rounding unit while the
+   *Seimbang* pill reads the exact totals.
+9. **L, empty column.** The last-month column showed when the month held only the Saldo Awal. It now needs income or expense lines.
+10. **L, beyond 2^53.** An amount beyond 2^53 is a text cell in Excel, so a formula over it fails. This predates the cycle and stays a
+    known limit (Rp 9 kuadriliun).
+11. **L, shape limits.** Covered with 4.
+
+## Ship Notes
+- **Migration:** `20261003060000_report_format` adds the `ReportFormat` table (one row per client, JSON). It is additive, and the Vercel
+  build applies it.
+- **Dependency:** `pdfkit` (server only, external in `serverExternalPackages`).
+- **Behaviour:**
+  - Clients without a format see the same Laba Rugi and Neraca, plus a last-month column when last month has income or expense.
+  - An account on an FS line outside its statement now shows as *belum terpetakan* and keeps the report a draft.
+  - Excel totals are formulas; each sheet has a unit row.
+  - *Unduh PDF* is new.
+  - The CALK carries *[isi oleh manajemen: …]* markers, counted on its tab.
+- **Rollback:** revert the merge. The `ReportFormat` table can stay (nothing else reads it). Drop it with
+  `DROP TABLE "ReportFormat";` only if the migration is reverted too.
+

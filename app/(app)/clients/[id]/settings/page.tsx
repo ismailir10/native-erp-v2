@@ -17,20 +17,25 @@ import { EntitiesCard } from "@/components/app/entities-card";
 import { requireWorkspaceSession } from "@/lib/auth/session";
 import { DeleteClientCard } from "@/components/app/delete-client";
 import { FrameworkCard } from "@/components/app/framework-card";
+import { ReportFormatCard } from "@/components/app/report-format-card";
+import { loadReportFormat } from "@/lib/reports/format";
+import { formatUniverse } from "@/lib/reports/format-settings";
 
 export const metadata = { title: "Aturan klasifikasi" };
 
 export default async function SettingsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client } = await loadClientPage(params, searchParams);
   const { member } = await requireWorkspaceSession();
-  const [rules, memories, auto, usage, cacheSize, cfg] = await Promise.all([
+  const [rules, memories, auto, usage, cacheSize, cfg, reportFormat] = await Promise.all([
     prisma.rule.findMany({ where: { firmId: client.firmId, OR: [{ clientId: client.id }, { clientId: null }] }, orderBy: [{ clientId: "asc" }, { priority: "asc" }] }),
     prisma.memory.findMany({ where: { clientId: client.id }, orderBy: { hits: "desc" }, take: 40 }).then((ms) => ms.filter((m) => !isGenericKey(m.merchantKey)).slice(0, 15)),
     automationByMonth([client.id]),
     prisma.aiUsage.aggregate({ where: { firmId: client.firmId }, _sum: { calls: true, promptTokens: true, completionTokens: true, keysRequested: true } }),
     prisma.aiSuggestion.count(),
     resolveAiConfig(prisma),
+    loadReportFormat(prisma, client.id),
   ]);
+  const { custom: customFormat, stale: staleFormat, ...formatValue } = reportFormat;
   const accounts = new Map((await prisma.account.findMany({ where: { clientId: client.id } })).map((a) => [a.code, a.name]));
   const clientRules = rules.filter((r) => r.clientId);
   const firmRules = rules.filter((r) => !r.clientId);
@@ -51,6 +56,8 @@ export default async function SettingsPage({ params, searchParams }: { params: P
       </div>
       <EntitiesCard clientId={client.id} entities={client.entities.map((e) => ({ id: e.id, name: e.name, kind: e.kind, banks: e.bankAccounts.map((b) => ({ id: b.id, label: b.label, number: b.number, code: b.account.code, isOverdraft: b.isOverdraft })) }))} />
       <FrameworkCard clientId={client.id} entities={client.entities.map((e) => ({ id: e.id, name: e.name, framework: e.reportingFramework }))} />
+      {/* Keyed on what's saved: after a save or a reset the editor starts again from the server's format. */}
+      <ReportFormatCard key={JSON.stringify(reportFormat)} clientId={client.id} initial={formatValue} custom={customFormat} stale={staleFormat} universe={formatUniverse()} />
       <Card>
         <CardHeader>
           <CardTitle>Batas pemakaian</CardTitle>

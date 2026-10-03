@@ -121,12 +121,13 @@ describe("equity changes, cash flow, other comprehensive income", () => {
       let out: ExcelJS.CellValue[] | null = null;
       wb.getWorksheet(sheet)!.eachRow((r) => {
         const v = (r.values as ExcelJS.CellValue[]).slice(1);
-        if (String(v[0] ?? "").trim() === label) out = v.slice(1);
+        // Totals are Excel formulas (lib/reports/format.ts); their cached result is the figure.
+        if (String(v[0] ?? "").trim() === label) out = v.slice(1).map((c) => (c && typeof c === "object" && "formula" in c ? c.result : c)) as ExcelJS.CellValue[];
       });
       return out;
     };
-    expect(find("Neraca", "JUMLAH ASET")).toEqual([875_000_000, 600_000_000]);
-    expect(find("Neraca", "JUMLAH LIABILITAS DAN EKUITAS")).toEqual([875_000_000, 600_000_000]);
+    expect(find("Neraca", "Total aset")).toEqual([875_000_000, 600_000_000]);
+    expect(find("Neraca", "Total liabilitas & ekuitas")).toEqual([875_000_000, 600_000_000]);
     expect(find("Laba Rugi", "Laba bersih")).toEqual([37_000_000, 100_000_000]);
     expect(find("Laba Rugi", "Total penghasilan komprehensif")).toEqual([35_000_000, 100_000_000]);
     expect(find("Perubahan Ekuitas", "Saldo 31 Des 2026")).toEqual([500_000_000, 117_000_000, -2_000_000, 615_000_000]);

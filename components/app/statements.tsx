@@ -109,6 +109,12 @@ export function CashFlowTable({ data, currency, accountHref, framework = "SAK_EP
   );
 }
 
+/** A paragraph with its *[isi oleh manajemen: …]* parts in review colour: what management still has to write before the CALK is sent. */
+function Manual({ text }: { text: string }) {
+  const parts = text.split(/(\[isi oleh manajemen: [^\]]*\])/);
+  return <>{parts.map((part, i) => (i % 2 ? <span key={i} className="font-medium text-review" data-testid="calk-manual">{part}</span> : part))}</>;
+}
+
 /** CALK draft: numbered notes with their text and tables, then the directors' statement. */
 export function NotesView({ data, currency, accountHref }: { data: Notes; currency: string; accountHref: (code: string) => string }) {
   const cell = (c: NoteCell, i: number, strong = false) => {
@@ -123,7 +129,7 @@ export function NotesView({ data, currency, accountHref }: { data: Notes; curren
       {data.notes.map((n) => (
         <section key={n.number} className="space-y-2" data-testid={`note-${n.number}`}>
           <h3 className="font-semibold">{n.number}. {n.title}</h3>
-          {n.paragraphs.map((p, i) => <p key={i} className="text-sm leading-relaxed text-muted-foreground">{p}</p>)}
+          {n.paragraphs.map((p, i) => <p key={i} className="text-sm leading-relaxed text-muted-foreground"><Manual text={p} /></p>)}
           {n.tables.map((t, ti) => (
             <div key={ti} className="overflow-x-auto rounded-md border">
               <table className="w-full min-w-[320px] text-sm">

@@ -89,7 +89,7 @@ lib/import/                parsers (BCA/Mandiri/BRI/SMBC/generic, combined PDFs)
 lib/ledger-import/         ledger/Neraca files: read → check → map (source accounts) → post
 lib/fx/                    currency registry + exact rate math, Kurs table, revaluation
 lib/classify/  lib/ai/     transfer matcher, rules, memory; OpenAI-compatible LLM provider + cache + budget
-lib/reports/  lib/controls/ TB, Laba Rugi, Neraca, combined worksheet, tax card; close controls + lock
+lib/reports/  lib/controls/ TB, Laba Rugi, Neraca, client report format, Excel/PDF set, combined worksheet, tax card; close controls + lock
 lib/demo/                  scenario generator, bank-format writers, seed, ground-truth verifier
 prisma/                    schema + migrations (CHECK constraints live in the init migration)
 tests/{unit,db}/           Vitest (DB tests use buku_test)       e2e/  Playwright investor walk

@@ -5,10 +5,11 @@ import { formatMoney } from "@/lib/money";
 import { dueProposals } from "@/lib/adjust/schedules";
 import { inventoryRows } from "@/lib/inventory";
 import { openingDate, statementCoverage } from "@/lib/controls/coverage";
+import { isUnmapped } from "@/lib/reports/ledger";
 import { findingLabel } from "@/lib/findings";
 
 /**
- * What a set of statements is (accounting-rules 12): **final** once the month is closed, else a **draft**, with what still makes it one —
+ * What a set of statements is (accounting-rules 1): **final** once the month is closed, else a **draft**, with what still makes it one —
  * an undecided Saldo Awal difference (Temuan), lines in Review, money on Belum Terklasifikasi (1999), missing statements, due scheduled journals, a missing stock count. Read-only; the
  * close controls stay the authority. Figures are the scope's own (minor units); the page links each reason to where it is fixed.
  */
@@ -20,7 +21,8 @@ export type ReportReason =
   | { kind: "suspense"; items: { entity: string; amount: bigint; currency: string }[] }
   | { kind: "statements"; accounts: string[] }
   | { kind: "schedules"; count: number }
-  | { kind: "inventory"; entities: string[] };
+  | { kind: "inventory"; entities: string[] }
+  | { kind: "unmapped"; accounts: string[] };
 
 export type ReportStatus = { locked: { by: string | null; at: Date | null } | null; reasons: ReportReason[] };
 
@@ -65,6 +67,13 @@ export async function reportStatus(db: Db, clientId: string, entityIds: string[]
   }
   const stock = (await inventoryRows(db, clientId, year, month, entityIds)).filter((r) => r.applies && (!r.count || r.count.amount !== r.book));
   if (stock.length) reasons.push({ kind: "inventory", entities: stock.map((r) => r.entity) });
+  // An account on an FS line outside its statement is shown on a "belum terpetakan" line: the statements are a draft until it's mapped.
+  const odd = (await db.account.findMany({ where: { clientId }, select: { id: true, code: true, name: true, type: true, fsLine: true }, orderBy: { code: "asc" } })).filter(isUnmapped);
+  if (odd.length) {
+    const used = await db.journalLine.findMany({ where: { accountId: { in: odd.map((a) => a.id) }, entityId: { in: entityIds }, date: { lte: end } }, distinct: ["accountId"], select: { accountId: true } });
+    const names = odd.filter((a) => used.some((u) => u.accountId === a.id)).map((a) => `${a.code} ${a.name}`);
+    if (names.length) reasons.push({ kind: "unmapped", accounts: names });
+  }
   return { locked, reasons };
 }
 
@@ -77,5 +86,6 @@ export function reasonText(r: ReportReason): string {
     case "statements": return `rekening koran belum lengkap: ${r.accounts.join(", ")}`;
     case "schedules": return `${r.count} jurnal terjadwal belum dicatat`;
     case "inventory": return `persediaan akhir belum dicatat: ${r.entities.join(", ")}`;
+    case "unmapped": return `akun belum terpetakan ke baris laporan: ${r.accounts.slice(0, 5).join(", ")}${r.accounts.length > 5 ? ` dan ${r.accounts.length - 5} lainnya` : ""}`;
   }
 }

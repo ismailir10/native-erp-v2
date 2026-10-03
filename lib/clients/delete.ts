@@ -61,6 +61,7 @@ export async function deleteClient(db: Db, input: { firmId: string; clientId: st
       await tx.evidenceIntake.deleteMany({ where: { id: { in: intakeIds } } }); // documents, versions, passages, facts, conflicts, messages cascade
       await tx.evidenceAiCache.deleteMany({ where: { firmId: input.firmId, scope: { startsWith: `close:${clientId}:` } } });
       await tx.auditEvent.deleteMany({ where: { clientId } });
+      await tx.reportFormat.deleteMany({ where: { clientId } });
       await tx.periodUnlockLog.deleteMany({ where: { clientId } });
       await tx.period.deleteMany({ where: { clientId } });
       await tx.account.deleteMany({ where: { clientId } });

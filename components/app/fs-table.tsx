@@ -2,20 +2,23 @@ import { Fragment } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Money } from "@/components/app/money";
-import type { FsItem } from "@/lib/reports/ledger";
+import type { FormatItem, FormatSection } from "@/lib/reports/format";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 /** Comparison columns hide on phones so account names stay readable. */
 const HIDE_ON_PHONE = "hidden sm:table-cell";
 
-/** Financial-statement table: section → FS line → accounts (each links to its ledger). */
-/** `total.subtotal`: a "Jumlah …" line shown only when the section has lines (an empty "Jumlah aset tidak lancar –" says nothing). */
-export type FsSection = { title?: string; items: FsItem[][]; total?: { label: string; values: bigint[]; strong?: boolean; subtotal?: boolean } };
+/**
+ * Financial-statement table: section → line of the client's format → accounts (each links to its ledger). Sections come from
+ * `renderFormat` (lib/reports/format.ts). `total.subtotal`: a "Jumlah …" line shown only when the section has lines or a figure (an empty "Jumlah aset
+ * tidak lancar –" says nothing); `total.caps`: printed in capitals, as bank-style statements write "JUMLAH".
+ */
+export type FsSection = Pick<FormatSection, "title"> & { items: FormatItem[][]; total?: { label: string; values: bigint[]; strong?: boolean; subtotal?: boolean; caps?: boolean } };
 /** Client accounts behind a Buku account (current-period column only), keyed by Buku account code. */
 export type FsParts = Record<string, { key: string; code: string; name: string; amount: bigint; href?: string }[]>;
 
 export function FsTable({ columns, sections, accountHref, currency = "IDR", parts }: { columns: string[]; sections: FsSection[]; accountHref: (code: string) => string; currency?: string; parts?: FsParts }) {
-  const lineKeys = (items: FsItem[][]) => {
+  const lineKeys = (items: FormatItem[][]) => {
     const keys: string[] = [];
     for (const col of items) for (const i of col) if (!keys.includes(i.fsLine)) keys.push(i.fsLine);
     return keys;
@@ -49,12 +52,13 @@ function SectionRows({ section, keys, accountHref, currency, parts }: { section:
       )}
       {keys.map((k) => {
         const cells = section.items.map((col) => col.find((i) => i.fsLine === k));
-        const label = cells.find(Boolean)!.label;
+        const first = cells.find(Boolean)!;
+        const label = first.label;
         const accountCodes = [...new Set(cells.flatMap((c) => c?.accounts.map((a) => a.code) ?? []))];
         return (
           <Fragment key={k}>
             <TableRow className="border-t border-b-0 border-border/60">
-              <TableCell className={cn("py-1.5 pl-6 font-medium whitespace-normal", k === "SUSPENSE" && "text-review")}>{label}</TableCell>
+              <TableCell className={cn("py-1.5 pl-6 font-medium whitespace-normal", first.review && "text-review")}>{label}</TableCell>
               {cells.map((c, i) => (
                 <TableCell key={i} className={cn("py-1.5 pr-6 text-right font-medium", i > 0 && HIDE_ON_PHONE)}><Money value={c?.amount ?? 0n} currency={currency} /></TableCell>
               ))}
@@ -95,9 +99,9 @@ function SectionRows({ section, keys, accountHref, currency, parts }: { section:
           </Fragment>
         );
       })}
-      {section.total && !(section.total.subtotal && keys.length === 0) && (
+      {section.total && !(section.total.subtotal && keys.length === 0 && section.total.values.every((v) => v === 0n)) && (
         <TableRow className="border-t-2 border-b-0 border-foreground/15 hover:bg-transparent">
-          <TableCell className={cn("py-2 pl-6", section.total.strong ? "font-semibold" : "font-medium")}>{section.total.label}</TableCell>
+          <TableCell className={cn("py-2 pl-6", section.total.strong ? "font-semibold" : "font-medium", section.total.caps && "uppercase")}>{section.total.label}</TableCell>
           {section.total.values.map((v, i) => (
             <TableCell key={i} className={cn("py-2 pr-6 text-right", i > 0 && HIDE_ON_PHONE)}><Money value={v} strong={section.total!.strong} currency={currency} /></TableCell>
           ))}

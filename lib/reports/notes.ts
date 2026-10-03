@@ -16,7 +16,7 @@ import { cogsBreakdown } from "@/lib/inventory";
 import { scopeFramework, signatoryOf, standardOf, type Framework, type Signatory } from "@/lib/reports/framework";
 
 /**
- * CALK draft and the directors' statement (accounting-rules 12): every figure comes from the same functions as its page — the statements,
+ * CALK draft and the directors' statement (accounting-rules 1): every figure comes from the same functions as its page — the statements,
  * the registers, the valuation and the tax pack — so a note always equals its statement. The text is a starting point the accountant
  * edits in the downloaded workbook; Buku doesn't store notes.
  */
@@ -25,6 +25,14 @@ export type NoteCell = string | bigint | null;
 export type NoteTable = { columns: string[]; rows: NoteCell[][]; total?: NoteCell[] };
 export type Note = { number: string; title: string; paragraphs: string[]; tables: NoteTable[] };
 export type Notes = { title: string; entities: string; asOf: Date; comparativeLabel: string; notes: Note[]; directors: string[]; framework: Framework; signatory: Signatory };
+
+/**
+ * A part only management can write (the deed, the address, the business, events after the period): printed as *[isi oleh manajemen: …]*,
+ * shown in review colour and counted on the CALK tab, so a statement is never sent with a blank nobody noticed.
+ */
+export const manual = (hint: string) => `[isi oleh manajemen: ${hint}]`;
+export const MANUAL_MARK = /\[isi oleh manajemen: [^\]]*\]/g;
+export const manualCount = (notes: Pick<Notes, "notes">) => notes.notes.reduce((s, n) => s + n.paragraphs.reduce((t, p) => t + (p.match(MANUAL_MARK)?.length ?? 0), 0), 0);
 
 const EMKM_DEFERRED_REVIEW = "SAK EMKM tidak mengatur pajak tangguhan: tinjau saldo ini bersama kerangka pelaporan entitas.";
 const pct = (bp: number) => `${(bp / 100).toLocaleString("id-ID", { maximumFractionDigits: 2 })}%`;
@@ -68,6 +76,14 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
       : `${names} ("Entitas") menyajikan laporan keuangan untuk periode 1 Januari – ${formatDate(asOf)}.`,
     ...entities.filter((e) => e.npwp).map((e) => `${e.name}: NPWP ${e.npwp}.`),
     entities.length > 1 ? "Laporan gabungan ini adalah pandangan manajemen atas entitas-entitas dalam grup, bukan laporan konsolidasian menurut SAK." : "",
+    ...entities.flatMap((e) => {
+      const who = entities.length > 1 ? `${e.name} — ` : "";
+      return [
+        ...(e.kind === "PERORANGAN" ? [] : [`${who}Pendirian: ${manual("nomor dan tanggal akta pendirian dan perubahan terakhirnya, notaris, pengesahan Kemenkumham")}.`]),
+        `${who}Alamat: ${manual("alamat kantor sesuai NPWP")}.`,
+        `${who}Kegiatan usaha: ${manual("kegiatan usaha utama sesuai anggaran dasar (KBLI)")}.`,
+      ];
+    }),
   ].filter(Boolean));
 
   // Going concern: liabilities above assets is disclosed with the plans that support the going-concern basis.
@@ -75,7 +91,7 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
     const deficit = bs.equity.filter((i) => i.fsLine === "SALDO_LABA" || i.fsLine === "LABA_BERJALAN").reduce((s, i) => s + i.amount, 0n);
     add("Kelangsungan usaha", [
       `Per ${formatDate(asOf)} liabilitas ${fmtAmount(bs.totals.liabilities)} melebihi aset ${fmtAmount(bs.totals.assets)}, sehingga ekuitas ${fmtAmount(bs.totals.equity)}${deficit < 0n ? ` dengan akumulasi rugi ${fmtAmount(-deficit)}` : ""}. Kondisi ini menimbulkan ketidakpastian atas kemampuan ${entities.length > 1 ? "grup" : "Entitas"} mempertahankan kelangsungan usahanya.`,
-      "Rencana manajemen untuk mengatasi kondisi tersebut: [isi oleh manajemen — mis. dukungan pendanaan pemegang saham, penundaan pembayaran utang pihak berelasi, rencana peningkatan pendapatan]. Laporan keuangan disusun dengan asumsi kelangsungan usaha.",
+      `Rencana manajemen untuk mengatasi kondisi tersebut: ${manual("mis. dukungan pendanaan pemegang saham, penundaan pembayaran utang pihak berelasi, rencana peningkatan pendapatan")}. Laporan keuangan disusun dengan asumsi kelangsungan usaha.`,
     ]);
   }
 
@@ -276,6 +292,10 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
       },
     ]);
   }
+
+  add("Peristiwa setelah periode pelaporan", [
+    manual(`peristiwa penting setelah ${formatDate(asOf)} sampai tanggal laporan diotorisasi, atau "Tidak ada peristiwa setelah periode pelaporan yang memerlukan penyesuaian atau pengungkapan."`),
+  ]);
 
   const title = entities.length === 1 ? entities[0].name : client.name;
   return {

@@ -191,6 +191,7 @@ model Client {
   periodUnlocks   PeriodUnlockLog[]
   findings        Finding[]
   auditEvents     AuditEvent[]
+  reportFormat    ReportFormat?
   coaVersion      Int                  @default(1)
 
   @@index([firmId])
@@ -341,7 +342,7 @@ model AuditEvent {
   clientId  String
   client    Client      @relation(fields: [clientId], references: [id])
   entityId  String?
-  /// CLASSIFY · UNPAIR · IMPORT_REMOVED · CONTROL_NOTE · MAPPING · FINDING_RESOLVED
+  /// CLASSIFY · UNPAIR · IMPORT_REMOVED · CONTROL_NOTE · MAPPING · FINDING_RESOLVED · REPORT_FORMAT
   kind      String
   subject   String
   summary   String
@@ -964,6 +965,7 @@ model FirmMember {
   taxLosses        TaxLossCarryforward[]
   findingsOpened   Finding[]             @relation("FindingOpenedBy")
   auditEvents      AuditEvent[]          @relation("AuditEventBy")
+  reportFormats    ReportFormat[]        @relation("ReportFormatBy")
   findingsResolved Finding[]             @relation("FindingResolvedBy")
   proposalsDecided ProposedEntry[]       @relation("ProposalDecidedBy")
 
@@ -1519,4 +1521,17 @@ model InventoryCount {
 
   @@unique([entityId, year, month])
   @@index([clientId])
+}
+
+/// A client's report format (use-case UC-K3): its own labels, order, headings and subtotals for the Laba Rugi and the Neraca. Presentation
+/// only — numbers stay derived from the GL. `format` is validated on write (lib/reports/format.ts); no row = the standard format.
+model ReportFormat {
+  id          String      @id @default(cuid())
+  firmId      String
+  clientId    String      @unique
+  client      Client      @relation(fields: [clientId], references: [id])
+  format      Json
+  updatedById String?
+  updatedBy   FirmMember? @relation("ReportFormatBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedAt   DateTime    @updatedAt
 }
