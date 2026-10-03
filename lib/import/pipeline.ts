@@ -62,6 +62,9 @@ export async function importStatement(
   if (st.section && st.section.currency !== "IDR") {
     throw new ParseError(`Rekening ${st.accountNumber} dalam ${st.section.currency}. Rekening koran valas belum didukung; impor lewat buku besar dengan kurs.`);
   }
+  // The section as parsed (and repaired against its balance, rule 12): `st` is replaced below, the other sections are told apart from it.
+  const chosen = st;
+  if (st.error) throw new ParseError(st.error);
   // A date that is nowhere near a statement (an Excel serial misread as 1905) must never become a period of the books.
   const odd = st.rows.find((r) => r.date.getUTCFullYear() < 2000 || r.date.getUTCFullYear() > 2100);
   if (odd) throw new ParseError(`Tanggal di baris ${odd.rowNumber}${odd.sheet ? ` (lembar ${odd.sheet})` : ""} tidak masuk akal: ${formatDate(odd.date)}. Periksa kolom tanggal di file.`);
@@ -76,7 +79,7 @@ export async function importStatement(
     const refs = zeroRows.slice(0, 5).map((r) => r.rowNumber).join(", ");
     st = { ...st, rows: st.rows.filter((r) => r.amount !== 0n), notes: [...(st.notes ?? []), `${zeroRows.length} baris bernilai nol dilewati (baris ${refs}${zeroRows.length > 5 ? ", …" : ""}): tidak ada uang yang bergerak.`] };
   }
-  const others = sections.filter((s) => s !== st);
+  const others = sections.filter((s) => s !== chosen);
   const otherSections = others.map((s) => `${s.accountNumber} ${s.section?.label ?? ""} (${s.section?.currency ?? "IDR"}): tidak diimpor ke rekening ini`);
   // An account of this client already holding an import of the same period doesn't need "Impor juga ke …" again.
   const done = await db.statementImport.findMany({
@@ -104,7 +107,11 @@ export async function importStatement(
 
   // Dedupe against what's already imported for this bank account (see `dedupe`); checked again under the account's lock when writing.
   const hashes = rowHashes(st.rows);
-  const seen = await dedupe(db, bankAccount.id, st, hashes);
+  // A repaired row is also known by what the file wrote: a file imported before the repair existed dedupes, never doubles.
+  // Hashed as one list, like the file was hashed before (two identical written rows keep their ordinals).
+  const asWrittenHashes = rowHashes(st.rows.map((r) => (r.written ? { ...r, amount: r.written.amount ?? r.amount, date: r.written.date ?? r.date } : r)));
+  const written = st.rows.map((r, i) => (r.written ? asWrittenHashes[i] : null));
+  const seen = await dedupe(db, bankAccount.id, st, hashes, written);
   const fresh = st.rows.map((r, i) => ({ r, hash: hashes[i] })).filter((_, i) => !seen.duplicate[i]);
   const notes = [...(st.notes ?? []), ...seen.notes];
 
@@ -235,7 +242,7 @@ export async function importStatement(
     async (tx) => {
       // Two copies of a statement imported at once must not both pass the dedupe: serialise per bank account and look again.
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`import:${bankAccount.id}`}, 0))::text`;
-      const now = await dedupe(tx, bankAccount.id, st, hashes);
+      const now = await dedupe(tx, bankAccount.id, st, hashes, written);
       if (now.duplicate.some((d, i) => d !== seen.duplicate[i])) throw new ParseError("Rekening ini baru saja menerima impor lain. Ulangi impor file ini.");
       const imp = await tx.statementImport.create({
         data: {
@@ -350,16 +357,18 @@ function monthsOf(start: Date, end: Date): string[] {
  * source that missed a line has every later balance off). A file that doesn't cover the period (a supplement, a partial slice) keeps its
  * lines, with a note when some look like lines already there.
  */
-async function dedupe(db: Db | Tx, bankAccountId: string, st: ParsedStatement, hashes: string[]) {
+async function dedupe(db: Db | Tx, bankAccountId: string, st: ParsedStatement, hashes: string[], written: (string | null)[] = []) {
   const already = await db.bankTransaction.findMany({
     where: { bankAccountId, date: { gte: st.periodStart, lte: st.periodEnd } },
     select: { id: true, hash: true, date: true, amount: true, balance: true },
     orderBy: [{ date: "asc" }, { rowNumber: "asc" }],
   });
   const unmatched = new Set(already.map((t) => t.id));
-  const duplicate = hashes.map((h) => {
-    const same = already.find((t) => t.hash === h && unmatched.has(t.id));
+  let asWritten = 0;
+  const duplicate = hashes.map((h, i) => {
+    const same = already.find((t) => t.hash === h && unmatched.has(t.id)) ?? (written[i] ? already.find((t) => t.hash === written[i] && unmatched.has(t.id)) : undefined);
     if (same) unmatched.delete(same.id);
+    if (same && same.hash !== h) asWritten++;
     return !!same;
   });
   // Coverage: every remaining line already imported in the period must have a twin among the file's remaining lines.
@@ -385,6 +394,7 @@ async function dedupe(db: Db | Tx, bankAccountId: string, st: ParsedStatement, h
     fromOtherSource++;
   });
   const notes = [
+    ...(asWritten ? [`${asWritten} baris sudah diimpor sebelumnya seperti tertulis di file, sebelum diperbaiki; dilewati. Untuk memakai perbaikannya, hapus impor lama lalu impor ulang file ini.`] : []),
     ...(fromOtherSource ? [`${fromOtherSource} baris sama dengan mutasi yang sudah diimpor dari file lain (tanggal dan nominal sama, keterangan berbeda); dilewati.`] : []),
     ...(lookAlike ? [`${lookAlike} baris bertanggal dan bernominal sama dengan mutasi yang sudah ada, tetapi file ini tidak mencakup semua mutasi periodenya, jadi tetap diimpor. Periksa Rekonsiliasi bank bulan itu.`] : []),
   ];

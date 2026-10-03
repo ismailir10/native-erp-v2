@@ -3,7 +3,7 @@ import { parseRupiah } from "@/lib/money";
 import { dateOnly } from "@/lib/format";
 import type { BankCode } from "@/lib/generated/prisma/enums";
 import { ParseError, YearNeededError, type ParsedRow, type ParsedStatement } from "@/lib/import/types";
-import { closingFromRows, dateParts as baseDateParts, periodFromText, SenWatch, type DateParts } from "@/lib/import/parsers/common";
+import { closingFromRows, dateParts as baseDateParts, MONTHS as MONTH_NUMBER, periodFromText, SenWatch, type DateParts } from "@/lib/import/parsers/common";
 import { detectFormat, periodOf } from "@/lib/import/parsers/pdf";
 
 /**
@@ -27,6 +27,8 @@ const FLAG_OUT = /^(d|db|dr|debet|debit)$/i;
 const OPENING_ROW = /^(saldo\s*awal|opening\s*balance|beginning\s*balance|saldo\s*sebelumnya)\b/i;
 const CLOSING_ROW = /^(saldo\s*akhir|closing\s*balance|ending\s*balance)\b/i;
 const TOTAL_ROW = /^(total|jumlah|mutasi\s*(debet|debit|kredit|credit))\b/i;
+/** Summary and balance-print text (a trailer "Mutasi Kredit 1.000 · 10.500", "SALDO PER 01/08"): checkpoints, never transactions. */
+const SUMMARY_TEXT = /\b(total|jumlah|saldo|rekap|sub\s*total|mutasi\s*(debet|debit|kredit|credit)|opening|closing|beginning|ending|balance)\b/i;
 
 export type Sheet = { name: string; rows: string[][] };
 
@@ -159,9 +161,14 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
   period ??= periodOf(rows.slice(0, headerIdx).map((r) => r.join(" ")).join("\n"));
   const sheetYear = ctx.sheet?.match(/(?<!\d)(20\d{2})(?!\d)/)?.[1];
 
-  type Draft = { parts: DateParts; description: string; debit: bigint; credit: bigint; amount: bigint; balance: bigint | null; rowNumber: number; rawRow: string };
+  type Draft = { parts: DateParts; description: string; debit: bigint; credit: bigint; amount: bigint; balance: bigint | null; rowNumber: number; rawRow: string; balanceOnly?: boolean };
   const drafts: Draft[] = [];
-  let openingRow: { balance: bigint | null; parts: DateParts | null } | null = null;
+  // What reading the rows decided, said with the other notes (UC-B1: nothing is lost silently).
+  const undated: number[] = [];
+  const undatedSkipped: number[] = [];
+  const readNotes: string[] = [];
+  // `written`: an amount the SALDO AWAL row wrote in a movement column, its sign settled with the direction verdict (b3/b4).
+  let openingRow: { balance: bigint | null; parts: DateParts | null; written?: bigint } | null = null;
   let printedClosing: bigint | null = null;
   const sen = new SenWatch();
   let at = 0; // the row being read (1-based), for the sen note
@@ -190,17 +197,53 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
     };
     const noMovement = split ? isZero(cDb) && isZero(cCr) : isZero(cAmt);
     const label = OPENING_ROW.test(dateText) || OPENING_ROW.test(text) ? "open" : CLOSING_ROW.test(dateText) || CLOSING_ROW.test(text) ? "close" : TOTAL_ROW.test(dateText) ? "total" : null;
+    // A SALDO AWAL row is the opening even when it writes its amount in a movement column (b4): that amount is the opening when it
+    // equals the printed balance or the balance is empty. Any other amount is read as before (a transaction).
+    if (label === "open" && !openingRow && !noMovement) {
+      let written: bigint | null = null;
+      try {
+        written = split ? num(r, cCr) - num(r, cDb) : num(r, cAmt);
+      } catch {
+        written = null;
+      }
+      const b = bal(r);
+      if (written !== null && (b === null || b === written || b === -written)) {
+        openingRow = { balance: b, parts: dateParts(dateText), written };
+        readNotes.push(`Baris ${i + 1}: baris saldo awal menulis nominal ${(written < 0n ? -written : written).toLocaleString("id-ID")} di kolom mutasi; dibaca sebagai saldo awal, bukan transaksi.`);
+        continue;
+      }
+    }
     if (label && (noMovement || !dateParts(dateText))) {
       const b = bal(r);
       if (label === "open" && !openingRow) openingRow = { balance: b, parts: dateParts(dateText) };
       if (label === "close" && b !== null) printedClosing = b;
       continue;
     }
-    if (!dateText || /saldo|total/i.test(dateText)) continue;
-    const parts = dateParts(dateText);
-    if (!parts) throw new ParseError(`Format tanggal tidak dikenali di baris ${i + 1}: "${dateText}"`);
-    // A dated row that moves no money is no transaction (it could never post); the rows around it carry the balance.
-    if (noMovement) continue;
+    if (/saldo|total/i.test(dateText)) continue;
+    let parts: DateParts | null;
+    if (!dateText) {
+      // No date (a "ditto" row in a working copy): a row that moves money and prints its balance is a transaction of the row above's
+      // day (a3), said so. One without a balance can't be checked: left out, but named — never lost silently.
+      if (noMovement || !text || SUMMARY_TEXT.test(text)) continue;
+      if (cBal < 0 || !r[cBal]) {
+        undatedSkipped.push(i + 1);
+        continue;
+      }
+      const above = drafts[drafts.length - 1];
+      if (!above) throw new ParseError(`Baris ${i + 1} berisi mutasi tanpa tanggal, dan tidak ada baris bertanggal di atasnya. Isi tanggalnya di file.`);
+      parts = above.parts;
+      undated.push(i + 1);
+    } else {
+      parts = dateParts(dateText);
+      if (!parts) throw new ParseError(`Format tanggal tidak dikenali di baris ${i + 1}: "${dateText}"`);
+    }
+    // A dated row that moves no money is no transaction (it could never post). One whose printed balance moved anyway is passed on as
+    // balance-only: the repair (rule 12) takes its amount from the balance, or drops it when the balance didn't move.
+    if (noMovement) {
+      const b = bal(r);
+      if (b !== null && !SUMMARY_TEXT.test(text)) drafts.push({ parts, description: text, debit: 0n, credit: 0n, amount: 0n, balance: b, rowNumber: i + 1, rawRow: r.map((c) => c.replace(/\s+/g, " ").trim()).join(" | "), balanceOnly: true });
+      continue;
+    }
     const debit = split ? num(r, cDb) : 0n;
     const credit = split ? num(r, cCr) : 0n;
     let amount = split ? credit - debit : num(r, cAmt);
@@ -237,18 +280,20 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
       cursor = { year: ctx.year, month: first.m };
     }
   }
-  const dateOf = (p: DateParts): Date => {
+  // `afterOpening`: the first row right after this sheet's SALDO AWAL — the only place a December row on a January sheet rolls back.
+  const dateOf = (p: DateParts, afterOpening = false): Date => {
     if (p.y !== null) {
       cursor = { year: p.y, month: p.m };
       return dateFrom(p, cursor);
     }
     const c: YearCursor = cursor!;
-    // A year-less month far behind the last one (Des → Jan, Nov → Feb) starts the next year; a row or two out of order doesn't.
-    cursor = { year: c.month - p.m >= 6 ? c.year + 1 : c.year, month: p.m };
+    // A year-less month far behind the last one (Des → Jan, Nov → Feb) starts the next year; a row or two out of order doesn't. A
+    // December row after January (a January sheet that prints 31/12 after its SALDO AWAL) belongs to the year before (e3).
+    cursor = { year: c.month - p.m >= 6 ? c.year + 1 : afterOpening && p.m - c.month >= 10 ? c.year - 1 : c.year, month: p.m };
     return dateFrom(p, cursor);
   };
   const openingDate = openingRow?.parts ? dateOf(openingRow.parts) : null;
-  const dates = drafts.map((d) => dateOf(d.parts));
+  const dates = drafts.map((d, k) => dateOf(d.parts, k === 0 && !!openingRow?.parts));
   // Internet banking often exports newest first. Opening balance, closing balance and the period are read from the first and last row, so
   // such a file is read from its oldest row. Only with printed years (a year-less date needs the order to find its year) and only when
   // every date is on or before the one above it; a few rows out of order are left as they are.
@@ -263,9 +308,21 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
   const senNote = sen.note();
   if (senNote) notes.push(senNote);
   if (newestFirst) notes.push("Baris di file berurutan dari yang terbaru; dibaca dari yang terlama supaya saldo awal, saldo akhir, dan periode benar.");
+  notes.push(...readNotes);
+  if (undated.length) notes.push(`${undated.length} baris tanpa tanggal memakai tanggal baris di atasnya (baris ${undated.slice(0, 5).join(", ")}${undated.length > 5 ? ", …" : ""}); saldo berjalannya ikut diperiksa.`);
+  if (undatedSkipped.length) notes.push(`${undatedSkipped.length} baris bernominal tanpa tanggal dan tanpa saldo dilewati (baris ${undatedSkipped.slice(0, 5).join(", ")}${undatedSkipped.length > 5 ? ", …" : ""}): tidak bisa diperiksa. Periksa file bila itu transaksi.`);
+  // Rows of another month on a month's sheet (a statement printing a cross-month day on the next sheet) post by their date (e1/e2).
+  // Only a sheet named for one month ("SEP", "Agustus 2026"); a range ("Jan-Mar 2026") says nothing about a row.
+  const sheetMonths = ctx.sheet ? [...new Set(ctx.sheet.toLowerCase().split(/[^a-z]+/).map((t) => MONTH_NUMBER[t]).filter(Boolean))] : [];
+  const sheetMonth = sheetMonths.length === 1 ? sheetMonths[0] : undefined;
+  if (sheetMonth) {
+    const other = dates.filter((d, k) => !drafts[k].balanceOnly && d.getUTCMonth() + 1 !== sheetMonth);
+    if (other.length) notes.push(`${other.length} baris di lembar ${ctx.sheet} bertanggal di luar bulan lembarnya (${[...new Set(other.map((d) => `${d.getUTCMonth() + 1}/${d.getUTCFullYear()}`))].join(", ")}); dicatat menurut tanggalnya.`);
+  }
   if (cFlag >= 0) notes.push(`Kolom "${header[cFlag] || "D/K"}" dipakai sebagai tanda D/K: D / DB / Debet = uang keluar, K / CR / Kredit = uang masuk.`);
   const opening = (flip: boolean): bigint | null => {
     if (openingRow?.balance !== undefined && openingRow?.balance !== null) return openingRow.balance;
+    if (openingRow?.written !== undefined) return flip ? -openingRow.written : openingRow.written;
     const f = drafts[0];
     return f && f.balance !== null ? f.balance - (flip ? -f.amount : f.amount) : null;
   };
@@ -273,6 +330,11 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
     let running = opening(flip);
     let n = 0;
     for (const d of drafts) {
+      // A balance-only row is a checkpoint, not a break in either direction: its amount comes from the repair.
+      if (d.balanceOnly) {
+        if (d.balance !== null) running = d.balance;
+        continue;
+      }
       running = running === null ? null : running + (flip ? -d.amount : d.amount);
       if (d.balance !== null) {
         if (running !== null && d.balance !== running) n++;
@@ -282,7 +344,7 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
     return n;
   };
   // Two balances to compare at least: the SALDO AWAL row counts as one.
-  const checkpoints = drafts.filter((d) => d.balance !== null).length + (openingRow?.balance != null ? 1 : 0);
+  const checkpoints = drafts.filter((d) => d.balance !== null && !d.balanceOnly).length + (openingRow?.balance != null ? 1 : 0);
   const bankBreaks = checkpoints >= 2 ? breaks(false) : -1;
   const bookBreaks = checkpoints >= 2 ? breaks(true) : -1;
   const verdict: DirectionVerdict = bankBreaks > 0 && bookBreaks === 0 ? "BOOK" : bankBreaks === 0 && bookBreaks > 0 ? "BANK" : "UNKNOWN";
@@ -304,6 +366,7 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
     rowNumber: d.rowNumber,
     rawRow: d.rawRow,
     ...(ctx.sheet ? { sheet: ctx.sheet } : {}),
+    ...(d.balanceOnly ? { balanceOnly: true } : {}),
   }));
   const openingBalance = opening(flip);
   if (openingBalance === null) {

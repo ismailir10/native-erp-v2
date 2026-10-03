@@ -309,12 +309,20 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
   let lineNo = 0;
   // Description text printed just above a row's amount line (SMBC centres a two-line description on it): held for that row.
   let lead: string[] = [];
+  // BCA prints a row's counterparty below it, and across a page break under the repeated header (UC-B1g): the row a new page continues.
+  const bca = (ctx.format ?? detectFormat(preamble)) === "BCA";
+  let carried: Draft | null = null;
+  // The last row of a page, until the next page's header shows whether undated lines below it continue it.
+  let pending: Draft | null = null;
 
   for (const [index, line] of lines.entries()) {
     lineNo++;
     const header = headerColumns(line);
     if (header) {
       cols = header;
+      const last = current ?? pending;
+      carried = bca && last && line.page > last.page ? last : null;
+      pending = null;
       current = null;
       lead = [];
       continue;
@@ -377,7 +385,20 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
       const leadRaw = lead.length ? `${lead.join(" / ")} / ` : "";
       lead = [];
       const bal = nums.find((n) => n.kind === "balance");
+      carried = null;
+      pending = null;
       if (OPENING.test(desc) && nums.every((n) => n.kind === "balance")) {
+        // A second Saldo Awal after transactions that doesn't continue the balance is another account read into this one (an SMBC
+        // sub-product whose title wasn't recognised, UC-B1d): refused rather than merged. A month's Saldo Awal that continues is fine.
+        // "Continues": equal to the last printed balance, or to it plus the signed rows after it (a month whose last row prints none).
+        const lastPrinted = drafts.map((d) => d.balance !== null).lastIndexOf(true);
+        const abs = (v: bigint) => (v < 0n ? -v : v);
+        const signed = (d: Draft) => (d.flag === "DB" ? -abs(d.amount) : d.flag === "CR" ? abs(d.amount) : d.amount);
+        const before = lastPrinted >= 0 ? drafts[lastPrinted].balance! : opening;
+        const running = before === null ? null : drafts.slice(lastPrinted + 1).reduce((sum, d) => sum + signed(d), before);
+        if (bal && opening !== null && drafts.length && before !== null && bal.value !== before && bal.value !== running) {
+          throw new ParseError(`File ini tampaknya berisi lebih dari satu rekening: ada baris Saldo Awal kedua di halaman ${line.page} (${desc.slice(0, 40)}) yang tidak melanjutkan saldo sebelumnya. Pisahkan file per rekening, atau kirim contoh judul bagiannya agar formatnya bisa ditambahkan.`);
+        }
         if (bal) opening ??= bal.value;
         current = null;
         continue;
@@ -414,6 +435,18 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
       }
     }
 
+    // A "TANGGAL :06/08" line BCA prints between a row and its counterparty is not part of a description, and doesn't end the row.
+    const words = descParts.filter((t) => !/^tanggal\s*:\s*\d{1,2}\/\d{1,2}$/i.test(t.trim()));
+    if (!nums.length && !words.length && /^tanggal\s*:/i.test(text.trim())) continue;
+    descParts.splice(0, descParts.length, ...words);
+    // BCA: undated description lines right under a new page's header continue the last row of the page before.
+    if (!current && carried && bca && line.page === carried.page + 1 && descParts.length && !nums.length && !FOOTER.test(text)) {
+      carried.parts.push(descParts.join(" "));
+      carried.description = carried.parts.join(" ").replace(/\s+/g, " ").trim();
+      carried.rawRow += ` / hal. ${line.page} · ${line.cells.map((c) => c.text).join(" | ")}`;
+      continue;
+    }
+
     // Continuation of the previous row's description (same page, close below, not a footer).
     if (current && line.page === current.page && current.lastY - line.y < 30 && !FOOTER.test(text) && descParts.length) {
       current.parts.push(descParts.join(" "));
@@ -428,7 +461,10 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
         if (amt?.flag) current.flag = amt.flag;
         current.balance ??= nums.find((n) => n.kind === "balance")?.value ?? null;
       }
-    } else current = null;
+    } else {
+      if (bca && current) pending = current;
+      current = null;
+    }
   }
 
   for (const d of drafts) {

@@ -5,6 +5,7 @@ import { parseTabular, parseWorkbook, xlsxToSheets } from "@/lib/import/parsers/
 import { decodeText, detectDelimiter, readCsv } from "@/lib/import/parsers/common";
 import { parsePdfSections } from "@/lib/import/parsers/pdf";
 import { readableXlsx, sniffFile } from "@/lib/import/workbook";
+import { repairStatement } from "@/lib/import/normalize";
 
 export type ParseOptions = {
   /** Used once to open a PDF; never stored. */
@@ -18,10 +19,22 @@ export async function parseStatement(fileName: string, data: Buffer, opts: Parse
   return (await parseStatementSections(fileName, data, opts))[0];
 }
 
-/** Every statement in the file: combined PDFs and workbooks with several accounts hold one per account. */
+/**
+ * Every statement in the file: combined PDFs and workbooks with several accounts hold one per account. Each is repaired against its own
+ * running balance (`repairStatement`, rule 12), so every reader — the import, Dokumen — sees the same rows.
+ */
 export async function parseStatementSections(fileName: string, data: Buffer, opts: ParseOptions = {}): Promise<ParsedStatement[]> {
   try {
-    return await parseAny(fileName, data, opts);
+    const sections = await parseAny(fileName, data, opts);
+    // One account's refusal (a year it can't hold) doesn't refuse the file's other accounts: it travels on its own section.
+    return sections.map((st) => {
+      try {
+        return repairStatement(st);
+      } catch (e) {
+        if (sections.length === 1 || !(e instanceof ParseError)) throw e;
+        return { ...st, error: e.message };
+      }
+    });
   } catch (e) {
     if (e instanceof ParseError) throw e;
     throw new ParseError(`File tidak bisa dibaca: ${(e as Error).message}`);
