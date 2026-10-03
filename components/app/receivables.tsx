@@ -15,7 +15,8 @@ import { ReceivablesTabs } from "@/components/app/receivables-tabs";
 import { SimpleSelect } from "@/components/app/simple-select";
 import { Money } from "@/components/app/money";
 import { StatusPill } from "@/components/app/status";
-import { createInvoiceAction, settleAction, settleCandidatesAction, unsettleAction } from "@/app/actions";
+import { createInvoiceAction, settleAction, settleCandidatesAction, settleFifoAction, tagAdvanceAction, unsettleAction } from "@/app/actions";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BUCKETS, BUCKET_LABEL } from "@/lib/receivables/aging";
 import { formatMoney, parseMoney, PPN_EFFECTIVE_PERCENT } from "@/lib/money";
 import { RECEIPT_KINDS, WITHHOLDING_KINDS, WITHHOLDING_LABEL, withholdingFor } from "@/lib/tax/withholding";
@@ -41,6 +42,7 @@ export function Receivables(props: {
   comparison: ComparisonView[];
   unsettled: UnsettledLineView[];
   contacts: string[];
+  contactOptions: { id: string; name: string }[];
   accounts: { counter: Account[]; arAp: Account[] };
   defaultDate: string;
 }) {
@@ -213,17 +215,13 @@ export function Receivables(props: {
         <Card data-testid="unsettled-lines">
           <CardHeader>
             <CardTitle>{w.lines}</CardTitle>
-            <CardDescription>Mutasi bank yang sudah dicatat ke akun {props.direction === "SALES" ? "piutang" : "utang"} tapi belum dikaitkan ke {w.docLower}. Buka {w.docLower}nya lalu pilih Cocokkan.</CardDescription>
+            <CardDescription>
+              Mutasi bank di akun {props.direction === "SALES" ? "piutang" : "utang"} yang belum (habis) dikaitkan ke {w.docLower}. Pilih {w.party.toLowerCase()}nya lalu *Cocokkan FIFO*: {w.docLower} terlama dulu, sisanya jadi uang muka {w.party.toLowerCase()} itu.
+            </CardDescription>
           </CardHeader>
           <CardContent className="divide-y px-0">
             {props.unsettled.map((l) => (
-              <div key={l.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-6 py-2.5">
-                <div className="min-w-0 flex-1 basis-64">
-                  <div className="text-sm">{l.description}</div>
-                  <div className="text-xs text-muted-foreground">{l.entity} · {l.date} · {l.accountCode}</div>
-                </div>
-                <Money className="text-sm" value={BigInt(l.free)} currency={l.currency} />
-              </div>
+              <UnsettledLine key={l.id} clientId={props.clientId} line={l} contacts={props.contactOptions} party={w.party.toLowerCase()} onDone={() => router.refresh()} />
             ))}
           </CardContent>
         </Card>
@@ -373,7 +371,7 @@ export function Receivables(props: {
                     <div className="text-sm">{c.description}</div>
                     <div className="text-xs text-muted-foreground">
                       {c.date} · sisa <span className="num">{formatMoney(BigInt(c.free), matching.invoice.currency)}</span>
-                      {c.exact ? " · nominal sama" : ""}{c.named ? " · nama/nomor cocok" : ""}{c.onAccount ? "" : ` · akan diklasifikasikan ke ${matching.invoice.arApCode}`}
+                      {c.advance ? " · uang muka pelanggan ini" : ""}{c.exact ? " · nominal sama" : ""}{c.named ? " · nama/nomor cocok" : ""}{c.onAccount ? "" : ` · akan diklasifikasikan ke ${matching.invoice.arApCode}`}
                     </div>
                   </div>
                   <Input aria-label={`Nominal ${c.date}`} inputMode="decimal" className="num w-36 text-right" value={amounts[c.bankTransactionId] ?? ""} onChange={(e) => setAmounts({ ...amounts, [c.bankTransactionId]: e.target.value })} />
@@ -456,3 +454,54 @@ function InvoiceTable(props: { rows: InvoiceView[]; w: (typeof WORDS)[Direction]
     </Table>
   );
 }
+
+/**
+ * One unmatched bank line (UC-B5): pick the contact, then *Cocokkan FIFO* (their open documents, oldest first; the rest stays as their
+ * advance) or *Uang muka* (the whole line is theirs, for a later document). A tagged line shows whose advance it is.
+ */
+function UnsettledLine({ clientId, line, contacts, party, onDone }: { clientId: string; line: UnsettledLineView; contacts: { id: string; name: string }[]; party: string; onDone: () => void }) {
+  const [contactId, setContactId] = useState(line.contact?.id ?? "");
+  const [busy, setBusy] = useState(false);
+  async function fifo() {
+    setBusy(true);
+    const r = await settleFifoAction({ clientId, bankTransactionId: line.id, contactId });
+    setBusy(false);
+    if (!r.ok) return void toast.error(r.error);
+    const rest = BigInt(r.rest);
+    toast.success(`${r.settled.length} dokumen ${r.contact} dicocokkan`, { description: [r.settled.map((x) => `${x.number} ${formatMoney(BigInt(x.amount), line.currency)}`).join(", "), rest > 0n ? `sisa ${formatMoney(rest, line.currency)} jadi uang muka` : ""].filter(Boolean).join(" · ") });
+    onDone();
+  }
+  async function tag(id: string | null) {
+    setBusy(true);
+    const r = await tagAdvanceAction({ clientId, bankTransactionId: line.id, contactId: id });
+    setBusy(false);
+    if (!r.ok) return void toast.error(r.error);
+    toast.success(id ? "Ditandai sebagai uang muka" : "Tanda uang muka dihapus");
+    onDone();
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-6 py-2.5" data-testid="unsettled-line">
+      <div className="min-w-0 flex-1 basis-64">
+        <div className="text-sm">{line.description}</div>
+        <div className="text-xs text-muted-foreground">
+          {line.entity} · {line.date} · {line.accountCode}
+          {line.contact && <span className="font-medium text-foreground"> · uang muka {line.contact.name}</span>}
+        </div>
+      </div>
+      <Money className="text-sm" value={BigInt(line.free)} currency={line.currency} />
+      <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+        <Select value={contactId || null} onValueChange={(v) => setContactId((v as string) ?? "")}>
+          <SelectTrigger size="sm" className="w-56 max-w-full" aria-label={`Pilih ${party}`}><SelectValue placeholder={`Pilih ${party}`} /></SelectTrigger>
+          <SelectContent>{contacts.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+        </Select>
+        <Button size="sm" variant="outline" disabled={busy || !contactId} onClick={fifo} data-testid="fifo">Cocokkan FIFO</Button>
+        {line.contact ? (
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => tag(null)}>Hapus tanda</Button>
+        ) : (
+          <Button size="sm" variant="ghost" disabled={busy || !contactId} onClick={() => tag(contactId)}>Uang muka</Button>
+        )}
+      </div>
+    </div>
+  );
+}
+

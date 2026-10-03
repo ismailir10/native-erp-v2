@@ -31,8 +31,8 @@ export type InvoiceView = {
 };
 export type AgingView = { entityId: string; entity: string; currency: string; rows: { contact: string; buckets: Record<Bucket, string>; total: string; count: number }[]; totals: Record<Bucket, string> & { total: string } };
 export type ComparisonView = { entityId: string; entity: string; currency: string; accounts: string[]; subledger: string; ledger: string; unsettledLines: number; equal: boolean };
-export type UnsettledLineView = { id: string; entity: string; currency: string; date: string; description: string; free: string; accountCode: string };
-export type CandidateView = { bankTransactionId: string; date: string; description: string; free: string; exact: boolean; named: boolean; onAccount: boolean };
+export type UnsettledLineView = { id: string; entityId: string; entity: string; currency: string; date: string; description: string; free: string; accountCode: string; /** The contact this line was matched for: its unmatched rest is their advance (UC-B5). */ contact: { id: string; name: string } | null };
+export type CandidateView = { bankTransactionId: string; date: string; description: string; free: string; exact: boolean; named: boolean; onAccount: boolean; advance: boolean };
 
 export async function receivablesView(db: Db, clientId: string, direction: InvoiceDirection, asOf: Date, entities: { id: string; shortName: string; functionalCurrency: string; kind: string }[]) {
   const ids = entities.map((e) => e.id);
@@ -88,18 +88,19 @@ export async function receivablesView(db: Db, clientId: string, direction: Invoi
   const codes = [...new Set([...comparisons.flatMap((c) => c.accounts), direction === "SALES" ? "1130" : "2110"])];
   const lines = await db.bankTransaction.findMany({
     where: { entityId: { in: ids }, direction: direction === "SALES" ? "IN" : "OUT", date: { lte: asOf }, accountCode: { in: codes }, status: { not: "NEEDS_REVIEW" } },
-    include: { settlements: { select: { amount: true, withheld: true } } },
+    include: { settlements: { select: { amount: true, withheld: true } }, contact: { select: { id: true, name: true } } },
     orderBy: [{ date: "asc" }, { rowNumber: "asc" }],
   });
   const unsettled: UnsettledLineView[] = lines
     .map((t) => ({ t, free: (t.amount < 0n ? -t.amount : t.amount) - t.settlements.reduce((u, x) => u + x.amount - x.withheld, 0n) }))
     .filter((x) => x.free > 0n)
-    .map(({ t, free }) => ({ id: t.id, entity: ent.get(t.entityId)!.shortName, currency: ent.get(t.entityId)!.functionalCurrency, date: formatDate(t.date), description: t.description, free: free.toString(), accountCode: t.accountCode ?? "" }));
-  const contacts = (await db.contact.findMany({ where: { clientId }, select: { name: true }, orderBy: { name: "asc" } })).map((c) => c.name);
-  return { invoices, aging, comparison, unsettled, contacts };
+    .map(({ t, free }) => ({ id: t.id, entityId: t.entityId, entity: ent.get(t.entityId)!.shortName, currency: ent.get(t.entityId)!.functionalCurrency, date: formatDate(t.date), description: t.description, free: free.toString(), accountCode: t.accountCode ?? "", contact: t.contact }));
+  const contactRows = await db.contact.findMany({ where: { clientId }, select: { id: true, name: true, channel: true }, orderBy: { name: "asc" } });
+  const contacts = contactRows.map((c) => c.name);
+  return { invoices, aging, comparison, unsettled, contacts, contactOptions: contactRows.map((c) => ({ id: c.id, name: c.name })) };
 }
 
 export async function candidateViews(db: Db, clientId: string, invoiceId: string): Promise<CandidateView[]> {
-  return (await settleCandidates(db, clientId, invoiceId)).slice(0, 30).map((c) => ({ bankTransactionId: c.bankTransactionId, date: formatDate(c.date), description: c.description, free: c.free.toString(), exact: c.exact, named: c.named, onAccount: c.onAccount }));
+  return (await settleCandidates(db, clientId, invoiceId)).slice(0, 30).map((c) => ({ bankTransactionId: c.bankTransactionId, date: formatDate(c.date), description: c.description, free: c.free.toString(), exact: c.exact, named: c.named, onAccount: c.onAccount, advance: c.advance }));
 }
 

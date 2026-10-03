@@ -77,7 +77,7 @@ it isn't a difference.
 4. Channel is free text (trimmed, max 40), not an enum.
 
 ## Tasks
-- [ ] T1 Schema + FIFO: migration; `settleFifo` in `lib/receivables/settle.ts` (contact tagging on every settle); action. Accept: DB
+- [x] T1 Schema + FIFO: migration; `settleFifo` in `lib/receivables/settle.ts` (contact tagging on every settle); action. Accept: DB
       tests (two notes paid by one receipt in FIFO order, a remainder kept, a line in Review classified first, withholding invoices
       cash-only, the refusals).
 - [ ] T2 Advance and proof: `invoicesAt`/`subledgerVsLedger`/view with advances, *Belum dialokasikan*, the net-credit flag, and the
@@ -89,7 +89,17 @@ it isn't a difference.
 - [ ] T5 Rules (5c), README, gates, review pass, ship.
 
 ## Implementation
+- T1: migration `20261003100000_receipts_advances` (all of the cycle's columns, so later tasks need none: `BankTransaction.contactId`,
+  `Contact.channel`, `Invoice.voidedAt/voidReason/voidEntryId/voidedById`, CHECK reason ⇔ voided). `settleFifo` in
+  `lib/receivables/settle.ts` locks the line, refuses a used-up line, a contact without open documents in the line's direction (pointing to
+  *Uang muka*) and documents on several accounts; classifies through `reviewTransactionTx` when needed; settles cash only, oldest due
+  first. Every settle now tags the line's contact. `tagAdvance` sets or clears the tag (refused when the line is matched to another
+  contact). The unmatched-lines card gets a contact select with *Cocokkan FIFO* and *Uang muka*; a contact's earlier lines are offered
+  first as candidates.
 
 ## Verification
+- T1: `tests/db/receipts-fifo.test.ts` (4): three notes paid oldest-due first from a line still in Review, 1,5 jt rest kept on the tagged
+  line; a line that runs out leaves the later note partly open; a PPh 23 invoice settled at its net with nothing withheld; the refusals
+  (wrong direction, mixed accounts, unknown contact, retagging a line matched to another customer). Lint, typecheck, 1056 tests green.
 
 ## Ship Notes
