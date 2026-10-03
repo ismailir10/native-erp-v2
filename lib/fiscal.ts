@@ -1,5 +1,5 @@
 import type { Db } from "@/lib/db";
-import { dateOnly, monthName } from "@/lib/format";
+import { dateOnly, formatDate, formatDateLong, monthName } from "@/lib/format";
 
 /**
  * The client's financial year (*tahun buku*, accounting-rules 1): twelve months ending in `endMonth` (12 = the calendar year). Every
@@ -51,3 +51,10 @@ export async function fiscalEndMonth(db: Db, clientId: string): Promise<number> 
   const c = await db.client.findUnique({ where: { id: clientId }, select: { fiscalYearEndMonth: true } });
   return c?.fiscalYearEndMonth ?? 12;
 }
+
+/** The start of a "from … to" period, without its year when the period ends in the same year: "1 Jan", "1 Februari", "1 Feb 2026". */
+export const periodFrom = (start: Date, to: Date, long = false) => {
+  const s = long ? formatDateLong(start) : formatDate(start);
+  return start.getUTCFullYear() === to.getUTCFullYear() ? s.replace(/ \d{4}$/, "") : s;
+};
+

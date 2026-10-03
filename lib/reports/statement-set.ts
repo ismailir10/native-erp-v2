@@ -1,5 +1,6 @@
 import type { Db } from "@/lib/db";
-import { dateOnly, formatDate, periodBounds } from "@/lib/format";
+import { formatDate, periodBounds } from "@/lib/format";
+import { financialYear, fiscalEndMonth, periodFrom, priorYearEnd, samePeriodLastYear } from "@/lib/fiscal";
 import { balanceSheet, incomeStatement, type FsItem, type Scope } from "@/lib/reports/ledger";
 import { balanceItems, incomeItems, loadReportFormat, renderFormat, type FormatSection, type ReportFormat } from "@/lib/reports/format";
 import { cashFlow, equityChanges, otherComprehensiveIncome, EQUITY_ROWS, EQUITY_ROW_LABEL } from "@/lib/reports/statements";
@@ -75,8 +76,13 @@ const itemRows = (cols: (FsItem[] | undefined)[], prefix: string): SetRow[] => {
 
 export async function statementSet(db: Db, scope: Scope, year: number, month: number): Promise<StatementSet> {
   const asOf = periodBounds(year, month).end;
-  const lastYearEnd = dateOnly(year - 1, 12, 31);
-  const priorTo = periodBounds(year - 1, month).end;
+  // The client's financial year (lib/fiscal.ts): 1 January – 31 December unless it closes in another month.
+  const endMonth = await fiscalEndMonth(db, scope.clientId);
+  const fy = financialYear(endMonth, year, month);
+  const lastYearEnd = priorYearEnd(endMonth, year, month);
+  const prior = samePeriodLastYear(endMonth, year, month);
+  const priorTo = prior.end;
+  const from = periodFrom(fy.start, asOf, true);
   const mixed = isMixed(await scopeEntities(db, scope.entityIds));
   // Names and the signatory follow the entities' reporting framework (reports/framework.ts); no figure does.
   const entities = await db.entity.findMany({ where: { id: { in: scope.entityIds } }, select: { kind: true, reportingFramework: true } });
@@ -85,8 +91,8 @@ export async function statementSet(db: Db, scope: Scope, year: number, month: nu
   const [bs, bsPrior, is, isPrior, format] = await Promise.all([
     balanceSheet(db, scope, asOf),
     balanceSheet(db, scope, lastYearEnd).catch(() => null),
-    incomeStatement(db, scope, dateOnly(year, 1, 1), asOf),
-    incomeStatement(db, scope, dateOnly(year - 1, 1, 1), priorTo).catch(() => null),
+    incomeStatement(db, scope, fy.start, asOf),
+    incomeStatement(db, scope, prior.start, priorTo).catch(() => null),
     loadReportFormat(db, scope.clientId),
   ]);
   const statements: SetStatement[] = [];
@@ -107,7 +113,7 @@ export async function statementSet(db: Db, scope: Scope, year: number, month: nu
   const lr: SetRow[] = formatRows(renderFormat(format.labaRugi, [is, ...(isPrior ? [isPrior] : [])].map(incomeItems)));
   const pl = <T,>(a: T, pick: () => T) => [a, ...(isPrior ? [pick()] : [])];
   if (!mixed && framework !== "SAK_EMKM") {
-    const [oci, ociPrior] = await Promise.all([otherComprehensiveIncome(db, scope, dateOnly(year, 1, 1), asOf), otherComprehensiveIncome(db, scope, dateOnly(year - 1, 1, 1), priorTo)]);
+    const [oci, ociPrior] = await Promise.all([otherComprehensiveIncome(db, scope, fy.start, asOf), otherComprehensiveIncome(db, scope, prior.start, priorTo)]);
     lr.push({ label: "Penghasilan komprehensif lain", values: [], bold: true });
     const ociRows = itemRows(pl(oci.items, () => ociPrior.items), "oci:");
     lr.push(...ociRows);
@@ -124,8 +130,8 @@ export async function statementSet(db: Db, scope: Scope, year: number, month: nu
   statements.push({
     name: "Laba Rugi",
     title: names.income,
-    subtitle: `Untuk periode 1 Januari – ${cur}${isPrior ? `, dibandingkan periode yang sama ${year - 1}` : ""}`,
-    columns: [`1 Jan – ${cur}`, ...(isPrior ? [`1 Jan – ${formatDate(priorTo)}`] : [])],
+    subtitle: `Untuk periode ${from} – ${cur}${isPrior ? `, dibandingkan periode yang sama ${endMonth === 12 ? year - 1 : "tahun buku sebelumnya"}` : ""}`,
+    columns: [`${periodFrom(fy.start, asOf)} – ${cur}`, ...(isPrior ? [`${periodFrom(prior.start, priorTo)} – ${formatDate(priorTo)}`] : [])],
     widths: [56, 20, 20],
     rows: lr,
   });
@@ -140,7 +146,7 @@ export async function statementSet(db: Db, scope: Scope, year: number, month: nu
     const label = r === "opening" ? `Saldo ${formatDate(eq.openedAt)}` : r === "closing" ? `Saldo ${cur}` : frameworkLabel(framework, EQUITY_ROW_LABEL[r]);
     pe.push({ label, values: [...eq.values[r], eq.totals[r]], bold: r === "opening" || r === "closing" });
   }
-  statements.push({ name: "Perubahan Ekuitas", title: names.equity, subtitle: `Untuk periode 1 Januari – ${cur}`, columns: [...eq.columns.map((c) => c.label), "Jumlah"], widths: [40, ...eq.columns.map(() => 20), 20], rows: pe });
+  statements.push({ name: "Perubahan Ekuitas", title: names.equity, subtitle: `Untuk periode ${from} – ${cur}`, columns: [...eq.columns.map((c) => c.label), "Jumlah"], widths: [40, ...eq.columns.map(() => 20), 20], rows: pe });
 
   // Arus Kas
   const cf = await cashFlow(db, scope, asOf);
@@ -148,7 +154,7 @@ export async function statementSet(db: Db, scope: Scope, year: number, month: nu
   statements.push({
     name: "Arus Kas",
     title: names.cashFlow,
-    subtitle: `Untuk periode 1 Januari – ${cur}`,
+    subtitle: `Untuk periode ${from} – ${cur}`,
     columns: [],
     widths: [56, 20],
     rows: [

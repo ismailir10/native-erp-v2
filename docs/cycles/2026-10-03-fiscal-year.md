@@ -63,6 +63,7 @@ below are reported back; correct any and the cycle follows.
 - A year-end change mid-history (a transition year shorter or longer than 12 months).
 - 52/53-week years.
 - Different year ends inside one client.
+- FX average rates by financial year (they stay per calendar year; a mixed-currency, non-calendar client is out of scope).
 - Setting the year end on *Tambah klien* (settings only).
 - Closing entries.
 
@@ -83,7 +84,7 @@ below are reported back; correct any and the cycle follows.
 - [x] T2 Ledger core: TB fold, account ledger, source TB, equity changes and cash flow openings. Accept: DB test for a 31 January
       client with Jan and Feb 2026 entries: TB at Agu 2026 has January's P&L in Saldo Laba, and equity changes and cash flow tie to the
       Neraca. Calendar clients are unchanged (existing tests).
-- [ ] T3 Statements: reports page, `statement-set` (Excel, PDF), CALK. Accept: DB test of columns, comparatives and labels for the
+- [x] T3 Statements: reports page, `statement-set` (Excel, PDF), CALK. Accept: DB test of columns, comparatives and labels for the
       31 January client; existing statement tests pass unchanged.
 - [ ] T4 Registers and controls: asset register, benefits valuation and control, inventory, ledger-import default opening, tax pack
       notice, tax control and CALK tax note. Accept: DB tests per site for the 31 January client.
@@ -104,6 +105,14 @@ below are reported back; correct any and the cycle follows.
     so does `sourceTrialBalance`.
   - `equityChanges` and `cashFlow` open the day before the financial-year start.
   - Comments that said "1 January" / "31 December" now say financial year.
+- T3:
+  - `statement-set.ts` (Excel + PDF), `notes.ts` and the reports page take the year, the previous year end and the same months last year
+    from `financialYear` / `priorYearEnd` / `samePeriodLastYear`.
+  - `periodFrom` prints a period's start without its year when it ends in the same year. Calendar clients keep "1 Jan – 31 Agu 2026" and
+    "1 Januari"; Chickin gets "1 Feb – 31 Agu 2026", and "1 Feb 2025 – 31 Jan 2026" in January.
+  - The comparison reads "periode yang sama tahun buku sebelumnya" for a non-calendar client.
+  - The page's "Laba (rugi) tahun-tahun sebelumnya" link opens the previous year-end month.
+  - Non-goal added: FX average rates stay per calendar year (a mixed-currency, non-calendar client is out of scope).
 
 ## Verification
 - T1: `tests/unit/fiscal.test.ts` (4) + `tests/db/fiscal-settings.test.ts` (1) → `Tests 5 passed (5)`. Migration applied to both DBs.
@@ -115,5 +124,12 @@ below are reported back; correct any and the cycle follows.
 
   The calendar client keeps 140 jt in 4100 and 0 in 3200. Lint + typecheck clean; `npm test` →
   `Test Files 154 passed (154) · Tests 1034 passed (1034)`.
+- T3: `tests/db/fiscal-statements.test.ts` → `Tests 3 passed (3)`:
+  - Agu 2026 for Chickin: subtitle, columns ("1 Feb – 31 Agu 2026" vs "1 Feb – 31 Agu 2025"), net 40 jt vs 70 jt;
+  - Neraca against 31 Jan 2026 (laba berjalan 170 jt, then in Saldo laba);
+  - January 2026 closes 1 Feb 2025 – 31 Jan 2026 (170 jt), and the CALK reads "periode 1 Februari 2025 – 31 Jan 2026";
+  - the calendar client reads as before.
+
+  Lint + typecheck clean; `npm test` → all passed.
 
 ## Ship Notes

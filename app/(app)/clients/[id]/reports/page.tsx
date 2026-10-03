@@ -7,6 +7,7 @@ import { balanceItems, incomeItems, loadReportFormat, renderFormat, toUnit } fro
 import { cashFlow, equityChanges, otherComprehensiveIncome } from "@/lib/reports/statements";
 import { CashFlowTable, EquityTable, NotesView } from "@/components/app/statements";
 import { financialNotes, manualCount } from "@/lib/reports/notes";
+import { financialYear, priorYearEnd, samePeriodLastYear } from "@/lib/fiscal";
 import { formatDateLong, formatPeriod, monthName } from "@/lib/format";
 import { reportStatus } from "@/lib/reports/status";
 import { ReportStatusBar } from "@/components/app/report-status";
@@ -30,11 +31,12 @@ export const metadata = { title: "Laporan Keuangan" };
 export default async function ReportsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, period, scope, periodOptions, entityOptions, base, scopeLabel, sp, currency, mixed } = await loadClientPage(params, searchParams);
   const s = { clientId: client.id, entityIds: scope.entityIds };
-  const yearStart = new Date(Date.UTC(period.year, 0, 1));
+  // The client's financial year (lib/fiscal.ts): 1 January – 31 December unless it closes in another month.
+  const fy = financialYear(client.fiscalYearEndMonth, period.year, period.month);
+  const yearStart = fy.start;
   const prevEnd = new Date(Date.UTC(period.year, period.month - 1, 0));
-  const lastYearEnd = new Date(Date.UTC(period.year - 1, 11, 31));
-  const priorFrom = new Date(Date.UTC(period.year - 1, 0, 1));
-  const priorTo = new Date(Date.UTC(period.year - 1, period.month, 0));
+  const lastYearEnd = priorYearEnd(client.fiscalYearEndMonth, period.year, period.month);
+  const { start: priorFrom, end: priorTo } = samePeriodLastYear(client.fiscalYearEndMonth, period.year, period.month);
   const prevStart = new Date(Date.UTC(period.year, period.month - 2, 1));
   const multi = client.entities.length > 1;
   // Wording follows the entities' reporting framework (framework.ts): SAK EMKM has no other comprehensive income and no required cash flow.
@@ -85,7 +87,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
       const sign = net === 0n || (a.amount > 0n) === (net > 0n) ? 1n : -1n; // presentation sign of this FS line
       const rows = list.map((x) => ({ key: `${a.code}:${x.sourceAccountId ?? "-"}`, code: x.sourceAccountId ? x.code : "", name: x.name, amount: x.net * sign, href: x.sourceAccountId ? withParams(`${base}/ledger/akun/${x.sourceAccountId}`, q) : undefined }));
       const rest = a.amount - net * sign;
-      if (rest !== 0n) rows.push({ key: `${a.code}:rest`, code: "", name: a.code === "3200" ? "Laba (rugi) tahun-tahun sebelumnya" : "Lainnya", amount: rest, href: a.code === "3200" ? withParams(`${base}/reports`, { period: `${period.year - 1}-12`, entity: scope.value, tab: "pl" }) : undefined });
+      if (rest !== 0n) rows.push({ key: `${a.code}:rest`, code: "", name: a.code === "3200" ? "Laba (rugi) tahun-tahun sebelumnya" : "Lainnya", amount: rest, href: a.code === "3200" ? withParams(`${base}/reports`, { period: `${lastYearEnd.getUTCFullYear()}-${String(lastYearEnd.getUTCMonth() + 1).padStart(2, "0")}`, entity: scope.value, tab: "pl" }) : undefined });
       out[a.code] = rows;
     }
     return out;
@@ -95,14 +97,14 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
     : [null, null];
   const plItems = incomeItems(isMonth);
   const bsItems = balanceItems(bs);
-  // Comparison columns may lack a closing rate; the current period must not be blocked by them. Last month, and 31 December last year
+  // Comparison columns may lack a closing rate; the current period must not be blocked by them. Last month, and the previous year end
   // (one column when they are the same date).
   const compare = async (d: Date) => {
     const r = await withFx(() => balanceSheet(prisma, s, d));
     return { label: formatPeriod(d.getUTCFullYear(), d.getUTCMonth() + 1), bs: r instanceof FxMissingError ? null : r };
   };
   // A comparative column only where the books hold something by then (no column of dashes before the books start). When the books
-  // start inside this year, the Saldo Awal position stands in for 31 December.
+  // start inside this year, the Saldo Awal position stands in for the previous year end.
   const entryBy = async (to: Date, from?: Date) => !!(await prisma.journalLine.findFirst({ where: { entityId: { in: scope.entityIds }, date: { gte: from, lte: to } }, select: { id: true } }));
   const firstOpening = await prisma.journalEntry.findFirst({ where: { entityId: { in: scope.entityIds }, kind: "OPENING", date: { gte: lastYearEnd, lte: period.end } }, orderBy: { date: "asc" }, select: { date: true } });
   const booksStart = firstOpening && +firstOpening.date >= +yearStart && !(await entryBy(new Date(+firstOpening.date - 86_400_000))) ? new Date(+firstOpening.date + 86_400_000) : yearStart;
@@ -188,7 +190,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
             <CardHeader>
               <CardTitle>{names.income}</CardTitle>
               <CardDescription>
-                {monthName(period.month)} {period.year}{isPrev ? ` dan bulan sebelumnya` : ""}, {ytdLabel}{isPrior ? `, dibandingkan periode yang sama tahun ${period.year - 1}` : ""} · {unit}
+                {monthName(period.month)} {period.year}{isPrev ? ` dan bulan sebelumnya` : ""}, {ytdLabel}{isPrior ? `, dibandingkan periode yang sama ${client.fiscalYearEndMonth === 12 ? `tahun ${period.year - 1}` : "tahun buku sebelumnya"}` : ""} · {unit}
                 {format.custom ? ` · format laporan klien${format.source ? ` (${format.source})` : ""}` : ""}
               </CardDescription>
             </CardHeader>

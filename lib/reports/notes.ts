@@ -1,6 +1,7 @@
 import type { Db } from "@/lib/db";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
-import { dateOnly, formatDate, formatPeriod, periodBounds } from "@/lib/format";
+import { formatDate, formatPeriod, periodBounds } from "@/lib/format";
+import { financialYear, fiscalEndMonth, periodFrom, priorYearEnd, samePeriodLastYear } from "@/lib/fiscal";
 import { formatMoney } from "@/lib/money";
 import { balanceSheet, incomeStatement, type FsItem, type Scope } from "@/lib/reports/ledger";
 import { MixedScopeError, otherComprehensiveIncome } from "@/lib/reports/statements";
@@ -47,19 +48,24 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
   const emkm = framework === "SAK_EMKM";
   const signatory = signatoryOf(entities);
   const asOf = periodBounds(year, month).end;
-  const lastYearEnd = dateOnly(year - 1, 12, 31);
-  const priorTo = periodBounds(year - 1, month).end;
+  // The client's financial year (lib/fiscal.ts): 1 January unless it closes in another month.
+  const endMonth = await fiscalEndMonth(db, scope.clientId);
+  const yearStart = financialYear(endMonth, year, month).start;
+  const lastYearEnd = priorYearEnd(endMonth, year, month);
+  const prior = samePeriodLastYear(endMonth, year, month);
+  const priorTo = prior.end;
   const [bs, bsPrior, is, isPrior, oci] = await Promise.all([
     balanceSheet(db, scope, asOf),
     balanceSheet(db, scope, lastYearEnd),
-    incomeStatement(db, scope, dateOnly(year, 1, 1), asOf),
-    incomeStatement(db, scope, dateOnly(year - 1, 1, 1), priorTo),
-    otherComprehensiveIncome(db, scope, dateOnly(year, 1, 1), asOf),
+    incomeStatement(db, scope, yearStart, asOf),
+    incomeStatement(db, scope, prior.start, priorTo),
+    otherComprehensiveIncome(db, scope, yearStart, asOf),
   ]);
   const cur = formatPeriod(year, month);
   const fmtAmount = (v: bigint) => formatMoney(v, currency);
   const bsCols = ["Akun", formatDate(asOf), formatDate(lastYearEnd)];
-  const plCols = ["Akun", `1 Jan – ${formatDate(asOf)}`, `1 Jan – ${formatDate(priorTo)}`];
+  const plCols = ["Akun", `${periodFrom(yearStart, asOf)} – ${formatDate(asOf)}`, `${periodFrom(prior.start, priorTo)} – ${formatDate(priorTo)}`];
+  const periodText = `${periodFrom(yearStart, asOf, true)} – ${formatDate(asOf)}`;
   const names = entities.map((e) => e.name).join(", ");
   const notes: Note[] = [];
   let n = 0;
@@ -72,8 +78,8 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
   // 1. Umum
   add("Umum", [
     entities.length > 1
-      ? `${names}, entitas-entitas dalam grup ${client.name}, menyajikan laporan keuangan gabungan untuk periode 1 Januari – ${formatDate(asOf)}.`
-      : `${names} ("Entitas") menyajikan laporan keuangan untuk periode 1 Januari – ${formatDate(asOf)}.`,
+      ? `${names}, entitas-entitas dalam grup ${client.name}, menyajikan laporan keuangan gabungan untuk periode ${periodText}.`
+      : `${names} ("Entitas") menyajikan laporan keuangan untuk periode ${periodText}.`,
     ...entities.filter((e) => e.npwp).map((e) => `${e.name}: NPWP ${e.npwp}.`),
     entities.length > 1 ? "Laporan gabungan ini adalah pandangan manajemen atas entitas-entitas dalam grup, bukan laporan konsolidasian menurut SAK." : "",
     ...entities.flatMap((e) => {
@@ -148,9 +154,9 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
   // Cost of sales the periodic way (rule 5i): awal + pembelian − akhir, from the same GL lines as the Laba Rugi line it explains.
   const cogsLine = is.cogs.find((i) => i.fsLine === "HPP");
   if (stock && cogsLine) {
-    const c = await cogsBreakdown(db, scope.clientId, scope.entityIds, dateOnly(year, 1, 1), asOf);
+    const c = await cogsBreakdown(db, scope.clientId, scope.entityIds, yearStart, asOf);
     const note = lineByKey.get("PL:HPP")!;
-    note.paragraphs.push(`Perhitungan beban pokok penjualan 1 Januari – ${formatDate(asOf)} (metode periodik).`);
+    note.paragraphs.push(`Perhitungan beban pokok penjualan ${periodText} (metode periodik).`);
     note.tables.push({
       columns: ["Uraian", "Jumlah"],
       rows: [
