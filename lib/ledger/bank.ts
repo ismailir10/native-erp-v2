@@ -2,7 +2,7 @@ import type { Tx } from "@/lib/db";
 import type { TaxTag } from "@/lib/generated/prisma/enums";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { splitPpn } from "@/lib/money";
-import { postJournal, type PostLine } from "@/lib/ledger/post";
+import { LedgerError, postJournal, type PostLine } from "@/lib/ledger/post";
 import { templateAccounts } from "@/lib/coa/ensure";
 import { withholdingAccountCode, type Withholding } from "@/lib/tax/withholding";
 
@@ -12,12 +12,24 @@ import { withholdingAccountCode, type Withholding } from "@/lib/tax/withholding"
  * by a RECLASS entry that posts only the difference — so drill-down from any account
  * still lands on the same bank row (entries keep bankTransactionId).
  */
-type Target = { accountCode: string; taxTag?: TaxTag | null; /** Tax withheld from the payment: not in the bank amount, on the classification side (accounting-rules 5h). */ withholding?: Withholding | null };
+type Target = {
+  accountCode: string;
+  taxTag?: TaxTag | null;
+  /** Tax withheld from the payment: not in the bank amount, on the classification side (accounting-rules 5h). */
+  withholding?: Withholding | null;
+  /** A split line (pecah transaksi): the classification side by part, positive magnitudes adding up to the bank amount; no tax. */
+  parts?: { accountCode: string; amount: bigint }[];
+};
 
 /** Desired non-bank side as signed nets per account code (debit positive). */
 export function classificationNets(amount: bigint, target: Target): Map<string, bigint> {
   const nets = new Map<string, bigint>();
   const add = (code: string, v: bigint) => nets.set(code, (nets.get(code) ?? 0n) + v);
+  if (target.parts) {
+    // Money in → the parts are credits; money out → debits. Their sum is the bank amount (checked by splitTransaction).
+    for (const p of target.parts) add(p.accountCode, amount > 0n ? -p.amount : p.amount);
+    return nets;
+  }
   // Money in → bank debit, so classification side is credit (negative); money out → debit.
   // A withheld part is a tax leg on the same side as the bank amount's opposite: money in, the customer paid net, so the counterparty
   // (receivable) is credited gross and the prepaid tax debited; money out, the counterparty is debited gross and the liability credited.
@@ -60,6 +72,10 @@ export async function postBankTransaction(
   if (target.withholding && target.withholding.amount > 0n) {
     const code = withholdingAccountCode(target.withholding.kind, bankTx.amount > 0n ? "IN" : "OUT");
     if (!codeToId.has(code)) codeToId.set(code, (await templateAccounts(tx, clientId, [code])).get(code)!);
+  }
+  // A split line is re-posted only as a split: a one-account posting from elsewhere would silently drop its parts.
+  if (!target.parts && (await tx.bankTxSplit.count({ where: { bankTransactionId: bankTx.id } }))) {
+    throw new LedgerError("Mutasi ini dipecah ke beberapa akun. Ubah lewat Pecah transaksi, atau pilih satu akun di Review untuk menggabungkannya lagi.");
   }
   const bankGlId = bankTx.bankAccount.accountId;
   const idOf = (code: string) => {

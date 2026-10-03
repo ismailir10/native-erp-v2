@@ -41,6 +41,18 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
    and **removing a whole import** (ADR 0013, `lib/imports/remove.ts`: open months only, a written reason, refused while an invoice
    settlement, fixed asset or schedule rests on it; the `AuditEvent` keeps what was removed). Bank lines change via `postBankTransaction()`,
    which posts a **RECLASS of the difference** on the classification side only; the bank side never changes.
+   A **split line** (*Pecah transaksi*, `BankTxSplit`, `lib/review.ts` `splitTransaction`) has one classification leg per part:
+   - the parts add up exactly to the bank amount, or the split is refused naming the gap;
+   - no part may be on 1999/1199/1190, and no posted tax or withholding is allowed on the line;
+   - paired and settling lines are refused;
+   - it is never learned and never paired.
+
+   While split, the line refuses every other writer:
+   - `postBankTransaction` refuses a one-account posting;
+   - `reviewTransactionTx` refuses unless the caller passes `replaceSplit`, which only Buku Besar's *Gabungkan ke akun ini* does;
+   - settling refuses, since a part can't carry a subledger.
+
+   Controls and the AI close review read a split line by its parts (`byPart`).
 3a. **Balik jurnal** (`lib/ledger/reverse.ts`): a manual `ADJUSTMENT` is corrected by a new `ADJUSTMENT` that mirrors every line (debit ↔ credit,
     same accounts and source accounts), dated by the accountant on or after the original, through `postJournal()`; `reversesId` (unique) points
     at the original, so an entry is reversed once and a reversal is never reversed. An entry a schedule, register, pack, stock count or lease
