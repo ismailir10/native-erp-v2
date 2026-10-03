@@ -184,6 +184,15 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
 12. Parse → continuity check (opening + Σ = every printed balance → closing) → dedupe by row hash → classify → post, all-or-nothing in one transaction.
     A statement with new rows that ends before the account's first imported statement must hand over to it (its closing balance = that
     statement's opening balance); otherwise the whole file is refused (another year or account's file would become the history and drive Saldo Awal).
+    **The running balance is the source of truth** (`repairStatement`, use-case UC-B1), applied to every parsed section before the dedupe:
+    - a row the chain contradicts (direction typed the wrong way, an amount missing beside a moved balance) is repaired **only when every
+      printed balance then chains**, else left as written and the import shows the break;
+    - a year typo with one fix inside the statement's months is read in that year; a year the statement can't hold refuses the file;
+    - when only the closing header disagrees with a chain that holds, the chain wins.
+
+    Every repair is a note with the value as written (`parseNotes`); the row keeps it in `rawRow`, and the dedupe also knows the row by its
+    written hash, so a file imported before a repair never doubles. A second Saldo Awal that doesn't continue the balance in a PDF section
+    is another account: refused, never merged.
 13. Order: **transfer matcher → rules (client before firm, unless a matching firm rule's pattern strictly contains the client rule's — a client "PAJAK" never swallows the firm's "PAJAK BUNGA") → memory → financing / tax-payment suggestion → AI → heuristic.** Transfer matching
     needs a textual hint (TRSF/TRF/PINDAH BUKU/own entity name) — equal amounts alone are never enough — and pairs within **2 business
     days** (Sat/Sun don't count), only when **neither description names anyone besides the group's own entities** (`thirdPartyName`:
