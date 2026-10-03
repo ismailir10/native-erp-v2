@@ -5,6 +5,8 @@ import { compareSubledger, deleteSubledgerImport, importAging, resolveSubledgerF
 import { runControls } from "@/lib/controls";
 import { reportStatus } from "@/lib/reports/status";
 import { dateOnly } from "@/lib/format";
+import { findingLabel, openFinding } from "@/lib/findings";
+import { createInvoice } from "@/lib/receivables/invoices";
 
 const J = 1_000_000n;
 const csv = (...rows: string[]) => Buffer.from(["Laporan Umur Piutang", "Nama Pelanggan;Belum Jatuh Tempo;Total", ...rows, ""].join("\n"));
@@ -70,8 +72,15 @@ describe("rekonsiliasi subledger", () => {
     const { g, base } = await books();
     const r = await importAging(db, { ...base, kind: "RECEIVABLE", fileName: "aging.csv", data: csv("PT Sinar Jaya;10.000.000;10.000.000") });
     const f = await db.finding.findFirstOrThrow({ where: { kind: "SUBLEDGER_DIFFERENCE" } });
-    // Not an opening difference: the report's draft reasons don't call it one.
-    expect((await reportStatus(db, g.client.id, [g.pt.entity.id], 2023, 12)).reasons.map((x) => x.kind)).not.toContain("findings");
+    // Not an opening difference: with an undecided 3290 balance and its own Temuan open, the report's draft reason names only that one.
+    const d3290 = (await db.account.findUniqueOrThrow({ where: { clientId_code: { clientId: g.client.id, code: "3290" } } })).id;
+    const d1110 = (await db.account.findUniqueOrThrow({ where: { clientId_code: { clientId: g.client.id, code: "1110" } } })).id;
+    await db.$transaction(async (tx) => {
+      await postJournal(tx, { entityId: g.pt.entity.id, date: dateOnly(2023, 12, 1), kind: "ADJUSTMENT", memo: "selisih saldo awal", lines: [{ accountId: d1110, debit: J, credit: 0n }, { accountId: d3290, debit: 0n, credit: J }] });
+      await openFinding(tx, { clientId: g.client.id, entityId: g.pt.entity.id, kind: "OPENING_DIFFERENCE", date: dateOnly(2023, 12, 1), amount: J, question: "Dari mana selisih saldo awal?" });
+    });
+    const reason = (await reportStatus(db, g.client.id, [g.pt.entity.id], 2023, 12)).reasons.find((x) => x.kind === "findings");
+    expect(reason && "items" in reason ? reason.items.flatMap((i) => ("labels" in i ? i.labels : [])) : null).toEqual(["T-002"]);
     const controls = await runControls(db, g.client.id, 2023, 12);
     expect(controls.find((x) => x.key === `subledger:${g.pt.entity.id}`)).toMatchObject({ status: "REVIEW", title: "Rekonsiliasi subledger" });
     await expect(resolveSubledgerFinding(db, { clientId: g.client.id, findingId: f.id, explanation: "cut-off" })).rejects.toThrow("Tulis penjelasannya");
@@ -83,7 +92,38 @@ describe("rekonsiliasi subledger", () => {
     const again = await importAging(db, { ...base, asOf: "2024-12-31", kind: "RECEIVABLE", fileName: "aging-2024.csv", data: csv("PT Sinar Jaya;1;1") });
     const open = await db.finding.findFirstOrThrow({ where: { kind: "SUBLEDGER_DIFFERENCE", status: "OPEN" } });
     await deleteSubledgerImport(db, { clientId: g.client.id, importId: again.importId });
-    expect((await db.finding.findUniqueOrThrow({ where: { id: open.id } })).resolution).toBe("Impor aging aging-2024.csv dihapus.");
+    expect((await db.finding.findUniqueOrThrow({ where: { id: open.id } })).resolution).toBe("Impor aging aging-2024.csv dihapus; selisihnya tidak lagi diperiksa.");
+    // Every way a Temuan closes is in the history, the deletion included.
+    expect((await db.auditEvent.findMany({ where: { kind: "FINDING_RESOLVED" }, orderBy: { createdAt: "asc" } })).map((e) => e.subject)).toEqual([`finding:${f.id}`, `finding:${open.id}`]);
     expect(await db.subledgerImport.findMany({ select: { id: true } })).toEqual([{ id: r.importId }]);
+  });
+
+  it("compares a name once over its rows, signs a supplier advance positive, validates the date and reports a Temuan the books now match", async () => {
+    const { g, base } = await books();
+    // A supplier advance (1170 Dr) and prepaid tax (1180 Dr, no advance) next to the payables.
+    const acc = async (code: string) => (await db.account.findUniqueOrThrow({ where: { clientId_code: { clientId: g.client.id, code } } })).id;
+    await db.$transaction(async (tx) => {
+      await postJournal(tx, { entityId: g.pt.entity.id, date: dateOnly(2023, 12, 5), kind: "ADJUSTMENT", memo: "uang muka", lines: [{ accountId: await acc("1170"), debit: 700_000n, credit: 0n }, { accountId: await acc("1180"), debit: 300_000n, credit: 0n }, { accountId: await acc("1110"), debit: 0n, credit: J }] });
+    });
+    const ap = await importAging(db, { ...base, kind: "PAYABLE", fileName: "ap.csv", data: Buffer.from("Supplier;Saldo\nPT Pemasok;1\n") });
+    expect((await compareSubledger(db, g.client.id, ap.importId)).candidates.advances.map((a) => [a.code, a.balance])).toEqual([["1170", 700_000n]]);
+
+    // Buku's own invoice for Sinar Jaya; the aging splits Sinar Jaya over two branch rows.
+    await createInvoice(db, { clientId: g.client.id, entityId: g.pt.entity.id, direction: "SALES", contactName: "PT Sinar Jaya", number: "INV-1", issueDate: "2023-12-01", dpp: "10.000.000", counterCode: "4100" });
+    const r = await importAging(db, { ...base, kind: "RECEIVABLE", fileName: "ar.csv", data: csv("PT Sinar Jaya;6.000.000;6.000.000", "Sinar Jaya;4.000.000;4.000.000") });
+    const c = await compareSubledger(db, g.client.id, r.importId);
+    expect(c.counterparties?.find((x) => x.name === "PT Sinar Jaya")).toBeUndefined(); // 6 + 4 = Buku's 10: no difference
+    await expect(importAging(db, { ...base, asOf: "2023-02-31", kind: "RECEIVABLE", fileName: "x.csv", data: csv("A;1;1") })).rejects.toThrow("tidak ada di kalender");
+    const dup = await importAging(db, { ...base, asOf: "2023-11-30", kind: "RECEIVABLE", fileName: "x.csv", data: csv("A;1;1"), accountCodes: ["1130", "1130", " "] });
+    expect((await db.subledgerImport.findUniqueOrThrow({ where: { id: dup.importId } })).accountCodes).toEqual(["1130"]);
+
+    // A correcting journal after the import: the control says the Temuan can now be closed, from the fresh comparison.
+    const { finding: f } = await db.subledgerImport.findUniqueOrThrow({ where: { id: r.importId }, include: { finding: true } });
+    const ledgerNow = (await compareSubledger(db, g.client.id, r.importId)).ledger;
+    await db.$transaction(async (tx) => {
+      await postJournal(tx, { entityId: g.pt.entity.id, date: dateOnly(2023, 12, 31), kind: "ADJUSTMENT", memo: "koreksi", lines: [{ accountId: await acc("4100"), debit: ledgerNow - 10n * J, credit: 0n }, { accountId: await acc("1130"), debit: 0n, credit: ledgerNow - 10n * J }] });
+    });
+    const control = (await runControls(db, g.client.id, 2023, 12)).find((x) => x.key === `subledger:${g.pt.entity.id}`);
+    expect(control?.detail).toContain(`${findingLabel(f!.number)} sekarang cocok, tinggal ditutup`);
   });
 });

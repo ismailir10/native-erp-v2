@@ -19,7 +19,8 @@ export class SubledgerError extends Error {}
 export const KIND_LABEL: Record<SubledgerKind, string> = { RECEIVABLE: "piutang", PAYABLE: "utang" };
 const DAY = 86_400_000;
 const CUTOFF_DAYS = 7;
-const ADVANCE = /uang muka|di ?terima di ?muka|dibayar di ?muka|advance|deposit|titipan/i;
+/** Customer or supplier advances, not prepaid tax or expenses ("Pajak dibayar di muka") nor deposits. */
+const ADVANCE = /uang muka|di ?terima di ?muka|advance|titipan/i;
 const LEGAL = /\b(pt|cv|tbk|ud|persero|perseroan|terbatas)\b\.?/gi;
 
 /** "PT. Sinar Jaya, Tbk" and "sinar jaya" are the same counterparty. */
@@ -110,7 +111,8 @@ export async function compareSubledger(db: Db | Tx, clientId: string, importId: 
   const owed = (a: (typeof accounts)[number]) => bal.get(a.id) ?? 0n;
   const advances = accounts
     .filter((a) => !imp.accountCodes.includes(a.code) && ADVANCE.test(a.name) && (kind === "RECEIVABLE" ? a.type === "LIABILITAS" : a.type === "ASET"))
-    .map((a) => ({ code: a.code, name: a.name, balance: kind === "RECEIVABLE" ? -owed(a) : owed(a) }))
+    // The other side's balance: a customer advance is a credit, a supplier advance a debit; shown positive.
+    .map((a) => ({ code: a.code, name: a.name, balance: -owed(a) }))
     .filter((a) => a.balance !== 0n);
   // Non-trade: what an aging summary leaves out (UC-A1 trap: "the aging doesn't cover all payables").
   const nonTrade = accounts
@@ -128,14 +130,18 @@ export async function compareSubledger(db: Db | Tx, clientId: string, importId: 
       const k = normalName(i.contact.name);
       buku.set(k, { name: i.contact.name, open: (buku.get(k)?.open ?? 0n) + i.open });
     }
-    const seen = new Set<string>();
-    counterparties = imp.rows.map((r) => {
+    // One name can span several aging rows (a customer per branch or currency): compared once, with all its rows.
+    const agingBy = new Map<string, { name: string; total: bigint; refs: string[] }>();
+    for (const r of imp.rows) {
       const k = normalName(r.counterparty);
-      seen.add(k);
+      const a = agingBy.get(k);
+      agingBy.set(k, { name: a?.name ?? r.counterparty, total: (a?.total ?? 0n) + r.total, refs: [...(a?.refs ?? []), r.sourceRef] });
+    }
+    counterparties = [...agingBy].map(([k, a]) => {
       const b = buku.get(k)?.open ?? 0n;
-      return { name: r.counterparty, aging: r.total, buku: b, difference: r.total - b, sourceRef: r.sourceRef };
+      return { name: a.name, aging: a.total, buku: b, difference: a.total - b, sourceRef: a.refs.join(", ") };
     });
-    for (const [k, b] of buku) if (!seen.has(k) && b.open !== 0n) counterparties.push({ name: b.name, aging: 0n, buku: b.open, difference: -b.open, sourceRef: null });
+    for (const [k, b] of buku) if (!agingBy.has(k) && b.open !== 0n) counterparties.push({ name: b.name, aging: 0n, buku: b.open, difference: -b.open, sourceRef: null });
     counterparties = counterparties.filter((c) => c.difference !== 0n).sort((a, b) => (abs(b.difference) > abs(a.difference) ? 1 : -1));
   }
 
@@ -175,6 +181,7 @@ export async function importAging(
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(input.asOf);
   if (!m) throw new SubledgerError("Isi tanggal aging (per tanggal berapa).");
   const asOf = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  if (asOf.toISOString().slice(0, 10) !== input.asOf) throw new SubledgerError(`Tanggal ${input.asOf} tidak ada di kalender.`);
   const entity = await db.entity.findFirst({ where: { id: input.entityId, clientId: input.clientId } });
   if (!entity) throw new SubledgerError("Pilih entitas.");
   if (entity.functionalCurrency !== "IDR") throw new SubledgerError("Rekonsiliasi aging baru untuk pembukuan Rupiah.");
@@ -188,7 +195,8 @@ export async function importAging(
     if (threshold < 0n) throw new SubledgerError("Batas pembulatan tidak boleh negatif.");
   }
   const read = await readAging(input.data);
-  const codes = input.accountCodes?.length ? input.accountCodes : await defaultAccounts(db, input.clientId, input.kind);
+  const picked = [...new Set((input.accountCodes ?? []).map((c) => c.trim()).filter(Boolean))];
+  const codes = picked.length ? picked : await defaultAccounts(db, input.clientId, input.kind);
   const known = await db.account.findMany({ where: { clientId: input.clientId, code: { in: codes } }, select: { code: true } });
   if (!known.length) throw new SubledgerError(`Belum ada akun ${input.kind === "RECEIVABLE" ? "piutang usaha" : "utang usaha"} untuk dibandingkan. Pilih akunnya.`);
   if (known.length !== codes.length) throw new SubledgerError(`Akun ${codes.filter((c) => !known.some((k) => k.code === c)).join(", ")} tidak ada di bagan akun klien.`);
@@ -223,6 +231,7 @@ export async function importAging(
     } else if (open) {
       const resolution = `Aging baru per ${formatDate(asOf)} (${input.fileName}) cocok dengan buku besar${c.status === "ROUNDING" ? ` dalam batas pembulatan (${formatMoney(c.difference, "IDR")})` : ""}.`;
       await tx.finding.update({ where: { id: open.id }, data: { status: "RESOLVED", resolution, resolvedById: input.actorId ?? null, resolvedAt: new Date() } });
+      await recordEvent(tx, findingClosed(input.clientId, open, resolution, input.actorId));
     }
     if (findingId) await tx.subledgerImport.update({ where: { id: imp.id }, data: { findingId } });
     await recordEvent(tx, {
@@ -238,8 +247,23 @@ export async function importAging(
   });
 }
 
-/** Closes a subledger Temuan with the accountant's explanation; optionally names the correcting journal already posted. Posts nothing. */
-export async function resolveSubledgerFinding(db: Db, input: { clientId: string; findingId: string; explanation: string; entryId?: string | null; actorId?: string | null }) {
+/** The audit event of a Temuan closed without the accountant's explanation (a matching re-import, the import deleted). */
+const findingClosed = (clientId: string, f: { id: string; number: number; entityId: string; amount: bigint }, resolution: string, actorId?: string | null) => ({
+  clientId,
+  entityId: f.entityId,
+  kind: "FINDING_RESOLVED" as const,
+  subject: `finding:${f.id}`,
+  summary: `${findingLabel(f.number)} ditutup: ${resolution}`,
+  before: { status: "OPEN", difference: f.amount.toString() },
+  after: { status: "RESOLVED", explanation: resolution },
+  actorId,
+});
+
+/**
+ * Closes a subledger Temuan with the accountant's explanation. Posts nothing: a correction goes through Jurnal Penyesuaian and the
+ * explanation names it.
+ */
+export async function resolveSubledgerFinding(db: Db, input: { clientId: string; findingId: string; explanation: string; actorId?: string | null }) {
   const explanation = input.explanation.trim();
   if (explanation.length < DECISION_MIN) throw new SubledgerError(`Tulis penjelasannya (min. ${DECISION_MIN} karakter): apa penyebab selisih dan siapa yang mengonfirmasi.`);
   return db.$transaction(async (tx) => {
@@ -247,23 +271,8 @@ export async function resolveSubledgerFinding(db: Db, input: { clientId: string;
     const f = await tx.finding.findFirst({ where: { id: input.findingId, clientId: input.clientId } });
     if (!f || f.kind !== "SUBLEDGER_DIFFERENCE") throw new SubledgerError("Temuan rekonsiliasi tidak ditemukan.");
     if (f.status !== "OPEN") throw new SubledgerError(`${findingLabel(f.number)} sudah ditutup.`);
-    let entryId: string | null = null;
-    if (input.entryId) {
-      const e = await tx.journalEntry.findFirst({ where: { id: input.entryId, entityId: f.entityId }, select: { id: true } });
-      if (!e) throw new SubledgerError("Jurnal koreksi tidak ditemukan di entitas ini.");
-      entryId = e.id;
-    }
-    await recordEvent(tx, {
-      clientId: input.clientId,
-      entityId: f.entityId,
-      kind: "FINDING_RESOLVED",
-      subject: `finding:${f.id}`,
-      summary: `${findingLabel(f.number)} ditutup: ${explanation}`,
-      before: { status: "OPEN", difference: f.amount.toString() },
-      after: { status: "RESOLVED", explanation, entryId },
-      actorId: input.actorId,
-    });
-    return tx.finding.update({ where: { id: f.id }, data: { status: "RESOLVED", resolution: explanation, resolvedEntryId: entryId, resolvedById: input.actorId ?? null, resolvedAt: new Date() } });
+    await recordEvent(tx, findingClosed(input.clientId, f, explanation, input.actorId));
+    return tx.finding.update({ where: { id: f.id }, data: { status: "RESOLVED", resolution: explanation, resolvedById: input.actorId ?? null, resolvedAt: new Date() } });
   });
 }
 
@@ -274,7 +283,9 @@ export async function deleteSubledgerImport(db: Db, input: { clientId: string; i
     const imp = await tx.subledgerImport.findFirst({ where: { id: input.importId, clientId: input.clientId }, include: { entity: true, finding: true } });
     if (!imp) throw new SubledgerError("Impor aging tidak ditemukan.");
     if (imp.finding?.status === "OPEN") {
-      await tx.finding.update({ where: { id: imp.finding.id }, data: { status: "RESOLVED", resolution: `Impor aging ${imp.fileName} dihapus.`, resolvedById: input.actorId ?? null, resolvedAt: new Date() } });
+      const resolution = `Impor aging ${imp.fileName} dihapus; selisihnya tidak lagi diperiksa.`;
+      await tx.finding.update({ where: { id: imp.finding.id }, data: { status: "RESOLVED", resolution, resolvedById: input.actorId ?? null, resolvedAt: new Date() } });
+      await recordEvent(tx, findingClosed(input.clientId, imp.finding, resolution, input.actorId));
     }
     await tx.subledgerImport.delete({ where: { id: imp.id } });
     await recordEvent(tx, {

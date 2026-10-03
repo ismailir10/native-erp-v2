@@ -28,7 +28,7 @@ export default async function OpeningPage({ params }: { params: Promise<{ id: st
   const imported = new Set(
     (await prisma.journalEntry.findMany({ where: { entityId: { in: ctx.map((c) => c.entity.id) }, kind: "IMPORTED" }, select: { entityId: true }, distinct: ["entityId"] })).map((e) => e.entityId),
   );
-  const openFindings = await prisma.finding.findMany({ where: { clientId: client.id, status: "OPEN" }, orderBy: { number: "asc" }, select: { entityId: true, number: true } });
+  const openFindings = await prisma.finding.findMany({ where: { clientId: client.id, status: "OPEN", kind: "OPENING_DIFFERENCE" }, orderBy: { number: "asc" }, select: { entityId: true, number: true } });
   const waiting = (entityId: string) => openFindings.filter((f) => f.entityId === entityId).map((f) => findingLabel(f.number));
   const currencyOf = (entityId: string) => client.entities.find((e) => e.id === entityId)?.functionalCurrency ?? "IDR";
 

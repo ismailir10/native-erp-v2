@@ -53,8 +53,8 @@ Traps: the aging doesn't cover all payables, and a Rp 5 rounding must not flood 
   - a comparison outside the threshold opens one Temuan `SUBLEDGER_DIFFERENCE`, with the difference and a question naming the file,
     date and accounts;
   - re-importing the same entity, kind and date replaces the earlier import, and its still-open Temuan is updated, not duplicated;
-  - resolving writes the explanation (min. 10 characters), and optionally links a correcting journal the accountant already posted;
-    it never posts by itself;
+  - resolving writes the explanation (min. 10 characters); a correction goes through Jurnal Penyesuaian and the explanation names it
+    (review pass: the journal link was dropped, see below); it never posts by itself;
   - an open one shows on the close as a REVIEW control "Rekonsiliasi subledger"; resolved ones stay in the history.
 - [ ] **Several years:** imports are listed by date, so 2023 and 2024 sit side by side, each with its own difference and Temuan.
 
@@ -170,5 +170,38 @@ Traps: the aging doesn't cover all payables, and a Rp 5 rounding must not flood 
     - `npm run build` passes;
     - `npm run demo:reset && npm run verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`;
     - e2e runs in CI.
+
+## Review pass
+An independent review found 15 issues (2 H, 8 M, 5 L), each reproduced with a probe. All fixed:
+- **H — total column.** A merged "Total Umur Piutang" title over the buckets made a bucket the total. Now the total column is the last
+  non-bucket column labelled total/saldo, and a merged group title (ExcelJS repeats its text in each cell) doesn't count. Rows whose
+  buckets don't add up to their total are noted.
+- **H — name column.** A title in A1 made the "No" column the names, and "Kode Pelanggan" won over "Nama Pelanggan". Now the header
+  row's own "Nama …" comes first, never a code or number column; the stacked label is only a fallback.
+- **M — reader:**
+  - a summary sheet before the aging won: now the sheet with age columns and the most rows wins, with a note naming it;
+  - a formula total saved without its result read 0: the buckets stand in, noted;
+  - footer rows after the Grand Total ("Saldo menurut GL", "Selisih") were counterparties: below the grand total only rows with an
+    age split count, the rest are noted as skipped.
+- **M — supplier advances had the wrong sign**, and "Pajak dibayar di muka" or deposits were advance candidates. Both sides now show
+  the advance positive; the pattern is uang muka / diterima di muka / advance / titipan.
+- **M — Saldo Awal page** listed a subledger Temuan as an opening-balance decision: filtered to the opening kind.
+- **M — the correcting-journal link** was never wired and broke on a journal explaining two Temuan (unique `resolvedEntryId`):
+  dropped; the explanation names the journal.
+- **M — tests:** the report-status test now plants a 3290 balance with its own Temuan, so it shows that only that one is named; the
+  reader test merges cells for real.
+- **M — per-counterparty table:** a name over several aging rows is compared once, with all its rows' references.
+- **L — amounts:** "1.000-" and "1.000 CR" read as credits.
+- **L — audit:** a Temuan closed by a matching re-import or by deleting the import writes a `FINDING_RESOLVED` event; the delete now
+  asks in a dialog that says the Temuan closes as "impor dihapus" and is kept in the history.
+- **L — stale Temuan:** the close control computes the difference fresh and says "sekarang cocok, tinggal ditutup"; the card says the
+  same above the explanation form.
+- **L — UI:** an empty-state sentence when no Rupiah entity is in scope; the picked entity falls back when the scope changes; cards
+  ordered open Temuan → explained difference → matching.
+- **L — input:** an impossible date (31 Feb) is refused; account codes are trimmed and de-duplicated.
+
+Verification: `tests/unit/aging-read.test.ts` 6 (merged titles, Kode/No columns, summary sheet, formula total, footer, CR and
+trailing minus), `tests/db/subledger-recon.test.ts` 4 (adds the payable advance sign, a name over two rows, the date and codes, the
+fresh control detail, the audit trail).
 
 ## Ship Notes
