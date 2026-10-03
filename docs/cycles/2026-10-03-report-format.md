@@ -106,7 +106,7 @@ The cycle runs without a separate stop. The new dependency (below) is the only g
       (expense on a BS line, asset on an unknown line → shown, IS net = BS laba berjalan, reason present).
 - [x] T2 Format core: `lib/reports/format.ts` (types, standard format, symbolic validation, render to rows) + `ReportFormat` model,
       migration, client delete. Accept: unit tests (standard renders today's totals; a renamed and reordered format renders; each refusal).
-- [ ] T3 Page from the format: Laba Rugi and Neraca, unit line, thousands, last-month column. Accept: e2e statements walk unchanged;
+- [x] T3 Page from the format: Laba Rugi and Neraca, unit line, thousands, last-month column. Accept: e2e statements walk unchanged;
       DB/unit test of a custom format on the page model.
 - [ ] T4 Excel from the format with formulas, unit row, thousands format. Accept: DB test reads formulas back, cached results equal the
       totals, labels in format order.
@@ -134,6 +134,14 @@ The cycle runs without a separate stop. The new dependency (below) is the only g
   - `renderFormat` to FsTable-shaped sections, totals from the rendered lines, and `toUnit` for thousands.
 
   `ReportFormat` model + migration `20261003060000_report_format`; `deleteClient` deletes it. Test: `tests/unit/report-format.test.ts`.
+- T3: the reports page loads the client's format (`loadReportFormat`) and renders the Laba Rugi and Neraca with `renderFormat`:
+  - Laba Rugi columns: this month, last month (when it has entries), year to date, the same months last year;
+  - the OCI section is appended in the same unit;
+  - client-account rows and the unit line ("ribuan Rupiah") are scaled;
+  - the card description names a client format and its source.
+
+  `FsTable` draws format sections: review colour by the item's `review` flag (SUSPENSE and the *belum terpetakan* lines), caps totals.
+  Test: `tests/db/report-format.test.ts`.
 
 ## Verification
 - T1: `tests/db/report-unmapped.test.ts` → `Tests 1 passed (1)`; lint + typecheck clean; `npm test` →
@@ -141,5 +149,7 @@ The cycle runs without a separate stop. The new dependency (below) is the only g
 - T2: `tests/unit/report-format.test.ts` → `Tests 4 passed (4)`. Migration applied to both DBs; `prisma migrate diff
   --from-config-datasource --to-schema` → "This is an empty migration." Lint + typecheck clean; `npm test` →
   `Test Files 147 passed (147) · Tests 1017 passed (1017)`.
+- T3: `tests/db/report-format.test.ts` → `Tests 1 passed (1)`; lint + typecheck clean; `npm test` →
+  `Test Files 148 passed (148) · Tests 1018 passed (1018)`.
 
 ## Ship Notes
