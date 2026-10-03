@@ -1,0 +1,73 @@
+# Split a bank line across accounts (pecah transaksi)
+
+## Context
+Use-case feedback UC-B3 ("Keranjang 6101"): Belifi pays combined transfers, such as "gaji + ongkos produksi" Rp 200 juta in one bank
+line, that the owner then breaks down. Buku can only put a bank line on one account, so the accountant either posts the whole amount to
+one account (wrong expense split) or adds manual adjustments that drift from the bank row.
+
+UC-B3 step 3 asks to *pecah transaksi gabungan menjadi beberapa akun*, with this pass condition: "Pemecahan wajib seimbang: jumlah
+bagian = nominal asli, jika tidak ditolak dengan pesan."
+
+The posting model already supports it: the bank side is posted once, and the classification side moves by RECLASS entries that post only
+the difference (`lib/ledger/bank.ts`). A split is a classification side with several accounts. Every line keeps `bankTransactionId`, so
+each part still drills to the same bank row (rule 5).
+
+## Spec
+- [ ] **Pecah transaksi.**
+  - A reviewer splits a bank line into two or more parts (account + amount + optional note) from Review and from Buku Besar's line
+    dialog.
+  - The parts must add up exactly to the line's amount. Otherwise the split is refused naming the difference: "Jumlah bagian Rp 190.000.000
+    belum sama dengan nominal mutasi Rp 200.000.000 (kurang Rp 10.000.000)."
+  - Amounts are typed like other money fields (`parseMoney`, the line's currency), each greater than zero.
+- [ ] **Posting.**
+  - The classification side becomes one leg per part, posted as a RECLASS of the difference from what was there. The bank leg never
+    changes.
+  - Every leg keeps `bankTransactionId`, so each part drills to the bank row; the TB, Laba Rugi and Neraca move by the parts.
+  - Re-splitting posts only the difference again. Choosing a single account in Review or Buku Besar replaces the split (the parts go).
+- [ ] **What a split refuses** (each with a Bahasa message saying what to do):
+  - a part on 1999 Belum Terklasifikasi or on the transfer/intercompany accounts (1199 / 1190);
+  - a line paired as a transfer (unpair first);
+  - a line that settles invoices or carries withholding (those own the classification);
+  - a locked month;
+  - fewer than two parts, or a duplicate account.
+- [ ] **Bookkeeping around it.**
+  - The line becomes REVIEWED and MANUAL with the reason "Dipecah ke n akun". Its `accountCode` is the largest part, so filters and the
+    6101 leakage control still see one account.
+  - Memory and rules never learn from a split (a combined transfer is a one-off).
+  - The transfer matcher never pairs a split line.
+  - The split is recorded in the history (CLASSIFY, before/after with the parts).
+  - Any other path that would re-post the line with one account (settling, the transfer matcher, suspense tools) is refused while the
+    split stands, so the parts can't silently vanish.
+- [ ] **Seen where it matters.**
+  - Review and Buku Besar show a split line as "Dipecah: 6101 Rp 120.000.000 · 5110 Rp 80.000.000".
+  - Each part's ledger line links back to the bank row, as today.
+
+**Non-goals:**
+- Tax tags (PPN) or withholding on individual parts. A line with withholding or a PPN tag can't be split; split first, then add tax by
+  journal.
+- Splitting by percentage, and saving a split as a rule.
+- The owner question list export (UC-B3's other item).
+- Splitting ledger-import (GL file) lines.
+
+**Gate-reopeners:**
+- Schema migration: a new table `BankTxSplit` (bankTransactionId, position, accountCode, amount > 0 CHECK, memo), additive.
+
+**Assumptions:**
+1. A part's amount is entered as a positive magnitude; its side follows the bank line (money out → debit parts).
+2. `accountCode` on the bank line holds the largest part (ties: the first) for filters and controls; the parts are the truth for posting.
+3. Any member (not only an admin) can split, like any review decision.
+
+## Tasks
+- [ ] T1 Model + posting: `BankTxSplit` (migration, CHECK, client delete), `classificationNets` for parts, `splitTransaction` in
+      `lib/review.ts` with every refusal, the guard in `postBankTransaction`, `reviewTransactionTx` clearing a split, and the matcher
+      skipping split lines. Accept: DB tests for a 200 jt line split 120/80 (GL by part, drill by `bankTransactionId`), a re-split
+      posting only the difference, back to one account, each refusal, and TB balance.
+- [ ] T2 UI: *Pecah* in Review and in Buku Besar's dialog (rows of account + amount + note, running remainder, save enabled only when
+      balanced, server refusal verbatim); split lines shown with their parts. Accept: visual check at 1280 / 390 px; action test.
+- [ ] T3 Rules (rule 5/14 note), README, end-of-cycle gates, review pass, ship.
+
+## Implementation
+
+## Verification
+
+## Ship Notes
