@@ -11,6 +11,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AccountPicker } from "@/components/app/account-picker";
 import { MethodBadge } from "@/components/app/status";
+import { SplitDialog } from "@/components/app/split-dialog";
 import { acceptSimilarAction, reviewAction, suggestAgainAction } from "@/app/actions";
 import { formatMoney, PPN_EFFECTIVE_PERCENT } from "@/lib/money";
 import { DEFAULT_RATE, grossUpWithholding, WITHHOLDING_LABEL } from "@/lib/tax/withholding";
@@ -434,6 +435,17 @@ export function ReviewQueue({
                       {changed ? `Simpan untuk ${i.similar} serupa` : `Terima ${i.similar} serupa`}
                     </Button>
                   )}
+                  <SplitDialog
+                    bankTxId={i.id}
+                    amount={i.amount}
+                    currency={i.currency}
+                    accounts={accounts}
+                    onDone={() => {
+                      clearDraft(i.id);
+                      setDone((d) => new Set(d).add(i.id));
+                      router.refresh();
+                    }}
+                  />
                   <Button size="sm" variant={idx === active ? "default" : "outline"} disabled={busy !== null} onClick={() => accept(i)} data-testid="accept">
                     <Check /> {changed ? "Simpan" : "Terima"}
                   </Button>

@@ -78,6 +78,10 @@ describe("pecah transaksi", () => {
     await expect(split([{ accountCode: "6100", amount: "200.000.000" }, { accountCode: "1999", amount: "0" }])).rejects.toThrow("Bagian 2: akun 1999");
     await expect(split([{ accountCode: "6100", amount: "200.000.000" }, { accountCode: "5110", amount: "0" }])).rejects.toThrow("Bagian 2: isi nominal lebih dari nol.");
     await expect(split([{ accountCode: "6100", amount: "500.000" }, { accountCode: "1199", amount: "500.000" }], paired.id)).rejects.toThrow("Lepas pasangannya dulu");
+    // A posted PPN line can't be split (tax per part isn't supported); a suggestion in Review doesn't block.
+    await reviewTransaction(db, { bankTxId: t.id, accountCode: "6100", taxTag: "PPN_MASUKAN" });
+    await expect(split([{ accountCode: "6100", amount: "120.000.000" }, { accountCode: "5110", amount: "80.000.000" }])).rejects.toThrow("Mutasi ini memakai pajak (PPN/PPh).");
+    await reviewTransaction(db, { bankTxId: t.id, accountCode: "6100", taxTag: null });
     await db.period.update({ where: { clientId_year_month: { clientId: g.client.id, year: 2026, month: 8 } }, data: { status: "LOCKED", lockedAt: new Date() } });
     await expect(split([{ accountCode: "6100", amount: "120.000.000" }, { accountCode: "5110", amount: "80.000.000" }])).rejects.toThrow(/dikunci|ditutup/);
     expect(await db.bankTxSplit.count()).toBe(0);

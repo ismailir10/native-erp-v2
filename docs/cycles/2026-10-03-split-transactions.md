@@ -62,7 +62,7 @@ each part still drills to the same bank row (rule 5).
       `lib/review.ts` with every refusal, the guard in `postBankTransaction`, `reviewTransactionTx` clearing a split, and the matcher
       skipping split lines. Accept: DB tests for a 200 jt line split 120/80 (GL by part, drill by `bankTransactionId`), a re-split
       posting only the difference, back to one account, each refusal, and TB balance.
-- [ ] T2 UI: *Pecah* in Review and in Buku Besar's dialog (rows of account + amount + note, running remainder, save enabled only when
+- [x] T2 UI: *Pecah* in Review and in Buku Besar's dialog (rows of account + amount + note, running remainder, save enabled only when
       balanced, server refusal verbatim); split lines shown with their parts. Accept: visual check at 1280 / 390 px; action test.
 - [ ] T3 Rules (rule 5/14 note), README, end-of-cycle gates, review pass, ship.
 
@@ -81,6 +81,21 @@ each part still drills to the same bank row (rule 5).
   - `reviewTransactionTx` clears a split before a one-account decision, and history shows the parts it came from.
   - The transfer matcher's candidate query skips split lines.
   - `splitTransactionAction` (scoped by `assertTxInFirm`).
+- T2: `components/app/split-dialog.tsx`:
+  - `SplitDialog` has rows of account (1999/1199/1190 left out), amount and note, with *Tambah bagian* pre-filling the remainder.
+  - A live "Sisa / Lebih / Seimbang dengan mutasi" line shows the remainder (review colour until zero), and an unreadable amount is
+    outlined in fail colour.
+  - *Simpan pecahan* is enabled only when balanced with every part filled; the server's refusal is shown verbatim.
+  - `SplitSummary` shows "Dipecah: …".
+
+  Where it appears:
+  - Review: *Pecah* on every card; a saved split leaves the queue.
+  - Buku Besar line sheet: *Pecah* / *Ubah pecahan* (pre-filled) beside *Ubah akun* for unpaired lines, a *Bagian* row with the parts,
+    and a note that *Simpan* with one account merges the split back.
+  - `accountLedger` returns the parts on the source.
+
+  Assumption change: a Review line's `taxTag` is only a suggestion (its posting sits on 1999), so the tax refusal applies only to
+  posted tax (status ≠ NEEDS_REVIEW, or withholding).
 
 ## Verification
 - T1: `tests/db/split-transactions.test.ts` → `Tests 2 passed (2)`:
@@ -89,6 +104,15 @@ each part still drills to the same bank row (rule 5).
   - a re-split is one RECLASS of ±20 jt;
   - a one-account re-post is refused, and Review's one-account decision replaces the split (6100 200 jt, no parts left);
   - each refusal message, and a locked month.
+
+  Lint + typecheck clean; `npm test` → `Test Files 157 passed (157) · Tests 1043 passed (1043)`.
+- T2: the split test adds the tax cases (a posted PPN line is refused; after one-account review without tax it can be split).
+  Visual check (dev server, demo Grup Ayam Nusantara, Review Agustus 2026):
+  - the 185 jt "AGRO TEKNIK … MESIN PAKAN" line split 1210 150 jt + 6150 30 jt shows "Sisa Rp 5.000.000" with save disabled;
+  - at 35 jt it reads "Seimbang dengan mutasi", saves, and leaves the queue;
+  - Buku Besar 1210 shows the line with "Dipecah: 1210 Rp 150.000.000 · 6150 Rp 35.000.000", the history entry, and the RECLASS
+    journal (1999 Cr 185 jt, 1210 Dr 150 jt, 6150 Dr 35 jt);
+  - at 390 px the dialog stacks and there is no horizontal scroll; at 1280 px each part is one row.
 
   Lint + typecheck clean; `npm test` → `Test Files 157 passed (157) · Tests 1043 passed (1043)`.
 

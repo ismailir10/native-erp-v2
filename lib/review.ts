@@ -221,7 +221,8 @@ export async function splitTransaction(db: Db, args: { bankTxId: string; parts: 
     const total = t.amount < 0n ? -t.amount : t.amount;
     if (t.matchedTxId) throw new LedgerError("Mutasi ini dipasangkan sebagai transfer antar rekening. Lepas pasangannya dulu, lalu pecah.");
     if (t.settlements.length) throw new LedgerError(`Mutasi ini melunasi ${t.settlements.map((x) => x.invoice.number).join(", ")}. Hapus pencocokannya dulu di Piutang & Utang, lalu pecah.`);
-    if (t.taxTag || t.whtAmount > 0n) throw new LedgerError("Mutasi ini memakai pajak (PPN/PPh). Pecahan belum mendukung pajak per bagian: hapus pajaknya di Review dulu, lalu catat pajaknya lewat jurnal.");
+    // A line still in Review only has a suggested tag (its posting is on 1999): the tax that blocks a split is one posted on the line.
+    if ((t.taxTag && t.status !== "NEEDS_REVIEW") || t.whtAmount > 0n) throw new LedgerError("Mutasi ini memakai pajak (PPN/PPh). Pecahan belum mendukung pajak per bagian: hapus pajaknya di Review dulu, lalu catat pajaknya lewat jurnal.");
     const parts = args.parts.filter((p) => p.accountCode || p.amount?.trim());
     if (parts.length < 2) throw new LedgerError("Pecah ke setidaknya dua akun.");
 

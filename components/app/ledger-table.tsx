@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { SplitDialog, SplitSummary, type SplitPartView } from "@/components/app/split-dialog";
 import { AccountPicker, type AccountOption } from "@/components/app/account-picker";
 import { reverseEntryAction, reviewAction, unpairTransferAction } from "@/app/actions";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -30,7 +31,7 @@ export type LedgerRow = {
   entry: { lines: { code: string; name: string; debit: string; credit: string }[] };
   /** Adjustments: whether *Balik jurnal* applies (blocker = why not, and where it is changed instead), and the entry's date. */
   reversal?: { entryId: string; blocker: string | null; date: string };
-  source: null | { bankTxId: string; accountCode: string | null; taxTag: string | null; whtKind: string | null; whtAmount: string; fileName: string; sheet: string | null; rowNumber: number; rawRow: string; description: string; amount: string; bank: string; method: string; reason: string; status: string; /** The other half of a transfer pair, when it has one. */ pairedWith?: string | null; /** Who changed this line, newest first (ADR 0013). */ history?: { at: string; actor: string; summary: string }[] };
+  source: null | { bankTxId: string; accountCode: string | null; taxTag: string | null; whtKind: string | null; whtAmount: string; fileName: string; sheet: string | null; rowNumber: number; rawRow: string; description: string; amount: string; bank: string; method: string; reason: string; status: string; /** The other half of a transfer pair, when it has one. */ pairedWith?: string | null; /** A split line's parts (pecah transaksi). */ splits?: SplitPartView[]; /** Who changed this line, newest first (ADR 0013). */ history?: { at: string; actor: string; summary: string }[] };
   /** Ledger / Neraca import: file, entry rows, this line's row, the client's own account, and the original fx amount. */
   fileSource?: null | { fileName: string; entryRef: string; lineRef: string | null; sourceAccount: string | null; lineMemo: string | null; fx: string | null };
 };
@@ -149,6 +150,7 @@ export function LedgerTable({ rows, opening, currency = "IDR", accounts }: { row
                       <dt className="text-muted-foreground">File</dt><dd className="col-span-2 font-mono text-xs">{open.source.fileName}, {open.source.sheet ? `lembar ${open.source.sheet}, ` : ""}baris {open.source.rowNumber}</dd>
                       <dt className="text-muted-foreground">Nominal</dt><dd className="num col-span-2">{formatMoney(BigInt(open.source.amount), currency)}</dd>
                       <dt className="text-muted-foreground">Klasifikasi</dt><dd className="col-span-2 flex items-center gap-2"><MethodBadge method={open.source.method} /> <span className="text-xs text-muted-foreground">{open.source.reason}</span></dd>
+                      {open.source.splits && open.source.splits.length > 0 && (<><dt className="text-muted-foreground">Bagian</dt><dd className="col-span-2"><SplitSummary parts={open.source.splits} currency={currency} /></dd></>)}
                     </dl>
                     <pre className="mt-3 overflow-x-auto rounded-md bg-muted p-3 text-xs whitespace-pre-wrap break-all">{open.source.rawRow}</pre>
                     {open.source.history && open.source.history.length > 0 && (
@@ -178,8 +180,23 @@ export function LedgerTable({ rows, opening, currency = "IDR", accounts }: { row
                         <p className="text-xs text-muted-foreground">Sisi bank tetap; Buku mencatat reklasifikasi selisihnya dan mengingat pilihan ini.</p>
                         <div className="flex flex-wrap items-center gap-2">
                           <AccountPicker value={newCode} onChange={setNewCode} options={accounts} ariaLabel="Akun baru" className="w-80 max-w-full" />
-                          <Button size="sm" disabled={saving || !newCode || (newCode === open.source.accountCode && !whtChanged)} onClick={reclass}>Simpan</Button>
+                          <Button size="sm" disabled={saving || !newCode || (newCode === open.source.accountCode && !whtChanged && !open.source.splits?.length)} onClick={reclass}>Simpan</Button>
+                          {!open.source.pairedWith && (
+                            <SplitDialog
+                              bankTxId={open.source.bankTxId}
+                              amount={open.source.amount}
+                              currency={currency}
+                              accounts={accounts}
+                              initial={open.source.splits}
+                              trigger={open.source.splits?.length ? "Ubah pecahan" : "Pecah"}
+                              onDone={() => {
+                                show(null);
+                                router.refresh();
+                              }}
+                            />
+                          )}
                         </div>
+                        {open.source.splits && open.source.splits.length > 0 && <p className="text-xs text-muted-foreground">Memilih satu akun lalu Simpan menggabungkan pecahan kembali ke akun itu.</p>}
                         <div className="flex flex-wrap items-center gap-2 pt-2" data-testid="withholding">
                           <SimpleSelect
                             label="Pajak yang dipotong"
