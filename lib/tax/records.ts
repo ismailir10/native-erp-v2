@@ -4,6 +4,7 @@ import { LedgerError } from "@/lib/ledger/post";
 import { dateOnly } from "@/lib/format";
 import { parseMoney } from "@/lib/money";
 import { packApplies } from "@/lib/tax/pack";
+import { fiscalEndMonth } from "@/lib/fiscal";
 import { categoryOf } from "@/lib/tax/categories";
 
 /**
@@ -15,6 +16,7 @@ async function yearFor(db: Db | Tx, clientId: string, entityId: string, year: nu
   const entity = await db.entity.findFirst({ where: { id: entityId, clientId } });
   if (!entity) throw new LedgerError("Pilih entitas.");
   if (!packApplies(entity)) throw new LedgerError("Paket PPh badan hanya untuk badan usaha dengan pembukuan Rupiah.");
+  if ((await fiscalEndMonth(db, clientId)) !== 12) throw new LedgerError("Pajak Badan untuk tahun buku non-kalender belum didukung di Buku.");
   if (!(Number.isInteger(year) && year >= 2000 && year <= 2100)) throw new LedgerError("Tahun pajak tidak valid.");
   const december = await db.period.findUnique({ where: { clientId_year_month: { clientId, year, month: 12 } } });
   if (december?.status === "LOCKED") throw new LedgerError(`Desember ${year} sudah dikunci; data pajak ${year} tidak bisa diubah. Buka kunci Desember dulu.`);

@@ -64,7 +64,7 @@ async function collectControls(db: Db, clientId: string, year: number, month: nu
   const controls: Control[] = [];
   const base = `/clients/${clientId}`;
   const clientScope = entities.length > 1 ? "Grup" : (entities[0]?.shortName ?? "Klien");
-  const { industry } = await db.client.findUniqueOrThrow({ where: { id: clientId }, select: { industry: true } });
+  const { industry, fiscalYearEndMonth: yearEnd } = await db.client.findUniqueOrThrow({ where: { id: clientId }, select: { industry: true, fiscalYearEndMonth: true } });
 
   for (const e of entities) {
     const scope = { clientId, entityIds: [e.id] };
@@ -330,8 +330,9 @@ async function collectControls(db: Db, clientId: string, year: number, month: nu
       });
     }
 
-    // Employee benefits (rule 5g): in December, once the entity has assumptions, 2310 should equal the PSAK 24 obligation.
-    if (month === 12 && (await db.benefitSetting.findUnique({ where: { entityId: e.id }, select: { id: true } }))) {
+    // Employee benefits (rule 5g): in the year-end month (December unless the tahun buku ends elsewhere), once the entity has assumptions,
+    // 2310 should equal the PSAK 24 obligation.
+    if (month === yearEnd && (await db.benefitSetting.findUnique({ where: { entityId: e.id }, select: { id: true } }))) {
       const v = await valuation(db, clientId, e.id, year, month);
       const ebKey = `eb:${e.id}`;
       controls.push({
@@ -340,13 +341,13 @@ async function collectControls(db: Db, clientId: string, year: number, month: nu
         scope: e.shortName,
         status: !v.blocker && !v.lines.length ? "PASS" : "REVIEW",
         detail: v.blocker ?? (v.lines.length ? `Liabilitas imbalan kerja ${fmt(v.dbo)} vs buku besar ${fmt(v.ledger.liability)} (2310); jurnal valuasi belum dicatat${v.later ? ` (sudah dijurnal per ${formatDate(v.later)})` : ""}` : `Liabilitas imbalan kerja ${fmt(v.dbo)} sesuai valuasi (${v.employees.length} karyawan)`),
-        href: `${base}/benefits?period=${year}-12&entity=${e.id}`,
+        href: `${base}/benefits?period=${year}-${String(month).padStart(2, "0")}&entity=${e.id}`,
         ack: acks.get(ebKey),
       });
     }
 
-    // Tax pack (rule 5d): in December, a company's PPh badan for the year should be booked.
-    if (month === 12 && packApplies(e)) {
+    // Tax pack (rule 5d): in December, a company's PPh badan for the year should be booked. Calendar tahun buku only (lib/fiscal.ts).
+    if (month === 12 && yearEnd === 12 && packApplies(e)) {
       const pack = await taxPack(db, clientId, e.id, year, month);
       const final = pack?.regime === "FINAL_UMKM";
       const expense = pack?.proposals.CURRENT.find((l) => l.code === (final ? ACCOUNT_CODES.FINAL_TAX : ACCOUNT_CODES.CURRENT_TAX))?.amount ?? 0n;

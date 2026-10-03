@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { financialYear, fiscalLabel, fiscalSpan, fiscalYearStart, priorYearEnd, samePeriodLastYear } from "@/lib/fiscal";
+import { financialYear, fiscalLabel, fiscalSpan, fiscalYearStart, monthsIntoYear, periodFrom, priorYearEnd, samePeriodLastYear } from "@/lib/fiscal";
 import { dateOnly } from "@/lib/format";
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -42,5 +42,10 @@ describe("financial year", () => {
 
   it("names the months in Bahasa", () => {
     expect([fiscalSpan(12), fiscalSpan(1), fiscalSpan(2), fiscalSpan(6)]).toEqual(["1 Januari – 31 Desember", "1 Februari – 31 Januari", "1 Maret – akhir Februari", "1 Juli – 30 Juni"]);
+  });
+
+  it("counts the months into the year and prints a period's start without a repeated year", () => {
+    expect([monthsIntoYear(12, 2026, 8), monthsIntoYear(1, 2026, 8), monthsIntoYear(1, 2027, 1), monthsIntoYear(6, 2026, 12)]).toEqual([8, 7, 12, 6]);
+    expect([periodFrom(dateOnly(2026, 1, 1), dateOnly(2026, 8, 31)), periodFrom(dateOnly(2026, 2, 1), dateOnly(2026, 8, 31), true), periodFrom(dateOnly(2025, 2, 1), dateOnly(2026, 1, 31))]).toEqual(["1 Jan", "1 Februari", "1 Feb 2025"]);
   });
 });

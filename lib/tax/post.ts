@@ -1,6 +1,7 @@
 import type { Db } from "@/lib/db";
 import type { TaxPostingKind } from "@/lib/generated/prisma/enums";
 import { LedgerError, postJournal, type PostLine } from "@/lib/ledger/post";
+import { fiscalEndMonth } from "@/lib/fiscal";
 import { templateAccounts } from "@/lib/coa/ensure";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { formatDate, formatPeriod } from "@/lib/format";
@@ -16,6 +17,7 @@ export async function postTax(db: Db, input: { clientId: string; entityId: strin
   const pack = await taxPack(db, input.clientId, input.entityId, input.year, input.month);
   if (!pack) throw new LedgerError("Entitas tidak ditemukan.");
   if (!pack.applicable) throw new LedgerError("Paket PPh badan hanya untuk badan usaha dengan pembukuan Rupiah.");
+  if ((await fiscalEndMonth(db, input.clientId)) !== 12) throw new LedgerError("Pajak Badan untuk tahun buku non-kalender belum didukung di Buku.");
   const later = pack.laterPosting[input.kind];
   if (later) throw new LedgerError(`Jurnal ${input.kind === "CURRENT" ? "pajak kini" : "pajak tangguhan"} sudah dicatat per ${formatDate(later)}. Catat perubahan di bulan itu atau sesudahnya.`);
   const lines = pack.proposals[input.kind];

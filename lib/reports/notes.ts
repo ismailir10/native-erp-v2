@@ -1,7 +1,7 @@
 import type { Db } from "@/lib/db";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { formatDate, formatPeriod, periodBounds } from "@/lib/format";
-import { financialYear, fiscalEndMonth, periodFrom, priorYearEnd, samePeriodLastYear } from "@/lib/fiscal";
+import { financialYear, fiscalEndMonth, fiscalSpan, periodFrom, priorYearEnd, samePeriodLastYear } from "@/lib/fiscal";
 import { formatMoney } from "@/lib/money";
 import { balanceSheet, incomeStatement, type FsItem, type Scope } from "@/lib/reports/ledger";
 import { MixedScopeError, otherComprehensiveIncome } from "@/lib/reports/statements";
@@ -269,6 +269,14 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
     return rows;
   };
   for (const e of entities) {
+    // The tax pack is calendar-year only: for another tahun buku the note is management's to write (lib/fiscal.ts).
+    if (packApplies(e) && endMonth !== 12) {
+      const posted = await deferredRows(e.id, null);
+      add(`Pajak penghasilan${entities.length > 1 ? ` · ${e.shortName}` : ""}`, [
+        manual(`rekonsiliasi laba komersial ke laba fiskal dan PPh badan tahun buku ini; Buku belum menghitung Pajak Badan untuk tahun buku ${fiscalSpan(endMonth)}`),
+      ], posted.length ? [{ columns: ["Uraian", "Jumlah"], rows: posted }] : []);
+      continue;
+    }
     const p = packApplies(e) ? await taxPack(db, scope.clientId, e.id, year, month) : null;
     if (!p || p.regime !== "NORMAL") {
       // No PPh badan reconciliation here (final regime, a person, other books), but a 1270/2320 balance on the Neraca still has its note.

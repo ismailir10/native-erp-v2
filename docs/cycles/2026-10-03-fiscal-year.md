@@ -86,7 +86,7 @@ below are reported back; correct any and the cycle follows.
       Neraca. Calendar clients are unchanged (existing tests).
 - [x] T3 Statements: reports page, `statement-set` (Excel, PDF), CALK. Accept: DB test of columns, comparatives and labels for the
       31 January client; existing statement tests pass unchanged.
-- [ ] T4 Registers and controls: asset register, benefits valuation and control, inventory, ledger-import default opening, tax pack
+- [x] T4 Registers and controls: asset register, benefits valuation and control, inventory, ledger-import default opening, tax pack
       notice, tax control and CALK tax note. Accept: DB tests per site for the 31 January client.
 - [ ] T5 Rule 1 amendment, README, end-of-cycle gates, review pass, ship.
 
@@ -113,6 +113,21 @@ below are reported back; correct any and the cycle follows.
   - The comparison reads "periode yang sama tahun buku sebelumnya" for a non-calendar client.
   - The page's "Laba (rugi) tahun-tahun sebelumnya" link opens the previous year-end month.
   - Non-goal added: FX average rates stay per calendar year (a mixed-currency, non-calendar client is out of scope).
+- T4:
+  - Asset register:
+    - "the year" (disposed this year, `bookYtd`) runs from the financial-year start;
+    - tax depreciation (`fiscalYtd`, `difference`) is left out for a non-calendar client, since tax is calendar-only.
+  - Benefits valuation:
+    - opens at `priorYearEnd`, and takes expense to date from the year start;
+    - `expenseTarget` uses `monthsIntoYear` (months into the financial year) instead of the calendar month.
+  - Close controls: the benefits control runs in the year-end month; the December tax control runs only for a calendar year.
+  - Inventory's COGS test counts from the year start.
+  - Ledger import: a TB without a written opening date is opened the day before the financial-year start.
+  - Pajak Badan for a non-calendar client:
+    - the page shows a notice instead of the pack;
+    - the Excel export route, tax records (`yearFor`) and `postTax` refuse with "Pajak Badan untuk tahun buku non-kalender belum
+      didukung di Buku.";
+    - the CALK's *Pajak penghasilan* note is a management marker, with any posted deferred tax balance.
 
 ## Verification
 - T1: `tests/unit/fiscal.test.ts` (4) + `tests/db/fiscal-settings.test.ts` (1) → `Tests 5 passed (5)`. Migration applied to both DBs.
@@ -130,6 +145,14 @@ below are reported back; correct any and the cycle follows.
   - January 2026 closes 1 Feb 2025 – 31 Jan 2026 (170 jt), and the CALK reads "periode 1 Februari 2025 – 31 Jan 2026";
   - the calendar client reads as before.
 
-  Lint + typecheck clean; `npm test` → all passed.
+  Lint + typecheck clean; `npm test` → `Test Files 155 passed (155) · Tests 1037 passed (1037)`.
+- T4: `tests/db/fiscal-registers.test.ts` → `Tests 3 passed (3)`:
+  - asset register, Chickin: Jan 2027 has 5 jt to date (Sep–Jan), Feb 2027 1 jt, tax depreciation null; the calendar client has 1 jt
+    and 2 jt;
+  - benefits with a June year end: opening 30 Jun 2026, six months' cost by December, and the control in June, not December;
+  - tax refusals, no December tax control, and the CALK marker.
+
+  `tests/unit/fiscal.test.ts` adds `monthsIntoYear` and `periodFrom`. Lint + typecheck clean; `npm test` → `Test Files 156 passed
+  (156) · Tests 1041 passed (1041)`.
 
 ## Ship Notes

@@ -1,3 +1,4 @@
+import { financialYear, fiscalEndMonth } from "@/lib/fiscal";
 import type { Db, Tx } from "@/lib/db";
 import type { AssetTaxGroup, FiscalMethod } from "@/lib/generated/prisma/enums";
 import { LedgerError } from "@/lib/ledger/post";
@@ -235,11 +236,13 @@ export type RegisterRow = {
 
 /**
  * The register at the end of a month: assets acquired by then and not disposed before the year began (an asset disposed this
- * year stays listed with its year's depreciation, its cost and accumulated depreciation derecognised).
+ * year stays listed with its year's depreciation, its cost and accumulated depreciation derecognised). "The year" is the client's
+ * financial year (lib/fiscal.ts); fiscal (tax) depreciation is calendar only, so it is left out for a non-calendar tahun buku.
  */
 export async function assetRegister(db: Db, clientId: string, year: number, month: number, entityIds?: string[]): Promise<RegisterRow[]> {
   const { end } = periodBounds(year, month);
-  const yearStart = dateOnly(year, 1, 1);
+  const endMonth = await fiscalEndMonth(db, clientId);
+  const yearStart = financialYear(endMonth, year, month).start;
   const assets = await db.fixedAsset.findMany({
     where: { clientId, ...(entityIds ? { entityId: { in: entityIds } } : {}), acquiredOn: { lte: end }, OR: [{ disposedOn: null }, { disposedOn: { gte: yearStart } }] },
     include: {
@@ -272,7 +275,7 @@ export async function assetRegister(db: Db, clientId: string, year: number, mont
     const postedK = new Set((s?.entries ?? []).map((e) => e.installment));
     const unposted = s ? installments(s).filter((i) => !i.reversal && owed(s.stoppedAt, i) && i.year * 12 + i.month <= upTo && !locked.has(i.year * 12 + i.month) && !postedK.has(i.k)).length : 0;
     const idr = a.entity.functionalCurrency === "IDR";
-    const fiscal = idr ? fiscalDepreciation({ ...a, disposedOn: a.disposedOn }, year, month) : null;
+    const fiscal = idr && endMonth === 12 ? fiscalDepreciation({ ...a, disposedOn: a.disposedOn }, year, month) : null;
     return {
       id: a.id,
       name: a.name,

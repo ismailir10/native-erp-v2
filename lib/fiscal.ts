@@ -1,4 +1,6 @@
-import type { Db } from "@/lib/db";
+import type { Db, Tx } from "@/lib/db";
+
+type Reader = Pick<Db, "client" | "entity"> | Pick<Tx, "client" | "entity">;
 import { dateOnly, formatDate, formatDateLong, monthName } from "@/lib/format";
 
 /**
@@ -41,13 +43,13 @@ export const fiscalSpan = (endMonth: number) => {
 };
 
 /** The year-end month of the client the entities belong to (an entity's own books, read without the client at hand). */
-export async function fiscalEndMonthOfEntities(db: Db, entityIds: string[]): Promise<number> {
+export async function fiscalEndMonthOfEntities(db: Reader, entityIds: string[]): Promise<number> {
   const e = await db.entity.findFirst({ where: { id: { in: entityIds } }, select: { client: { select: { fiscalYearEndMonth: true } } } });
   return e?.client.fiscalYearEndMonth ?? 12;
 }
 
 /** The client's year-end month (12 when none is set). */
-export async function fiscalEndMonth(db: Db, clientId: string): Promise<number> {
+export async function fiscalEndMonth(db: Reader, clientId: string): Promise<number> {
   const c = await db.client.findUnique({ where: { id: clientId }, select: { fiscalYearEndMonth: true } });
   return c?.fiscalYearEndMonth ?? 12;
 }
@@ -56,5 +58,11 @@ export async function fiscalEndMonth(db: Db, clientId: string): Promise<number> 
 export const periodFrom = (start: Date, to: Date, long = false) => {
   const s = long ? formatDateLong(start) : formatDate(start);
   return start.getUTCFullYear() === to.getUTCFullYear() ? s.replace(/ \d{4}$/, "") : s;
+};
+
+/** Months of the financial year through `month` of `year`: 8 for August in a calendar year, 7 for August when the year began in February. */
+export const monthsIntoYear = (endMonth: number, year: number, month: number) => {
+  const fy = financialYear(endMonth, year, month);
+  return year * 12 + month - (fy.startYear * 12 + fy.start.getUTCMonth() + 1) + 1;
 };
 
