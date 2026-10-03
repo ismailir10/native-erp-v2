@@ -98,7 +98,9 @@ test.describe("sign-in does not reveal who has an account, and typed HTML stays 
       await page.goto("/login/lupa");
       await page.getByLabel("Email").fill(address);
       await page.getByRole("button", { name: /Kirim/i }).click();
-      await expect(page.locator("#workspace-main, main").first()).toContainText(/tautan|terdaftar|email/i);
+      // The notice itself, not just "tautan": the intro already says it, so the page could be read while the button still says "Mengirim…".
+      await expect(page.getByText("Jika alamat ini terdaftar")).toBeVisible();
+      await expect(page.getByRole("button", { name: "Kirim tautan" })).toBeVisible();
       return (await page.locator("body").innerText()).replace(/\s+/g, " ");
     };
     expect(await reset("bukan-anggota@example.test")).toBe(await reset(email));
