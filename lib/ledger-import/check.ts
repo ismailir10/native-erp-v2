@@ -147,7 +147,8 @@ export function dateOutliers(rows: LedgerRow[]): { row: LedgerRow; fix: Date | n
     const candidates: Date[] = [];
     for (let y = start.getUTCFullYear(); y <= end.getUTCFullYear(); y++) {
       const c = dateOnly(y, d.getUTCMonth() + 1, d.getUTCDate());
-      if (c.getUTCDate() === d.getUTCDate() && +c >= +start && +c <= +end) candidates.push(c);
+      // Inside the run's months (a typo on the period's first day is before the other rows).
+      if (c.getUTCDate() === d.getUTCDate() && +c >= +dateOnly(start.getUTCFullYear(), start.getUTCMonth() + 1, 1) && +c <= +dateOnly(end.getUTCFullYear(), end.getUTCMonth() + 2, 0)) candidates.push(c);
     }
     return { row, fix: candidates.length === 1 ? candidates[0] : null, main: { start, end } };
   });

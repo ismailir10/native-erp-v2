@@ -10,6 +10,10 @@ export type ParsedRow = {
   rawRow: string;
   /** Workbook sources: the sheet the row is on (row numbers count within it). */
   sheet?: string;
+  /** A dated row with no amount, passed by the reader only so the repair can read its amount from the moved balance (else dropped). */
+  balanceOnly?: boolean;
+  /** What the file wrote, when `repairStatement` changed it (the dedupe still recognises the row as imported before). */
+  written?: { amount?: bigint; date?: Date };
 };
 
 export type ParsedStatement = {
