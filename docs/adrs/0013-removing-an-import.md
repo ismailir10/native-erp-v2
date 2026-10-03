@@ -11,11 +11,14 @@ account, another year, a duplicate period) could not be taken back.
    transaction under the client's close lock. Reversal was rejected. It would leave the bank lines in place, so the corrected file could
    never be imported again (rows dedupe by hash), and every reader of bank lines would have to learn to skip voided ones.
 2. **Only in open months, only when nothing else rests on it.** Refused when a month it touches is closed (reopen first, which is itself
-   logged), when a line settles an invoice, or when a fixed asset or adjustment schedule was made from one of its journals. A transfer
-   partner in another import is unlinked and stays where it is, so the clearing control shows the open half.
+   logged), when a line settles an invoice, or when a fixed asset or adjustment schedule was made from one of its journals. A Saldo Awal
+   file is also refused while fixed assets from before the books or opening invoices stand on it. A transfer partner in another import is
+   unlinked and stays where it is, so the clearing control shows the open half; refused when that partner's month is closed. The import's
+   bank lines are locked first, so a review or another import can't add to them while they go.
 3. **The removal is permanent history.** An `AuditEvent` keeps the file, account, period, rows, money in and out, journals removed, the net
    taken off each account, the reason, who and when.
-4. **Riwayat perubahan.** `AuditEvent` (append-only, a DB trigger refuses updates) is written in the same transaction as:
+4. **Riwayat perubahan.** `AuditEvent` (append-only: a DB trigger refuses updates, except the foreign key forgetting the actor when a
+   firm member is deleted) is written in the same transaction as:
    - a reviewer's change to a bank line's account or tax;
    - unpairing a transfer;
    - removing an import;

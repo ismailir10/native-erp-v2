@@ -44,6 +44,7 @@ async function entriesOf(tx: Tx, where: { bankTransactionId?: { in: string[] }; 
   const cur = entries[0] ? currency(entries[0].entityId) : "IDR";
   return {
     ids: entries.map((e) => e.id),
+    openings: entries.filter((e) => e.kind === "OPENING").map((e) => ({ entityId: e.entityId, date: e.date })),
     lineIds: entries.flatMap((e) => e.lines.map((l) => l.id)),
     // What the import put on each account (debit +), so the log says what its removal took off.
     nets: Object.fromEntries([...nets].filter(([, v]) => v !== 0n).map(([k, v]) => [k, formatMoney(v, cur)])),
@@ -63,6 +64,22 @@ async function dropProposals(tx: Tx, ids: { entryIds: string[]; lineIds: string[
   });
 }
 
+/**
+ * A Saldo Awal from a file is what fixed assets from before the books and opening invoices stand on (their amounts are already in that
+ * opening entry). Removing it under them would leave a register and a subledger with no GL behind: they go first.
+ */
+async function refuseOpeningDependents(tx: Tx, openings: { entityId: string; date: Date }[]) {
+  if (!openings.length) return;
+  const entityIds = [...new Set(openings.map((o) => o.entityId))];
+  const latest = new Date(Math.max(...openings.map((o) => +o.date)));
+  const [assets, invoices] = await Promise.all([
+    tx.fixedAsset.findMany({ where: { entityId: { in: entityIds }, sourceEntryId: null, OR: [{ openingAccumulated: { gt: 0n } }, { acquiredOn: { lte: latest } }] }, select: { name: true }, orderBy: { name: "asc" } }),
+    tx.invoice.findMany({ where: { entityId: { in: entityIds }, opening: true }, select: { number: true }, orderBy: { number: "asc" } }),
+  ]);
+  const resting = [...assets.map((a) => `aset tetap "${a.name}"`), ...invoices.map((i) => `faktur saldo awal ${i.number}`)];
+  if (resting.length) throw new RemoveImportError(`Saldo Awal dari impor ini dipakai oleh ${resting.slice(0, 3).join(", ")}${resting.length > 3 ? ` dan ${resting.length - 3} lainnya` : ""}. Hapus itu dulu.`);
+}
+
 export async function removeStatementImport(db: Db, input: { clientId: string; importId: string; reason: string; actor: Actor }) {
   const why = checkActor(input.actor, input.reason);
   return db.$transaction(
@@ -70,6 +87,9 @@ export async function removeStatementImport(db: Db, input: { clientId: string; i
       await closeLock(tx, input.clientId);
       const imp = await tx.statementImport.findFirst({ where: { id: input.importId, bankAccount: { entity: { clientId: input.clientId } } }, include: { bankAccount: { include: { entity: true } } } });
       if (!imp) throw new RemoveImportError("Impor tidak ditemukan.");
+      // Lock the import's lines first: a review (a new RECLASS) or another import linking a transfer half to one of them takes a key
+      // share on the line, so it waits for this removal and then fails, instead of leaving a journal with no source behind.
+      await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE "importId" = ${imp.id} FOR UPDATE`;
       const txs = await tx.bankTransaction.findMany({ where: { importId: imp.id }, include: { settlements: { select: { invoice: { select: { number: true } } } } } });
       const settled = [...new Set(txs.flatMap((t) => t.settlements.map((s) => s.invoice.number)))];
       if (settled.length) throw new RemoveImportError(`Mutasi di impor ini melunasi ${settled.slice(0, 3).join(", ")}${settled.length > 3 ? ` dan ${settled.length - 3} faktur lain` : ""}. Hapus pencocokannya dulu di Piutang & Utang.`);
@@ -77,10 +97,15 @@ export async function removeStatementImport(db: Db, input: { clientId: string; i
       const currency = imp.bankAccount.entity.functionalCurrency;
       const entries = await entriesOf(tx, { bankTransactionId: { in: txIds } }, () => currency);
 
-      // The other half of a transfer in another import stays where it is; the clearing control shows it open.
+      // The other half of a transfer in another import stays where it is; the clearing control shows it open — which a closed month's
+      // controls must not start doing after the fact.
+      const halves = await tx.bankTransaction.findMany({ where: { matchedTxId: { in: txIds }, importId: { not: imp.id } }, select: { date: true } });
+      const months = [...new Map(halves.map((h) => [`${h.date.getUTCFullYear()}-${h.date.getUTCMonth() + 1}`, { year: h.date.getUTCFullYear(), month: h.date.getUTCMonth() + 1 }])).values()];
+      const closed = months.length ? await tx.period.findMany({ where: { clientId: input.clientId, status: "LOCKED", OR: months }, orderBy: [{ year: "asc" }, { month: "asc" }] }) : [];
+      if (closed.length) throw new RemoveImportError(`Pasangan transfer dari impor ini ada di bulan ${closed.map((p) => formatPeriod(p.year, p.month)).join(", ")} yang sudah ditutup. Buka kembali dulu di Tutup Buku, lalu hapus impor ini.`);
       const partners = await tx.bankTransaction.updateMany({ where: { matchedTxId: { in: txIds }, importId: { not: imp.id } }, data: { matchedTxId: null } });
       await dropProposals(tx, { entryIds: entries.ids, lineIds: entries.lineIds, bankTxIds: txIds });
-      await tx.journalEntry.deleteMany({ where: { id: { in: entries.ids } } }); // lines cascade
+      await tx.journalEntry.deleteMany({ where: { bankTransactionId: { in: txIds } } }); // lines cascade
       await tx.bankTransaction.deleteMany({ where: { id: { in: txIds } } });
       await tx.evidenceSelection.updateMany({ where: { importId: imp.id }, data: { importId: null } });
       await tx.statementImport.delete({ where: { id: imp.id } });
@@ -122,12 +147,14 @@ export async function removeLedgerImport(db: Db, input: { clientId: string; impo
       await closeLock(tx, input.clientId);
       const imp = await tx.ledgerImport.findFirst({ where: { id: input.importId, clientId: input.clientId } });
       if (!imp) throw new RemoveImportError("Impor tidak ditemukan.");
+      await tx.$queryRaw`SELECT id FROM "LedgerImport" WHERE id = ${imp.id} FOR UPDATE`;
       if (imp.status !== "POSTED") throw new RemoveImportError("Draf belum dicatat: buang drafnya dari halaman impor.");
       const entities = await tx.entity.findMany({ where: { clientId: input.clientId }, select: { id: true, shortName: true, functionalCurrency: true } });
       const currency = (entityId: string) => entities.find((e) => e.id === entityId)?.functionalCurrency ?? "IDR";
       const entries = await entriesOf(tx, { ledgerImportId: imp.id }, currency);
+      await refuseOpeningDependents(tx, entries.openings);
       await dropProposals(tx, { entryIds: entries.ids, lineIds: entries.lineIds });
-      await tx.journalEntry.deleteMany({ where: { id: { in: entries.ids } } });
+      await tx.journalEntry.deleteMany({ where: { ledgerImportId: imp.id } });
       await tx.evidenceSelection.updateMany({ where: { importId: imp.id }, data: { importId: null } });
       await tx.ledgerImport.delete({ where: { id: imp.id } }); // checks cascade; source-account mappings stay for the next file
 

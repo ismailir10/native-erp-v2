@@ -21,7 +21,9 @@ without a separate stop.
       be imported again. Refused with the reason and the way out when:
       - a month it touches is closed;
       - a line settles an invoice;
-      - a fixed asset or an adjustment schedule was made from one of its journals.
+      - a fixed asset or an adjustment schedule was made from one of its journals;
+      - (a Saldo Awal file) fixed assets from before the books or opening invoices stand on it;
+      - a transfer partner it would unlink sits in a closed month.
 
       A transfer partner in another import loses its link and stays on its account, so the clearing control shows the open half.
 - [x] **The removal is recorded.** One change-log event keeps: the file, the account or entity, the period, the row count, money in and
@@ -66,7 +68,7 @@ immutable).
 - [x] T3 Change log writers (review, unpair, control note, mapping, Temuan) + *Riwayat perubahan* page + the drawer history. Accept: DB
       tests per writer; page renders.
 - [x] T4 Golden removal proof. Accept: the golden test removes and re-imports one statement.
-- [ ] T5 End-of-cycle gates, review pass, ship.
+- [x] T5 End-of-cycle gates, review pass, ship.
 
 ## Implementation
 - Plan: T1–T5 sequential, inline (the log table first: every later task writes to it).
@@ -87,6 +89,17 @@ immutable).
 - T4: `lib/demo/golden.ts` `reviewWithTruth` (factored out of `seedGolden`); `tests/db/golden.test.ts` removes June's PT BCA statement — the app
   then equals `goldenKey` of the same scenario without those lines (the generator's own answer, not a snapshot) — and imports it again to
   the committed key. The trap's withdrawal and a 1199 sweep and the PT → owner loan are in that file, so their other halves stay behind.
+- T5 review pass (second-model review) — fixed:
+  - **Race.** A review (new RECLASS) or another import touching one of the file's lines between reading its journals and deleting the
+    lines left a journal with no bank line. Removal now locks the import's lines `FOR UPDATE` first and deletes journals by
+    `bankTransactionId` / `ledgerImportId`, not by a snapshot of ids. A DB test races removal against reviews of every line.
+  - **The no-update trigger broke deleting a firm member** (the actor FK's `ON DELETE SET NULL` is an UPDATE). The trigger lets exactly
+    that through: actor set to null, every other column unchanged.
+  - **A Saldo Awal file under opening records.** Refused while fixed assets from before the books or opening invoices stand on it.
+  - **A partner half in a closed month.** Unlinking it would change that month's clearing control after the fact: refused.
+  - The drawer's history query is scoped to the ledger's entities.
+  - Kept: the golden proof compares with the generator's key without the file, not a pre-import snapshot. A matcher reclass of an
+    earlier half stays on purpose (the clearing control shows it open).
 
 ## Verification
 - T1: `prisma migrate deploy` on both DBs → applied; `prisma migrate diff --from-config-datasource --to-schema` → "This is an empty migration.";
@@ -95,5 +108,24 @@ immutable).
 - T3: `npx vitest run tests/db/audit-writers.test.ts` → `Tests 2 passed (2)`; lint + typecheck clean; `npm test` → `Test Files 132 passed (132) · Tests 946 passed (946)`;
   `demo:reset && verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`
 - T4: `npx vitest run tests/db/golden.test.ts` → `Tests 8 passed (8)`.
+- T5: `tests/db/remove-import.test.ts` → `Tests 6 passed (6)`. The race test fails without the lock (`expected 3 to be +0`, three orphan
+  journals) and passed 9 of 9 runs with it. `tests/db/audit.test.ts` → `Tests 2 passed (2)`.
+- End of cycle: lint + typecheck clean; `npm test` → `Test Files 132 passed (132) · Tests 951 passed (951)`; `npm run build` ok;
+  `demo:reset && verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.` e2e runs in CI.
+- Visual check (local, Chromium):
+  - *Riwayat perubahan* with its filter chips;
+  - the ledger drawer's *Riwayat* ("META PLATFORMS IRELAND ADS · Rp 4.233.000: 6150 → 6160");
+  - the "Hapus impor BCA-6677-2026-06.csv?" reason dialog.
+
+  No overflow at 390 px, no console errors.
 
 ## Ship Notes
+- **Migration:** `20261003010000_audit_event`. It adds the `AuditEvent` table and the `audit_event_no_update` trigger. It is additive and
+  backfills nothing; history starts at deploy.
+- **Behaviour:**
+  - Admins see *Hapus* on the Impor page's statement history and on a posted ledger import's page (reason ≥ 10 characters).
+  - Everyone sees *Riwayat perubahan* under *Pengaturan klien* and *Riwayat* in the ledger drawer.
+  - Reviews, unpairing, control notes, remaps and Temuan decisions are now logged.
+- **Rollback:** revert the merge. The table and trigger can stay (nothing else reads them). If needed, drop them with
+  `DROP TABLE "AuditEvent"; DROP FUNCTION audit_event_no_update();`. An import removed before rollback stays removed; import the file
+  again.

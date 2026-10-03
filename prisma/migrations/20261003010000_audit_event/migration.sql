@@ -29,9 +29,13 @@ ALTER TABLE "AuditEvent" ADD CONSTRAINT "AuditEvent_clientId_fkey" FOREIGN KEY (
 ALTER TABLE "AuditEvent" ADD CONSTRAINT "AuditEvent_actorId_fkey" FOREIGN KEY ("actorId") REFERENCES "FirmMember"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 
--- Append-only: a recorded change is never rewritten (rows go only with their client).
+-- Append-only: a recorded change is never rewritten (rows go only with their client). The one update let through is the
+-- foreign key's own ON DELETE SET NULL when a firm member is removed: the event stays, its actor becomes unknown.
 CREATE FUNCTION "audit_event_no_update"() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
+  IF OLD."actorId" IS NOT NULL AND NEW."actorId" IS NULL AND (to_jsonb(NEW) - 'actorId') = (to_jsonb(OLD) - 'actorId') THEN
+    RETURN NEW;
+  END IF;
   RAISE EXCEPTION 'AuditEvent is append-only';
 END;
 $$;

@@ -9,6 +9,7 @@ import { importSourceAccounts, postImport, stageImport } from "@/lib/ledger-impo
 import { acceptMappings, suggestMappings } from "@/lib/ledger-import/mapping";
 import { trialBalance } from "@/lib/reports/ledger";
 import { listEvents } from "@/lib/audit";
+import { createAsset } from "@/lib/assets/register";
 import { dateOnly } from "@/lib/format";
 
 /** ADR 0013 / UC-K4: removing an import takes everything it put in the books, the reports return to before, the file imports again. */
@@ -80,6 +81,36 @@ describe("hapus impor rekening koran", () => {
     expect(await db.bankTransaction.count({ where: { importId: imp.id } })).toBe(2);
     await expect(removeStatementImport(db, { ...base, reason: "Salah rekening sekali", actor: admin })).rejects.toBeInstanceOf(RemoveImportError);
   });
+
+  it("a review racing the removal never leaves a journal without its bank line behind", async () => {
+    const { g, admin } = await setup();
+    const bca = g.pt.banks[0];
+    await importStatement(db, { bankAccountId: bca.id, fileName: "bca-agu.csv", data: august, provider: null });
+    const aug = await db.statementImport.findFirstOrThrow();
+    const lines = await db.bankTransaction.findMany({ where: { importId: aug.id } });
+    await Promise.allSettled([
+      removeStatementImport(db, { clientId: g.client.id, importId: aug.id, reason: "File Agustus salah rekening", actor: admin }),
+      ...lines.map((t) => reviewTransaction(db, { bankTxId: t.id, accountCode: "6120", taxTag: null, learn: false })),
+    ]);
+    expect(await db.journalEntry.count({ where: { entityId: g.pt.entity.id, kind: { in: ["BANK", "RECLASS"] }, bankTransactionId: null } })).toBe(0);
+    expect(await db.journalEntry.count({ where: { entityId: g.pt.entity.id } })).toBe(0);
+  });
+
+  it("refuses when the transfer's other half sits in a closed month: its clearing control would change after the fact", async () => {
+    const { g, admin } = await setup();
+    const [bca, mdr] = g.pt.banks;
+    const bcaJul = file("07", "100.000.000,00", "31/07/2026;PINDAH BUKU KE MANDIRI PT UJI SEJAHTERA;10.000.000,00;0,00;90.000.000,00");
+    const mdrAug = file("08", "0,00", "03/08/2026;PINDAH BUKU DARI BCA PT UJI SEJAHTERA;0,00;10.000.000,00;10.000.000,00");
+    await importStatement(db, { bankAccountId: bca.id, fileName: "bca-jul.csv", data: bcaJul, provider: null });
+    await importStatement(db, { bankAccountId: mdr.id, fileName: "mdr-agu.csv", data: mdrAug, provider: null });
+    const half = await db.bankTransaction.findFirstOrThrow({ where: { bankAccountId: bca.id } });
+    expect(half.matchedTxId).not.toBeNull();
+    const aug = await db.statementImport.findFirstOrThrow({ where: { fileName: "mdr-agu.csv" } });
+
+    await db.period.update({ where: { clientId_year_month: { clientId: g.client.id, year: 2026, month: 7 } }, data: { status: "LOCKED" } });
+    await expect(removeStatementImport(db, { clientId: g.client.id, importId: aug.id, reason: "File Agustus salah rekening", actor: admin })).rejects.toThrow(/Pasangan transfer .* Juli 2026 yang sudah ditutup/);
+    expect((await db.bankTransaction.findUniqueOrThrow({ where: { id: half.id } })).matchedTxId).not.toBeNull();
+  });
 });
 
 describe("hapus impor buku besar", () => {
@@ -105,5 +136,32 @@ describe("hapus impor buku besar", () => {
     expect(await tb(g.client.id, g.pt.entity.id)).toEqual([]);
     expect(await db.sourceAccount.count({ where: { clientId: g.client.id, accountId: { not: null } } })).toBe(2);
     expect((await listEvents(db, g.client.id))[0]).toMatchObject({ kind: "IMPORT_REMOVED", before: { mode: "LEDGER", journals: 1, nets: { "6100 Beban Gaji & Tunjangan": "Rp 5.000.000", "2150 Beban Masih Harus Dibayar": "-Rp 5.000.000" } } });
+  });
+
+  it("refuses a Saldo Awal file while a fixed asset from before the books stands on it, and removes it once the asset is gone", async () => {
+    const { g, admin } = await setup();
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Neraca");
+    const rows = [
+      ["PT UJI"], ["Balance Sheet"], ["31/05/2026"], ["(in IDR)"], ["Date", null, "31/05/2026"],
+      ["Assets"], ["Fixed Assets"], ["1-1500", "Peralatan Kantor", 30_000_000], ["Total Fixed Assets", null, 30_000_000], ["Total Assets", null, 30_000_000],
+      ["Liability & Equity"], ["Current Liability"], ["2-2000", "Accounts Payable", 10_000_000], ["Total Current Liability", null, 10_000_000],
+      ["Equity"], ["3-3000", "Share Capital", 20_000_000], ["Total Liability & Equity", null, 30_000_000],
+    ];
+    for (const r of rows) ws.addRow(r);
+    const staged = await stageImport(db, { firmId: g.firm.id, clientId: g.client.id, fileName: "neraca.xlsx", data: Buffer.from(await wb.xlsx.writeBuffer()), entityId: g.pt.entity.id, date: dateOnly(2026, 5, 31) });
+    if (staged.status !== "STAGED") throw new Error("not staged");
+    const src = await importSourceAccounts(db, staged.importId);
+    await acceptMappings(db, g.client.id, src.map((s) => ({ sourceAccountId: s.id, accountCode: ({ "Peralatan Kantor": "1210", "Accounts Payable": "2110" } as Record<string, string>)[s.name] ?? "3100", method: "MANUAL" as const })));
+    await postImport(db, g.client.id, staged.importId);
+
+    const asset = await createAsset(db, { clientId: g.client.id, entityId: g.pt.entity.id, taxGroup: "KELOMPOK_1", fiscalMethod: "GARIS_LURUS", assetAccountCode: "1210", name: "Printer lama", acquiredOn: "2020-01-10", cost: "30000000", openingAccumulated: "30000000" });
+    const remove = () => removeLedgerImport(db, { clientId: g.client.id, importId: staged.importId, reason: "Neraca versi lama, diganti", actor: admin });
+    await expect(remove()).rejects.toThrow(/Saldo Awal dari impor ini dipakai oleh aset tetap "Printer lama"/);
+    expect(await tb(g.client.id, g.pt.entity.id)).toEqual([["1210", "30000000"], ["2110", "-10000000"], ["3100", "-20000000"]]);
+
+    await db.fixedAsset.delete({ where: { id: asset.id } });
+    await remove();
+    expect(await tb(g.client.id, g.pt.entity.id)).toEqual([]);
   });
 });

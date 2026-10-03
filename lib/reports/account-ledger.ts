@@ -57,7 +57,7 @@ export async function accountLedger(
   const txIds = [...new Set(lines.map((l) => l.entry.bankTransaction?.id).filter((x): x is string => !!x))];
   const history = new Map<string, { at: string; actor: string; summary: string }[]>();
   if (txIds.length) {
-    const events = await db.auditEvent.findMany({ where: { subject: { in: txIds.map((id) => `bankTx:${id}`) } }, include: { actor: { select: { name: true } } }, orderBy: { createdAt: "desc" } });
+    const events = await db.auditEvent.findMany({ where: { entityId: { in: args.entityIds }, subject: { in: txIds.map((id) => `bankTx:${id}`) } }, include: { actor: { select: { name: true } } }, orderBy: { createdAt: "desc" } });
     for (const e of events) {
       const id = e.subject.slice("bankTx:".length);
       history.set(id, [...(history.get(id) ?? []), { at: formatDateTime(e.createdAt), actor: e.actor?.name ?? "Sistem", summary: e.summary }]);
