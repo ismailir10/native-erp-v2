@@ -115,5 +115,12 @@ each part still drills to the same bank row (rule 5).
   - at 390 px the dialog stacks and there is no horizontal scroll; at 1280 px each part is one row.
 
   Lint + typecheck clean; `npm test` → `Test Files 157 passed (157) · Tests 1043 passed (1043)`.
+- T3:
+  - Rule 3 amended (split lines) and the README Classify row updated.
+  - End of cycle:
+    - `npm run lint && npm run typecheck && npm test` → `Test Files 157 passed (157) · Tests 1043 passed (1043)`;
+    - `npm run build` passes;
+    - `npm run demo:reset && npm run verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`;
+    - e2e runs in CI.
 
 ## Ship Notes
