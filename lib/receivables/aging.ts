@@ -59,7 +59,8 @@ export function subledgerFrom(i: { entityId: string; issueDate: Date; opening: b
 /** Every invoice of the direction in the subledger by `asOf`, with what was settled by then; `open` may be 0 (paid). */
 export async function invoicesAt(db: Db, clientId: string, direction: InvoiceDirection, asOf: Date, entityIds?: string[]): Promise<OpenItem[]> {
   const found = await db.invoice.findMany({
-    where: { clientId, direction, issueDate: { lte: asOf }, ...(entityIds ? { entityId: { in: entityIds } } : {}) },
+    // A voided document (UC-B5) leaves the subledger: its mirror entry, dated on the original, took it out of the GL too.
+    where: { clientId, direction, voidedAt: null, issueDate: { lte: asOf }, ...(entityIds ? { entityId: { in: entityIds } } : {}) },
     include: { contact: { select: { id: true, name: true } }, arApAccount: { select: { code: true } }, settlements: { select: { amount: true, withheld: true, bankTransaction: { select: { date: true } } } } },
     orderBy: [{ dueDate: "asc" }, { number: "asc" }],
   });

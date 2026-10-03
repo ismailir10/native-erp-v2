@@ -83,7 +83,7 @@ it isn't a difference.
 - [x] T2 Advance and proof: `invoicesAt`/`subledgerVsLedger`/view with advances, *Belum dialokasikan*, the net-credit flag, and the
       close control. Accept: DB tests (overpayment → advance column, proof equal, control lists the contact; an untagged unmatched line
       still equals).
-- [ ] T3 Void: `voidInvoice` + action + UI. Accept: DB tests (posted invoice reversed and leaves aging and proof; opening one only
+- [x] T3 Void: `voidInvoice` + action + UI. Accept: DB tests (posted invoice reversed and leaves aging and proof; opening one only
       marked; settled refused; locked month refused; history).
 - [ ] T4 Channel: `Contact.channel`, setter action, the sales-by-channel card. Accept: DB test of the totals; visual check.
 - [ ] T5 Rules (5c), README, gates, review pass, ship.
@@ -102,6 +102,12 @@ it isn't a difference.
   a *Belum dialokasikan* row; a contact in net credit shows in review colour with "kelebihan bayar". The AR/AP control spells the proof
   out and stays REVIEW while cash is unallocated (it was REVIEW before too, as unequal); a new control "Kelebihan bayar pelanggan /
   pemasok" lists contacts in net credit with the advice to reclassify by journal. The A1 per-name table nets a contact's advance.
+- T3: `voidInvoice` in `lib/receivables/invoices.ts`, under the close lock and a row lock: refuses a short reason, a voided or settled
+  document and a locked month (naming it); a posted one gets a mirror INVOICE entry dated on the original (`reversesId` = the original,
+  so once only); a Saldo Awal item is only marked, with the same locked-month rule as recording it. A `DOCUMENT_VOID` audit event
+  ("Dokumen dikeluarkan") keeps who and why. Voided documents leave `invoicesAt` (aging, proof, A1 per-name), CKPN, the opening-import
+  dependency check, settle and its candidates. A reused number says it belongs to a voided document. UI: *Keluarkan faktur ini…* in an
+  unsettled document's row opens a dialog with the reason; a collapsible *Faktur dikeluarkan* card lists them struck through.
 
 ## Verification
 - T1: `tests/db/receipts-fifo.test.ts` (4): three notes paid oldest-due first from a line still in Review, 1,5 jt rest kept on the tagged
@@ -112,5 +118,8 @@ it isn't a difference.
   client's aging with the same credit matches with no per-name difference. An untagged receipt on 1130 keeps the proof equal
   (Belum dialokasikan 10,9 jt, control REVIEW); after splitting it 10 jt / 900 rb only the 1130 part counts. `tests/db/aging.test.ts`
   updated to the new proof. Lint, typecheck, 1062 tests green.
+- T3: `tests/db/invoice-void.test.ts` (2): a 5,55 jt note with PPN voided → mirror on 5 Aug, 1130/4100/2130 back to the kept note only,
+  out of the aging and the proof, refused again and for settling, the audit event, the reused number; a settled note refused until
+  unsettled, a locked August refused by name, a Saldo Awal item marked with no journal and refused for settling. 1064 tests green.
 
 ## Ship Notes

@@ -3,7 +3,7 @@
 import { Fragment, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronDown, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -15,13 +15,15 @@ import { ReceivablesTabs } from "@/components/app/receivables-tabs";
 import { SimpleSelect } from "@/components/app/simple-select";
 import { Money } from "@/components/app/money";
 import { StatusPill } from "@/components/app/status";
-import { createInvoiceAction, settleAction, settleCandidatesAction, settleFifoAction, tagAdvanceAction, unsettleAction } from "@/app/actions";
+import { createInvoiceAction, settleAction, settleCandidatesAction, settleFifoAction, tagAdvanceAction, unsettleAction, voidInvoiceAction } from "@/app/actions";
+import { Textarea } from "@/components/ui/textarea";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BUCKETS, BUCKET_LABEL } from "@/lib/receivables/aging";
 import { formatMoney, parseMoney, PPN_EFFECTIVE_PERCENT } from "@/lib/money";
 import { RECEIPT_KINDS, WITHHOLDING_KINDS, WITHHOLDING_LABEL, withholdingFor } from "@/lib/tax/withholding";
 import type { WithholdingKind } from "@/lib/generated/prisma/enums";
-import type { AgingView, CandidateView, ComparisonView, InvoiceView, UnsettledLineView } from "@/lib/receivables/view";
+import type { AgingView, CandidateView, ComparisonView, InvoiceView, UnsettledLineView, VoidedView } from "@/lib/receivables/view";
 
 type Account = { code: string; name: string };
 type Direction = "SALES" | "PURCHASE";
@@ -38,6 +40,7 @@ export function Receivables(props: {
   direction: Direction;
   entities: { id: string; name: string; currency: string }[];
   invoices: InvoiceView[];
+  voided: VoidedView[];
   aging: AgingView[];
   comparison: ComparisonView[];
   unsettled: UnsettledLineView[];
@@ -56,6 +59,8 @@ export function Receivables(props: {
   const [settleKind, setSettleKind] = useState("");
   const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [voiding, setVoiding] = useState<InvoiceView | null>(null);
+  const [voidReason, setVoidReason] = useState("");
   const set = (patch: Partial<InvoiceForm>) => setForm((f) => (f ? { ...f, ...patch } : f));
   const currency = props.entities.find((e) => e.id === form?.entityId)?.currency ?? "IDR";
 
@@ -146,6 +151,18 @@ export function Receivables(props: {
     setBusy(false);
     if (!r.ok) return void toast.error(r.error);
     toast.success("Pencocokan dihapus");
+    router.refresh();
+  };
+
+  const doVoid = async () => {
+    if (!voiding) return;
+    setBusy(true);
+    const r = await voidInvoiceAction({ clientId: props.clientId, invoiceId: voiding.id, reason: voidReason });
+    setBusy(false);
+    if (!r.ok) return void toast.error(r.error);
+    toast.success(`${w.doc} ${voiding.number} dikeluarkan`, { description: voiding.opening ? "Saldo awal: hanya ditandai, tanpa jurnal." : `Jurnalnya dibalik per ${voiding.issued}.` });
+    setVoiding(null);
+    setVoidReason("");
     router.refresh();
   };
 
@@ -251,7 +268,7 @@ export function Receivables(props: {
           {openInvoices.length === 0 ? (
             <p className="px-6 text-sm text-muted-foreground">Tidak ada {w.docLower} terbuka per tanggal ini.</p>
           ) : (
-            <InvoiceTable rows={openInvoices} w={w} open={open} setOpen={setOpen} onMatch={openMatching} onUnsettle={doUnsettle} busy={busy} />
+            <InvoiceTable rows={openInvoices} w={w} open={open} setOpen={setOpen} onMatch={openMatching} onUnsettle={doUnsettle} onVoid={setVoiding} busy={busy} />
           )}
         </CardContent>
       </Card>
@@ -265,6 +282,54 @@ export function Receivables(props: {
           </CardContent>
         </Card>
       )}
+      {props.voided.length > 0 && (
+        <Card data-testid="invoices-voided">
+          <Collapsible>
+            <CardHeader>
+              <CollapsibleTrigger className="group flex items-center gap-1 text-left">
+                <ChevronRight className="size-4 transition-transform group-data-[panel-open]:rotate-90" aria-hidden />
+                <CardTitle>{w.doc} dikeluarkan ({props.voided.length})</CardTitle>
+              </CollapsibleTrigger>
+              <CardDescription>Dokumen yang salah catat. Jurnalnya dibalik pada tanggal aslinya; tidak masuk umur {props.direction === "SALES" ? "piutang" : "utang"}, CKPN maupun laporan.</CardDescription>
+            </CardHeader>
+            <CollapsibleContent>
+              <CardContent className="divide-y px-0">
+                {props.voided.map((v) => (
+                  <div key={v.id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-6 py-2 text-sm">
+                    <div className="min-w-0">
+                      <div><span className="font-medium line-through decoration-muted-foreground">{v.number} · {v.contact}</span> <span className="text-xs text-muted-foreground">· {v.entity} · {v.issued}{v.opening ? " · saldo awal" : ""}</span></div>
+                      <div className="text-xs text-muted-foreground">Dikeluarkan {v.voidedAt}{v.by ? ` oleh ${v.by}` : ""}: {v.reason}</div>
+                    </div>
+                    <span className="line-through decoration-muted-foreground"><Money muted value={BigInt(v.total)} currency={v.currency} /></span>
+                  </div>
+                ))}
+              </CardContent>
+            </CollapsibleContent>
+          </Collapsible>
+        </Card>
+      )}
+
+      <Dialog open={voiding !== null} onOpenChange={(o) => !o && setVoiding(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Keluarkan {w.docLower} {voiding?.number}?</DialogTitle>
+            <DialogDescription>
+              {voiding?.opening
+                ? `Rincian saldo awal: tidak ada jurnal, ${w.docLower} ini hanya ditandai dan keluar dari daftar.`
+                : `Jurnalnya dibalik per ${voiding?.issued} (bulan itu harus belum dikunci). ${w.doc} tetap tercatat, dicoret dengan alasannya.`}
+            </DialogDescription>
+          </DialogHeader>
+          <Field>
+            <FieldLabel htmlFor="void-reason">Alasan</FieldLabel>
+            <Textarea id="void-reason" rows={2} value={voidReason} onChange={(e) => setVoidReason(e.target.value)} placeholder="Mis. dokumen pemasok, bukan nota penjualan; dobel dengan INV-012" />
+            <FieldDescription>Min. 10 karakter. Tercatat di riwayat.</FieldDescription>
+          </Field>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setVoiding(null)}>Batal</Button>
+            <Button variant="destructive" disabled={busy || voidReason.trim().length < 10} onClick={doVoid} data-testid="void-confirm">Keluarkan</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={form !== null} onOpenChange={(o) => !o && setForm(null)}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
@@ -405,7 +470,7 @@ export function Receivables(props: {
   );
 }
 
-function InvoiceTable(props: { rows: InvoiceView[]; w: (typeof WORDS)[Direction]; open: string | null; setOpen: (id: string | null) => void; onMatch?: (i: InvoiceView) => void; onUnsettle: (id: string) => void; busy: boolean }) {
+function InvoiceTable(props: { rows: InvoiceView[]; w: (typeof WORDS)[Direction]; open: string | null; setOpen: (id: string | null) => void; onMatch?: (i: InvoiceView) => void; onUnsettle: (id: string) => void; onVoid?: (i: InvoiceView) => void; busy: boolean }) {
   return (
     <Table>
       <TableHeader>
@@ -446,7 +511,14 @@ function InvoiceTable(props: { rows: InvoiceView[]; w: (typeof WORDS)[Direction]
                     </p>
                   )}
                   {i.settlements.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Belum ada pelunasan.</p>
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                      <p className="text-muted-foreground">Belum ada pelunasan.</p>
+                      {props.onVoid && (
+                        <Button variant="ghost" size="sm" className="text-fail" onClick={() => props.onVoid!(i)} data-testid={`void-${i.number}`}>
+                          Keluarkan {props.w.docLower} ini…
+                        </Button>
+                      )}
+                    </div>
                   ) : (
                     <ul className="space-y-1.5 text-sm">
                       {i.settlements.map((s) => (

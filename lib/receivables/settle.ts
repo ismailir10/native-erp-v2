@@ -44,6 +44,7 @@ async function load(tx: Tx, input: SettleInput) {
   await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${input.bankTransactionId} FOR UPDATE`;
   const invoice = await tx.invoice.findFirst({ where: { id: input.invoiceId, clientId: input.clientId }, include: { arApAccount: true, entity: true, settlements: { select: { amount: true, withheld: true } } } });
   if (!invoice) throw new LedgerError("Faktur tidak ditemukan.");
+  if (invoice.voidedAt) throw new LedgerError(`${invoice.direction === "SALES" ? "Faktur" : "Tagihan"} ${invoice.number} sudah dikeluarkan.`);
   const t = await tx.bankTransaction.findFirst({ where: { id: input.bankTransactionId, entityId: invoice.entityId }, include: { settlements: { select: { amount: true, withheld: true } } } });
   if (!t) throw new LedgerError("Mutasi bank tidak ditemukan untuk entitas faktur ini.");
   // A split line moved the receivable/payable by one part only: settling its full amount would leave the subledger above the ledger.
@@ -215,7 +216,7 @@ const FORMS = new Set(["PT", "CV", "TBK", "UD", "PD", "KOPERASI", "YAYASAN", "BA
  */
 export async function settleCandidates(db: Db, clientId: string, invoiceId: string): Promise<SettleCandidate[]> {
   const invoice = await db.invoice.findFirst({ where: { id: invoiceId, clientId }, include: { contact: true, arApAccount: true, settlements: { select: { amount: true, withheld: true } } } });
-  if (!invoice) return [];
+  if (!invoice || invoice.voidedAt) return [];
   const open = invoice.total - invoice.settlements.reduce((s, x) => s + x.amount, 0n);
   // A customer that withholds pays the invoice less the tax: that amount is as exact as the open amount.
   const expectedTax = invoice.whtAmount - invoice.settlements.reduce((s, x) => s + x.withheld, 0n);

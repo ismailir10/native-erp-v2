@@ -16,7 +16,7 @@ import { disposeAsset, type DisposalInput } from "@/lib/assets/dispose";
 import { cancelLease, createLease, postLeaseMonths, type LeaseInput } from "@/lib/leases/register";
 import { deleteEmployee, importCensus, saveBenefitSetting, saveEmployee, uploadMortality, type BenefitSettingInput, type EmployeeInput } from "@/lib/benefits/census";
 import { postBenefits } from "@/lib/benefits/valuation";
-import { createInvoice, type InvoiceInput } from "@/lib/receivables/invoices";
+import { createInvoice, voidInvoice, type InvoiceInput } from "@/lib/receivables/invoices";
 import { settleFifo, settleWithReclass, tagAdvance, unsettle } from "@/lib/receivables/settle";
 import { candidateViews, type CandidateView } from "@/lib/receivables/view";
 import { postCkpn, saveCkpnSetting, type CkpnSettingInput } from "@/lib/receivables/ckpn";
@@ -436,6 +436,18 @@ export async function tagAdvanceAction(input: { clientId: string; bankTransactio
   try {
     const client = await getClientForFirm(input.clientId);
     await tagAdvance(prisma, { clientId: client.id, bankTransactionId: input.bankTransactionId, contactId: input.contactId });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Keluarkan dokumen (UC-B5): reverses a wrongly entered invoice or bill on its own date, with the reason. */
+export async function voidInvoiceAction(input: { clientId: string; invoiceId: string; reason: string }): Promise<Result> {
+  try {
+    const client = await getClientForFirm(input.clientId);
+    await voidInvoice(prisma, { clientId: client.id, invoiceId: input.invoiceId, reason: String(input.reason ?? ""), actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
   } catch (e) {

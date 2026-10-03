@@ -42,6 +42,8 @@ export type AgingView = {
 };
 export type ComparisonView = { entityId: string; entity: string; currency: string; accounts: string[]; subledger: string; ledger: string; unsettledLines: number; equal: boolean };
 export type UnsettledLineView = { id: string; entityId: string; entity: string; currency: string; date: string; description: string; free: string; accountCode: string; /** The contact this line was matched for: its unmatched rest is their advance (UC-B5). */ contact: { id: string; name: string } | null };
+/** A document taken out (UC-B5): listed struck through with its reason; it counts nowhere. */
+export type VoidedView = { id: string; entity: string; currency: string; contact: string; number: string; issued: string; total: string; opening: boolean; reason: string; voidedAt: string; by: string | null };
 export type CandidateView = { bankTransactionId: string; date: string; description: string; free: string; exact: boolean; named: boolean; onAccount: boolean; advance: boolean };
 
 export async function receivablesView(db: Db, clientId: string, direction: InvoiceDirection, asOf: Date, entities: { id: string; shortName: string; functionalCurrency: string; kind: string }[]) {
@@ -124,9 +126,27 @@ export async function receivablesView(db: Db, clientId: string, direction: Invoi
     .map((t) => ({ t, free: (t.amount < 0n ? -t.amount : t.amount) - t.settlements.reduce((u, x) => u + x.amount - x.withheld, 0n) }))
     .filter((x) => x.free > 0n)
     .map(({ t, free }) => ({ id: t.id, entityId: t.entityId, entity: ent.get(t.entityId)!.shortName, currency: ent.get(t.entityId)!.functionalCurrency, date: formatDate(t.date), description: t.description, free: free.toString(), accountCode: t.accountCode ?? "", contact: t.contact }));
+  const voidedRows = await db.invoice.findMany({
+    where: { clientId, direction, entityId: { in: ids }, voidedAt: { not: null }, issueDate: { lte: asOf } },
+    include: { contact: { select: { name: true } }, voidedBy: { select: { name: true } } },
+    orderBy: { voidedAt: "desc" },
+  });
+  const voided: VoidedView[] = voidedRows.map((i) => ({
+    id: i.id,
+    entity: ent.get(i.entityId)!.shortName,
+    currency: ent.get(i.entityId)!.functionalCurrency,
+    contact: i.contact.name,
+    number: i.number,
+    issued: formatDate(i.issueDate),
+    total: i.total.toString(),
+    opening: i.opening,
+    reason: i.voidReason ?? "",
+    voidedAt: formatDate(i.voidedAt!),
+    by: i.voidedBy?.name ?? null,
+  }));
   const contactRows = await db.contact.findMany({ where: { clientId }, select: { id: true, name: true, channel: true }, orderBy: { name: "asc" } });
   const contacts = contactRows.map((c) => c.name);
-  return { invoices, aging, comparison, unsettled, contacts, contactOptions: contactRows.map((c) => ({ id: c.id, name: c.name })) };
+  return { invoices, voided, aging, comparison, unsettled, contacts, contactOptions: contactRows.map((c) => ({ id: c.id, name: c.name })) };
 }
 
 export async function candidateViews(db: Db, clientId: string, invoiceId: string): Promise<CandidateView[]> {
