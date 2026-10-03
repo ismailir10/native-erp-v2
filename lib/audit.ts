@@ -5,7 +5,7 @@ import type { Prisma } from "@/lib/generated/prisma/client";
  * Riwayat perubahan (ADR 0013): who changed what in a client's books or decisions, written in the same transaction as the change.
  * Append-only (a DB trigger refuses updates). Amounts in `before` / `after` are strings (bigint stays exact through JSON).
  */
-export type AuditKind = "CLASSIFY" | "UNPAIR" | "IMPORT_REMOVED" | "CONTROL_NOTE" | "MAPPING" | "FINDING_RESOLVED" | "REPORT_FORMAT" | "FISCAL_YEAR" | "SUBLEDGER";
+export type AuditKind = "CLASSIFY" | "UNPAIR" | "IMPORT_REMOVED" | "CONTROL_NOTE" | "MAPPING" | "FINDING_RESOLVED" | "REPORT_FORMAT" | "FISCAL_YEAR" | "SUBLEDGER" | "DOCUMENT_VOID" | "ADVANCE";
 
 export const AUDIT_KIND_LABEL: Record<AuditKind, string> = {
   CLASSIFY: "Klasifikasi mutasi",
@@ -17,6 +17,8 @@ export const AUDIT_KIND_LABEL: Record<AuditKind, string> = {
   REPORT_FORMAT: "Format laporan",
   FISCAL_YEAR: "Tahun buku",
   SUBLEDGER: "Rekonsiliasi subledger",
+  DOCUMENT_VOID: "Dokumen dikeluarkan",
+  ADVANCE: "Uang muka ditandai",
 };
 
 export async function recordEvent(

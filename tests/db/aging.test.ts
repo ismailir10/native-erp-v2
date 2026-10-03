@@ -38,7 +38,7 @@ describe("aging and the receivable control", () => {
     expect(aug.map((r) => [r.contact.name, r.buckets.CURRENT, r.buckets.OVER_90, r.total])).toEqual([["PT Mitra Unggas", 4_000_000n, 10_000_000n, 14_000_000n]]);
   });
 
-  it("passes when open invoices equal 1130 and names the unsettled receipts when they don't", async () => {
+  it("passes when open invoices equal 1130, and keeps a receipt not allocated yet in the proof but under review", async () => {
     const g = await makeGroup();
     const control = async (month: number) => (await runControls(db, g.client.id, 2026, month)).find((c) => c.key === `ar:${g.pt.entity.id}`);
     expect(await control(9)).toBeUndefined();
@@ -51,7 +51,7 @@ describe("aging and the receivable control", () => {
     await reviewTransaction(db, { bankTxId: (await db.bankTransaction.findFirstOrThrow({ where: { description: { contains: "TOKO BARU" } } })).id, accountCode: "1130", taxTag: null });
     const c = await control(9);
     expect(c?.status).toBe("REVIEW");
-    expect(c?.detail).toBe("Piutang terbuka: daftar Rp 700.000 vs buku besar Rp 0 (1130); 1 mutasi bank di akun itu belum dicocokkan ke faktur");
-    expect((await subledgerVsLedger(db, g.client.id, "SALES", dateOnly(2026, 9, 30)))[0]).toMatchObject({ subledger: 700_000n, ledger: 0n, unsettledLines: 1, equal: false });
+    expect(c?.detail).toBe("Piutang terbuka Rp 700.000 − belum dialokasikan Rp 700.000 = Rp 0, sama dengan buku besar (1130); 1 mutasi bank di akun itu belum dialokasikan: cocokkan ke faktur atau tandai sebagai uang muka pelanggan");
+    expect((await subledgerVsLedger(db, g.client.id, "SALES", dateOnly(2026, 9, 30)))[0]).toMatchObject({ open: 700_000n, unallocated: 700_000n, subledger: 0n, ledger: 0n, unsettledLines: 1, equal: true });
   });
 });

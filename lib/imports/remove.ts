@@ -92,7 +92,7 @@ async function refuseOpeningDependents(tx: Tx, openings: { entityId: string; dat
   const latest = new Date(Math.max(...openings.map((o) => +o.date)));
   const [assets, invoices] = await Promise.all([
     tx.fixedAsset.findMany({ where: { entityId: { in: entityIds }, sourceEntryId: null, OR: [{ openingAccumulated: { gt: 0n } }, { acquiredOn: { lte: latest } }] }, select: { name: true }, orderBy: { name: "asc" } }),
-    tx.invoice.findMany({ where: { entityId: { in: entityIds }, opening: true }, select: { number: true }, orderBy: { number: "asc" } }),
+    tx.invoice.findMany({ where: { entityId: { in: entityIds }, opening: true, voidedAt: null }, select: { number: true }, orderBy: { number: "asc" } }),
   ]);
   const resting = [...assets.map((a) => `aset tetap "${a.name}"`), ...invoices.map((i) => `faktur saldo awal ${i.number}`)];
   if (resting.length) throw new RemoveImportError(`Saldo Awal dari impor ini dipakai oleh ${resting.slice(0, 3).join(", ")}${resting.length > 3 ? ` dan ${resting.length - 3} lainnya` : ""}. Hapus itu dulu.`);

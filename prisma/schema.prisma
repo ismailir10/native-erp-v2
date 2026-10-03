@@ -514,6 +514,9 @@ model BankTransaction {
   settlements   InvoiceSettlement[]
   /// A combined transfer split across accounts (pecah transaksi): the parts are the classification side; none = one account.
   splits        BankTxSplit[]
+  /// The customer/supplier this line was matched for (UC-B5): what stays unmatched on a receivable/payable account is their advance.
+  contactId     String?
+  contact       Contact?            @relation(fields: [contactId], references: [id], onDelete: SetNull)
   createdAt     DateTime            @default(now())
 
   @@unique([bankAccountId, hash])
@@ -549,6 +552,7 @@ model JournalEntry {
   assetDisposal     FixedAsset?          @relation("AssetDisposal")
   /// The invoice this entry records (kind INVOICE).
   invoice           Invoice?             @relation("InvoiceEntry")
+  voidedInvoice     Invoice?             @relation("InvoiceVoidEntry")
   /// The tax pack posting this entry is (accounting-rules 5d).
   taxPosting        TaxPosting?
   /// The lease this entry commences, cancels, or books a month of (accounting-rules 5f).
@@ -1040,6 +1044,7 @@ model FirmMember {
   auditEvents      AuditEvent[]          @relation("AuditEventBy")
   reportFormats    ReportFormat[]        @relation("ReportFormatBy")
   subledgerImports SubledgerImport[]     @relation("SubledgerImportBy")
+  voidedInvoices   Invoice[]             @relation("InvoiceVoidedBy")
   findingsResolved Finding[]             @relation("FindingResolvedBy")
   proposalsDecided ProposedEntry[]       @relation("ProposalDecidedBy")
 
@@ -1213,14 +1218,18 @@ enum InvoiceDirection {
 
 /// A customer or supplier of a client (accounting-rules 5c).
 model Contact {
-  id        String    @id @default(cuid())
-  firmId    String
-  clientId  String
-  client    Client    @relation(fields: [clientId], references: [id])
-  name      String
-  npwp      String?
-  createdAt DateTime  @default(now())
-  invoices  Invoice[]
+  id               String            @id @default(cuid())
+  firmId           String
+  clientId         String
+  client           Client            @relation(fields: [clientId], references: [id])
+  name             String
+  npwp             String?
+  /// Sales channel (UC-B5), free text: Marketplace, Reseller, Langsung…
+  channel          String?
+  createdAt        DateTime          @default(now())
+  invoices         Invoice[]
+  /// Bank lines matched to this contact (their unmatched rest is the contact's advance).
+  bankTransactions BankTransaction[]
 
   @@unique([clientId, name])
 }
@@ -1259,6 +1268,13 @@ model Invoice {
   createdBy        FirmMember?         @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
   createdAt        DateTime            @default(now())
   settlements      InvoiceSettlement[]
+  /// Keluarkan dokumen (UC-B5): a wrongly entered document, reversed (`voidEntry`, dated on the original) and out of every subledger view.
+  voidedAt         DateTime?
+  voidReason       String?
+  voidEntryId      String?             @unique
+  voidEntry        JournalEntry?       @relation("InvoiceVoidEntry", fields: [voidEntryId], references: [id], onDelete: Restrict)
+  voidedById       String?
+  voidedBy         FirmMember?         @relation("InvoiceVoidedBy", fields: [voidedById], references: [id], onDelete: SetNull)
 
   @@unique([entityId, direction, number])
   @@index([clientId])

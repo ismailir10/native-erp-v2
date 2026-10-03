@@ -16,8 +16,9 @@ import { disposeAsset, type DisposalInput } from "@/lib/assets/dispose";
 import { cancelLease, createLease, postLeaseMonths, type LeaseInput } from "@/lib/leases/register";
 import { deleteEmployee, importCensus, saveBenefitSetting, saveEmployee, uploadMortality, type BenefitSettingInput, type EmployeeInput } from "@/lib/benefits/census";
 import { postBenefits } from "@/lib/benefits/valuation";
-import { createInvoice, type InvoiceInput } from "@/lib/receivables/invoices";
-import { settleWithReclass, unsettle } from "@/lib/receivables/settle";
+import { createInvoice, voidInvoice, type InvoiceInput } from "@/lib/receivables/invoices";
+import { setContactChannel } from "@/lib/receivables/channels";
+import { settleFifo, settleWithReclass, tagAdvance, unsettle } from "@/lib/receivables/settle";
 import { candidateViews, type CandidateView } from "@/lib/receivables/view";
 import { postCkpn, saveCkpnSetting, type CkpnSettingInput } from "@/lib/receivables/ckpn";
 import { taxPack } from "@/lib/tax/pack";
@@ -412,6 +413,54 @@ export async function settleAction(input: { clientId: string; invoiceId: string;
   try {
     const client = await getClientForFirm(input.clientId);
     await settleWithReclass(prisma, { ...input, clientId: client.id, actorId: (await getCurrentMember()).id });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Cocokkan FIFO (UC-B5): one bank line across a contact's open invoices, oldest first; the rest stays as their advance. */
+export async function settleFifoAction(input: { clientId: string; bankTransactionId: string; contactId: string }): Promise<Result<{ settled: { number: string; amount: string }[]; rest: string; contact: string }>> {
+  try {
+    const client = await getClientForFirm(input.clientId);
+    const r = await settleFifo(prisma, { clientId: client.id, bankTransactionId: input.bankTransactionId, contactId: input.contactId, actorId: (await getCurrentMember()).id });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, settled: r.settled.map((x) => ({ number: x.number, amount: x.amount.toString() })), rest: r.rest.toString(), contact: r.contact };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Marks a bank line as a contact's advance (uang muka), or clears it. */
+export async function tagAdvanceAction(input: { clientId: string; bankTransactionId: string; contactId: string | null }): Promise<Result> {
+  try {
+    const client = await getClientForFirm(input.clientId);
+    await tagAdvance(prisma, { clientId: client.id, bankTransactionId: input.bankTransactionId, contactId: input.contactId, actorId: (await getCurrentMember()).id });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** A customer's sales channel (UC-B5): free text, "" clears it. */
+export async function setContactChannelAction(input: { clientId: string; contactId: string; channel: string }): Promise<Result<{ channel: string | null }>> {
+  try {
+    const client = await getClientForFirm(input.clientId);
+    const c = await setContactChannel(prisma, { clientId: client.id, contactId: input.contactId, channel: String(input.channel ?? "") });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, channel: c.channel };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Keluarkan dokumen (UC-B5): reverses a wrongly entered invoice or bill on its own date, with the reason. */
+export async function voidInvoiceAction(input: { clientId: string; invoiceId: string; reason: string }): Promise<Result> {
+  try {
+    const client = await getClientForFirm(input.clientId);
+    await voidInvoice(prisma, { clientId: client.id, invoiceId: input.invoiceId, reason: String(input.reason ?? ""), actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
   } catch (e) {

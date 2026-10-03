@@ -3,7 +3,7 @@
 import { Fragment, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronDown, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -15,12 +15,15 @@ import { ReceivablesTabs } from "@/components/app/receivables-tabs";
 import { SimpleSelect } from "@/components/app/simple-select";
 import { Money } from "@/components/app/money";
 import { StatusPill } from "@/components/app/status";
-import { createInvoiceAction, settleAction, settleCandidatesAction, unsettleAction } from "@/app/actions";
+import { createInvoiceAction, settleAction, settleCandidatesAction, settleFifoAction, tagAdvanceAction, unsettleAction, voidInvoiceAction } from "@/app/actions";
+import { Textarea } from "@/components/ui/textarea";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BUCKETS, BUCKET_LABEL } from "@/lib/receivables/aging";
 import { formatMoney, parseMoney, PPN_EFFECTIVE_PERCENT } from "@/lib/money";
 import { RECEIPT_KINDS, WITHHOLDING_KINDS, WITHHOLDING_LABEL, withholdingFor } from "@/lib/tax/withholding";
 import type { WithholdingKind } from "@/lib/generated/prisma/enums";
-import type { AgingView, CandidateView, ComparisonView, InvoiceView, UnsettledLineView } from "@/lib/receivables/view";
+import type { AgingView, CandidateView, ComparisonView, InvoiceView, UnsettledLineView, VoidedView } from "@/lib/receivables/view";
 
 type Account = { code: string; name: string };
 type Direction = "SALES" | "PURCHASE";
@@ -37,10 +40,12 @@ export function Receivables(props: {
   direction: Direction;
   entities: { id: string; name: string; currency: string }[];
   invoices: InvoiceView[];
+  voided: VoidedView[];
   aging: AgingView[];
   comparison: ComparisonView[];
   unsettled: UnsettledLineView[];
   contacts: string[];
+  contactOptions: { id: string; name: string }[];
   accounts: { counter: Account[]; arAp: Account[] };
   defaultDate: string;
 }) {
@@ -54,6 +59,8 @@ export function Receivables(props: {
   const [settleKind, setSettleKind] = useState("");
   const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [voiding, setVoiding] = useState<InvoiceView | null>(null);
+  const [voidReason, setVoidReason] = useState("");
   const set = (patch: Partial<InvoiceForm>) => setForm((f) => (f ? { ...f, ...patch } : f));
   const currency = props.entities.find((e) => e.id === form?.entityId)?.currency ?? "IDR";
 
@@ -147,6 +154,18 @@ export function Receivables(props: {
     router.refresh();
   };
 
+  const doVoid = async () => {
+    if (!voiding) return;
+    setBusy(true);
+    const r = await voidInvoiceAction({ clientId: props.clientId, invoiceId: voiding.id, reason: voidReason });
+    setBusy(false);
+    if (!r.ok) return void toast.error(r.error);
+    toast.success(`${w.doc} ${voiding.number} dikeluarkan`, { description: voiding.opening ? "Saldo awal: hanya ditandai, tanpa jurnal." : `Jurnalnya dibalik per ${voiding.issued}.` });
+    setVoiding(null);
+    setVoidReason("");
+    router.refresh();
+  };
+
   const openInvoices = props.invoices.filter((i) => BigInt(i.open) > 0n);
   const paid = props.invoices.filter((i) => BigInt(i.open) === 0n);
 
@@ -162,6 +181,8 @@ export function Receivables(props: {
 
       {props.aging.map((a) => {
         const cmp = props.comparison.find((c) => c.entityId === a.entityId);
+        const withAdvance = BigInt(a.totals.advance) !== 0n;
+        const unallocated = BigInt(a.unallocated);
         return (
           <Card key={a.entityId} data-testid={`aging-${a.entity}`}>
             <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
@@ -177,15 +198,20 @@ export function Receivables(props: {
                   <TableRow>
                     <TableHead className="pl-6">{w.party}</TableHead>
                     {BUCKETS.map((b) => <TableHead key={b} className="hidden text-right md:table-cell">{BUCKET_LABEL[b]}</TableHead>)}
+                    {withAdvance && <TableHead className="hidden text-right whitespace-normal md:table-cell">Uang muka / kelebihan bayar</TableHead>}
                     <TableHead className="pr-6 text-right">Jumlah</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {a.rows.map((r) => (
-                    <TableRow key={r.contact}>
-                      <TableCell className="pl-6 whitespace-normal">{r.contact} <span className="text-xs text-muted-foreground">· {r.count} {w.docLower}</span></TableCell>
+                    <TableRow key={r.contact} data-credit={r.credit || undefined}>
+                      <TableCell className="pl-6 whitespace-normal">
+                        {r.contact} <span className="text-xs text-muted-foreground">· {r.count ? `${r.count} ${w.docLower}` : "uang muka"}</span>
+                        {r.credit && <span className="text-xs text-review"> · kelebihan bayar</span>}
+                      </TableCell>
                       {BUCKETS.map((b) => <TableCell key={b} className="hidden text-right md:table-cell"><Money value={BigInt(r.buckets[b])} currency={a.currency} /></TableCell>)}
-                      <TableCell className="pr-6 text-right"><Money strong value={BigInt(r.total)} currency={a.currency} /></TableCell>
+                      {withAdvance && <TableCell className="hidden text-right md:table-cell"><Money value={-BigInt(r.advance)} currency={a.currency} /></TableCell>}
+                      <TableCell className={r.credit ? "pr-6 text-right text-review" : "pr-6 text-right"}><Money strong value={BigInt(r.net)} currency={a.currency} /></TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -193,12 +219,20 @@ export function Receivables(props: {
                   <TableRow>
                     <TableCell className="pl-6 font-medium">Jumlah</TableCell>
                     {BUCKETS.map((b) => <TableCell key={b} className="hidden text-right md:table-cell"><Money strong value={BigInt(a.totals[b])} currency={a.currency} /></TableCell>)}
-                    <TableCell className="pr-6 text-right"><Money strong value={BigInt(a.totals.total)} currency={a.currency} /></TableCell>
+                    {withAdvance && <TableCell className="hidden text-right md:table-cell"><Money strong value={-BigInt(a.totals.advance)} currency={a.currency} /></TableCell>}
+                    <TableCell className="pr-6 text-right"><Money strong value={BigInt(a.totals.net)} currency={a.currency} /></TableCell>
                   </TableRow>
+                  {unallocated !== 0n && (
+                    <TableRow data-testid="unallocated">
+                      <TableCell className="pl-6 whitespace-normal text-review">Belum dialokasikan <span className="text-xs">· {a.unallocatedLines} mutasi bank, lihat di bawah</span></TableCell>
+                      <TableCell className="hidden md:table-cell" colSpan={BUCKETS.length + (withAdvance ? 1 : 0)} />
+                      <TableCell className="pr-6 text-right"><Money value={-unallocated} currency={a.currency} /></TableCell>
+                    </TableRow>
+                  )}
                   {cmp && (
                     <TableRow data-testid="subledger-ledger">
                       <TableCell className="pl-6 text-muted-foreground whitespace-normal" colSpan={1}>Buku besar ({cmp.accounts.join(", ")})</TableCell>
-                      <TableCell className="hidden md:table-cell" colSpan={BUCKETS.length} />
+                      <TableCell className="hidden md:table-cell" colSpan={BUCKETS.length + (withAdvance ? 1 : 0)} />
                       <TableCell className="pr-6 text-right"><Money muted value={BigInt(cmp.ledger)} currency={cmp.currency} /></TableCell>
                     </TableRow>
                   )}
@@ -213,17 +247,13 @@ export function Receivables(props: {
         <Card data-testid="unsettled-lines">
           <CardHeader>
             <CardTitle>{w.lines}</CardTitle>
-            <CardDescription>Mutasi bank yang sudah dicatat ke akun {props.direction === "SALES" ? "piutang" : "utang"} tapi belum dikaitkan ke {w.docLower}. Buka {w.docLower}nya lalu pilih Cocokkan.</CardDescription>
+            <CardDescription>
+              Mutasi bank di akun {props.direction === "SALES" ? "piutang" : "utang"} yang belum (habis) dikaitkan ke {w.docLower}. Pilih {w.party.toLowerCase()}nya lalu Cocokkan FIFO: {w.docLower} terlama jatuh tempo dulu, sisanya jadi uang muka {w.party.toLowerCase()} itu. Uang yang memang dibayar di muka: Uang muka.
+            </CardDescription>
           </CardHeader>
           <CardContent className="divide-y px-0">
             {props.unsettled.map((l) => (
-              <div key={l.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-6 py-2.5">
-                <div className="min-w-0 flex-1 basis-64">
-                  <div className="text-sm">{l.description}</div>
-                  <div className="text-xs text-muted-foreground">{l.entity} · {l.date} · {l.accountCode}</div>
-                </div>
-                <Money className="text-sm" value={BigInt(l.free)} currency={l.currency} />
-              </div>
+              <UnsettledLine key={l.id} clientId={props.clientId} line={l} contacts={props.contactOptions} party={w.party.toLowerCase()} onDone={() => router.refresh()} />
             ))}
           </CardContent>
         </Card>
@@ -238,7 +268,7 @@ export function Receivables(props: {
           {openInvoices.length === 0 ? (
             <p className="px-6 text-sm text-muted-foreground">Tidak ada {w.docLower} terbuka per tanggal ini.</p>
           ) : (
-            <InvoiceTable rows={openInvoices} w={w} open={open} setOpen={setOpen} onMatch={openMatching} onUnsettle={doUnsettle} busy={busy} />
+            <InvoiceTable rows={openInvoices} w={w} open={open} setOpen={setOpen} onMatch={openMatching} onUnsettle={doUnsettle} onVoid={setVoiding} busy={busy} />
           )}
         </CardContent>
       </Card>
@@ -252,6 +282,54 @@ export function Receivables(props: {
           </CardContent>
         </Card>
       )}
+      {props.voided.length > 0 && (
+        <Card data-testid="invoices-voided">
+          <Collapsible>
+            <CardHeader>
+              <CollapsibleTrigger className="group flex items-center gap-1 text-left">
+                <ChevronRight className="size-4 transition-transform group-data-[panel-open]:rotate-90" aria-hidden />
+                <CardTitle>{w.doc} dikeluarkan ({props.voided.length})</CardTitle>
+              </CollapsibleTrigger>
+              <CardDescription>Dokumen yang salah catat. Jurnalnya dibalik pada tanggal aslinya; tidak masuk umur {props.direction === "SALES" ? "piutang" : "utang"}, CKPN maupun laporan.</CardDescription>
+            </CardHeader>
+            <CollapsibleContent>
+              <CardContent className="divide-y px-0">
+                {props.voided.map((v) => (
+                  <div key={v.id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-6 py-2 text-sm">
+                    <div className="min-w-0">
+                      <div><span className="font-medium line-through decoration-muted-foreground">{v.number} · {v.contact}</span> <span className="text-xs text-muted-foreground">· {v.entity} · {v.issued}{v.opening ? " · saldo awal" : ""}</span></div>
+                      <div className="text-xs text-muted-foreground">Dikeluarkan {v.voidedAt}{v.by ? ` oleh ${v.by}` : ""}: {v.reason}</div>
+                    </div>
+                    <span className="line-through decoration-muted-foreground"><Money muted value={BigInt(v.total)} currency={v.currency} /></span>
+                  </div>
+                ))}
+              </CardContent>
+            </CollapsibleContent>
+          </Collapsible>
+        </Card>
+      )}
+
+      <Dialog open={voiding !== null} onOpenChange={(o) => !o && setVoiding(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Keluarkan {w.docLower} {voiding?.number}?</DialogTitle>
+            <DialogDescription>
+              {voiding?.opening
+                ? `Rincian saldo awal: tidak ada jurnal, ${w.docLower} ini hanya ditandai dan keluar dari daftar.`
+                : `Jurnalnya dibalik per ${voiding?.issued} (bulan itu harus belum dikunci). ${w.doc} tetap tercatat, dicoret dengan alasannya.`}
+            </DialogDescription>
+          </DialogHeader>
+          <Field>
+            <FieldLabel htmlFor="void-reason">Alasan</FieldLabel>
+            <Textarea id="void-reason" rows={2} value={voidReason} onChange={(e) => setVoidReason(e.target.value)} placeholder="Mis. dokumen pemasok, bukan nota penjualan; dobel dengan INV-012" />
+            <FieldDescription>Min. 10 karakter. Tercatat di riwayat.</FieldDescription>
+          </Field>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setVoiding(null)}>Batal</Button>
+            <Button variant="destructive" disabled={busy || voidReason.trim().length < 10} onClick={doVoid} data-testid="void-confirm">Keluarkan</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={form !== null} onOpenChange={(o) => !o && setForm(null)}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
@@ -373,7 +451,7 @@ export function Receivables(props: {
                     <div className="text-sm">{c.description}</div>
                     <div className="text-xs text-muted-foreground">
                       {c.date} · sisa <span className="num">{formatMoney(BigInt(c.free), matching.invoice.currency)}</span>
-                      {c.exact ? " · nominal sama" : ""}{c.named ? " · nama/nomor cocok" : ""}{c.onAccount ? "" : ` · akan diklasifikasikan ke ${matching.invoice.arApCode}`}
+                      {c.advance ? " · uang muka pelanggan ini" : ""}{c.exact ? " · nominal sama" : ""}{c.named ? " · nama/nomor cocok" : ""}{c.onAccount ? "" : ` · akan diklasifikasikan ke ${matching.invoice.arApCode}`}
                     </div>
                   </div>
                   <Input aria-label={`Nominal ${c.date}`} inputMode="decimal" className="num w-36 text-right" value={amounts[c.bankTransactionId] ?? ""} onChange={(e) => setAmounts({ ...amounts, [c.bankTransactionId]: e.target.value })} />
@@ -392,7 +470,7 @@ export function Receivables(props: {
   );
 }
 
-function InvoiceTable(props: { rows: InvoiceView[]; w: (typeof WORDS)[Direction]; open: string | null; setOpen: (id: string | null) => void; onMatch?: (i: InvoiceView) => void; onUnsettle: (id: string) => void; busy: boolean }) {
+function InvoiceTable(props: { rows: InvoiceView[]; w: (typeof WORDS)[Direction]; open: string | null; setOpen: (id: string | null) => void; onMatch?: (i: InvoiceView) => void; onUnsettle: (id: string) => void; onVoid?: (i: InvoiceView) => void; busy: boolean }) {
   return (
     <Table>
       <TableHeader>
@@ -433,7 +511,14 @@ function InvoiceTable(props: { rows: InvoiceView[]; w: (typeof WORDS)[Direction]
                     </p>
                   )}
                   {i.settlements.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Belum ada pelunasan.</p>
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                      <p className="text-muted-foreground">Belum ada pelunasan.</p>
+                      {props.onVoid && (
+                        <Button variant="ghost" size="sm" className="text-fail" onClick={() => props.onVoid!(i)} data-testid={`void-${i.number}`}>
+                          Keluarkan {props.w.docLower} ini…
+                        </Button>
+                      )}
+                    </div>
                   ) : (
                     <ul className="space-y-1.5 text-sm">
                       {i.settlements.map((s) => (
@@ -456,3 +541,56 @@ function InvoiceTable(props: { rows: InvoiceView[]; w: (typeof WORDS)[Direction]
     </Table>
   );
 }
+
+/**
+ * One unmatched bank line (UC-B5): pick the contact, then *Cocokkan FIFO* (their open documents, oldest first; the rest stays as their
+ * advance) or *Uang muka* (the whole line is theirs, for a later document). A tagged line shows whose advance it is.
+ */
+function UnsettledLine({ clientId, line, contacts, party, onDone }: { clientId: string; line: UnsettledLineView; contacts: { id: string; name: string }[]; party: string; onDone: () => void }) {
+  const [contactId, setContactId] = useState(line.contact?.id ?? "");
+  const [busy, setBusy] = useState(false);
+  async function fifo() {
+    setBusy(true);
+    const r = await settleFifoAction({ clientId, bankTransactionId: line.id, contactId });
+    setBusy(false);
+    if (!r.ok) return void toast.error(r.error);
+    const rest = BigInt(r.rest);
+    toast.success(`${r.settled.length} dokumen ${r.contact} dicocokkan`, { description: [r.settled.map((x) => `${x.number} ${formatMoney(BigInt(x.amount), line.currency)}`).join(", "), rest > 0n ? `sisa ${formatMoney(rest, line.currency)} jadi uang muka` : ""].filter(Boolean).join(" · ") });
+    onDone();
+  }
+  async function tag(id: string | null) {
+    setBusy(true);
+    const r = await tagAdvanceAction({ clientId, bankTransactionId: line.id, contactId: id });
+    setBusy(false);
+    if (!r.ok) return void toast.error(r.error);
+    toast.success(id ? (line.refund ? "Ditandai sebagai pengembalian" : "Ditandai sebagai uang muka") : "Tanda dihapus");
+    onDone();
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-6 py-2.5" data-testid="unsettled-line">
+      <div className="min-w-0 flex-1 basis-64">
+        <div className="text-sm">{line.description}</div>
+        <div className="text-xs text-muted-foreground">
+          {line.entity} · {line.date} · {line.accountCode}
+          {line.refund && <span className="text-review"> · pengembalian (uang keluar)</span>}
+          {line.split && <span> · bagian dari mutasi yang dipecah</span>}
+          {line.contact && <span className="font-medium text-foreground"> · {line.refund ? "pengembalian ke" : "uang muka"} {line.contact.name}</span>}
+        </div>
+      </div>
+      <Money className="text-sm" value={BigInt(line.free)} currency={line.currency} />
+      <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+        <Select value={contactId || null} onValueChange={(v) => setContactId((v as string) ?? "")}>
+          <SelectTrigger size="sm" className="w-56 max-w-full" aria-label={`Pilih ${party}`}><SelectValue placeholder={`Pilih ${party}`} /></SelectTrigger>
+          <SelectContent>{contacts.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+        </Select>
+        {!line.refund && !line.split && <Button size="sm" variant="outline" disabled={busy || !contactId} onClick={fifo} data-testid="fifo">Cocokkan FIFO</Button>}
+        {line.contact ? (
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => tag(null)}>Hapus tanda</Button>
+        ) : (
+          <Button size="sm" variant="ghost" disabled={busy || !contactId} onClick={() => tag(contactId)}>{line.refund ? "Tandai pengembalian" : "Uang muka"}</Button>
+        )}
+      </div>
+    </div>
+  );
+}
+

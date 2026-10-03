@@ -5,6 +5,7 @@ import type { WithholdingKind } from "@/lib/generated/prisma/enums";
 import { checkWithholding, WITHHOLDING_LABEL } from "@/lib/tax/withholding";
 import { formatPeriod } from "@/lib/format";
 import { formatMoney, parseMoney } from "@/lib/money";
+import { recordEvent } from "@/lib/audit";
 
 /**
  * Settlements (accounting-rules 5c): a bank line settles (part of) an invoice. The bank line already moved the GL when it was
@@ -26,6 +27,9 @@ type SettleInput = {
   withheld?: string | null;
   /** The tax, when the invoice doesn't name one. */
   whtKind?: WithholdingKind | null;
+  /** Internal callers (FIFO) pass minor units directly: no round trip through a typed amount. */
+  cashMinor?: bigint;
+  withheldMinor?: bigint;
   actorId?: string | null;
 };
 
@@ -39,17 +43,21 @@ async function lockedMonths(db: Db | Tx, clientId: string) {
 }
 
 async function load(tx: Tx, input: SettleInput) {
-  // Lock both rows: two clicks settling the same invoice or the same receipt serialise here.
-  await tx.$queryRaw`SELECT id FROM "Invoice" WHERE id = ${input.invoiceId} FOR UPDATE`;
+  // Lock both rows: two clicks settling the same invoice or the same receipt serialise here. The bank line first, everywhere
+  // (settleFifo and unsettle lock it before any invoice), so two paths over the same line never wait on each other in reverse.
   await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${input.bankTransactionId} FOR UPDATE`;
+  await tx.$queryRaw`SELECT id FROM "Invoice" WHERE id = ${input.invoiceId} FOR UPDATE`;
   const invoice = await tx.invoice.findFirst({ where: { id: input.invoiceId, clientId: input.clientId }, include: { arApAccount: true, entity: true, settlements: { select: { amount: true, withheld: true } } } });
   if (!invoice) throw new LedgerError("Faktur tidak ditemukan.");
-  const t = await tx.bankTransaction.findFirst({ where: { id: input.bankTransactionId, entityId: invoice.entityId }, include: { settlements: { select: { amount: true, withheld: true } } } });
+  if (invoice.voidedAt) throw new LedgerError(`${invoice.direction === "SALES" ? "Faktur" : "Tagihan"} ${invoice.number} sudah dikeluarkan.`);
+  const t = await tx.bankTransaction.findFirst({ where: { id: input.bankTransactionId, entityId: invoice.entityId }, include: { settlements: { select: { amount: true, withheld: true } }, contact: { select: { name: true } } } });
   if (!t) throw new LedgerError("Mutasi bank tidak ditemukan untuk entitas faktur ini.");
   // A split line moved the receivable/payable by one part only: settling its full amount would leave the subledger above the ledger.
   if (await tx.bankTxSplit.count({ where: { bankTransactionId: t.id } })) throw new LedgerError("Mutasi ini dipecah ke beberapa akun, jadi tidak bisa dicocokkan ke faktur. Gabungkan dulu ke satu akun di Buku Besar.");
   const sales = invoice.direction === "SALES";
   if (t.direction !== (sales ? "IN" : "OUT")) throw new LedgerError(sales ? "Pelunasan piutang harus uang masuk." : "Pembayaran utang harus uang keluar.");
+  // A line tagged with another contact is their money (their advance, UC-B5): it can't pay this contact's document.
+  if (t.contactId && t.contactId !== invoice.contactId) throw new LedgerError(`Mutasi ini milik ${t.contact?.name ?? "kontak lain"} (uang muka atau pelunasannya). Hapus tandanya dulu bila memang salah.`);
   if ((await lockedMonths(tx, input.clientId)).has(monthKey(t.date))) throw new LedgerError(`${formatPeriod(t.date.getUTCFullYear(), t.date.getUTCMonth() + 1)} sudah ditutup. Buka periode dulu untuk mencocokkan mutasi ini.`);
   return { invoice, t };
 }
@@ -64,7 +72,7 @@ async function settleTx(tx: Tx, input: SettleInput) {
   const free = abs(t.amount) - cashUsed(t.settlements);
   if (open <= 0n) throw new LedgerError(`${invoice.number} sudah lunas.`);
   if (free <= 0n) throw new LedgerError("Mutasi ini sudah habis dicocokkan ke faktur lain.");
-  const explicitWht = input.withheld?.trim() ? parseMoney(input.withheld, cur) : null;
+  const explicitWht = input.withheldMinor ?? (input.withheld?.trim() ? parseMoney(input.withheld, cur) : null);
   if (explicitWht !== null && explicitWht < 0n) throw new LedgerError("Pemotongan pajak tidak boleh negatif.");
   // Cash: what was asked, else the most both can take (less the expected withholding when that is what closes the invoice).
   const expected = invoice.whtAmount - invoice.settlements.reduce((s, x) => s + x.withheld, 0n);
@@ -72,7 +80,8 @@ async function settleTx(tx: Tx, input: SettleInput) {
   const pool = t.whtAmount - t.settlements.reduce((s, x) => s + x.withheld, 0n);
   const expectedTax = pool > expected ? pool : expected;
   let cash: bigint;
-  if (input.amount?.trim()) cash = parseMoney(input.amount, cur);
+  if (input.cashMinor !== undefined) cash = input.cashMinor;
+  else if (input.amount?.trim()) cash = parseMoney(input.amount, cur);
   else if (explicitWht !== null) cash = open - explicitWht < free ? open - explicitWht : free;
   else cash = open < free ? open : free;
   if (cash <= 0n) throw new LedgerError("Nominal pencocokan harus lebih dari nol.");
@@ -84,6 +93,8 @@ async function settleTx(tx: Tx, input: SettleInput) {
   const exists = await tx.invoiceSettlement.findUnique({ where: { invoiceId_bankTransactionId: { invoiceId: invoice.id, bankTransactionId: t.id } } });
   if (exists) throw new LedgerError("Mutasi ini sudah dicocokkan ke faktur ini. Hapus pencocokannya dulu untuk mengubah nominal.");
   const created = await tx.invoiceSettlement.create({ data: { firmId: invoice.firmId, invoiceId: invoice.id, bankTransactionId: t.id, amount, withheld, createdById: input.actorId ?? null } });
+  // The line is now this contact's: what stays unmatched on it is their advance (UC-B5). A line already tagged keeps its contact.
+  if (!t.contactId) await tx.bankTransaction.update({ where: { id: t.id }, data: { contactId: invoice.contactId } });
   if (withheld > 0n) {
     // The tax leg goes on the bank line's classification side (rule 3: a RECLASS of the difference), so the payable/receivable account
     // moves by the gross the invoice was cleared by.
@@ -115,6 +126,88 @@ export async function settleWithReclass(db: Db, input: SettleInput) {
   });
 }
 
+/**
+ * Cocokkan FIFO (UC-B5): one receipt (or payment) across the contact's open invoices of the entity, oldest due first (then issue date and
+ * number), until the line's free amount or the invoices run out. Each allocation is an ordinary settlement (same locks and refusals).
+ * An invoice expecting withholding closes at its net with its tax booked, as by hand; a part payment of it is cash only. What is left on
+ * the line is the contact's advance. A line tagged with another contact is refused.
+ */
+export async function settleFifo(db: Db, input: { clientId: string; bankTransactionId: string; contactId: string; actorId?: string | null }) {
+  return db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${input.bankTransactionId} FOR UPDATE`;
+    const t = await tx.bankTransaction.findFirst({ where: { id: input.bankTransactionId, bankAccount: { entity: { clientId: input.clientId } } }, include: { settlements: { select: { invoiceId: true, amount: true, withheld: true } }, contact: { select: { name: true } } } });
+    if (!t) throw new LedgerError("Mutasi bank tidak ditemukan.");
+    const contact = await tx.contact.findFirst({ where: { id: input.contactId, clientId: input.clientId } });
+    if (!contact) throw new LedgerError("Pilih pelanggan atau pemasok.");
+    if (t.contactId && t.contactId !== contact.id) throw new LedgerError(`Mutasi ini milik ${t.contact?.name ?? "kontak lain"} (uang muka atau pelunasannya). Hapus tandanya dulu bila memang salah.`);
+    let free = abs(t.amount) - cashUsed(t.settlements);
+    if (free <= 0n) throw new LedgerError("Mutasi ini sudah habis dicocokkan.");
+    const direction = t.direction === "IN" ? "SALES" : "PURCHASE";
+    const invoices = await tx.invoice.findMany({
+      where: { clientId: input.clientId, entityId: t.entityId, contactId: contact.id, direction, voidedAt: null },
+      include: { arApAccount: { select: { code: true } }, settlements: { select: { amount: true, withheld: true } } },
+      orderBy: [{ dueDate: "asc" }, { issueDate: "asc" }, { number: "asc" }],
+    });
+    const open = invoices
+      .map((i) => ({ i, open: i.total - i.settlements.reduce((u, x) => u + x.amount, 0n), tax: i.whtAmount - i.settlements.reduce((u, x) => u + x.withheld, 0n) }))
+      .filter((x) => x.open > 0n && !t.settlements.some((s) => s.invoiceId === x.i.id));
+    if (!open.length) throw new LedgerError(`Tidak ada ${direction === "SALES" ? "faktur" : "tagihan"} terbuka untuk ${contact.name} di entitas ini. Tandai mutasi ini sebagai uang muka ${contact.name} bila memang dibayar di muka.`);
+    const codes = [...new Set(open.map((x) => x.i.arApAccount.code))];
+    if (codes.length > 1) throw new LedgerError(`${direction === "SALES" ? "Faktur" : "Tagihan"} ${contact.name} memakai akun berbeda (${codes.join(", ")}). Cocokkan satu per satu.`);
+    // A line still in Review or elsewhere goes to the invoices' account first, through the reviewer's writer (as "Klasifikasikan lalu cocokkan").
+    if (t.status === "NEEDS_REVIEW" || t.accountCode !== codes[0]) await reviewTransactionTx(tx, { bankTxId: t.id, accountCode: codes[0], taxTag: null, actorId: input.actorId });
+    const settled: { number: string; amount: bigint }[] = [];
+    for (const x of open) {
+      if (free <= 0n) break;
+      // An invoice the counterparty withholds on is paid at its net: when the cash reaches it, the expected tax closes it as a manual
+      // settlement would (the tax leg booked); a part payment is cash only and the tax stays expected.
+      const tax = x.tax > 0n ? x.tax : 0n;
+      const due = x.open - tax;
+      if (due <= 0n) continue;
+      const cash = free < due ? free : due;
+      const withheld = cash === due ? tax : 0n;
+      await settleTx(tx, { clientId: input.clientId, invoiceId: x.i.id, bankTransactionId: t.id, cashMinor: cash, withheldMinor: withheld, actorId: input.actorId });
+      settled.push({ number: x.i.number, amount: cash + withheld });
+      free -= cash;
+    }
+    await tx.bankTransaction.update({ where: { id: t.id }, data: { contactId: contact.id } });
+    return { settled, rest: free, contact: contact.name };
+  });
+}
+
+/**
+ * Tags a bank line as a contact's (its unmatched rest is their advance, or a refund to them), or clears the tag (null). Nothing is
+ * posted, but the tag moves the month's subledger proof: refused in a locked month, under the line's lock, and kept in the history.
+ */
+export async function tagAdvance(db: Db, input: { clientId: string; bankTransactionId: string; contactId: string | null; actorId?: string | null }) {
+  return db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "BankTransaction" WHERE id = ${input.bankTransactionId} FOR UPDATE`;
+    const t = await tx.bankTransaction.findFirst({
+      where: { id: input.bankTransactionId, bankAccount: { entity: { clientId: input.clientId } } },
+      include: { contact: { select: { name: true } }, settlements: { select: { invoice: { select: { contactId: true, number: true } } } } },
+    });
+    if (!t) throw new LedgerError("Mutasi bank tidak ditemukan.");
+    const contact = input.contactId ? await tx.contact.findFirst({ where: { id: input.contactId, clientId: input.clientId } }) : null;
+    if (input.contactId && !contact) throw new LedgerError("Pilih pelanggan atau pemasok.");
+    if (t.settlements.length && t.settlements.some((s) => s.invoice.contactId !== input.contactId)) {
+      throw new LedgerError(`Mutasi ini sudah dicocokkan ke ${t.settlements.map((s) => s.invoice.number).join(", ")}; tandanya mengikuti pencocokan itu. Hapus pencocokannya dulu bila salah.`);
+    }
+    if ((await lockedMonths(tx, input.clientId)).has(monthKey(t.date))) throw new LedgerError(`${formatPeriod(t.date.getUTCFullYear(), t.date.getUTCMonth() + 1)} sudah ditutup. Buka periode dulu untuk mengubah tanda mutasi ini.`);
+    const updated = await tx.bankTransaction.update({ where: { id: t.id }, data: { contactId: contact?.id ?? null } });
+    await recordEvent(tx, {
+      clientId: input.clientId,
+      entityId: t.entityId,
+      kind: "ADVANCE",
+      subject: `bank-tx:${t.id}`,
+      summary: `${t.description.slice(0, 70)}: ${contact ? `ditandai milik ${contact.name}` : `tanda ${t.contact?.name ?? ""} dihapus`}`.trim(),
+      before: { contact: t.contact?.name ?? null },
+      after: { contact: contact?.name ?? null },
+      actorId: input.actorId,
+    });
+    return updated;
+  });
+}
+
 export async function unsettle(db: Db, input: { clientId: string; settlementId: string }) {
   const s = await db.invoiceSettlement.findFirst({ where: { id: input.settlementId, invoice: { clientId: input.clientId } }, include: { bankTransaction: { select: { date: true, whtKind: true, whtAmount: true } } } });
   if (!s) throw new LedgerError("Pencocokan tidak ditemukan.");
@@ -143,6 +236,8 @@ export type SettleCandidate = {
   named: boolean;
   /** Already on the invoice's receivable/payable account (else settling reclassifies it). */
   onAccount: boolean;
+  /** This contact's unmatched money from earlier (an advance, UC-B5), offered first whatever its date. */
+  advance: boolean;
 };
 
 const norm = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
@@ -155,7 +250,7 @@ const FORMS = new Set(["PT", "CV", "TBK", "UD", "PD", "KOPERASI", "YAYASAN", "BA
  */
 export async function settleCandidates(db: Db, clientId: string, invoiceId: string): Promise<SettleCandidate[]> {
   const invoice = await db.invoice.findFirst({ where: { id: invoiceId, clientId }, include: { contact: true, arApAccount: true, settlements: { select: { amount: true, withheld: true } } } });
-  if (!invoice) return [];
+  if (!invoice || invoice.voidedAt) return [];
   const open = invoice.total - invoice.settlements.reduce((s, x) => s + x.amount, 0n);
   // A customer that withholds pays the invoice less the tax: that amount is as exact as the open amount.
   const expectedTax = invoice.whtAmount - invoice.settlements.reduce((s, x) => s + x.withheld, 0n);
@@ -163,7 +258,7 @@ export async function settleCandidates(db: Db, clientId: string, invoiceId: stri
   if (open <= 0n) return [];
   const locked = await lockedMonths(db, clientId);
   const lines = await db.bankTransaction.findMany({
-    where: { entityId: invoice.entityId, direction: invoice.direction === "SALES" ? "IN" : "OUT", date: { gte: invoice.opening ? new Date(0) : invoice.issueDate } },
+    where: { entityId: invoice.entityId, direction: invoice.direction === "SALES" ? "IN" : "OUT", OR: [{ date: { gte: invoice.opening ? new Date(0) : invoice.issueDate } }, { contactId: invoice.contactId }] },
     include: { settlements: { select: { amount: true, withheld: true } } },
     orderBy: [{ date: "asc" }, { rowNumber: "asc" }],
   });
@@ -175,8 +270,8 @@ export async function settleCandidates(db: Db, clientId: string, invoiceId: stri
       const free = abs(t.amount) - cashUsed(t.settlements);
       const text = ` ${norm(t.description)} `;
       const named = (words.length > 0 && words.every((w) => text.includes(` ${w} `))) || (number.length >= 3 && text.includes(` ${number} `));
-      return { bankTransactionId: t.id, date: t.date, description: t.description, amount: t.amount, free, exact: free === open || free === net, named, onAccount: t.status !== "NEEDS_REVIEW" && t.accountCode === invoice.arApAccount.code };
+      return { bankTransactionId: t.id, date: t.date, description: t.description, amount: t.amount, free, exact: free === open || free === net, named, onAccount: t.status !== "NEEDS_REVIEW" && t.accountCode === invoice.arApAccount.code, advance: t.contactId === invoice.contactId };
     })
     .filter((c) => c.free > 0n)
-    .sort((a, b) => Number(b.exact && b.named) - Number(a.exact && a.named) || Number(b.exact) - Number(a.exact) || Number(b.named) - Number(a.named) || Number(b.onAccount) - Number(a.onAccount) || +a.date - +b.date);
+    .sort((a, b) => Number(b.advance) - Number(a.advance) || Number(b.exact && b.named) - Number(a.exact && a.named) || Number(b.exact) - Number(a.exact) || Number(b.named) - Number(a.named) || Number(b.onAccount) - Number(a.onAccount) || +a.date - +b.date);
 }

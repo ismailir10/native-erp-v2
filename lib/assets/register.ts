@@ -351,13 +351,13 @@ export async function registerVsLedger(db: Db, clientId: string, year: number, m
 export type AssetCandidate = { entryId: string; entity: { id: string; shortName: string; functionalCurrency: string }; account: { code: string; name: string }; date: Date; amount: bigint; description: string };
 
 /**
- * Purchases in the ledger not registered yet: the net debit of an entry on an ASET_TETAP account (opening entries and lease
- * commencements, whose ROU asset the lease register holds, excluded), unless
+ * Purchases in the ledger not registered yet: the net debit of an entry on an ASET_TETAP account (opening entries, lease
+ * commencements, whose ROU asset the lease register holds, and entries reversed or voided away excluded), unless
  * an asset or a schedule cites that line — or, for schedules made before the line was stored, cites the entry at all.
  */
 export async function assetCandidates(db: Db, clientId: string, entityIds?: string[]): Promise<AssetCandidate[]> {
   const lines = await db.journalLine.findMany({
-    where: { account: { clientId, fsLine: "ASET_TETAP" }, ...(entityIds ? { entityId: { in: entityIds } } : {}), entry: { kind: { not: "OPENING" }, assetDisposal: null, leaseCommenced: null, leaseCancelled: null } },
+    where: { account: { clientId, fsLine: "ASET_TETAP" }, ...(entityIds ? { entityId: { in: entityIds } } : {}), entry: { kind: { not: "OPENING" }, assetDisposal: null, leaseCommenced: null, leaseCancelled: null, voidedInvoice: null, reversedBy: null } },
     include: { account: { select: { id: true, code: true, name: true } }, entry: { select: { id: true, memo: true, date: true, entity: { select: { id: true, shortName: true, functionalCurrency: true } }, bankTransaction: { select: { description: true } } } } },
     orderBy: [{ date: "asc" }, { id: "asc" }],
   });

@@ -167,7 +167,7 @@ export async function ckpn(db: Db | Tx, clientId: string, entityId: string, year
   const setting: CkpnSettingValues = saved ?? DEFAULT_SETTING;
   const through = periodBounds(year, month).end;
   const rows = await db.invoice.findMany({
-    where: { clientId, entityId, direction: "SALES", issueDate: { lte: through } },
+    where: { clientId, entityId, direction: "SALES", voidedAt: null, issueDate: { lte: through } },
     select: { id: true, entityId: true, issueDate: true, opening: true, dueDate: true, total: true, settlements: { select: { amount: true, bankTransaction: { select: { date: true } } } } },
   });
   const openings = await openingDates(db, rows.some((r) => r.opening) ? [entityId] : []);

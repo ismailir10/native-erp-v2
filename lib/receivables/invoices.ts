@@ -4,7 +4,8 @@ import { LedgerError, postJournal, type PostLine } from "@/lib/ledger/post";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { dateOnly, formatDate, formatPeriod } from "@/lib/format";
 import { closeLock } from "@/lib/adjust/schedules";
-import { parseMoney, PPN_EFFECTIVE_PERCENT } from "@/lib/money";
+import { formatMoney, parseMoney, PPN_EFFECTIVE_PERCENT } from "@/lib/money";
+import { recordEvent } from "@/lib/audit";
 import { checkWithholding, withholdingFor } from "@/lib/tax/withholding";
 
 /**
@@ -156,7 +157,75 @@ export async function createInvoice(db: Db, input: InvoiceInput) {
       });
     });
   } catch (e) {
-    if ((e as { code?: string }).code === "P2002") throw new LedgerError(`Nomor ${number} sudah dipakai untuk ${sales ? "faktur" : "tagihan"} lain entitas ini.`);
+    if ((e as { code?: string }).code === "P2002") {
+      const used = await db.invoice.findFirst({ where: { entityId: input.entityId, direction: input.direction, number }, select: { voidedAt: true } });
+      throw new LedgerError(used?.voidedAt ? `Nomor ${number} dipakai ${sales ? "faktur" : "tagihan"} yang sudah dikeluarkan. Beri nomor lain, mis. ${number}-R.` : `Nomor ${number} sudah dipakai untuk ${sales ? "faktur" : "tagihan"} lain entitas ini.`);
+    }
     throw e;
   }
+}
+
+export const VOID_MIN = 10;
+
+/**
+ * *Keluarkan dokumen* (UC-B5): a wrongly entered invoice or bill (a supplier's document entered as a sales note, a duplicate) leaves the
+ * subledger. Its journal is reversed by a mirror entry through postJournal() dated on the original, so the month's figures drop it; a
+ * locked month refuses. A Saldo Awal item posts nothing and is only marked (its opening month and later must be open, as for recording
+ * it). The document stays, struck through with its reason, and the history keeps the decision. Refused while it has settlements.
+ */
+export async function voidInvoice(db: Db, input: { clientId: string; invoiceId: string; reason: string; actorId?: string | null }) {
+  const reason = input.reason.trim().replace(/\s+/g, " ");
+  if (reason.length < VOID_MIN) throw new LedgerError(`Tulis alasannya (min. ${VOID_MIN} karakter), mis. "dokumen pemasok, bukan nota penjualan".`);
+  return db.$transaction(async (tx) => {
+    await closeLock(tx, input.clientId);
+    await tx.$queryRaw`SELECT id FROM "Invoice" WHERE id = ${input.invoiceId} FOR UPDATE`;
+    const inv = await tx.invoice.findFirst({
+      where: { id: input.invoiceId, clientId: input.clientId },
+      include: { contact: true, entity: true, settlements: { select: { id: true } }, entry: { include: { lines: true, assetsFrom: { select: { name: true } }, schedulesFrom: { select: { id: true } } } } },
+    });
+    if (!inv) throw new LedgerError("Faktur tidak ditemukan.");
+    const sales = inv.direction === "SALES";
+    const doc = `${sales ? "Faktur" : "Tagihan"} ${inv.number}`;
+    if (inv.voidedAt) throw new LedgerError(`${doc} sudah dikeluarkan.`);
+    if (inv.settlements.length) throw new LedgerError(`${doc} sudah dicocokkan ke ${inv.settlements.length} mutasi bank. Hapus pencocokannya dulu, lalu keluarkan.`);
+    // Its journal feeds a register: reversing it underneath would leave the asset or the schedule running on nothing.
+    if (inv.entry?.assetsFrom.length) throw new LedgerError(`${doc} tercatat sebagai aset tetap (${inv.entry.assetsFrom.map((x) => x.name).join(", ")}). Hapus atau lepas asetnya dulu di Aset Tetap.`);
+    if (inv.entry?.schedulesFrom.length) throw new LedgerError(`${doc} dipakai jadwal jurnal (amortisasi). Hentikan jadwalnya dulu di Jurnal Penyesuaian.`);
+    let voidEntryId: string | null = null;
+    if (inv.entry) {
+      const { date } = inv.entry;
+      const period = await tx.period.findUnique({ where: { clientId_year_month: { clientId: input.clientId, year: date.getUTCFullYear(), month: date.getUTCMonth() + 1 } } });
+      if (period?.status === "LOCKED") throw new LedgerError(`${formatPeriod(period.year, period.month)} sudah dikunci, dan ${sales ? "faktur" : "tagihan"} ${inv.number} dibalik pada tanggal aslinya (${formatDate(date)}). Buka kunci bulan itu dulu.`);
+      voidEntryId = (
+        await postJournal(tx, {
+          entityId: inv.entityId,
+          date,
+          kind: "INVOICE",
+          memo: `Batal ${doc} · ${inv.contact.name}: ${reason}`,
+          reversesId: inv.entry.id,
+          actorId: input.actorId,
+          lines: inv.entry.lines.map((l) => ({ accountId: l.accountId, debit: l.credit, credit: l.debit, memo: l.memo ?? undefined, sourceAccountId: l.sourceAccountId, sourceRef: l.sourceRef })),
+        })
+      ).id;
+    } else {
+      // A Saldo Awal item sits in every list from the opening on: a locked month from there would change after the fact.
+      const opening = await tx.journalEntry.findFirst({ where: { entityId: inv.entityId, kind: "OPENING" }, orderBy: { date: "asc" }, select: { date: true } });
+      const from = opening?.date ?? inv.issueDate;
+      const [y, m] = [from.getUTCFullYear(), from.getUTCMonth() + 1];
+      const locked = await tx.period.findFirst({ where: { clientId: input.clientId, status: "LOCKED", OR: [{ year: { gt: y } }, { year: y, month: { gte: m } }] }, orderBy: [{ year: "asc" }, { month: "asc" }] });
+      if (locked) throw new LedgerError(`${formatPeriod(locked.year, locked.month)} sudah dikunci, dan rincian saldo awal mengubah daftar ${sales ? "piutang" : "utang"} bulan itu. Buka kunci bulan itu dulu.`);
+    }
+    const voided = await tx.invoice.update({ where: { id: inv.id }, data: { voidedAt: new Date(), voidReason: reason, voidEntryId, voidedById: input.actorId ?? null } });
+    await recordEvent(tx, {
+      clientId: input.clientId,
+      entityId: inv.entityId,
+      kind: "DOCUMENT_VOID",
+      subject: `invoice:${inv.id}`,
+      summary: `${doc} · ${inv.contact.name} · ${formatMoney(inv.total, inv.entity.functionalCurrency)} dikeluarkan: ${reason}${inv.entry ? "" : " (saldo awal, tanpa jurnal)"}`,
+      before: { status: "AKTIF", total: inv.total.toString() },
+      after: { status: "DIKELUARKAN", reason, voidEntryId },
+      actorId: input.actorId,
+    });
+    return voided;
+  });
 }
