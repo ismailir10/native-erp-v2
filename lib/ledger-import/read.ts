@@ -504,8 +504,9 @@ export function readLedger(sheet: RawSheet, t: TableCandidate): { rows: LedgerRo
     const creditCell = get("credit");
     // Section/total/banner rows: no account and no amounts.
     if (!code && !name && isBlank(debitCell) && isBlank(creditCell)) continue;
-    // A total row has no date and says Total/Jumlah in its account cells or, with no account, anywhere in the row: kept for the tie-out.
-    const totalLabel = isBlank(dateCell) && (TOTAL_LABEL.test(code || name) || (!code && !name && row.some((x) => TOTAL_LABEL.test(cellText(x)))));
+    // A total row has no readable date and says Total/Jumlah in its account cells or, with no account, anywhere in the row (often in
+    // the date column itself): kept for the tie-out.
+    const totalLabel = !cellDate(dateCell) && (TOTAL_LABEL.test(code || name) || (!code && !name && row.some((x) => TOTAL_LABEL.test(cellText(x)))));
     if (totalLabel) {
       const d = cellCents(debitCell);
       const k = cellCents(creditCell);

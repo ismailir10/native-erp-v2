@@ -126,7 +126,7 @@ The cycle runs without a separate stop, like cycles 1–3.
       stands alone.
 - [x] T5 Opening bridge: a Neraca after the first journal stages as an anchor; post computes the bridge; refusals. Accept: DB test,
       Neraca at the anchor date equals the file; no double counting.
-- [ ] T6 Synthetic K2 set end-to-end + accounting-rules 15a. Accept: the four-file test passes to the rupiah.
+- [x] T6 Synthetic K2 set end-to-end + accounting-rules 15a. Accept: the four-file test passes to the rupiah.
 - [ ] T7 End-of-cycle gates, review pass, ship.
 
 ## Implementation
@@ -175,6 +175,14 @@ The cycle runs without a separate stop, like cycles 1–3.
   - with no journals up to the anchor, it is a plain Saldo Awal on the anchor date.
 
   Test: `tests/db/ledger-import-bridge.test.ts` (Neraca at the anchor equals the file; TB, BS and Laba Rugi to the rupiah).
+- T6: `tests/db/k2-files.test.ts` runs the four files of UC-K2, known numbers in its header, through stage → map → post, and asserts:
+  - every trap on the draft: typos, negative row, Total tie, missing months, no Saldo Awal, bridge, TB typos and tie, Neraca without
+    February;
+  - the reports to the rupiah.
+
+  Found on the way: a GL Total row with its label in the date column read as an unreadable date (BLOCK). A total row is now "no
+  readable date" wherever its label sits. Accounting-rules rule 15a gains the paragraphs on files from old systems, the TB and the
+  opening bridge.
 
 ## Verification
 - T1: `npx vitest run tests/unit/ledger-header-typos.test.ts tests/unit/ledger-read.test.ts` → `Tests 16 passed (16)`; lint + typecheck
@@ -189,5 +197,7 @@ The cycle runs without a separate stop, like cycles 1–3.
 - T5: `tests/db/ledger-import-bridge.test.ts` → `Tests 3 passed (3)`; lint + typecheck clean; `npm test` →
   `Test Files 135 passed (135) · Tests 963 passed (963)`; `demo:reset && verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok
   dengan ground truth.`
+- T6: `tests/db/k2-files.test.ts` → `Tests 1 passed (1)` (failed first on the Total row above); lint + typecheck clean; `npm test` →
+  `Test Files 136 passed (136) · Tests 964 passed (964)`.
 
 ## Ship Notes

@@ -219,6 +219,34 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     A Neraca printed as **two panels side by side** (Aset | Kewajiban + Ekuitas, an ERP "Balance Sheet Report") is one table: every panel
     is read in turn and its rows keep the panel's column in the ref (`BS!A12`, `BS!F12`), so no row loses its source cell. With a `Level`
     column a coded row with zero value and a deeper row after it is a *group heading* (it sets the section and term), never an account.
+    **Files from old systems** (use-case UC-K2, cycle 4) are checked, never trusted blind:
+    - a header typo is read only against the known column words (bounded edit distance) and shown as INFO `HEADER_TYPO`;
+    - a GL row written negative posts on the other side with the same number and is listed (REVIEW);
+    - a GL's Total row is tied to its rows as written (`TOTAL_OK` / `TOTAL_MISMATCH`);
+    - a month with no rows, in the file or between it and the entity's posted GL, is REVIEW `MISSING_MONTH`;
+    - a year typo with exactly one fix inside the file's period is a BLOCK the accountant may accept (`DATE_TYPO`: posts on the fixed
+      date, the memo keeps the written one); any other far date is REVIEW and posts as written;
+    - GL rows on or before the entity's Saldo Awal are BLOCK `BEFORE_OPENING`, never counted twice;
+    - a Neraca balance against its account's nature is REVIEW, posted as written, never flipped.
+
+    A **trial balance** with column groups (saldo awal, Adjustment, setelah penyesuaian, mutasi, saldo akhir) is a Neraca-mode import
+    of up to three journals, each line citing its own cell:
+    - OPENING on the opening date;
+    - the **Adjustment column as its own ADJUSTMENT journal** on that date, never merged into the opening;
+    - the movement as IMPORTED on the closing date.
+
+    Every row must tie across its columns, and every column must tie to the Total row. A TB over months that already have journals is
+    BLOCK `TB_OVERLAP`.
+
+    **Opening bridge** (UC-B4): a Neraca dated after the entity's first journal is an anchor, not a Saldo Awal on its own date. Its
+    OPENING entry goes the day before the first journal and holds:
+    - the anchor's lines;
+    - the books' movement up to the anchor reversed per balance-sheet account (memo *opening bridge*);
+    - that span's income and expense on 3200.
+
+    The Neraca at the anchor date then equals the file. It is refused while 1999 or 1199 hold money at that date, and for an anchor line
+    mapped to income or expense. Laba Rugi before the first journal is unknown and sits in Saldo Laba; the draft says so (REVIEW
+    `OPENING_BRIDGE`).
 16. Parsers detect format from **content**, not file name, and raise `ParseError` with a Bahasa message the UI shows verbatim.
 
 ## AI (credit is limited — treat every call as money)
