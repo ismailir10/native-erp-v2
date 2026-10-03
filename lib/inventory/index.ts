@@ -1,10 +1,11 @@
+import { financialYear, fiscalEndMonth } from "@/lib/fiscal";
 import type { Db, Tx } from "@/lib/db";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { templateAccounts } from "@/lib/coa/ensure";
 import { closeLock } from "@/lib/adjust/schedules";
 import { TRADING } from "@/lib/controls/sanity";
 import { LedgerError, postJournal } from "@/lib/ledger/post";
-import { dateOnly, formatDate, formatPeriod, periodBounds } from "@/lib/format";
+import { formatDate, formatPeriod, periodBounds } from "@/lib/format";
 
 /**
  * Persediaan & HPP, periodic method (accounting-rules 5i). Purchases go to cost of sales (5100) as they are paid; at a month end the
@@ -35,13 +36,13 @@ export async function inventoryBalance(db: Db | Tx, clientId: string, entityIds:
 
 /**
  * Whether the month-end count matters for this entity: it holds inventory, it has been counted before, or it is a trading business
- * whose cost of sales moved this year.
+ * whose cost of sales moved this financial year (lib/fiscal.ts).
  */
 async function applies(db: Db | Tx, clientId: string, entityId: string, industry: string | null, year: number, month: number, book: bigint) {
   if (book !== 0n) return true;
   if (await db.inventoryCount.count({ where: { entityId, OR: [{ year: { lt: year } }, { year, month: { lte: month } }] } })) return true;
   if (!industry || !TRADING.test(industry)) return false;
-  const cogs = await db.journalLine.count({ where: { entityId, account: { fsLine: "HPP" }, date: { gte: dateOnly(year, 1, 1), lte: periodBounds(year, month).end } } });
+  const cogs = await db.journalLine.count({ where: { entityId, account: { fsLine: "HPP" }, date: { gte: financialYear(await fiscalEndMonth(db, clientId), year, month).start, lte: periodBounds(year, month).end } } });
   return cogs > 0;
 }
 

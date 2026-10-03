@@ -26,6 +26,11 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
    account whose FS line isn't a line of its type's statement shows on *Pos … belum terpetakan* and makes the report a draft
    (`lib/reports/status.ts`). The page renders the format with `renderFormat`; the Excel workbook and the PDF draw the same rows
    (`lib/reports/statement-set.ts`).
+   **"The year" is the client's financial year** (`Client.fiscalYearEndMonth`, *tahun buku*, default December; `lib/fiscal.ts`). The TB
+   fold into Saldo Laba, Laba Rugi year to date, *laba berjalan*, equity changes, cash flow, CALK, the comparatives (previous year end,
+   same months last year), the asset register, the benefits valuation and the year-end close controls all count from its first month.
+   It is derived only (no closing entries), and frozen once a month of the client is locked. Pajak Badan and FX average rates are
+   calendar-year only: for a non-calendar client the tax pack refuses and says so instead of computing the wrong year.
 2. **`postJournal()` (`lib/ledger/post.ts`) is the only writer.** It enforces Σdebit = Σcredit, ≥2 lines,
    one positive side per line, open period, accounts in the entity's client COA. The DB also CHECKs
    `debit>=0, credit>=0, (debit=0) <> (credit=0)` (init migration). Never `prisma.journalLine.create` elsewhere.

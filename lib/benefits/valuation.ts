@@ -1,10 +1,11 @@
+import { financialYear, fiscalEndMonth, monthsIntoYear, priorYearEnd } from "@/lib/fiscal";
 import type { Db, Tx } from "@/lib/db";
 import type { Employee } from "@/lib/generated/prisma/client";
 import { LedgerError, postJournal } from "@/lib/ledger/post";
 import { closeLock } from "@/lib/adjust/schedules";
 import { templateAccounts } from "@/lib/coa/ensure";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
-import { dateOnly, formatDate, periodBounds } from "@/lib/format";
+import { formatDate, periodBounds } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
 import { qxOf } from "@/lib/benefits/census";
 import { interestCost, valueEmployee, type Assumptions, type EmployeeValue } from "@/lib/benefits/puc";
@@ -35,9 +36,9 @@ export type Valuation = {
   serviceCost: bigint;
   interestCost: bigint;
   sensitivity: { discountUp: bigint; discountDown: bigint; salaryUp: bigint; salaryDown: bigint } | null;
-  /** The valuation at the previous 31 December (employees employed then, today's wages). */
+  /** The valuation at the previous financial-year end (employees employed then, today's wages). */
   opening: { at: Date; dbo: bigint; serviceCost: bigint; interestCost: bigint };
-  /** 6105 year to date: (service + interest cost of the opening valuation) × months ÷ 12 + the obligation of employees hired since. */
+  /** 6105 year to date: (service + interest cost of the opening valuation) × months of the financial year so far ÷ 12 + the obligation of employees hired since. */
   expenseTarget: bigint;
   ledger: { liability: bigint; liabilityOpening: bigint; expenseYtd: bigint };
   /** First year in Buku: the opening obligation not yet in 2310 goes to Saldo Laba. */
@@ -60,14 +61,18 @@ const sum = <T>(xs: T[], f: (x: T) => bigint) => xs.reduce((t, x) => t + f(x), 0
 
 export async function valuation(db: Reader, clientId: string, entityId: string, year: number, month: number): Promise<Valuation> {
   const at = periodBounds(year, month).end;
-  const openingAt = dateOnly(year - 1, 12, 31);
+  // The client's financial year (lib/fiscal.ts): the valuation opens at the previous year end and expense counts from the year's start.
+  const endMonth = await fiscalEndMonth(db, clientId);
+  const yearStart = financialYear(endMonth, year, month).start;
+  const openingAt = priorYearEnd(endMonth, year, month);
+  const elapsed = monthsIntoYear(endMonth, year, month);
   const setting = await db.benefitSetting.findUnique({ where: { entityId }, include: { mortalityTable: true } });
   const employees = await db.employee.findMany({ where: { clientId, entityId }, orderBy: [{ hireDate: "asc" }, { name: "asc" }] });
   const later = (await db.benefitPosting.findFirst({ where: { entityId, entry: { date: { gt: at } } }, include: { entry: { select: { date: true } } }, orderBy: { entry: { date: "desc" } } }))?.entry.date ?? null;
   const ledger = {
     liability: -(await balance(db, clientId, entityId, C.BENEFIT_LIABILITY, null, at)),
     liabilityOpening: -(await balance(db, clientId, entityId, C.BENEFIT_LIABILITY, null, openingAt)),
-    expenseYtd: await balance(db, clientId, entityId, C.BENEFIT_EXPENSE, dateOnly(year, 1, 1), at),
+    expenseYtd: await balance(db, clientId, entityId, C.BENEFIT_EXPENSE, yearStart, at),
   };
   const empty = { at: openingAt, dbo: 0n, serviceCost: 0n, interestCost: 0n };
   const base = { entityId, at, configured: !!setting, tableName: setting?.mortalityTable?.name ?? null, ledger, later };
@@ -97,14 +102,14 @@ export async function valuation(db: Reader, clientId: string, entityId: string, 
   opening.interestCost = interestCost(opening.dbo, opening.serviceCost, setting.discountBp);
   const hired = now.filter((x) => +x.e.hireDate > +openingAt);
   const annual = opening.serviceCost + opening.interestCost;
-  const expenseTarget = (annual * BigInt(month) * 2n + 12n) / 24n + sum(hired, (x) => x.v.dbo);
+  const expenseTarget = (annual * BigInt(elapsed) * 2n + 12n) / 24n + sum(hired, (x) => x.v.dbo);
 
   // First year in Buku: no benefit journal before this year. The opening obligation not yet in 2310 belongs to prior periods.
   const earlier = await db.benefitPosting.count({ where: { entityId, entry: { date: { lte: openingAt } } } });
   const firstYear = earlier === 0;
   let gap = 0n;
   if (firstYear) {
-    const postings = await db.benefitPosting.findMany({ where: { entityId, entry: { date: { gte: dateOnly(year, 1, 1), lte: at } } }, include: { entry: { include: { lines: { include: { account: { select: { code: true } } } } } } } });
+    const postings = await db.benefitPosting.findMany({ where: { entityId, entry: { date: { gte: yearStart, lte: at } } }, include: { entry: { include: { lines: { include: { account: { select: { code: true } } } } } } } });
     const booked = postings.flatMap((p) => p.entry.lines).filter((l) => l.account.code === C.RETAINED).reduce((t, l) => t + l.debit - l.credit, 0n);
     gap = opening.dbo - ledger.liabilityOpening - booked;
   }

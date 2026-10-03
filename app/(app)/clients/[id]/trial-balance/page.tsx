@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { periodKeyOf, priorYearEnd } from "@/lib/fiscal";
 import { clientAccountsView, loadClientPage } from "@/lib/client-page";
 import { type SearchParams, withParams } from "@/lib/scope";
 import { trialBalance, trialBalanceMovement } from "@/lib/reports/ledger";
@@ -34,7 +35,7 @@ export default async function TrialBalancePage({ params, searchParams }: { param
     // The client's own accounts, as in their file; lines without one (bank, adjustments) under their Buku account.
     const src = await sourceTrialBalance(prisma, scope.value, period.end, period.start);
     // Last years' result isn't a 3200 entry: it is folded income & expense, so it opens last year's Laba Rugi.
-    const priorHref = withParams(`${base}/reports`, { period: `${period.year - 1}-12`, entity: scope.value, tab: "pl" });
+    const priorHref = withParams(`${base}/reports`, { period: periodKeyOf(priorYearEnd(client.fiscalYearEndMonth, period.year, period.month)), entity: scope.value, tab: "pl" });
     const rows: TbTableRow[] = src.map((r) => ({
       key: r.key,
       code: r.code,

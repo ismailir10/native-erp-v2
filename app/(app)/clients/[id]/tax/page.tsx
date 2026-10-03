@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { fiscalSpan } from "@/lib/fiscal";
 import { loadClientPage } from "@/lib/client-page";
 import type { SearchParams } from "@/lib/scope";
 import { formatPeriod } from "@/lib/format";
@@ -29,6 +30,19 @@ export default async function TaxPage({ params, searchParams }: { params: Promis
         {header}
         <NextStep>Pilih badan usaha (PT/CV) dengan pembukuan Rupiah. Pajak orang pribadi dan entitas valuta asing belum dihitung di sini.</NextStep>
         <Card><CardContent className="pt-6 text-sm text-muted-foreground">{entity.name} bukan badan usaha dengan pembukuan Rupiah.</CardContent></Card>
+      </div>
+    );
+  }
+  if (client.fiscalYearEndMonth !== 12) {
+    return (
+      <div className="space-y-6">
+        {header}
+        <NextStep>Hitung PPh badan di luar Buku untuk sementara, lalu catat jurnalnya di Jurnal Penyesuaian.</NextStep>
+        <Card>
+          <CardContent className="pt-6 text-sm text-muted-foreground" data-testid="tax-fiscal-year">
+            Pajak Badan untuk tahun buku non-kalender ({fiscalSpan(client.fiscalYearEndMonth)}) belum didukung di Buku. Paket ini menghitung per tahun kalender, jadi angkanya tidak ditampilkan agar tidak salah tahun.
+          </CardContent>
+        </Card>
       </div>
     );
   }

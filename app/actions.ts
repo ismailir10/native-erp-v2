@@ -31,7 +31,7 @@ import { MoneyError, parseMoney } from "@/lib/money";
 import { dateOnly } from "@/lib/format";
 import { liveUploadFile } from "@/lib/demo/seed";
 import { addBankAccount, addClient, addEntity, OnboardingError, type NewClientInput } from "@/lib/onboarding";
-import { EntitySettingsError, setReportingFramework } from "@/lib/entity-settings";
+import { EntitySettingsError, setFiscalYearEnd, setReportingFramework } from "@/lib/entity-settings";
 import { FormatError, resetReportFormat, saveReportFormat } from "@/lib/reports/format-settings";
 import { OpeningError, postOpening, type OpeningLineInput } from "@/lib/opening";
 import { FindingError, resolveOpeningFinding } from "@/lib/findings";
@@ -570,6 +570,19 @@ export async function saveReportingFrameworkAction(clientId: string, entityId: s
   try {
     const client = await getClientForFirm(clientId);
     await setReportingFramework(prisma, { clientId: client.id, entityId, framework });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** The client's financial-year end (tahun buku): which year its reports count from. Refused once a month is closed. */
+export async function saveFiscalYearEndAction(clientId: string, endMonth: number): Promise<Result> {
+  try {
+    const client = await getClientForFirm(clientId);
+    const member = await getCurrentMember();
+    await setFiscalYearEnd(prisma, { clientId: client.id, endMonth, actorId: member.id });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
   } catch (e) {

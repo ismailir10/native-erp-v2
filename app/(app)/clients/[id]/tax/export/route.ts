@@ -12,6 +12,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const url = new URL(req.url);
   const entity = client.entities.find((e) => e.id === url.searchParams.get("entity"));
   if (!entity || !packApplies(entity)) return new Response("Pilih badan usaha dengan pembukuan Rupiah", { status: 400 });
+  if (client.fiscalYearEndMonth !== 12) return new Response("Pajak Badan untuk tahun buku non-kalender belum didukung di Buku.", { status: 400 });
   const now = new Date();
   const period = parsePeriod(url.searchParams.get("period") ?? undefined, { year: now.getUTCFullYear(), month: now.getUTCMonth() + 1 });
   const pack = await taxPack(prisma, client.id, entity.id, period.year, period.month);

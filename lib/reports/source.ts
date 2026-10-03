@@ -1,4 +1,5 @@
 import type { Db } from "@/lib/db";
+import { fiscalEndMonthOfEntities, fiscalYearStart } from "@/lib/fiscal";
 import type { AccountType } from "@/lib/generated/prisma/enums";
 import { dateOnly } from "@/lib/format";
 import { postedBasis } from "@/lib/reports/account-ledger";
@@ -7,7 +8,7 @@ import { displaySourceCode } from "@/lib/ledger-import/code";
 /**
  * Neraca Saldo in the entity's own accounts (rule 9a): lines grouped by source account, in the entity's functional currency.
  * Lines without a source account (bank lines, adjustments, 7190, 1999) are grouped by client account. Same convention as
- * the client TB: balance-sheet accounts cumulative, income & expense from 1 Jan; earlier years' result is one row.
+ * the client TB: balance-sheet accounts cumulative, income & expense from the financial-year start; earlier years' result is one row.
  * `net` is the closing balance; the month's movement gives opening + debit − credit = net.
  */
 export type SourceTbRow = {
@@ -29,7 +30,7 @@ export type SourceTbRow = {
 };
 
 export async function sourceTrialBalance(db: Db, entityId: string, asOf: Date, start = dateOnly(asOf.getUTCFullYear(), asOf.getUTCMonth() + 1, 1)): Promise<SourceTbRow[]> {
-  const yearStart = dateOnly(asOf.getUTCFullYear(), 1, 1);
+  const yearStart = fiscalYearStart(await fiscalEndMonthOfEntities(db, [entityId]), asOf);
   const by = ["accountId", "sourceAccountId"] as const;
   const [lines, ytd, month] = await Promise.all([
     db.journalLine.groupBy({ by: [...by], where: { entityId, date: { lte: asOf } }, _sum: { debit: true, credit: true } }),

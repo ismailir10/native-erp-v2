@@ -1,7 +1,7 @@
 import type { Db } from "@/lib/db";
+import { fiscalEndMonth, fiscalYearStart } from "@/lib/fiscal";
 import type { Account } from "@/lib/generated/prisma/client";
 import { FS_LINES, type FsLine } from "@/lib/coa/template";
-import { dateOnly } from "@/lib/format";
 import { loadRates } from "@/lib/fx/rates";
 import { entityRates, FxMissingError, isMixed, scopeEntities, translate, translateNets, type EntityCurrency, type EntityRates } from "@/lib/reports/fx";
 
@@ -32,8 +32,8 @@ const isPL = (a: Account) => a.type === "PENDAPATAN" || a.type === "BEBAN";
 export type TbRow = { account: Account; debit: bigint; credit: bigint; net: bigint };
 
 /**
- * Trial balance as of `asOf`: balance-sheet accounts cumulative, P&L accounts from 1 Jan of
- * asOf's year. Prior-year P&L is folded into retained earnings (3200) so the TB always balances.
+ * Trial balance as of `asOf`: balance-sheet accounts cumulative, P&L accounts from the start of the client's financial year holding
+ * asOf (1 January for a calendar year; lib/fiscal.ts). Earlier years' P&L is folded into retained earnings (3200) so the TB always balances.
  */
 export async function trialBalance(db: Db, scope: Scope, asOf: Date): Promise<TbRow[]> {
   const entities = await scopeEntities(db, scope.entityIds);
@@ -68,7 +68,7 @@ async function ratesByEntity(db: Db, clientId: string, entities: EntityCurrency[
 
 async function nativeTrialBalance(db: Db, scope: Scope, asOf: Date): Promise<TbRow[]> {
   const accounts = await db.account.findMany({ where: { clientId: scope.clientId }, orderBy: { code: "asc" } });
-  const yearStart = dateOnly(asOf.getUTCFullYear(), 1, 1);
+  const yearStart = fiscalYearStart(await fiscalEndMonth(db, scope.clientId), asOf);
   const [all, ytd] = await Promise.all([sumByAccount(db, scope, { to: asOf }), sumByAccount(db, scope, { from: yearStart, to: asOf })]);
   const allMap = new Map(all.map((r) => [r.accountId, r]));
   const ytdMap = new Map(ytd.map((r) => [r.accountId, r]));

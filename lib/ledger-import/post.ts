@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
+import { fiscalEndMonth, fiscalYearStart } from "@/lib/fiscal";
 import type { Db, Tx } from "@/lib/db";
 import { formatMoney } from "@/lib/money";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { postJournal, type PostLine } from "@/lib/ledger/post";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
-import { dateOnly, formatDate, formatPeriod } from "@/lib/format";
+import { formatDate, formatPeriod } from "@/lib/format";
 import { loadRates, lookupRate, upsertFileRate } from "@/lib/fx/rates";
 import { formatRate, formatRateId, isCurrency, parseRate } from "@/lib/fx/currency";
 import { ParseError } from "@/lib/import/types";
@@ -134,10 +135,10 @@ export async function stageImport(db: Db, input: StageInput): Promise<StageResul
     const name = info(input.entityId).name;
     const first = await db.journalEntry.findFirst({ where: { entityId: input.entityId }, orderBy: { date: "asc" }, select: { date: true } });
     if (read.tb) {
-      // A one-date worksheet is wholly at its date. Otherwise, without a written opening date, last year's balance is taken at the year
-      // end before the closing date (cycle 6: fiscal years).
+      // A one-date worksheet is wholly at its date. Otherwise, without a written opening date, last year's balance is taken at the
+      // client's financial-year end before the closing date (lib/fiscal.ts).
       const worksheet = tbIsWorksheet(read.tb.layout);
-      const opening = worksheet ? date : (read.tb.opening ?? dateOnly(date.getUTCFullYear() - 1, 12, 31));
+      const opening = worksheet ? date : (read.tb.opening ?? new Date(+fiscalYearStart(await fiscalEndMonth(db, input.clientId), date) - 86_400_000));
       if (!worksheet && +opening >= +date) throw new LedgerImportError(`Tanggal saldo awal neraca saldo (${formatDate(opening)}) harus sebelum tanggal saldo akhirnya (${formatDate(date)}).`);
       plan = planTb(read.tb, { entityKey: "", entity: info(input.entityId), opening, closing: date, existingNames });
       if (!worksheet && !read.tb.opening) plan.checks.push({ severity: "INFO", code: "TB_OPENING_DATE", message: `Tanggal saldo awal tidak tertulis di file: dianggap ${formatDate(opening)} (akhir tahun sebelum ${formatDate(date)}).`, refs: [], entityKey: "" });
