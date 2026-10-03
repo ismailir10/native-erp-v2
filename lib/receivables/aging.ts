@@ -105,12 +105,66 @@ export function agingByContact(items: OpenItem[]): AgingRow[] {
   return [...rows.values()].sort((a, b) => (b.total > a.total ? 1 : b.total < a.total ? -1 : a.contact.name.localeCompare(b.contact.name)));
 }
 
-export type SubledgerComparison = { entityId: string; direction: InvoiceDirection; accounts: string[]; subledger: bigint; ledger: bigint; unsettledLines: number; equal: boolean };
+/**
+ * A bank line's cash on the receivable/payable accounts not matched to an invoice (UC-B5). `amount` is in the contact's favour: a
+ * receipt on a receivable (a payment on a payable) is +, a refund the other way −. Tagged with a contact, it is that contact's advance
+ * (uang muka / kelebihan bayar); untagged, it is cash not allocated yet. Nothing is posted for it: the GL already holds it.
+ */
+export type UnmatchedLine = { id: string; entityId: string; date: Date; description: string; contact: { id: string; name: string } | null; amount: bigint };
+
+export async function unmatchedLines(db: Db | Tx, entityId: string, direction: InvoiceDirection, asOf: Date, codes: string[]): Promise<UnmatchedLine[]> {
+  const lines = await db.bankTransaction.findMany({
+    where: { entityId, date: { lte: asOf }, status: { not: "NEEDS_REVIEW" }, OR: [{ accountCode: { in: codes }, splits: { none: {} } }, { splits: { some: { accountCode: { in: codes } } } }] },
+    select: {
+      id: true,
+      entityId: true,
+      date: true,
+      description: true,
+      amount: true,
+      direction: true,
+      contact: { select: { id: true, name: true } },
+      splits: { select: { accountCode: true, amount: true } },
+      settlements: { select: { amount: true, withheld: true } },
+    },
+    orderBy: [{ date: "asc" }, { rowNumber: "asc" }],
+  });
+  const settling = direction === "SALES" ? "IN" : "OUT";
+  return lines.flatMap((t) => {
+    // A split line puts only its parts on these accounts there (and is never settled); a whole line all of it, less what it settled.
+    const onAccount = t.splits.length ? t.splits.filter((p) => codes.includes(p.accountCode)).reduce((s, p) => s + p.amount, 0n) : t.amount < 0n ? -t.amount : t.amount;
+    const free = onAccount - t.settlements.reduce((u, x) => u + x.amount - x.withheld, 0n);
+    if (free <= 0n) return [];
+    return [{ id: t.id, entityId: t.entityId, date: t.date, description: t.description, contact: t.contact, amount: t.direction === settling ? free : -free }];
+  });
+}
+
+export type ContactBalance = { contact: { id: string; name: string }; open: bigint; advance: bigint };
+
+export type SubledgerComparison = {
+  entityId: string;
+  direction: InvoiceDirection;
+  accounts: string[];
+  /** Σ open invoices. */
+  open: bigint;
+  /** Σ contacts' advances (tagged unmatched lines). */
+  advances: bigint;
+  /** Σ untagged unmatched lines (*Belum dialokasikan*) and how many. */
+  unallocated: bigint;
+  unsettledLines: number;
+  /** open − advances − unallocated: what the GL should hold. */
+  subledger: bigint;
+  ledger: bigint;
+  equal: boolean;
+  /** Per contact with an open invoice or an advance. */
+  contacts: ContactBalance[];
+  lines: UnmatchedLine[];
+};
 
 /**
- * Per entity with invoices of the direction: Σ open items vs the GL balance of the receivable/payable accounts they use (receivable
- * as a debit balance, payable as a credit balance), and how many bank lines on those accounts are not (fully) settled — the usual
- * reason for a difference.
+ * Per entity with invoices of the direction: Σ open items less the bank cash on the same accounts not matched to them (the contacts'
+ * advances and what is not allocated yet) vs the GL balance of the receivable/payable accounts the invoices use (receivable as a debit
+ * balance, payable as a credit balance). A receipt not matched yet no longer makes the books unequal: it shows as an advance or as
+ * *Belum dialokasikan*.
  */
 export async function subledgerVsLedger(db: Db, clientId: string, direction: InvoiceDirection, asOf: Date, entityIds?: string[]): Promise<SubledgerComparison[]> {
   const items = await invoicesAt(db, clientId, direction, asOf, entityIds);
@@ -121,14 +175,20 @@ export async function subledgerVsLedger(db: Db, clientId: string, direction: Inv
     const accounts = await db.account.findMany({ where: { clientId, code: { in: codes } }, select: { id: true } });
     const s = await db.journalLine.aggregate({ where: { entityId, accountId: { in: accounts.map((a) => a.id) }, date: { lte: asOf } }, _sum: { debit: true, credit: true } });
     const net = (s._sum.debit ?? 0n) - (s._sum.credit ?? 0n);
-    const lines = await db.bankTransaction.findMany({
-      where: { entityId, date: { lte: asOf }, accountCode: { in: codes }, status: { not: "NEEDS_REVIEW" } },
-      select: { amount: true, settlements: { select: { amount: true, withheld: true } } },
-    });
-    const unsettledLines = lines.filter((t) => (t.amount < 0n ? -t.amount : t.amount) > t.settlements.reduce((u, x) => u + x.amount - x.withheld, 0n)).length;
-    const subledger = mine.reduce((t, i) => t + i.open, 0n);
+    const lines = await unmatchedLines(db, entityId, direction, asOf, codes);
+    const byContact = new Map<string, ContactBalance>();
+    const at = (c: { id: string; name: string }) => byContact.get(c.id) ?? byContact.set(c.id, { contact: c, open: 0n, advance: 0n }).get(c.id)!;
+    for (const i of mine) at(i.contact).open += i.open;
+    for (const l of lines) if (l.contact) at(l.contact).advance += l.amount;
+    const open = mine.reduce((t, i) => t + i.open, 0n);
+    const tagged = lines.filter((l) => l.contact);
+    const advances = tagged.reduce((t, l) => t + l.amount, 0n);
+    const loose = lines.filter((l) => !l.contact);
+    const unallocated = loose.reduce((t, l) => t + l.amount, 0n);
+    const subledger = open - advances - unallocated;
     const ledger = direction === "SALES" ? net : -net;
-    out.push({ entityId, direction, accounts: codes, subledger, ledger, unsettledLines, equal: subledger === ledger });
+    const contacts = [...byContact.values()].filter((c) => c.open !== 0n || c.advance !== 0n);
+    out.push({ entityId, direction, accounts: codes, open, advances, unallocated, unsettledLines: loose.length, subledger, ledger, equal: subledger === ledger, contacts, lines });
   }
   return out;
 }

@@ -80,7 +80,7 @@ it isn't a difference.
 - [x] T1 Schema + FIFO: migration; `settleFifo` in `lib/receivables/settle.ts` (contact tagging on every settle); action. Accept: DB
       tests (two notes paid by one receipt in FIFO order, a remainder kept, a line in Review classified first, withholding invoices
       cash-only, the refusals).
-- [ ] T2 Advance and proof: `invoicesAt`/`subledgerVsLedger`/view with advances, *Belum dialokasikan*, the net-credit flag, and the
+- [x] T2 Advance and proof: `invoicesAt`/`subledgerVsLedger`/view with advances, *Belum dialokasikan*, the net-credit flag, and the
       close control. Accept: DB tests (overpayment → advance column, proof equal, control lists the contact; an untagged unmatched line
       still equals).
 - [ ] T3 Void: `voidInvoice` + action + UI. Accept: DB tests (posted invoice reversed and leaves aging and proof; opening one only
@@ -96,10 +96,21 @@ it isn't a difference.
   first. Every settle now tags the line's contact. `tagAdvance` sets or clears the tag (refused when the line is matched to another
   contact). The unmatched-lines card gets a contact select with *Cocokkan FIFO* and *Uang muka*; a contact's earlier lines are offered
   first as candidates.
+- T2: `unmatchedLines` in `lib/receivables/aging.ts` gives each bank line's cash on the receivable/payable accounts not matched to an
+  invoice (a split line only its parts there), signed in the contact's favour. `subledgerVsLedger` now proves Σ open − advances (tagged)
+  − *Belum dialokasikan* (untagged) = GL, and returns the per-contact balances. The aging gets a *Uang muka / kelebihan bayar* column and
+  a *Belum dialokasikan* row; a contact in net credit shows in review colour with "kelebihan bayar". The AR/AP control spells the proof
+  out and stays REVIEW while cash is unallocated (it was REVIEW before too, as unequal); a new control "Kelebihan bayar pelanggan /
+  pemasok" lists contacts in net credit with the advice to reclassify by journal. The A1 per-name table nets a contact's advance.
 
 ## Verification
 - T1: `tests/db/receipts-fifo.test.ts` (4): three notes paid oldest-due first from a line still in Review, 1,5 jt rest kept on the tagged
   line; a line that runs out leaves the later note partly open; a PPh 23 invoice settled at its net with nothing withheld; the refusals
   (wrong direction, mixed accounts, unknown contact, retagging a line matched to another customer). Lint, typecheck, 1056 tests green.
+- T2: `tests/db/receipts-fifo.test.ts` +2: a 9 jt receipt for a 2 jt note → advance 7 jt; proof 1 jt − 7 jt = −6 jt = GL; the
+  aging's credit row (net −7 jt, flagged); the AR control PASS with the proof, the overpayment control lists Toko Sejahtera; the
+  client's aging with the same credit matches with no per-name difference. An untagged receipt on 1130 keeps the proof equal
+  (Belum dialokasikan 10,9 jt, control REVIEW); after splitting it 10 jt / 900 rb only the 1130 part counts. `tests/db/aging.test.ts`
+  updated to the new proof. Lint, typecheck, 1062 tests green.
 
 ## Ship Notes

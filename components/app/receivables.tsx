@@ -164,6 +164,8 @@ export function Receivables(props: {
 
       {props.aging.map((a) => {
         const cmp = props.comparison.find((c) => c.entityId === a.entityId);
+        const withAdvance = BigInt(a.totals.advance) !== 0n;
+        const unallocated = BigInt(a.unallocated);
         return (
           <Card key={a.entityId} data-testid={`aging-${a.entity}`}>
             <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
@@ -179,15 +181,20 @@ export function Receivables(props: {
                   <TableRow>
                     <TableHead className="pl-6">{w.party}</TableHead>
                     {BUCKETS.map((b) => <TableHead key={b} className="hidden text-right md:table-cell">{BUCKET_LABEL[b]}</TableHead>)}
+                    {withAdvance && <TableHead className="hidden text-right whitespace-normal md:table-cell">Uang muka / kelebihan bayar</TableHead>}
                     <TableHead className="pr-6 text-right">Jumlah</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {a.rows.map((r) => (
-                    <TableRow key={r.contact}>
-                      <TableCell className="pl-6 whitespace-normal">{r.contact} <span className="text-xs text-muted-foreground">· {r.count} {w.docLower}</span></TableCell>
+                    <TableRow key={r.contact} data-credit={r.credit || undefined}>
+                      <TableCell className="pl-6 whitespace-normal">
+                        {r.contact} <span className="text-xs text-muted-foreground">· {r.count ? `${r.count} ${w.docLower}` : "uang muka"}</span>
+                        {r.credit && <span className="text-xs text-review"> · kelebihan bayar</span>}
+                      </TableCell>
                       {BUCKETS.map((b) => <TableCell key={b} className="hidden text-right md:table-cell"><Money value={BigInt(r.buckets[b])} currency={a.currency} /></TableCell>)}
-                      <TableCell className="pr-6 text-right"><Money strong value={BigInt(r.total)} currency={a.currency} /></TableCell>
+                      {withAdvance && <TableCell className="hidden text-right md:table-cell"><Money value={-BigInt(r.advance)} currency={a.currency} /></TableCell>}
+                      <TableCell className={r.credit ? "pr-6 text-right text-review" : "pr-6 text-right"}><Money strong value={BigInt(r.net)} currency={a.currency} /></TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -195,12 +202,20 @@ export function Receivables(props: {
                   <TableRow>
                     <TableCell className="pl-6 font-medium">Jumlah</TableCell>
                     {BUCKETS.map((b) => <TableCell key={b} className="hidden text-right md:table-cell"><Money strong value={BigInt(a.totals[b])} currency={a.currency} /></TableCell>)}
-                    <TableCell className="pr-6 text-right"><Money strong value={BigInt(a.totals.total)} currency={a.currency} /></TableCell>
+                    {withAdvance && <TableCell className="hidden text-right md:table-cell"><Money strong value={-BigInt(a.totals.advance)} currency={a.currency} /></TableCell>}
+                    <TableCell className="pr-6 text-right"><Money strong value={BigInt(a.totals.net)} currency={a.currency} /></TableCell>
                   </TableRow>
+                  {unallocated !== 0n && (
+                    <TableRow data-testid="unallocated">
+                      <TableCell className="pl-6 whitespace-normal text-review">Belum dialokasikan <span className="text-xs">· {a.unallocatedLines} mutasi bank, lihat di bawah</span></TableCell>
+                      <TableCell className="hidden md:table-cell" colSpan={BUCKETS.length + (withAdvance ? 1 : 0)} />
+                      <TableCell className="pr-6 text-right"><Money value={-unallocated} currency={a.currency} /></TableCell>
+                    </TableRow>
+                  )}
                   {cmp && (
                     <TableRow data-testid="subledger-ledger">
                       <TableCell className="pl-6 text-muted-foreground whitespace-normal" colSpan={1}>Buku besar ({cmp.accounts.join(", ")})</TableCell>
-                      <TableCell className="hidden md:table-cell" colSpan={BUCKETS.length} />
+                      <TableCell className="hidden md:table-cell" colSpan={BUCKETS.length + (withAdvance ? 1 : 0)} />
                       <TableCell className="pr-6 text-right"><Money muted value={BigInt(cmp.ledger)} currency={cmp.currency} /></TableCell>
                     </TableRow>
                   )}
@@ -216,7 +231,7 @@ export function Receivables(props: {
           <CardHeader>
             <CardTitle>{w.lines}</CardTitle>
             <CardDescription>
-              Mutasi bank di akun {props.direction === "SALES" ? "piutang" : "utang"} yang belum (habis) dikaitkan ke {w.docLower}. Pilih {w.party.toLowerCase()}nya lalu *Cocokkan FIFO*: {w.docLower} terlama dulu, sisanya jadi uang muka {w.party.toLowerCase()} itu.
+              Mutasi bank di akun {props.direction === "SALES" ? "piutang" : "utang"} yang belum (habis) dikaitkan ke {w.docLower}. Pilih {w.party.toLowerCase()}nya lalu Cocokkan FIFO: {w.docLower} terlama jatuh tempo dulu, sisanya jadi uang muka {w.party.toLowerCase()} itu. Uang yang memang dibayar di muka: Uang muka.
             </CardDescription>
           </CardHeader>
           <CardContent className="divide-y px-0">

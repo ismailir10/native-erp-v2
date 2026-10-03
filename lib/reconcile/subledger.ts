@@ -5,7 +5,7 @@ import { closeLock } from "@/lib/adjust/schedules";
 import { DECISION_MIN, findingLabel, openFinding } from "@/lib/findings";
 import { formatDate } from "@/lib/format";
 import { formatMoney, parseMoney } from "@/lib/money";
-import { invoicesAt } from "@/lib/receivables/aging";
+import { invoicesAt, unmatchedLines } from "@/lib/receivables/aging";
 import { readAging, type AgingBucket } from "@/lib/reconcile/aging-read";
 
 /**
@@ -129,6 +129,12 @@ export async function compareSubledger(db: Db | Tx, clientId: string, importId: 
     for (const i of items) {
       const k = normalName(i.contact.name);
       buku.set(k, { name: i.contact.name, open: (buku.get(k)?.open ?? 0n) + i.open });
+    }
+    // A contact's advance (their unmatched cash on these accounts, UC-B5) nets their balance, as a client's aging shows a credit.
+    for (const l of await unmatchedLines(db, imp.entityId, kind === "RECEIVABLE" ? "SALES" : "PURCHASE", imp.asOf, imp.accountCodes)) {
+      if (!l.contact) continue;
+      const k = normalName(l.contact.name);
+      buku.set(k, { name: l.contact.name, open: (buku.get(k)?.open ?? 0n) - l.amount });
     }
     // One name can span several aging rows (a customer per branch or currency): compared once, with all its rows.
     const agingBy = new Map<string, { name: string; total: bigint; refs: string[] }>();

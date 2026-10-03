@@ -291,23 +291,47 @@ async function collectControls(db: Db, clientId: string, year: number, month: nu
       });
     }
 
-    // Receivable/payable subledger (rule 5c): open invoices against the GL accounts they use, for entities with invoices.
+    // Receivable/payable subledger (rule 5c): open invoices less unmatched cash on their accounts against the GL, for entities with invoices.
+    const overpaid: string[] = [];
     for (const direction of ["SALES", "PURCHASE"] as const) {
       const [sub] = await subledgerVsLedger(db, clientId, direction, end, [e.id]);
       if (!sub) continue;
       const sales = direction === "SALES";
       const key = `${sales ? "ar" : "ap"}:${e.id}`;
       const what = sales ? "Piutang" : "Utang";
+      const party = sales ? "pelanggan" : "pemasok";
+      const parts = [
+        `terbuka ${fmt(sub.open)}`,
+        sub.advances ? `uang muka ${party} ${fmt(sub.advances)}` : "",
+        sub.unallocated ? `belum dialokasikan ${fmt(sub.unallocated)}` : "",
+      ].filter(Boolean);
+      const proof = `${what} ${parts.join(" − ")}${parts.length > 1 ? ` = ${fmt(sub.subledger)}` : ""}`;
       controls.push({
         key,
         title: sales ? "Piutang usaha = daftar faktur" : "Utang usaha = daftar tagihan",
         scope: e.shortName,
-        status: sub.equal ? "PASS" : "REVIEW",
-        detail: sub.equal
-          ? `${what} terbuka ${fmt(sub.subledger)} (${sub.accounts.join(", ")})`
-          : `${what} terbuka: daftar ${fmt(sub.subledger)} vs buku besar ${fmt(sub.ledger)} (${sub.accounts.join(", ")})${sub.unsettledLines ? `; ${sub.unsettledLines} mutasi bank di akun itu belum dicocokkan ke faktur` : ""}`,
+        status: sub.equal && sub.unallocated === 0n ? "PASS" : "REVIEW",
+        detail: !sub.equal
+          ? `${proof} vs buku besar ${fmt(sub.ledger)} (${sub.accounts.join(", ")}). Jurnal manual di akun itu atau ${sales ? "faktur" : "tagihan"} yang belum dicatat menjelaskan selisih ini`
+          : sub.unallocated
+            ? `${proof}, sama dengan buku besar (${sub.accounts.join(", ")}); ${sub.unsettledLines} mutasi bank di akun itu belum dialokasikan: cocokkan ke ${sales ? "faktur" : "tagihan"} atau tandai sebagai uang muka ${party}`
+            : `${proof} (${sub.accounts.join(", ")})`,
         href: `${base}/receivables?period=${year}-${String(month).padStart(2, "0")}&entity=${e.id}&tab=${sales ? "piutang" : "utang"}`,
         ack: acks.get(key),
+      });
+      for (const c of sub.contacts) if (c.advance > c.open) overpaid.push(`${c.contact.name} ${fmt(c.advance - c.open)} (${party})`);
+    }
+    // UC-B5: a contact who paid more than they owe holds a credit; it shows, never silently nets the receivable below zero.
+    if (overpaid.length) {
+      const oKey = `overpaid:${e.id}`;
+      controls.push({
+        key: oKey,
+        title: "Kelebihan bayar pelanggan / pemasok",
+        scope: e.shortName,
+        status: "REVIEW",
+        detail: `${overpaid.join(", ")}. Bila tidak akan ditagih atau dibayar lagi, reklasifikasi ke uang muka atau utang/piutang lain lewat Jurnal Penyesuaian`,
+        href: `${base}/receivables?period=${year}-${String(month).padStart(2, "0")}&entity=${e.id}`,
+        ack: acks.get(oKey),
       });
     }
 
