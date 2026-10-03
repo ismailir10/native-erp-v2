@@ -39,6 +39,9 @@ describe("statements PDF", () => {
     });
     // In thousands each line rounds and the total adds the printed lines: 5.001 − 2.000 = 3.001 (the exact 3.000.200 would print 3.000).
     expect(all).toMatch(/LABA BERSIH TAHUN BERJALAN\s+3\.001/);
+    // The CALK's manual parts travel with the PDF, as blanks to fill.
+    expect(all).toContain("PERISTIWA SETELAH PERIODE PELAPORAN");
+    expect(all).toContain("Alamat: [isi oleh manajemen:");
     // Accounts beneath a Pos stay in the Excel file (the CALK lists them).
     expect(text.find((p) => p.includes("Laporan Laba Rugi"))).not.toContain("4100 ");
   });

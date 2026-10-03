@@ -6,7 +6,7 @@ import { isMixed, scopeEntities } from "@/lib/reports/fx";
 import { balanceSheet, sumByAccount, type Scope } from "@/lib/reports/ledger";
 
 /**
- * The statements beyond Laba Rugi and Neraca (accounting-rules 12): other comprehensive income, changes in equity and the indirect cash
+ * The statements beyond Laba Rugi and Neraca (accounting-rules 1): other comprehensive income, changes in equity and the indirect cash
  * flow, all from the GL movements of the period, so opening + movements = closing by construction and each is checked against the Neraca.
  * Single-currency scopes only (a mixed scope's translation isn't split into movements).
  */

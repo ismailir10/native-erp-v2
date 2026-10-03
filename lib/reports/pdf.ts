@@ -20,6 +20,8 @@ const INK = "#0B1B32";
 const MUTED = "#4B5768";
 const FAIL = "#C4213A";
 const RULE = "#C9CFD8";
+const REVIEW = "#8A5300";
+const MANUAL_ONE = /^\[isi oleh manajemen: [^\]]*\]$/;
 
 const amount = (v: bigint | null) => (v === null ? "" : v === 0n ? "–" : formatRupiah(v, { bare: true, accounting: true }));
 
@@ -119,7 +121,14 @@ export async function financialStatementsPdf(db: Db, scope: Scope, year: number,
       for (const p of note.paragraphs) {
         doc.font("Helvetica").fontSize(9);
         ensure(doc.heightOfString(p, { width }) + 4);
-        doc.text(p, M.left, doc.y, { width, align: "justify" });
+        // *[isi oleh manajemen: …]* in review colour, so the blank is seen before the PDF goes out.
+        const parts = p.split(/(\[isi oleh manajemen: [^\]]*\])/).filter(Boolean);
+        if (parts.length === 1 && !MANUAL_ONE.test(p)) doc.text(p, M.left, doc.y, { width, align: "justify" });
+        else
+          parts.forEach((part, k) =>
+            doc.fillColor(MANUAL_ONE.test(part) ? REVIEW : INK).text(part, k === 0 ? M.left : undefined, k === 0 ? doc.y : undefined, { width, continued: k < parts.length - 1 }),
+          );
+        doc.fillColor(INK);
         doc.moveDown(0.4);
       }
       for (const t of note.tables) table(t.columns, t.rows.map((r) => r.map(cell)), t.total?.map(cell));

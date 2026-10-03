@@ -6,7 +6,7 @@ import { balanceSheet, combinedWorksheet, incomeStatement, type BalanceSheet, ty
 import { balanceItems, incomeItems, loadReportFormat, renderFormat, toUnit } from "@/lib/reports/format";
 import { cashFlow, equityChanges, otherComprehensiveIncome } from "@/lib/reports/statements";
 import { CashFlowTable, EquityTable, NotesView } from "@/components/app/statements";
-import { financialNotes } from "@/lib/reports/notes";
+import { financialNotes, manualCount } from "@/lib/reports/notes";
 import { formatDateLong, formatPeriod, monthName } from "@/lib/format";
 import { reportStatus } from "@/lib/reports/status";
 import { ReportStatusBar } from "@/components/app/report-status";
@@ -149,6 +149,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
   ];
   const bsSections = renderFormat(format.neraca, [bs, ...shown.map((c) => c.bs)].map(balanceItems), format.unit);
   const [equity, cash, notes] = mixed ? [null, null, null] : await Promise.all([equityChanges(prisma, s, period.end), cashFlow(prisma, s, period.end), financialNotes(prisma, s, period.year, period.month)]);
+  const toFill = notes ? manualCount(notes) : 0;
   const wsCurrency = ws?.translated ? "IDR" : (client.entities[0]?.functionalCurrency ?? "IDR");
 
   return (
@@ -173,7 +174,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
           <TabsTrigger value="bs">Neraca</TabsTrigger>
           <TabsTrigger value="eq">Perubahan Ekuitas</TabsTrigger>
           <TabsTrigger value="cf">Arus Kas</TabsTrigger>
-          <TabsTrigger value="notes">CALK</TabsTrigger>
+          <TabsTrigger value="notes">CALK{toFill > 0 && <span className="num text-review" data-testid="calk-to-fill">· {toFill} diisi manajemen</span>}</TabsTrigger>
           {multi && <TabsTrigger value="ws">Kertas Kerja Gabungan</TabsTrigger>}
         </TabsList>
 
@@ -258,7 +259,10 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
           <Card>
             <CardHeader>
               <CardTitle>Catatan atas Laporan Keuangan</CardTitle>
-              <CardDescription>Draf dari angka laporan dan daftar-daftar di Buku, per akhir {formatPeriod(period.year, period.month)} dengan pembanding. Sunting di file unduhan.</CardDescription>
+              <CardDescription>
+                Draf dari angka laporan dan daftar-daftar di Buku, per akhir {formatPeriod(period.year, period.month)} dengan pembanding. Sunting di file unduhan.
+                {toFill > 0 && <> Bagian berwarna (<span className="text-review">{toFill}</span>) diisi manajemen sebelum laporan dikirim.</>}
+              </CardDescription>
             </CardHeader>
             <CardContent className="px-0">
               {mixed ? <p className="px-6 text-sm text-muted-foreground">CALK hanya untuk cakupan satu mata uang.</p> : notes && <NotesView data={notes} currency={currency} accountHref={href} />}

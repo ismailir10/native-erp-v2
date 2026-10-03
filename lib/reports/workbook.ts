@@ -6,7 +6,7 @@ import type { NoteCell } from "@/lib/reports/notes";
 import { statementSet, type SetStatement } from "@/lib/reports/statement-set";
 
 /**
- * The financial statements as one Excel workbook (accounting-rules 12): Neraca, Laba Rugi (with other comprehensive income unless SAK EMKM), Perubahan
+ * The financial statements as one Excel workbook (accounting-rules 1): Neraca, Laba Rugi (with other comprehensive income unless SAK EMKM), Perubahan
  * Ekuitas, Arus Kas, CALK and the directors' statement — drawn from `statementSet`, the same rows as the PDF, never a second computation.
  * Amounts are Excel numbers (text beyond 2^53); the format's subtotals and totals are formulas over the rows they sum. Mixed-currency
  * scopes get Neraca and Laba Rugi only, as on the page.

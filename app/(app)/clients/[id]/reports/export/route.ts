@@ -3,7 +3,7 @@ import { financialStatementsWorkbook, statementsFileName } from "@/lib/reports/w
 import { FxMissingError } from "@/lib/reports/fx";
 import { exportContext } from "@/lib/reports/export-context";
 
-/** GET ?entity=<id|combined>&period=YYYY-MM — the financial statements as one Excel workbook (accounting-rules 12). */
+/** GET ?entity=<id|combined>&period=YYYY-MM — the financial statements as one Excel workbook (accounting-rules 1). */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   try {

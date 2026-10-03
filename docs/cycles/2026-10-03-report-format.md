@@ -112,7 +112,7 @@ The cycle runs without a separate stop. The new dependency (below) is the only g
       totals, labels in format order.
 - [x] T5 Format editor + server action. Accept: DB tests of save/refuse/reset; visual check.
 - [x] T6 PDF export (pdfkit) + button. Accept: DB test extracts text (labels, period, unit, totals, DRAF).
-- [ ] T7 CALK markers, rule 12 amendment, end-of-cycle gates, review pass, ship.
+- [x] T7 CALK markers, rule 12 amendment, end-of-cycle gates, review pass, ship.
 
 ## Implementation
 - Plan: T1–T7 sequential, inline.
@@ -189,6 +189,17 @@ The cycle runs without a separate stop. The new dependency (below) is the only g
   - `pdfkit` in `serverExternalPackages`; the build traces its AFM font files.
   - Dependency note: npm can't reach `cdn.sheetjs.com` here, so the lockfile was written with `--package-lock-only` and the
     packages copied from a scratch install. CI's `npm ci` installs from the lockfile as usual.
+- T7:
+  - CALK: `manual(hint)` writes *[isi oleh manajemen: …]*, and `manualCount` counts the markers.
+    - *Umum* gains, per entity (named when combined): *Pendirian* (not for a person), *Alamat* and *Kegiatan usaha*.
+    - A last note, *Peristiwa setelah periode pelaporan*, carries a marker.
+    - The going-concern plan uses the same marker.
+  - The page shows markers in review colour and the CALK tab shows "· n diisi manajemen". The PDF prints them in review colour; the Excel
+    file keeps them as text.
+  - Rule amendment: the reports invariant is **rule 1** in `accounting-rules` (the spec said 12, after stale "accounting-rules 12"
+    comments in `lib/reports/*`; those now say 1). It gains the report format paragraph: presentation only, symbolic checks, no account
+    drops out (the *belum terpetakan* lines plus the draft reason), and both downloads draw one set.
+  - e2e `statements.spec.ts` also downloads the PDF.
 
 ## Verification
 - T1: `tests/db/report-unmapped.test.ts` → `Tests 1 passed (1)`; lint + typecheck clean; `npm test` →
@@ -219,5 +230,13 @@ The cycle runs without a separate stop. The new dependency (below) is the only g
   The existing workbook tests pass unchanged after the refactor. A demo PDF (PT Ayam Nusantara Digital, Aug 2026, 8 pages) was
   rendered with pdftoppm and checked by eye. Lint + typecheck clean; `npm test` → `Test Files 150 passed (150) · Tests 1023 passed
   (1023)`; `npm run build` passes, and the route's trace includes `pdfkit/js/data/*.afm`.
+- T7: `tests/db/notes-manual.test.ts` → `Tests 1 passed (1)`: PT 4 markers, person 3, combined 6 with names. The PDF test sees the
+  markers and the new note. Visual check (CALK tab, combined Grup Ayam Nusantara): tab "CALK · 6 diisi manajemen", markers in review
+  colour.
+- End of cycle:
+  - `npm run lint && npm run typecheck && npm test` → `Test Files 151 passed (151) · Tests 1024 passed (1024)`;
+  - `npm run build` passes;
+  - `npm run demo:reset && npm run verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`;
+  - `npm run test:e2e` can't run here (its setup needs `SUPABASE_SECRET_KEY`, which this sandbox doesn't have), so CI runs it.
 
 ## Ship Notes

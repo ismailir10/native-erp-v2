@@ -9,7 +9,7 @@ import { isUnmapped } from "@/lib/reports/ledger";
 import { findingLabel } from "@/lib/findings";
 
 /**
- * What a set of statements is (accounting-rules 12): **final** once the month is closed, else a **draft**, with what still makes it one —
+ * What a set of statements is (accounting-rules 1): **final** once the month is closed, else a **draft**, with what still makes it one —
  * an undecided Saldo Awal difference (Temuan), lines in Review, money on Belum Terklasifikasi (1999), missing statements, due scheduled journals, a missing stock count. Read-only; the
  * close controls stay the authority. Figures are the scope's own (minor units); the page links each reason to where it is fixed.
  */

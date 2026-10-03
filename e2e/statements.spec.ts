@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 
 /**
  * The full statements on the demo agency (PT Jasa Kreatif Digital, closed through August 2026): marked final, no empty last-year column,
- * Neraca, Perubahan Ekuitas and Arus Kas reconcile, CALK drafted, and the whole set downloads as one workbook.
+ * Neraca, Perubahan Ekuitas and Arus Kas reconcile, CALK drafted, and the whole set downloads as one workbook and one PDF.
  */
 test("financial statements: comparatives, equity, cash flow, notes, download", async ({ page }) => {
   await page.goto("/");
@@ -38,6 +38,11 @@ test("financial statements: comparatives, equity, cash flow, notes, download", a
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load((await readFile(file)) as unknown as ArrayBuffer);
   expect(wb.worksheets.map((w) => w.name)).toEqual(["Neraca", "Laba Rugi", "Perubahan Ekuitas", "Arus Kas", "CALK", "Pernyataan Direksi"]);
+  // The same set as a PDF ready to send: closed month, so no DRAF line.
+  const pdfDownload = page.waitForEvent("download");
+  await page.getByTestId("fs-download-pdf").click();
+  const pdf = await readFile(await (await pdfDownload).path());
+  expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
 
   if (process.env.E2E_SCREENSHOTS) {
     await page.getByRole("tab", { name: "Arus Kas" }).click();

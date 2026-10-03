@@ -8,7 +8,7 @@ import { isMixed, scopeEntities } from "@/lib/reports/fx";
 import { frameworkLabel, scopeFramework, signatoryOf, statementNames, type Framework, type Signatory } from "@/lib/reports/framework";
 
 /**
- * The financial statements as rows (accounting-rules 12): Neraca and Laba Rugi in the client's format (lib/reports/format.ts), Perubahan
+ * The financial statements as rows (accounting-rules 1): Neraca and Laba Rugi in the client's format (lib/reports/format.ts), Perubahan
  * Ekuitas, Arus Kas, CALK and the directors' statement. The Excel workbook and the PDF both draw this one set, so they never disagree
  * with each other or with the page: every figure comes from the statement functions, exact, in Rupiah.
  *
