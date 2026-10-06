@@ -606,6 +606,7 @@ model JournalLine {
   @@index([entityId, accountId, date])
   @@index([accountId])
   @@index([sourceAccountId])
+  @@index([entryId])
 }
 
 model Rule {

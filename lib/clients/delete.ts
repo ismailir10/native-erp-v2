@@ -15,6 +15,9 @@ export async function deleteClient(db: Db, input: { firmId: string; clientId: st
 
   return db.$transaction(
     async (tx) => {
+      // The ledger guards refuse deleting journals in a closed month (accounting-rules 4); removing a whole client is the one
+      // exception, allowed for this transaction only.
+      await tx.$executeRaw`SELECT set_config('buku.client_delete', 'on', true)`;
       const clientId = client.id;
       const entityIds = (await tx.entity.findMany({ where: { clientId }, select: { id: true } })).map((e) => e.id);
       const bankIds = (await tx.bankAccount.findMany({ where: { entityId: { in: entityIds } }, select: { id: true } })).map((b) => b.id);
