@@ -78,3 +78,25 @@ describe("printed amounts", async () => {
     expect(readAmount("12.500,50")).toBeNull(); // sen are not whole Rupiah: unreadable, never rounded
   });
 });
+
+describe("readStatement on an OpenAI-compatible gateway", async () => {
+  const { OpenAiCompatibleProvider } = await import("@/lib/ai/provider");
+  it("sends the page images as image parts, never anything else, and parses the transcription", async () => {
+    let sent: { messages: { role: string; content: unknown }[]; max_tokens: number } | null = null;
+    const fakeFetch = (async (_url: string, init: { body: string }) => {
+      sent = JSON.parse(init.body);
+      const answer = { bank: "BCA", accountNumber: "1111111111", periodStart: "2026-08-01", periodEnd: "2026-08-31", opening: "1.000.000,00", closing: "", rows: [{ date: "2026-08-03", description: "SETORAN", debit: "", credit: "500.000,00", balance: "1.500.000,00" }] };
+      return new Response(JSON.stringify({ choices: [{ message: { content: "```json\n" + JSON.stringify(answer) + "\n```" }, finish_reason: "stop" }], usage: { prompt_tokens: 900, completion_tokens: 120 }, model: "vision-1" }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const p = new OpenAiCompatibleProvider({ baseUrl: "https://gw.test/v1", apiKey: "k", model: "vision-1", maxCallsPerImport: 3, monthlyTokenBudget: 100_000 }, fakeFetch);
+    const png = encodePng(1, 1, 1, new Uint8Array([255]));
+    const r = await p.readStatement({ images: [{ mime: "image/png", data: png }] });
+    expect(r.transcript.rows).toEqual([{ date: "2026-08-03", description: "SETORAN", debit: "", credit: "500.000,00", balance: "1.500.000,00" }]);
+    expect(r).toMatchObject({ promptTokens: 900, completionTokens: 120, model: "vision-1" });
+    const user = sent!.messages[1].content as { type: string; text?: string; image_url?: { url: string } }[];
+    expect(user.map((c) => c.type)).toEqual(["text", "image_url"]);
+    expect(user[1].image_url!.url).toBe(`data:image/png;base64,${png.toString("base64")}`);
+    // Nothing but the instruction and the image: no expected balance, no account list.
+    expect(JSON.stringify(sent!.messages)).not.toMatch(/1\.000\.000|saldo awal impor/);
+  });
+});

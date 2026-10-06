@@ -112,6 +112,22 @@ Stage: **Sumber**.
   - Admin switch card `components/app/ocr-setting.tsx` in Pengaturan, with `setOcrAction`.
   - E2e: `e2e/ocr-scan.spec.ts`.
 ## Verification
+- `tests/unit/ocr.test.ts`:
+  - PNG round trip;
+  - a scanned PDF gives one page image, and a text PDF is refused;
+  - the proof cases;
+  - printed amounts in both groupings;
+  - the OpenAI-compatible request carries only the instruction text and the image parts, and parses a fenced JSON answer.
+- `tests/db/ocr-draft.test.ts`:
+  - switch off, other firm and no provider are refused;
+  - a recorded extraction with a misread admin fee (100.000 for 10.000) shows `BREAK` with the computed 1.400.000;
+  - after the fix it imports 3 rows through the pipeline (continuity ok, file `… (OCR).csv`, note on the import);
+  - a repeat is served from the cache;
+  - a September scan without a printed opening takes the August closing;
+  - a scan of another account is refused.
+- End of cycle: `npm run lint` exit 0; `npm run typecheck` exit 0; `npm test`: Test Files 177 passed (177), Tests 1155 passed (1155)
+  (+1 provider test after); `npm run build` exit 0 (route `/clients/[id]/import/ocr/[draftId]`); `npm run verify:books` → `ALL PASS
+  — 1765 pemeriksaan saldo cocok dengan ground truth.` E2e in CI.
 ## Ship Notes
 - Migration `20261006220000_ocr_draft`: a new table.
 - The switch `ai.ocr` (AppSetting) is off by default, so nothing changes until an admin turns it on. The configured model must read
