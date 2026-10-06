@@ -5,13 +5,18 @@ import { WorkspaceHistoryProvider } from "@/components/app/workspace-ask";
 import { requireWorkspaceSession, ROLE_LABEL } from "@/lib/auth/session";
 import { evidenceEnabled } from "@/lib/evidence/config";
 import { NavigationProgress } from "@/components/app/navigation-progress";
+import { clientModules } from "@/lib/clients/modules";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { firm, member } = await requireWorkspaceSession();
-  const clients = await prisma.client.findMany({ where: { firmId: firm.id }, orderBy: { name: "asc" }, select: { id: true, name: true, entities: { select: { id: true } } } });
+  const [rows, modules] = await Promise.all([
+    prisma.client.findMany({ where: { firmId: firm.id }, orderBy: { name: "asc" }, select: { id: true, name: true, entities: { select: { id: true } } } }),
+    clientModules(prisma, firm.id),
+  ]);
+  const clients = rows.map((c) => ({ ...c, modules: modules.get(c.id)?.visible ?? [] }));
   return (
     <WorkspaceHistoryProvider key={firm.id + member.id}><SidebarProvider>
       <NavigationProgress />
