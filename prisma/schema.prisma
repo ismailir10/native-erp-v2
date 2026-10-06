@@ -203,6 +203,8 @@ model Client {
   auditEvents        AuditEvent[]
   reportFormat       ReportFormat?
   coaVersion         Int                  @default(1)
+  /// Modules turned on in the client menu (lib/clients/modules.ts): receivables · inventory · assets · leases · benefits. Presentation only.
+  modules            String[]             @default([])
 
   @@index([firmId])
 }
@@ -397,7 +399,7 @@ model AuditEvent {
   clientId  String
   client    Client      @relation(fields: [clientId], references: [id])
   entityId  String?
-  /// CLASSIFY · UNPAIR · IMPORT_REMOVED · CONTROL_NOTE · MAPPING · FINDING_RESOLVED · REPORT_FORMAT · FISCAL_YEAR · SUBLEDGER · DOCUMENT_VOID · ADVANCE · REPORT_EXPORT
+  /// CLASSIFY · UNPAIR · IMPORT_REMOVED · CONTROL_NOTE · MAPPING · FINDING_RESOLVED · REPORT_FORMAT · FISCAL_YEAR · SUBLEDGER · DOCUMENT_VOID · ADVANCE · REPORT_EXPORT · MODULES
   kind      String
   subject   String
   summary   String
