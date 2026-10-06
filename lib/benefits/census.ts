@@ -1,5 +1,6 @@
 import type { Db } from "@/lib/db";
-import type { Sex } from "@/lib/generated/prisma/enums";
+import type { PtkpStatus, Sex } from "@/lib/generated/prisma/enums";
+import { parsePtkp } from "@/lib/tax/ter";
 import { LedgerError } from "@/lib/ledger/post";
 import { ParseError } from "@/lib/import/types";
 import { cellDate, cellText, readSheets } from "@/lib/ledger-import/read";
@@ -16,7 +17,7 @@ const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
 
 // ─── Header detection ─────────────────────────────────────────────────────────
 
-type Key = "name" | "no" | "sex" | "birth" | "hire" | "wage" | "basic" | "allowance" | "left";
+type Key = "name" | "no" | "sex" | "birth" | "hire" | "wage" | "basic" | "allowance" | "left" | "ptkp";
 const HEADERS: Record<Key, RegExp> = {
   name: /^(nama|nama karyawan|nama pegawai|nama lengkap|name|employee name)$/,
   no: /^(nik|nip|no\.?|nomor|id|no\.? (karyawan|pegawai|induk)|nomor (karyawan|pegawai|induk)|employee (no\.?|id|number))$/,
@@ -27,6 +28,7 @@ const HEADERS: Record<Key, RegExp> = {
   basic: /^(gaji|gaji pokok|basic salary)$/,
   allowance: /^(tunjangan tetap|fixed allowance)$/,
   left: /^(tanggal keluar|tgl\.? keluar|tanggal berhenti|resign date|termination date|exit date)$/,
+  ptkp: /^(ptkp|status ptkp|status pajak|status pph 21|tax status)$/,
 };
 
 function findHeader(sheets: RawSheet[], required: string[], headers: Record<string, RegExp>) {
@@ -46,7 +48,8 @@ function findHeader(sheets: RawSheet[], required: string[], headers: Record<stri
 
 const SEX: Record<string, Sex> = { l: "MALE", "laki-laki": "MALE", "laki laki": "MALE", pria: "MALE", m: "MALE", male: "MALE", p: "FEMALE", perempuan: "FEMALE", wanita: "FEMALE", f: "FEMALE", female: "FEMALE" };
 
-export type CensusRow = { line: number; name: string; employeeNo: string | null; sex: Sex; birthDate: Date; hireDate: Date; wage: bigint; leftOn: Date | null };
+/** `ptkpStatus` is undefined when the file has no PTKP column, so an import never clears a status typed in Buku. */
+export type CensusRow = { line: number; name: string; employeeNo: string | null; sex: Sex; birthDate: Date; hireDate: Date; wage: bigint; leftOn: Date | null; ptkpStatus?: PtkpStatus | null };
 
 /** Rows of a census file; every unreadable row is named, and none is imported while any is. */
 export async function readCensus(fileName: string, data: Buffer, currency: string): Promise<CensusRow[]> {
@@ -70,6 +73,8 @@ export async function readCensus(fileName: string, data: Buffer, currency: strin
     const hireDate = cellDate(at(row, "hire"));
     const leftText = cellText(at(row, "left"));
     const leftOn = leftText ? cellDate(at(row, "left")) : null;
+    const ptkpText = cellText(at(row, "ptkp"));
+    const ptkpStatus = h.cols.ptkp === undefined ? undefined : ptkpText ? parsePtkp(ptkpText) : null;
     let wage = 0n;
     try {
       wage = h.cols.wage !== undefined ? money(at(row, "wage")) : money(at(row, "basic")) + money(at(row, "allowance"));
@@ -85,7 +90,8 @@ export async function readCensus(fileName: string, data: Buffer, currency: strin
     else if (leftText && !leftOn) fail("tanggal keluar tidak dikenali");
     else if (leftOn && +leftOn < +hireDate) fail("tanggal keluar sebelum tanggal masuk");
     else if (wage <= 0n) fail("upah harus lebih dari nol");
-    else out.push({ line, name, employeeNo: cellText(at(row, "no")) || null, sex, birthDate, hireDate, wage, leftOn });
+    else if (ptkpText && !ptkpStatus) fail("status PTKP tidak dikenali (TK/0 sampai K/3)");
+    else out.push({ line, name, employeeNo: cellText(at(row, "no")) || null, sex, birthDate, hireDate, wage, leftOn, ptkpStatus });
   }
   if (errors.length) throw new ParseError(`${errors.length} baris sensus tidak bisa dibaca; tidak ada yang diimpor. ${errors.slice(0, 5).join("; ")}${errors.length > 5 ? "; …" : ""}`);
   if (!out.length) throw new ParseError("File sensus tidak berisi karyawan.");
@@ -110,7 +116,7 @@ export async function importCensus(db: Db, input: { clientId: string; entityId: 
     let updated = 0;
     for (const r of rows) {
       const match = existing.find((e) => (r.employeeNo ? e.employeeNo === r.employeeNo : norm(e.name) === norm(r.name) && +e.birthDate === +r.birthDate));
-      const data = { name: r.name, employeeNo: r.employeeNo, sex: r.sex, birthDate: r.birthDate, hireDate: r.hireDate, wage: r.wage, leftOn: r.leftOn };
+      const data = { name: r.name, employeeNo: r.employeeNo, sex: r.sex, birthDate: r.birthDate, hireDate: r.hireDate, wage: r.wage, leftOn: r.leftOn, ptkpStatus: r.ptkpStatus };
       if (match) {
         await tx.employee.update({ where: { id: match.id }, data });
         updated++;
@@ -123,7 +129,7 @@ export async function importCensus(db: Db, input: { clientId: string; entityId: 
   });
 }
 
-export type EmployeeInput = { clientId: string; entityId: string; employeeId?: string | null; name: string; employeeNo?: string | null; sex: Sex; birthDate: string; hireDate: string; wage: string; leftOn?: string | null };
+export type EmployeeInput = { clientId: string; entityId: string; employeeId?: string | null; name: string; employeeNo?: string | null; sex: Sex; birthDate: string; hireDate: string; wage: string; leftOn?: string | null; ptkpStatus?: string | null };
 
 const day = (s: string, what: string) => {
   const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -147,7 +153,9 @@ export async function saveEmployee(db: Db, input: EmployeeInput) {
   if (wage <= 0n) throw new LedgerError("Upah harus lebih dari nol.");
   const employeeNo = input.employeeNo?.trim() || null;
   if (employeeNo && (await db.employee.findFirst({ where: { entityId: entity.id, employeeNo, NOT: input.employeeId ? { id: input.employeeId } : undefined } }))) throw new LedgerError(`Nomor karyawan ${employeeNo} sudah dipakai.`);
-  const data = { name, employeeNo, sex: input.sex, birthDate, hireDate, wage, leftOn };
+  const ptkpStatus = input.ptkpStatus ? parsePtkp(input.ptkpStatus) : null;
+  if (input.ptkpStatus && !ptkpStatus) throw new LedgerError("Status PTKP tidak dikenali (TK/0 sampai K/3).");
+  const data = { name, employeeNo, sex: input.sex, birthDate, hireDate, wage, leftOn, ptkpStatus };
   if (input.employeeId) {
     const e = await db.employee.findFirst({ where: { id: input.employeeId, entityId: entity.id } });
     if (!e) throw new LedgerError("Karyawan tidak ditemukan.");

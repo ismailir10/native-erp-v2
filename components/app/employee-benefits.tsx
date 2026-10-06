@@ -17,9 +17,10 @@ import { StatusPill } from "@/components/app/status";
 import { deleteEmployeeAction, importCensusAction, postBenefitsAction, saveBenefitSettingAction, saveEmployeeAction, uploadMortalityAction } from "@/app/actions";
 import { formatMoney } from "@/lib/money";
 import type { BenefitEntityView } from "@/lib/benefits/view";
+import { PTKP_LABEL, PTKP_STATUSES, type PtkpStatus } from "@/lib/tax/ter";
 
 type Result = { ok: true } | { ok: false; error: string };
-type EmployeeForm = { employeeId: string | null; name: string; employeeNo: string; sex: "MALE" | "FEMALE"; birthDate: string; hireDate: string; wage: string; leftOn: string };
+type EmployeeForm = { employeeId: string | null; name: string; employeeNo: string; ptkpStatus: string; sex: "MALE" | "FEMALE"; birthDate: string; hireDate: string; wage: string; leftOn: string };
 
 /** PSAK 24 of the scope's companies (accounting-rules 5g): assumptions, census, valuation and its journal. */
 export function EmployeeBenefits(props: { clientId: string; year: number; month: number; periodKey: string; periodLabel: string; tables: { id: string; name: string }[]; entities: BenefitEntityView[] }) {
@@ -123,7 +124,7 @@ export function EmployeeBenefits(props: { clientId: string; year: number; month:
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button variant="outline" size="sm" disabled={busy} onClick={() => { setCensusEntity(ev.entity.id); censusInput.current?.click(); }}><Upload /> Impor sensus</Button>
-                  <Button variant="outline" size="sm" onClick={() => setEmployee({ entityId: ev.entity.id, form: { employeeId: null, name: "", employeeNo: "", sex: "MALE", birthDate: "", hireDate: "", wage: "", leftOn: "" } })}><Plus /> Karyawan</Button>
+                  <Button variant="outline" size="sm" onClick={() => setEmployee({ entityId: ev.entity.id, form: { employeeId: null, name: "", employeeNo: "", ptkpStatus: "", sex: "MALE", birthDate: "", hireDate: "", wage: "", leftOn: "" } })}><Plus /> Karyawan</Button>
                 </div>
               </CardHeader>
               <CardContent className="px-0">
@@ -144,9 +145,9 @@ export function EmployeeBenefits(props: { clientId: string; year: number; month:
                       {ev.employees.map((x) => (
                         <TableRow key={x.id} data-testid={`employee-${x.name}`}>
                           <TableCell className="pl-6 whitespace-normal">
-                            <button type="button" className="text-left font-medium hover:text-primary" onClick={() => setEmployee({ entityId: ev.entity.id, form: { employeeId: x.id, name: x.name, employeeNo: x.employeeNo, sex: x.sex, birthDate: x.birthDate, hireDate: x.hireDate, wage: formatMoney(BigInt(x.wage), cur, { bare: true }), leftOn: x.leftOn } })}>{x.name}</button>
+                            <button type="button" className="text-left font-medium hover:text-primary" onClick={() => setEmployee({ entityId: ev.entity.id, form: { employeeId: x.id, name: x.name, employeeNo: x.employeeNo, ptkpStatus: x.ptkpStatus, sex: x.sex, birthDate: x.birthDate, hireDate: x.hireDate, wage: formatMoney(BigInt(x.wage), cur, { bare: true }), leftOn: x.leftOn } })}>{x.name}</button>
                             <div className="text-xs text-muted-foreground">
-                              {x.employeeNo ? `${x.employeeNo} · ` : ""}{x.sex === "MALE" ? "L" : "P"} · lahir {x.birth} · masuk {x.hire}{x.left ? ` · keluar ${x.left}` : ""}{x.newHire ? " · baru tahun ini" : ""}
+                              {x.employeeNo ? `${x.employeeNo} · ` : ""}{x.sex === "MALE" ? "L" : "P"}{x.ptkpStatus ? ` · ${PTKP_LABEL[x.ptkpStatus as PtkpStatus]}` : ""} · lahir {x.birth} · masuk {x.hire}{x.left ? ` · keluar ${x.left}` : ""}{x.newHire ? " · baru tahun ini" : ""}
                             </div>
                           </TableCell>
                           <TableCell className="num hidden text-right md:table-cell">{x.age ?? "–"}</TableCell>
@@ -285,6 +286,7 @@ export function EmployeeBenefits(props: { clientId: string; year: number; month:
                 <Field><FieldLabel htmlFor="emp-wage">Upah per bulan</FieldLabel><Input id="emp-wage" inputMode="decimal" className="num text-right" value={e.wage} onChange={(x) => set({ wage: x.target.value })} /></Field>
                 <Field><FieldLabel htmlFor="emp-birth">Tanggal lahir</FieldLabel><Input id="emp-birth" type="date" value={e.birthDate} onChange={(x) => set({ birthDate: x.target.value })} /></Field>
                 <Field><FieldLabel htmlFor="emp-hire">Tanggal masuk</FieldLabel><Input id="emp-hire" type="date" value={e.hireDate} onChange={(x) => set({ hireDate: x.target.value })} /></Field>
+                <Field><FieldLabel>Status PTKP (untuk cek PPh 21)</FieldLabel><SimpleSelect label="Status PTKP" value={e.ptkpStatus || "NONE"} onChange={(x) => set({ ptkpStatus: x === "NONE" ? "" : x })} options={[{ value: "NONE", label: "Belum diisi" }, ...PTKP_STATUSES.map((p) => ({ value: p, label: PTKP_LABEL[p] }))]} /></Field>
                 <Field><FieldLabel htmlFor="emp-left">Tanggal keluar (opsional)</FieldLabel><Input id="emp-left" type="date" value={e.leftOn} onChange={(x) => set({ leftOn: x.target.value })} /></Field>
               </div>
             );
@@ -296,7 +298,7 @@ export function EmployeeBenefits(props: { clientId: string; year: number; month:
             <Button variant="outline" onClick={() => setEmployee(null)}>Batal</Button>
             <Button
               disabled={busy || !employee?.form.name.trim() || !employee?.form.birthDate || !employee?.form.hireDate || !employee?.form.wage}
-              onClick={() => employee && run(() => saveEmployeeAction({ clientId: props.clientId, entityId: employee.entityId, ...employee.form, leftOn: employee.form.leftOn || null }), "Karyawan disimpan", () => setEmployee(null))}
+              onClick={() => employee && run(() => saveEmployeeAction({ clientId: props.clientId, entityId: employee.entityId, ...employee.form, leftOn: employee.form.leftOn || null, ptkpStatus: employee.form.ptkpStatus || null }), "Karyawan disimpan", () => setEmployee(null))}
             >
               Simpan
             </Button>

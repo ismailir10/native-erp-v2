@@ -40,6 +40,24 @@ describe("PSAK 24 inputs", () => {
     await expect(saveEmployee(db, { clientId: g.client.id, entityId: g.pt.entity.id, name: "D", sex: "MALE", birthDate: "1990-02-30", hireDate: "2020-01-01", wage: "5.000.000" })).rejects.toThrow(/Tanggal lahir tidak valid/);
   });
 
+  it("reads an optional PTKP column, and an import without it keeps the status typed in Buku", async () => {
+    const g = await makeGroup();
+    const base = { clientId: g.client.id, entityId: g.pt.entity.id };
+    const withPtkp = ["No;Nama;JK;Tanggal Lahir;Tanggal Masuk;Upah;Status PTKP", "K-1;Ani;P;01/01/1990;01/01/2020;8000000;TK/0", "K-2;Budi;L;01/01/1985;01/01/2015;12000000;k/2", "K-3;Cici;P;01/01/1992;01/01/2021;6000000;", ""].join("\n");
+    expect(await importCensus(db, { ...base, fileName: "s.csv", data: Buffer.from(withPtkp) })).toEqual({ added: 3, updated: 0 });
+    const status = async () => Object.fromEntries((await db.employee.findMany({ orderBy: { employeeNo: "asc" } })).map((e) => [e.employeeNo, e.ptkpStatus]));
+    expect(await status()).toEqual({ "K-1": "TK0", "K-2": "K2", "K-3": null });
+    const without = ["No;Nama;JK;Tanggal Lahir;Tanggal Masuk;Upah", "K-1;Ani;P;01/01/1990;01/01/2020;8500000", ""].join("\n");
+    expect(await importCensus(db, { ...base, fileName: "s.csv", data: Buffer.from(without) })).toEqual({ added: 0, updated: 1 });
+    expect((await status())["K-1"]).toBe("TK0");
+    const bad = ["Nama;JK;Tanggal Lahir;Tanggal Masuk;Upah;PTKP", "Dodi;L;01/01/1990;01/01/2020;5000000;K/5", ""].join("\n");
+    await expect(importCensus(db, { ...base, fileName: "s.csv", data: Buffer.from(bad) })).rejects.toThrow(/Baris 2 \(Dodi\): status PTKP tidak dikenali/);
+    const ani = await db.employee.findFirstOrThrow({ where: { employeeNo: "K-1" } });
+    const saved = await saveEmployee(db, { ...base, employeeId: ani.id, name: "Ani", employeeNo: "K-1", sex: "FEMALE", birthDate: "1990-01-01", hireDate: "2020-01-01", wage: "8.500.000", ptkpStatus: "K1" });
+    expect(saved.ptkpStatus).toBe("K1");
+    await expect(saveEmployee(db, { ...base, name: "E", sex: "MALE", birthDate: "1990-01-01", hireDate: "2020-01-01", wage: "5.000.000", ptkpStatus: "X/1" })).rejects.toThrow(/Status PTKP tidak dikenali/);
+  });
+
   it("uploads a mortality table and checks its ages", async () => {
     const g = await makeGroup();
     const t = await uploadMortality(db, { firmId: g.firm.id, name: "Tabel uji", fileName: "tmi.csv", data: mortalityCsv() });

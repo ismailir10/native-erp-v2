@@ -10,7 +10,7 @@ const pct = (bp: number) => (bp / 100).toLocaleString("id-ID", { maximumFraction
 export type BenefitEntityView = {
   entity: { id: string; name: string; shortName: string; currency: string };
   setting: { mortalityTableId: string; discount: string; salary: string; retirementAge: string; disability: string; resign: string; resignFlatUntil: string; resignZeroAge: string; saved: boolean };
-  employees: { id: string; name: string; employeeNo: string; sex: "MALE" | "FEMALE"; birthDate: string; hireDate: string; leftOn: string; wage: string; birth: string; hire: string; left: string | null; age: string | null; service: string | null; dbo: string | null; newHire: boolean }[];
+  employees: { id: string; name: string; employeeNo: string; ptkpStatus: string; sex: "MALE" | "FEMALE"; birthDate: string; hireDate: string; leftOn: string; wage: string; birth: string; hire: string; left: string | null; age: string | null; service: string | null; dbo: string | null; newHire: boolean }[];
   valuation: {
     blocker: string | null;
     tableName: string | null;
@@ -49,6 +49,7 @@ export async function benefitViews(db: Db, clientId: string, year: number, month
           id: x.id,
           name: x.name,
           employeeNo: x.employeeNo ?? "",
+          ptkpStatus: x.ptkpStatus ?? "",
           sex: x.sex,
           birthDate: toIsoDate(x.birthDate),
           hireDate: toIsoDate(x.hireDate),

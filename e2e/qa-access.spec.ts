@@ -26,7 +26,7 @@ async function clientId(page: Page, name: string): Promise<string> {
   return href!.match(/clients\/([^/?]+)/)![1];
 }
 
-const ROUTES = ["", "/import", "/review", "/opening", "/ledger", "/trial-balance", "/reports", "/tax", "/close", "/assets", "/inventory", "/leases", "/benefits", "/receivables", "/rates", "/settings", "/journals/new"];
+const ROUTES = ["", "/import", "/review", "/opening", "/ledger", "/trial-balance", "/reports", "/tax", "/tax/masa", "/close", "/assets", "/inventory", "/leases", "/benefits", "/receivables", "/rates", "/settings", "/journals/new"];
 
 test("another firm's ADMIN reaches nothing of this firm: not by route, export, or forged scope", async ({ page, browser, baseURL }) => {
   const id = await clientId(page, "CV Sinar Retail");
@@ -43,7 +43,7 @@ test("another firm's ADMIN reaches nothing of this firm: not by route, export, o
   }
   expect(leaks, "client routes of another firm must be 404").toEqual([]);
 
-  for (const path of ["reports", "tax"]) {
+  for (const path of ["reports", "tax", "tax/masa"]) {
     const response = await other.request.get(`/clients/${id}/${path}/export?entity=${entity}&period=2026-08`);
     expect(response.status(), `${path} export`).toBe(404);
   }

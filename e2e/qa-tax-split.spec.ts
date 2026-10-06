@@ -1,4 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+import ExcelJS from "exceljs";
 import { addClient, uploadStatement } from "./qa-helpers";
 
 /**
@@ -66,4 +68,21 @@ test("PPN 11 % split and PPh 23 gross-up post the exact amounts, and the books b
   await expect(page.getByText("Seimbang").first()).toBeVisible();
   await page.goto(`/clients/${id}/reports?tab=bs&period=2026-08`);
   await expect(page.getByText("Seimbang", { exact: true }).first()).toBeVisible();
+
+  // Pajak Masa (I4c): PPN lebih bayar carried forward, PPh 23 owed by 15 September, and both withholdings listed for bukti potong.
+  await page.goto(`/clients/${id}/tax/masa?period=2026-08`);
+  await expect(page.getByTestId("masa-row-PPN")).toContainText("Lolos");
+  await expect(page.getByTestId("masa-taxes")).toContainText("Keluaran Rp 6.055.046 − masukan Rp 19.847.094");
+  await expect(page.getByTestId("masa-taxes")).toContainText("PPN lebih bayar Rp 13.792.048 dikompensasikan");
+  await expect(page.getByTestId("masa-row-PPH_23")).toContainText("275.229");
+  const wht = page.getByTestId("masa-withholding");
+  await expect(wht).toContainText("JASA KONSULTAN ABC");
+  await expect(wht).toContainText("15.275.229");
+  await expect(wht).toContainText("PENERIMAAN DP KLIEN QQ");
+  await expect(wht).toContainText("1.100.917");
+  const [download] = await Promise.all([page.waitForEvent("download"), page.getByTestId("masa-download").click()]);
+  expect(download.suggestedFilename()).toMatch(/^pajak-masa-.+-Agustus-2026\.xlsx$/);
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load((await readFile(await download.path())) as unknown as ArrayBuffer);
+  expect(wb.worksheets.map((w) => w.name)).toEqual(["Ringkasan", "Bukti Potong", "PPh 21 TER"]);
 });
