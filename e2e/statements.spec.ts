@@ -51,6 +51,12 @@ test("financial statements: comparatives, equity, cash flow, notes, download", a
   const sheets = pack.worksheets.map((w) => w.name);
   expect(sheets[0]).toBe("Ringkasan");
   expect(sheets).toEqual(expect.arrayContaining(["Neraca", "Laba Rugi", "Mutasi vs Omzet", "Umur Piutang", "Umur Utang", "Aset Tetap", "Jejak Sumber"]));
+  // Laporan manajemen bulanan (I4b): the month and its commentary, built from the numbers.
+  const mgmtDownload = page.waitForEvent("download");
+  await page.getByTestId("fs-download-management").click();
+  const mgmt = new ExcelJS.Workbook();
+  await mgmt.xlsx.load((await readFile(await (await mgmtDownload).path())) as unknown as ArrayBuffer);
+  expect(mgmt.worksheets.map((w) => w.name)).toEqual(["Ringkasan", "Perubahan Akun"]);
 
   if (process.env.E2E_SCREENSHOTS) {
     await page.getByRole("tab", { name: "Arus Kas" }).click();
