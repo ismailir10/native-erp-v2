@@ -57,17 +57,60 @@ export type DateParts = { d: number; m: number; y: number | null };
 const TIME = String.raw`(?:[ T]+\d{1,2}[:.]\d{2}(?:[:.]\d{2}(?:\.\d+)?)?(?:\s*[AaPp][Mm])?(?:\s*(?:Z|[+-]\d{2}:?\d{2}))?)?`;
 const year = (y: string) => Number(y.length === 2 ? `20${y}` : y);
 
+/** Day before month (Indonesian, the default) or month before day (US exports) — decided per file, never per row. */
+export type DayMonthOrder = "DMY" | "MDY";
+
+/** A date written as two numbers and an optional year ("13/02/2026", "02-13-26", "'31/08"), with an optional time. */
+const NUMERIC_DATE = new RegExp(String.raw`^(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2}|\d{4}))?${TIME}$`);
+
+/**
+ * How a file writes its numeric dates (QA E17: a US file must never be read day-first in silence). `dmy` is the first text whose first
+ * number can only be a day (> 12), `mdy` the first whose second number can only be one; both null when every numeric date fits either
+ * order (or there is none). Callers decide: one example → that order; both → the file mixes formats; none → `chronologicalOrder`.
+ */
+export function dayMonthEvidence(texts: string[]): { dmy: string | null; mdy: string | null; numeric: string[] } {
+  let dmy: string | null = null;
+  let mdy: string | null = null;
+  const numeric: string[] = [];
+  for (const raw of texts) {
+    const t = raw.replace(/^'/, "").trim();
+    const m = t.match(NUMERIC_DATE);
+    if (!m) continue;
+    numeric.push(t);
+    const [a, b] = [Number(m[1]), Number(m[2])];
+    if (a > 12 && b >= 1 && b <= 12 && a <= 31) dmy ??= t;
+    if (b > 12 && a >= 1 && a <= 12 && b <= 31) mdy ??= t;
+  }
+  return { dmy, mdy, numeric };
+}
+
+/**
+ * For numeric dates that fit both orders (every number ≤ 12): the order in which they run in time, oldest or newest first (a statement
+ * is a time series). Day/month wins a tie; null when neither order runs in time.
+ */
+export function chronologicalOrder(texts: string[]): DayMonthOrder | null {
+  const runs = (order: DayMonthOrder) => {
+    const keys = texts.map((t) => dateParts(t, { order })).filter((p): p is DateParts => !!p).map((p) => (p.y ?? 0) * 10_000 + p.m * 100 + p.d);
+    return keys.every((k, i) => i === 0 || k >= keys[i - 1]) || keys.every((k, i) => i === 0 || k <= keys[i - 1]);
+  };
+  return runs("DMY") ? "DMY" : runs("MDY") ? "MDY" : null;
+}
+
 /**
  * The day, month and (when printed) year of a statement date: "31/08/2026", "31-08-26", "2026-08-31", "'31/08" (BCA, no year),
  * "01-Aug-26", "01 Agu 2026", "3 Mei 2026", "Aug 01, 2026" — with an optional time after it. Two-digit years are 20yy.
- * `serial` also accepts an Excel serial number (a date cell formatted General). Null when it isn't a date.
+ * `serial` also accepts an Excel serial number (a date cell formatted General). `order: "MDY"` reads two-number dates month first
+ * (a US export, decided for the whole file). Null when it isn't a date.
  */
-export function dateParts(text: string, opts: { serial?: boolean } = {}): DateParts | null {
+export function dateParts(text: string, opts: { serial?: boolean; order?: DayMonthOrder } = {}): DateParts | null {
   const t = text.replace(/^'/, "").trim();
   let m = t.match(new RegExp(String.raw`^(\d{4})-(\d{1,2})-(\d{1,2})${TIME}$`));
   if (m) return valid({ y: Number(m[1]), m: Number(m[2]), d: Number(m[3]) });
-  m = t.match(new RegExp(String.raw`^(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2}|\d{4}))?${TIME}$`));
-  if (m) return valid({ d: Number(m[1]), m: Number(m[2]), y: m[3] ? year(m[3]) : null });
+  m = t.match(NUMERIC_DATE);
+  if (m) {
+    const [a, b] = [Number(m[1]), Number(m[2])];
+    return valid({ d: opts.order === "MDY" ? b : a, m: opts.order === "MDY" ? a : b, y: m[3] ? year(m[3]) : null });
+  }
   m = t.match(new RegExp(String.raw`^(\d{1,2})[\s/.-]+([A-Za-z]{3,9})\.?(?:[\s/.,-]+(\d{2}|\d{4}))?${TIME}$`));
   if (m && MONTHS[m[2].toLowerCase()]) return valid({ d: Number(m[1]), m: MONTHS[m[2].toLowerCase()], y: m[3] ? year(m[3]) : null });
   m = t.match(new RegExp(String.raw`^([A-Za-z]{3,9})\.?\s+(\d{1,2}),?\s+(\d{4})${TIME}$`));

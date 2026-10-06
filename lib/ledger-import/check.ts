@@ -1,7 +1,7 @@
 import { convertMinor, exponentOf, isCurrency } from "@/lib/fx/currency";
 import { centsToMinor, formatMoney, roundEntry } from "@/lib/money";
 import { dateOnly, formatDate, formatPeriod } from "@/lib/format";
-import type { LedgerRow, LedgerTotal, NeracaRow, NeracaTotal, TbGroup, TbRead, TbRow } from "@/lib/ledger-import/types";
+import type { LedgerDateOrder, LedgerRow, LedgerTotal, NeracaRow, NeracaTotal, TbGroup, TbRead, TbRow } from "@/lib/ledger-import/types";
 import { columnLetter, TB_GROUP_LABEL } from "@/lib/ledger-import/read";
 import { NO_CODE_PREFIX } from "@/lib/ledger-import/code";
 
@@ -156,9 +156,18 @@ export function dateOutliers(rows: LedgerRow[]): { row: LedgerRow; fix: Date | n
 
 export function planLedger(
   input: LedgerRow[],
-  opts: { entities: Map<string, EntityInfo>; currencyMode: CurrencyMode; rateFor?: RateFor; existingNames?: Map<string, string>; totals?: LedgerTotal[] },
+  opts: { entities: Map<string, EntityInfo>; currencyMode: CurrencyMode; rateFor?: RateFor; existingNames?: Map<string, string>; totals?: LedgerTotal[]; dateOrder?: LedgerDateOrder },
 ): Plan {
   const checks: Check[] = [];
+  // How two-number dates were read (QA E17): said when it isn't the plain Indonesian day/month; a file mixing both can't post.
+  const order = opts.dateOrder;
+  if (order?.basis === "mixed") {
+    checks.push({ severity: "BLOCK", code: "DATE_ORDER_MIXED", message: `Kolom tanggal mencampur format hari/bulan ("${order.examples[0]}") dan bulan/hari ("${order.examples[1]}"). Samakan format tanggalnya di file lalu unggah ulang.`, refs: [] });
+  } else if (order?.basis === "number") {
+    checks.push({ severity: "INFO", code: "DATE_ORDER_US", message: `Tanggal dibaca sebagai bulan/hari (format AS), karena ada tanggal seperti "${order.examples[0]}".`, refs: [] });
+  } else if (order?.basis === "unsure") {
+    checks.push({ severity: "INFO", code: "DATE_ORDER_UNSURE", message: `Format tanggal tidak bisa dipastikan: semua tanggal (mis. "${order.examples[0]}") cocok untuk hari/bulan maupun bulan/hari. Dibaca hari/bulan; bila file memakai format AS, ekspor ulang dengan nama bulan atau format yyyy-mm-dd.`, refs: [] });
+  }
   const accounts: Plan["accounts"] = new Map();
   const entityKeyOf = (r: LedgerRow) => r.entity ?? "";
 

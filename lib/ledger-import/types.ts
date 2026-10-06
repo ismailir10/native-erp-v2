@@ -88,6 +88,12 @@ export type NeracaRow = {
 
 export type NeracaTotal = { ref: string; label: string; amount: bigint; kind: "ASSETS" | "LIAB_EQUITY" | "OTHER" };
 
+/**
+ * How a ledger's two-number text dates were read (QA E17), when it needs saying: month/day because a value proves it (`number`), day/month
+ * by default because every value fits both (`unsure`), or a file mixing both (`mixed`, examples of each). Absent for plain day/month files.
+ */
+export type LedgerDateOrder = { order: "DMY" | "MDY"; basis: "number" | "unsure" | "mixed"; examples: string[] };
+
 export type ReadResult =
-  | { mode: "LEDGER"; sheet: string; rows: LedgerRow[]; totals?: LedgerTotal[] }
+  | { mode: "LEDGER"; sheet: string; rows: LedgerRow[]; totals?: LedgerTotal[]; dateOrder?: LedgerDateOrder }
   | { mode: "NERACA"; sheet: string; date: Date | null; rows: NeracaRow[]; totals: NeracaTotal[]; tb?: TbRead };

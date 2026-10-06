@@ -42,7 +42,7 @@ Code alone can't run that month: a person must close it. This cycle gets Buku re
     entry's `entityId`, `periodId`, `date` or `kind`. Other columns (for example a foreign key set to null when a member is
     removed, or `reversesId` cleared during client delete) still change.
   - **Period matches date.** An entry's `periodId` must be the period of its own date's year and month.
-- [ ] **Ambiguous dates are decided per file, never per row** (`lib/import/parsers/common.ts` → used by the tabular parser and the
+- [x] **Ambiguous dates are decided per file, never per row** (`lib/import/parsers/common.ts` → used by the tabular parser and the
   ledger reader). A file's numeric `a/b/yyyy` dates are read as follows:
   - **day/month** when any value has a > 12 first;
   - **month/day** when any value has a > 12 second and none a > 12 first. The import shows the note *Tanggal dibaca sebagai
@@ -111,7 +111,7 @@ There is no new dependency and no AI credit use.
   - removing an import in an open month still works;
   - normal `postJournal` paths untouched.
   Accept: the new tests and the full `npm test` pass.
-- [ ] T3 Date order per file (reuse `dateParts`; a new `detectDayMonthOrder` in `common.ts`), wired into `tabular.ts` and
+- [x] T3 Date order per file (reuse `dateParts`; a new `detectDayMonthOrder` in `common.ts`), wired into `tabular.ts` and
   `ledger-import/read.ts` + `check.ts` (INFO). Unit tests:
   - a US CSV;
   - a mixed file refused;
@@ -135,10 +135,20 @@ There is no new dependency and no AI credit use.
   **Spec deviation (small):** an index on `JournalLine.entryId`. The balance check reads an entry's lines per changed row, and without
   the index that read is a full scan per line, which is quadratic on a large ledger import. The foreign key never had an index
   (entry deletes cascaded by scanning too). No table or column changes.
+- T3: `lib/import/parsers/common.ts` (`DayMonthOrder`, `dayMonthEvidence`, `chronologicalOrder`, `dateParts({ order })`),
+  `lib/import/parsers/tabular.ts` (decides the order once from the date column, before any row is read), `lib/ledger-import/{read,check,post,types}.ts`
+  (`cellDate(c, order)`, `ReadResult.dateOrder`, checks `DATE_ORDER_US` INFO, `DATE_ORDER_UNSURE` INFO, `DATE_ORDER_MIXED` BLOCK),
+  `tests/unit/date-order.test.ts`. Known bank formats (BCA, BRI CSV) and PDFs are unchanged. Two cases worth noting:
+  - Before this change a US date with a day > 12 already failed loudly. The silent case was a file where every value is ≤ 12.
+  - **Spec deviation (small):** a bank file whose all-ambiguous dates run in time in *neither* order is read day/month with a note
+    (*Format tanggal tidak bisa dipastikan…*) instead of being refused. Internet banking exports sometimes put a few rows out of order,
+    and refusing a file that imports today would be a regression. The note keeps it from being silent.
 
 ## Verification
 - T1 gate: lint + typecheck clean; `npm test` → Test Files 162 passed (162), Tests 1070 passed (1070). `docs/plan/2026-10-rencana-iterasi.html` opened as `file://` in Chromium: 17 slides, 0 external requests, 0 page errors, Inter loaded from the inlined font. `git diff main -- public/deck` is empty: the public deck is exactly main's.
 - T2 gate: lint + typecheck clean; `tests/db/ledger-guards.test.ts` 11 passed; `npm test` → Test Files 163 passed (163), Tests 1081 passed (1081).
   `npm run demo:reset` through the triggers, then `npm run verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`
+- T3 gate: lint + typecheck clean; `tests/unit/date-order.test.ts` 12 passed; `npm test` → Test Files 164 passed (164), Tests 1093 passed (1093).
+  `npm run demo:reset` + `npm run verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`
 
 ## Ship Notes
