@@ -1653,6 +1653,33 @@ model InventoryCount {
 /// only — numbers stay derived from the GL. `format` is validated on write (lib/reports/format.ts); no row = the standard format.
 /// Catatan bulan ini of a company's management report (I5b), saved only by the accountant's click. `facts` is the computed commentary
 /// it was checked against: when the books change and the computed sentences differ, the note is stale and left out of the report.
+/// A scanned statement read by AI (I2a), awaiting the accountant: the transcribed header and rows (amounts as minor-unit strings),
+/// proved by the running balance on every view. Imported only by the accountant's click, through the normal statement pipeline.
+model OcrDraft {
+  id            String   @id @default(cuid())
+  firmId        String
+  clientId      String
+  bankAccountId String
+  fileName      String
+  fileHash      String
+  pages         Int
+  model         String
+  /// { bank, accountNumber, periodStart, periodEnd } as read.
+  header        Json
+  /// [{ date, description, debit, credit, balance }]: dates ISO, amounts minor-unit strings or null.
+  rows          Json
+  opening       String?
+  closing       String?
+  /// DRAFT until imported (IMPORTED, with the import it became).
+  status        String   @default("DRAFT")
+  importId      String?
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([clientId])
+}
+
 model ReportComment {
   id           String   @id @default(cuid())
   firmId       String

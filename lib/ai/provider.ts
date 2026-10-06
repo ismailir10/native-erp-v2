@@ -1,5 +1,6 @@
 import { parseMoney } from "@/lib/money";
 import type { Direction, TaxTag } from "@/lib/generated/prisma/enums";
+import { buildOcrPrompt, OCR_MAX_TOKENS, OCR_TOKENS_PER_PAGE, parseOcrTranscript, type OcrInput, type OcrTranscript } from "@/lib/ocr/transcribe";
 import { buildCommentaryPrompt, COMMENTARY_MAX_TOKENS, parseCommentary, type CommentaryInput } from "@/lib/reports/commentary-ai";
 
 /**
@@ -253,10 +254,13 @@ export interface AiProvider {
   explainControl?(input: ControlExplainInput): Promise<ControlExplainResult>;
   /** Catatan manajemen (I5b): reword computed sentences; the caller checks every number. */
   draftCommentary?(input: CommentaryInput): Promise<CommentaryResult>;
+  /** Scanned statement (I2a): page images in, a transcription out; Buku parses and proves every number. */
+  readStatement?(input: OcrInput): Promise<OcrResult>;
   classify(items: AiItem[], accounts: { code: string; name: string }[], context: string): Promise<AiResult>;
   mapAccounts(items: MapItem[], accounts: { code: string; name: string; group: string }[], context: string): Promise<MapResult>;
 }
 
+export type OcrResult = { transcript: OcrTranscript; promptTokens: number; completionTokens: number; model: string };
 export type CommentaryResult = { text: string; promptTokens: number; completionTokens: number; model: string };
 
 export const AI_BATCH_SIZE = 40;
@@ -378,6 +382,9 @@ export function parseAiResponse(text: string, items: AiItem[], validCodes: Set<s
   return out;
 }
 
+/** A user message: text, or text and images (OpenAI-compatible content parts). */
+type UserContent = string | ({ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } })[];
+
 export class OpenAiCompatibleProvider implements AiProvider {
   constructor(
     private cfg = aiConfig(),
@@ -420,6 +427,14 @@ export class OpenAiCompatibleProvider implements AiProvider {
     catch { throw new AiAnswerError("Penjelasan AI tidak valid; periksa kontrol secara manual.", r.promptTokens, r.completionTokens, r.model); }
   }
 
+  async readStatement(input: OcrInput): Promise<OcrResult> {
+    const { system, user } = buildOcrPrompt(input.images.length);
+    const parts: UserContent = [{ type: "text", text: user }, ...input.images.map((i) => ({ type: "image_url" as const, image_url: { url: `data:${i.mime};base64,${i.data.toString("base64")}` } }))];
+    const r = await this.complete(system, parts, OCR_MAX_TOKENS + OCR_TOKENS_PER_PAGE * input.images.length, false, AI_LONG_TIMEOUT_MS);
+    try { return { ...r, transcript: parseOcrTranscript(r.text) }; }
+    catch { throw new AiAnswerError("Salinan AI tidak terbaca. Model ini mungkin tidak bisa membaca gambar; pilih model yang mendukung gambar.", r.promptTokens, r.completionTokens, r.model); }
+  }
+
   async draftCommentary(input: CommentaryInput): Promise<CommentaryResult> {
     const { system, user } = buildCommentaryPrompt(input);
     const r = await this.complete(system, user, COMMENTARY_MAX_TOKENS, false, AI_TIMEOUT_MS);
@@ -434,7 +449,7 @@ export class OpenAiCompatibleProvider implements AiProvider {
     catch { throw new AiAnswerError("Tinjauan AI tidak valid; periksa kontrol secara manual.", r.promptTokens, r.completionTokens, r.model); }
   }
 
-  private async complete(system: string, user: string, maxTokens: number, requireItems = true, timeoutMs = AI_TIMEOUT_MS) {
+  private async complete(system: string, user: UserContent, maxTokens: number, requireItems = true, timeoutMs = AI_TIMEOUT_MS) {
     const res = await this.fetchImpl(`${this.cfg.baseUrl}/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${this.cfg.apiKey}` },
@@ -494,6 +509,13 @@ export class MockProvider implements AiProvider {
     this.calls++;
     const items = input.controls.map((c) => ({ controlKey: c.key, explanation: `Uji: ${c.title}`, suggestion: "Periksa baris yang dikutip.", refs: c.rows.slice(0, 1).map((r) => r.id) }));
     return { items, promptTokens: 40, completionTokens: 20 * items.length, model: this.model };
+  }
+  /** A recorded extraction for tests (never a real model). */
+  ocrTranscript: OcrTranscript | null = null;
+  async readStatement(): Promise<OcrResult> {
+    this.calls++;
+    if (!this.ocrTranscript) throw new AiAnswerError("Salinan AI tidak terbaca.", 10, 0, this.model);
+    return { transcript: structuredClone(this.ocrTranscript), promptTokens: 1500, completionTokens: 400, model: this.model };
   }
   async draftCommentary(input: CommentaryInput): Promise<CommentaryResult> {
     this.calls++;

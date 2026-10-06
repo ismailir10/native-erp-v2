@@ -326,6 +326,12 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     otherwise). Known bank formats (BCA, BRI CSV) and PDFs keep their fixed day/month reading.
 
 ## AI (credit is limited — treat every call as money)
+16b. **Scanned statements (OCR)** (`lib/ocr`, I2a): only a scan or photo (a PDF without text, JPG, PNG) is ever sent to a model, and only
+    when the workspace switch *Baca scan dengan AI* is on (UU PDP; off by default) — never the expected balances or an earlier statement.
+    The model transcribes; Buku parses every number. A row is accepted only when the previous balance + credit − debit equals its printed
+    balance, with the printed opening (else the account's last imported closing, checked on the server) and closing; anything else is
+    *perlu dicek* for the accountant to fix. Import needs every row proved and goes through `importStatement` as a CSV of the proved rows,
+    so every rule here (repair, continuity, dedupe, classification, Review) applies unchanged.
 17. LLM runs **outside** DB transactions, only for leftovers, **one request per unique merchant key + direction**,
     batched (≤40/call), cached in `AiSuggestion` with firm/client isolation (key implementation: `lib/ai/classify.ts`).
     Account mapping (rule 9a) follows the same discipline: names + type hints only (no amounts, no descriptions), ≤40 per call,

@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { getClientForFirm, getCurrentFirm, getCurrentMember } from "@/lib/tenant";
+import { createOcrDraft, importOcrDraft, ocrEnabled, updateOcrDraft, type OcrRowInput } from "@/lib/ocr/draft";
+import { OcrError } from "@/lib/ocr/pages";
 import { clearReportComment, CommentError, draftCommentary, saveReportComment } from "@/lib/reports/report-comment";
 import { headers } from "next/headers";
 import { appUrl } from "@/lib/supabase/env";
@@ -31,7 +33,7 @@ import { postTax } from "@/lib/tax/post";
 import { recordInventoryCount } from "@/lib/inventory";
 import { acceptSuggestion, addCorrection, addCredit, deleteCorrection, deleteCredit, deleteLoss, dismissSuggestion, setCorrectionPercent, setLoss, setRegime, setTaxMonth, type CorrectionInput, type CreditInput } from "@/lib/tax/records";
 import type { TaxPostingKind, TaxRegime } from "@/lib/generated/prisma/enums";
-import { AccountMismatchError, ParseError, YearNeededError } from "@/lib/import/types";
+import { AccountMismatchError, ParseError, ScanError, YearNeededError } from "@/lib/import/types";
 import { PdfPasswordError } from "@/lib/import/parsers/pdf";
 import { MoneyError, parseMoney } from "@/lib/money";
 import { dateOnly } from "@/lib/format";
@@ -68,7 +70,7 @@ import type { MapMethod } from "@/lib/generated/prisma/enums";
  * Server actions — the only write path from the UI. Each returns {ok, …} or {ok:false, error}
  * with a Bahasa message the UI shows verbatim. Domain errors are expected; others are bugs.
  */
-type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string; needsPassword?: boolean; needsYear?: boolean; yearGuess?: number | null; fields?: Record<string, string>; suggestBankAccountId?: string };
+type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string; needsPassword?: boolean; needsYear?: boolean; yearGuess?: number | null; fields?: Record<string, string>; suggestBankAccountId?: string; scanned?: { ocrReady: boolean } };
 
 function fail(e: unknown): { ok: false; error: string; needsPassword?: boolean; needsYear?: boolean; yearGuess?: number | null } {
   if (e instanceof PdfPasswordError) return { ok: false, error: e.message, needsPassword: true };
@@ -109,6 +111,56 @@ export async function importAction(formData: FormData): Promise<Result<{ summary
       const match = banks.find((b) => b.id !== selected && e.fileNumbers.some((n) => digits(n) === digits(b.number)));
       return { ...fail(e), suggestBankAccountId: match?.id };
     }
+    // A scan or photo: the form offers Baca scan dengan AI when the workspace switch is on and a model is configured (I2a).
+    if (e instanceof ScanError) return { ok: false, error: e.message, scanned: { ocrReady: (await ocrEnabled(prisma)) && (await resolveProvider(prisma)) !== null } };
+    return fail(e);
+  }
+}
+
+/** Baca scan dengan AI (I2a): one budgeted transcription into a draft the accountant proves and imports; nothing posts here. */
+export async function ocrAction(formData: FormData): Promise<Result<{ draftId: string }>> {
+  try {
+    const clientId = String(formData.get("clientId"));
+    const bankAccountId = String(formData.get("bankAccountId"));
+    const file = formData.get("file");
+    const client = await getClientForFirm(clientId);
+    if (!client.entities.some((e) => e.bankAccounts.some((b) => b.id === bankAccountId))) return { ok: false, error: "Pilih rekening bank dulu." };
+    if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Pilih file scan rekening koran." };
+    if (file.size > MAX_UPLOAD) return { ok: false, error: "File terlalu besar (maks. 5 MB)." };
+    const draft = await createOcrDraft(prisma, { firmId: client.firmId, clientId: client.id, bankAccountId, fileName: file.name, data: Buffer.from(await file.arrayBuffer()), provider: await resolveProvider(prisma), actorId: (await getCurrentMember()).id });
+    return { ok: true, draftId: draft.id };
+  } catch (e) {
+    if (e instanceof OcrError || e instanceof AiBudgetError || e instanceof AiAnswerError) return { ok: false, error: e.message };
+    if (e instanceof Error && (e.name === "TimeoutError" || /^(AI \d|Model )/.test(e.message))) {
+      console.error(e);
+      return { ok: false, error: "AI tidak bisa membaca scan saat ini. Coba lagi nanti, atau minta e-statement." };
+    }
+    return fail(e);
+  }
+}
+
+/** The accountant's corrections on a scan draft; the proof re-runs on the page. */
+export async function saveOcrDraftAction(clientId: string, draftId: string, input: { rows: OcrRowInput[]; opening: string; closing: string }): Promise<Result> {
+  try {
+    const client = await getClientForFirm(clientId);
+    await updateOcrDraft(prisma, { firmId: client.firmId, clientId: client.id, draftId, ...input });
+    revalidatePath(`/clients/${client.id}/import/ocr/${draftId}`);
+    return { ok: true };
+  } catch (e) {
+    if (e instanceof OcrError) return { ok: false, error: e.message };
+    return fail(e);
+  }
+}
+
+/** Import a proved scan draft through the normal statement pipeline (the accountant's click). */
+export async function importOcrDraftAction(clientId: string, draftId: string): Promise<Result<{ summary: ImportSummary }>> {
+  try {
+    const client = await getClientForFirm(clientId);
+    const summary = await importOcrDraft(prisma, { firmId: client.firmId, clientId: client.id, draftId, provider: await resolveProvider(prisma), actorId: (await getCurrentMember()).id });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, summary };
+  } catch (e) {
+    if (e instanceof OcrError) return { ok: false, error: e.message };
     return fail(e);
   }
 }

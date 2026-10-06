@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { settingsSecretConfigured } from "@/lib/settings/secret";
 import { clearAiKey, fetchModels, resolveAiConfig, saveAiSettings, SettingsError, validateAiInput } from "@/lib/settings/ai";
 import { infraErrorMessage } from "@/lib/db-errors";
+import { setOcrEnabled } from "@/lib/ocr/draft";
 
 /**
  * Pengaturan → AI. Every action requires a workspace session; credential changes need the ADMIN role.
@@ -58,6 +59,19 @@ export async function listModelsAction(): Promise<Result<{ models: string[] }>> 
     await getCurrentFirm();
     const cfg = await resolveAiConfig(prisma);
     return { ok: true, models: await fetchModels(cfg.baseUrl, cfg.apiKey) };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Baca scan dengan AI (I2a, UU PDP): admin only; scan images go to the configured AI provider only while this is on. */
+export async function setOcrAction(on: boolean): Promise<Result> {
+  try {
+    const denied = await guard();
+    if (denied) return { ok: false, error: denied };
+    await setOcrEnabled(prisma, on);
+    revalidatePath("/", "layout");
+    return { ok: true };
   } catch (e) {
     return fail(e);
   }
