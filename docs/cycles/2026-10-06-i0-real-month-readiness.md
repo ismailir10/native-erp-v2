@@ -63,7 +63,7 @@ Code alone can't run that month: a person must close it. This cycle gets Buku re
     - first export after the lock;
     - the elapsed time from first file in to that export.
   - The script is read-only and is not part of the UI.
-- [ ] **Real-month runbook** `docs/real-month.md`:
+- [x] **Real-month runbook** `docs/real-month.md`:
   - picking the client;
   - what to collect (the ugliest file set);
   - the UU PDP stance (AI off unless the firm decides otherwise; the key and the AI switch live in Pengaturan);
@@ -71,7 +71,7 @@ Code alone can't run that month: a person must close it. This cycle gets Buku re
   - recording each blocker with time lost;
   - reading the timeline;
   - how results feed I1 and I2.
-- [ ] `accounting-rules` rules 2–4 name the database guards. README "What it does" mentions none of this (no user-facing change).
+- [x] `accounting-rules` rules 2–4 name the database guards. README "What it does" mentions none of this (no user-facing change).
 
 **Non-goals:**
 - the per-client module toggles and the new navigation (I1);
@@ -121,7 +121,7 @@ There is no new dependency and no AI credit use.
   Accept: tests pass and `verify:books` is ALL PASS (demo files unaffected).
 - [x] T4 `REPORT_EXPORT` audit events on the three export routes + `scripts/close-timeline.ts` + `npm run close:timeline`.
   DB test of the timeline on a seeded client. Accept: the script prints the demo firm's locked months with elapsed times.
-- [ ] T5 `docs/real-month.md` runbook + accounting-rules update. Accept: the end-of-cycle gates (`lint`, `typecheck`, `test`,
+- [x] T5 `docs/real-month.md` runbook + accounting-rules update. Accept: the end-of-cycle gates (`lint`, `typecheck`, `test`,
   `build`, `verify:books`, `test:e2e`) pass.
 
 ## Implementation
@@ -148,6 +148,9 @@ There is no new dependency and no AI credit use.
   label *Laporan diunduh*, so the event also shows in Riwayat perubahan), `lib/controls/timeline.ts` (`closeTimeline`, `formatDuration`;
   read-only), `scripts/close-timeline.ts` + `npm run close:timeline`, `tests/db/close-timeline.test.ts`. A draft downloaded before the
   lock is logged but doesn't count as *terkirim*; a review counts for the month of the bank line it changed.
+- T5: `docs/real-month.md` (picking the client and the ugliest file set, AI off by default, a blocker log by stage, reading
+  `close:timeline`, turning minutes lost into I1–I4 scope), `.agents/skills/accounting-rules/SKILL.md` (rules 2, 3 and 4 name the
+  database guards; new 16a on per-file date order).
 
 ## Verification
 - T1 gate: lint + typecheck clean; `npm test` → Test Files 162 passed (162), Tests 1070 passed (1070). `docs/plan/2026-10-rencana-iterasi.html` opened as `file://` in Chromium: 17 slides, 0 external requests, 0 page errors, Inter loaded from the inlined font. `git diff main -- public/deck` is empty: the public deck is exactly main's.
@@ -158,5 +161,35 @@ There is no new dependency and no AI credit use.
 - T4 gate: lint + typecheck clean; `tests/db/close-timeline.test.ts` 5 passed; `npm test` → Test Files 165 passed (165), Tests 1098 passed (1098).
   `npm run close:timeline` on the demo firm prints each client's months (Maret–Juli locked, Agustus open; seeded in one run, so
   *file → kunci* reads 0 menit and *terkirim* is "—" until a report is downloaded after a lock).
+- End of cycle:
+  - `npm run lint`: exit 0. `npm run typecheck`: exit 0.
+  - `npm test`: Test Files 165 passed (165), Tests 1098 passed (1098).
+  - `npm run build`: exit 0.
+  - `npm run demo:reset` + `npm run verify:books`: `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`
+  - **Not run here: `npm run test:e2e`.** Its global setup stops with "SUPABASE_SECRET_KEY belum diatur": this sandbox has no
+    Supabase Auth keys. CI runs the e2e walk against its own local Supabase stack (`.github/workflows/ci.yml`).
+  - Sandbox note: `npm ci` can't fetch `xlsx` from `cdn.sheetjs.com` (blocked by the network policy). Dependencies were installed
+    with `xlsx@0.18.5` from npm for local runs only; `package.json` and the lockfile are unchanged, and CI installs the real package.
 
 ## Ship Notes
+- **Migration `20261006090000_ledger_guards`** runs in `vercel-build.sh` (`prisma migrate deploy`). It changes no table, adds one
+  index (`JournalLine_entryId_idx`), and adds the trigger functions and triggers.
+- **It checks existing data first.** If production holds an unbalanced or single-line entry, an entry filed under another month,
+  or a line off its entry, the migration fails, the deploy stops, and the error lists up to 20 ids. Production's ledger was written
+  only by `postJournal`, so none is expected. If one appears: fix that entry (or ask), then redeploy. Don't edit the migration.
+- **After deploy:**
+  - Deleting a client with a closed month works as before.
+  - Removing an import in a closed month was already refused by the app, and is now refused by the database too.
+  - A refusal message starting "Buku besar:" means code went around `postJournal`.
+- **Rollback** (only if a trigger blocks legitimate work):
+  - Run `DROP TRIGGER "JournalLine_guard" ON "JournalLine"; DROP TRIGGER "JournalEntry_guard" ON "JournalEntry"; DROP TRIGGER
+    "JournalLine_balanced" ON "JournalLine"; DROP TRIGGER "JournalEntry_balanced" ON "JournalEntry";`.
+  - The functions and the index can stay.
+  - Then revert the commit so the next deploy doesn't re-run the migration's intent through a new one.
+- **No env vars.** New command: `npm run close:timeline` (read-only).
+- **Report downloads now appear in Riwayat perubahan** as *Laporan diunduh*.
+- **Next:**
+  - Run the real month per `docs/real-month.md`.
+  - The owner chooses the client and the accountant, and decides UU PDP (AI off by default).
+  - Its blocker log becomes I1's Context.
+  - QA E18 (a 20-digit amount crashing an import) is noted for I1.
