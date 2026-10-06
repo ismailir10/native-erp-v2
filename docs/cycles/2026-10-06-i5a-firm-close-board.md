@@ -32,7 +32,7 @@ Approved under "get them done" (2026-10-06).
     - *Belum dikirim* when locked but nothing has gone out;
     - "–" before the lock.
 - [x] `getWorkspaceOverview` returns per client `sumber: { gaps, rows }` and `sentAt`. The Sumber cell reads the selected month only:
-  `completenessMatrix(…, 1)`. `sentAt` comes from one `REPORT_EXPORT` query for all clients in scope.
+  `completenessMatrix(…, 1)`. `sentAt` is one indexed `REPORT_EXPORT` lookup per locked client (built per client, next to its controls; corrected from "one query for all clients" during build).
 - [x] Status is shown with an icon, a label and a colour (`StatusPill`), problems first in each cell, and the layout holds at 390 px.
   On a phone each client is a stacked card with labelled cells, with no horizontal page scroll.
 
