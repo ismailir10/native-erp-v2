@@ -201,3 +201,24 @@ it("refuses to change data and says where it is done instead", async () => {
     expect(answer.rows).toHaveLength(0);
   }
 });
+
+it("papan kantor: Sumber counts this month's gaps; Terkirim is the first report out after the lock (I5a)", async () => {
+  const g = await makeGroup();
+  const bca = g.pt.banks[0];
+  const stmt = (m: number, opening: bigint, closing: bigint) =>
+    db.statementImport.create({ data: { firmId: g.firm.id, bankAccountId: bca.id, fileName: `bca-${m}.csv`, format: "BCA", periodStart: dateOnly(2026, m, 1), periodEnd: dateOnly(2026, m + 1, 0), openingBalance: opening, closingBalance: closing, rowCount: 1, continuityOk: true } });
+  await stmt(7, 0n, 100n);
+  const july = (await getWorkspaceOverview(db, g.firm.id, { period: "2026-07" })).clients[0];
+  expect(july.sumber).toEqual({ rows: 1, gaps: 0 });
+  expect(july.sentAt).toBeNull();
+  const august = (await getWorkspaceOverview(db, g.firm.id, { period: "2026-08" })).clients[0];
+  expect(august.sumber).toEqual({ rows: 1, gaps: 1 }); // August statement not imported yet
+
+  const lockedAt = new Date(Date.now() - 60_000);
+  await db.period.upsert({ where: { clientId_year_month: { clientId: g.client.id, year: 2026, month: 7 } }, create: { firmId: g.firm.id, clientId: g.client.id, year: 2026, month: 7, status: "LOCKED", lockedAt }, update: { status: "LOCKED", lockedAt } });
+  const event = (at: Date) => db.auditEvent.create({ data: { firmId: g.firm.id, clientId: g.client.id, kind: "REPORT_EXPORT", subject: "period:2026-07", summary: "x", createdAt: at } });
+  await event(new Date(+lockedAt - 1000)); // a draft before the lock doesn't count
+  expect((await getWorkspaceOverview(db, g.firm.id, { period: "2026-07" })).clients[0].sentAt).toBeNull();
+  const after = await event(new Date(+lockedAt + 1000));
+  expect((await getWorkspaceOverview(db, g.firm.id, { period: "2026-07" })).clients[0].sentAt).toEqual(after.createdAt);
+});

@@ -22,6 +22,8 @@ test("statement in → reviewed → traceable reports → combined → closed", 
   // 1. Beranda points at the client that needs work
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Tanya Buku", exact: true })).toBeVisible();
+  // Papan kantor (I5a): Grup Ayam's August still misses the owner's BRI statement.
+  await expect(page.getByTestId("firm-board")).toContainText("1 kurang");
   // The full task list is on Beranda ("Semua pekerjaan"); the old /work address lands there too.
   await page.goto("/work");
   await expect(page).toHaveURL(/\/\?.*tugas=semua/);
