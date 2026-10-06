@@ -877,8 +877,27 @@ model EvidenceIntake {
   facts          EvidenceFact[]
   conflicts      EvidenceConflict[]
   messages       EvidenceMessage[]
+  uploadLink     UploadLink?
 
   @@index([firmId, clientId])
+}
+
+/// Tautan unggah klien (I1d): a secret, expiring, revocable link through which a client drops files into one review inbox. Only the
+/// token's sha256 is stored; the token is shown once. Deleted with its inbox (and so with the client).
+model UploadLink {
+  id          String         @id @default(cuid())
+  firmId      String
+  clientId    String
+  intakeId    String         @unique
+  intake      EvidenceIntake @relation(fields: [intakeId], references: [id], onDelete: Cascade)
+  tokenHash   String         @unique
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  lastUsedAt  DateTime?
+  createdById String?
+  createdAt   DateTime       @default(now())
+
+  @@index([clientId])
 }
 
 model EvidenceDocument {

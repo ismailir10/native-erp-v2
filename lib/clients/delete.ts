@@ -60,6 +60,7 @@ export async function deleteClient(db: Db, input: { firmId: string; clientId: st
       await tx.ledgerImport.deleteMany({ where: { clientId } }); // checks cascade
       await tx.memory.deleteMany({ where: { clientId } });
       await tx.rule.deleteMany({ where: { clientId } });
+      await tx.uploadLink.deleteMany({ where: { clientId } });
       await tx.evidenceSelection.deleteMany({ where: { intakeId: { in: intakeIds } } });
       await tx.evidenceUpload.deleteMany({ where: { intakeId: { in: intakeIds } } });
       await tx.evidenceIntake.deleteMany({ where: { id: { in: intakeIds } } }); // documents, versions, passages, facts, conflicts, messages cascade
