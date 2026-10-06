@@ -3,6 +3,7 @@ import { getClientForFirm, getCurrentFirm } from "@/lib/tenant";
 import { parsePeriod } from "@/lib/scope";
 import { packApplies, taxPack } from "@/lib/tax/pack";
 import { taxWorkpaper } from "@/lib/tax/workpaper";
+import { recordExport } from "@/lib/reports/export-log";
 
 /** GET ?entity=<id>&period=YYYY-MM — the tax pack's Excel kertas kerja for one company (accounting-rules 5d). */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -19,6 +20,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (!pack) return new Response("Entitas tidak ditemukan", { status: 404 });
   const firm = await getCurrentFirm();
   const body = await taxWorkpaper(prisma, pack, { firm: firm.name, client: client.name, npwp: entity.npwp });
+  const locked = await prisma.period.findFirst({ where: { clientId: client.id, year: period.year, month: period.month, status: "LOCKED" }, select: { id: true } });
+  await recordExport(prisma, { clientId: client.id, entityId: entity.id, scope: entity.name, year: period.year, month: period.month, file: "Kertas kerja PPh Badan", final: !!locked });
   const name = `kertas-kerja-pph-badan-${entity.shortName.replace(/[^\w-]+/g, "_")}-${period.key}.xlsx`;
   return new Response(new Uint8Array(body), {
     headers: {

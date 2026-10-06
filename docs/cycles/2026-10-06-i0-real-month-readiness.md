@@ -53,7 +53,7 @@ Code alone can't run that month: a person must close it. This cycle gets Buku re
     - when neither order is chronological, the file is refused with a message to check the date format;
     - a ledger file stays day/month and gets an INFO check *Format tanggal tidak bisa dipastikan* citing the column.
   PDF parsing and dates with month names are unchanged.
-- [ ] **Close timeline.**
+- [x] **Close timeline.**
   - Report exports (Laporan Excel, PDF, Pajak kertas kerja) write an `AuditEvent` of kind `REPORT_EXPORT` (subject
     `period:YYYY-MM`, summary = which file).
   - `npm run close:timeline -- --client <id|name> [--period YYYY-MM]` prints, per month:
@@ -119,7 +119,7 @@ There is no new dependency and no AI credit use.
   - an Indonesian file unchanged;
   - a ledger INFO.
   Accept: tests pass and `verify:books` is ALL PASS (demo files unaffected).
-- [ ] T4 `REPORT_EXPORT` audit events on the three export routes + `scripts/close-timeline.ts` + `npm run close:timeline`.
+- [x] T4 `REPORT_EXPORT` audit events on the three export routes + `scripts/close-timeline.ts` + `npm run close:timeline`.
   DB test of the timeline on a seeded client. Accept: the script prints the demo firm's locked months with elapsed times.
 - [ ] T5 `docs/real-month.md` runbook + accounting-rules update. Accept: the end-of-cycle gates (`lint`, `typecheck`, `test`,
   `build`, `verify:books`, `test:e2e`) pass.
@@ -143,6 +143,11 @@ There is no new dependency and no AI credit use.
   - **Spec deviation (small):** a bank file whose all-ambiguous dates run in time in *neither* order is read day/month with a note
     (*Format tanggal tidak bisa dipastikan…*) instead of being refused. Internet banking exports sometimes put a few rows out of order,
     and refusing a file that imports today would be a regression. The note keeps it from being silent.
+- T4: `lib/reports/export-log.ts` (`recordExport`: one `REPORT_EXPORT` event per download, subject `period:YYYY-MM`, summary
+  file · scope · month · final/draf; a logging failure never blocks the download), the three export routes, `lib/audit.ts` (kind +
+  label *Laporan diunduh*, so the event also shows in Riwayat perubahan), `lib/controls/timeline.ts` (`closeTimeline`, `formatDuration`;
+  read-only), `scripts/close-timeline.ts` + `npm run close:timeline`, `tests/db/close-timeline.test.ts`. A draft downloaded before the
+  lock is logged but doesn't count as *terkirim*; a review counts for the month of the bank line it changed.
 
 ## Verification
 - T1 gate: lint + typecheck clean; `npm test` → Test Files 162 passed (162), Tests 1070 passed (1070). `docs/plan/2026-10-rencana-iterasi.html` opened as `file://` in Chromium: 17 slides, 0 external requests, 0 page errors, Inter loaded from the inlined font. `git diff main -- public/deck` is empty: the public deck is exactly main's.
@@ -150,5 +155,8 @@ There is no new dependency and no AI credit use.
   `npm run demo:reset` through the triggers, then `npm run verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`
 - T3 gate: lint + typecheck clean; `tests/unit/date-order.test.ts` 12 passed; `npm test` → Test Files 164 passed (164), Tests 1093 passed (1093).
   `npm run demo:reset` + `npm run verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`
+- T4 gate: lint + typecheck clean; `tests/db/close-timeline.test.ts` 5 passed; `npm test` → Test Files 165 passed (165), Tests 1098 passed (1098).
+  `npm run close:timeline` on the demo firm prints each client's months (Maret–Juli locked, Agustus open; seeded in one run, so
+  *file → kunci* reads 0 menit and *terkirim* is "—" until a report is downloaded after a lock).
 
 ## Ship Notes
