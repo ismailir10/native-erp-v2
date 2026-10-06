@@ -22,7 +22,7 @@ Code alone can't run that month: a person must close it. This cycle gets Buku re
    client-month's timeline.
 
 ## Spec
-- [ ] **ADR 0014 "Tiga tahap"** (`docs/adrs/0014-three-stage-spine.md`):
+- [x] **ADR 0014 "Tiga tahap"** (`docs/adrs/0014-three-stage-spine.md`):
   - the thesis, the spine and the AI pattern;
   - the I0–I5 order;
   - what is deliberately not done (export back to Accurate/Jurnal, marketplace settlements, live bank feeds, becoming a PJAP,
@@ -30,7 +30,7 @@ Code alone can't run that month: a person must close it. This cycle gets Buku re
   - the defaults the owner approved;
   - links to the plan deck.
   ADR 0004's stale out-of-MVP list gets an amendment note pointing to 0014.
-- [ ] **Plan deck moves out of `public/`** into `docs/plan/2026-10-rencana-iterasi.html`, self-contained (CSS, JS and font inlined), so
+- [x] **Plan deck moves out of `public/`** into `docs/plan/2026-10-rencana-iterasi.html`, self-contained (CSS, JS and font inlined), so
   it opens from the repo without a server. `public/deck/rencana.*` is removed, and the public `/deck` is unchanged.
 - [ ] **Database guards for the ledger.** One migration adds triggers. Each refusal names the rule in its message.
   - **Balanced.** A deferred constraint trigger on `JournalLine` refuses, at commit, any entry whose lines don't sum
@@ -100,7 +100,7 @@ There is no new dependency and no AI credit use.
    exist (accounting-rules 22a). The ADR words I3 as "kontrol tambahan dari bulan nyata", not those two.
 
 ## Tasks
-- [ ] T1 ADR 0014 + ADR 0004 amendment note + plan deck moved to `docs/plan/` (self-contained), `public/deck/rencana.*` removed.
+- [x] T1 ADR 0014 + ADR 0004 amendment note + plan deck moved to `docs/plan/` (self-contained), `public/deck/rencana.*` removed.
   Accept: `/deck` files unchanged; `docs/plan/…html` opens offline with no external requests.
 - [ ] T2 Ledger guards migration + `SET LOCAL` in client delete + DB tests (`tests/db/ledger-guards.test.ts`):
   - unbalanced raw insert refused at commit;
@@ -125,5 +125,8 @@ There is no new dependency and no AI credit use.
   `build`, `verify:books`, `test:e2e`) pass.
 
 ## Implementation
+- Plan: tasks T1–T5 sequential, done inline (small, each depends on the gates of the one before; T2 and T3 touch the ledger and import invariants, so no delegation).
+- T1: `docs/adrs/0014-three-stage-spine.md`, ADR 0004 amendment, ADR index; `docs/plan/2026-10-rencana-iterasi.html` (deck.css + rencana.css + deck.js + Inter inlined); `public/deck/rencana.{html,css}` removed — the ADR records the plan, the deck leaves the public path.
 ## Verification
+- T1 gate: lint + typecheck clean; `npm test` → Test Files 162 passed (162), Tests 1070 passed (1070). `docs/plan/2026-10-rencana-iterasi.html` opened as `file://` in Chromium: 17 slides, 0 external requests, 0 page errors, Inter loaded from the inlined font. `git diff main -- public/deck` is empty: the public deck is exactly main's.
 ## Ship Notes
