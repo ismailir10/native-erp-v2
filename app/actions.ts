@@ -3,6 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { getClientForFirm, getCurrentFirm, getCurrentMember } from "@/lib/tenant";
+import { headers } from "next/headers";
+import { appUrl } from "@/lib/supabase/env";
+import { formatDate } from "@/lib/format";
+import { createUploadLink, revokeUploadLink, uploadPath, UploadLinkError } from "@/lib/upload-links";
 import { importStatement, type ImportSummary } from "@/lib/import/pipeline";
 import { resolveProvider } from "@/lib/settings/ai";
 import { acceptSimilar, reviewTransaction, splitTransaction, unpairTransfer, type SplitPartInput } from "@/lib/review";
@@ -1040,4 +1044,39 @@ export async function deleteClientAction(clientId: string, confirmName: string):
   } catch (e) {
     return fail(e);
   }
+}
+
+/** Tautan unggah klien (I1d): a secret upload-only link for the client, shown once. Any member; audited. */
+export async function createUploadLinkAction(clientId: string, days: number): Promise<{ ok: true; url: string; expires: string } | { ok: false; error: string }> {
+  try {
+    const client = await getClientForFirm(clientId);
+    const member = await getCurrentMember();
+    const { link, token } = await createUploadLink(prisma, { firmId: client.firmId, clientId: client.id, days, actorId: member.id });
+    revalidatePath(`/clients/${client.id}/import`);
+    return { ok: true, url: `${await publicOrigin()}${uploadPath(token)}`, expires: formatDate(link.expiresAt) };
+  } catch (e) {
+    if (e instanceof UploadLinkError) return { ok: false, error: e.message };
+    return fail(e);
+  }
+}
+export async function revokeUploadLinkAction(clientId: string, linkId: string): Promise<Result> {
+  try {
+    const client = await getClientForFirm(clientId);
+    const member = await getCurrentMember();
+    await revokeUploadLink(prisma, { firmId: client.firmId, clientId: client.id, linkId, actorId: member.id });
+    revalidatePath(`/clients/${client.id}/import`);
+    return { ok: true };
+  } catch (e) {
+    if (e instanceof UploadLinkError) return { ok: false, error: e.message };
+    return fail(e);
+  }
+}
+/** APP_URL when set, else this request's own origin (as the login emails do). */
+async function publicOrigin() {
+  const base = appUrl();
+  if (base) return base;
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  return `${proto}://${host}`;
 }
