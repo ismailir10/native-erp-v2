@@ -56,3 +56,22 @@ describe("catatan manajemen", () => {
     await expect(saveReportComment(db, { ...k(), firmId: "other", text: "x", source: "ACCOUNTANT" })).rejects.toThrow(/tidak ditemukan/);
   });
 });
+
+describe("management workbook", () => {
+  it("carries the approved note while it matches the books, and says so when it no longer does", async () => {
+    const ExcelJS = (await import("exceljs")).default;
+    const { managementWorkbook } = await import("@/lib/reports/management-pack");
+    await sale(8, 1_250_000n);
+    await saveReportComment(db, { ...k(), firmId: g.firm.id, text: "Bulan yang baik: pendapatan Rp 1.250.000.", source: "ACCOUNTANT" });
+    const sheet = async () => {
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load((await managementWorkbook(db, { ...k(), meta: { firm: "KJA Uji", title: "PT Uji" } })) as unknown as ArrayBuffer);
+      return wb.getWorksheet("Ringkasan")!.getSheetValues().flat().map(String).join(" | ");
+    };
+    expect(await sheet()).toMatch(/Catatan bulan ini \(disetujui akuntan\) \| Bulan yang baik: pendapatan Rp 1\.250\.000\./);
+    await sale(8, 1_000n);
+    const after = await sheet();
+    expect(after).not.toContain("Bulan yang baik");
+    expect(after).toMatch(/Catatan yang disetujui tidak dipakai/);
+  });
+});

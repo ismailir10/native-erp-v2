@@ -8,7 +8,10 @@ import { cashFlow, equityChanges, otherComprehensiveIncome } from "@/lib/reports
 import { CashFlowTable, EquityTable, NotesView } from "@/components/app/statements";
 import { financialNotes, manualCount } from "@/lib/reports/notes";
 import { financialYear, periodKeyOf, priorYearEnd, samePeriodLastYear } from "@/lib/fiscal";
-import { formatDateLong, formatPeriod, monthName } from "@/lib/format";
+import { formatDateLong, formatDateTime, formatPeriod, monthName } from "@/lib/format";
+import { computedFacts, reportComment } from "@/lib/reports/report-comment";
+import { resolveAiConfig } from "@/lib/settings/ai";
+import { ManagementNoteCard } from "@/components/app/management-note";
 import { reportStatus } from "@/lib/reports/status";
 import { ReportStatusBar } from "@/components/app/report-status";
 import { scopeFramework, statementNames } from "@/lib/reports/framework";
@@ -157,6 +160,20 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
   const bsSections = renderFormat(format.neraca, [bs, ...shown.map((c) => c.bs)].map(balanceItems), format.unit);
   const [equity, cash, notes] = mixed ? [null, null, null] : await Promise.all([equityChanges(prisma, s, period.end), cashFlow(prisma, s, period.end), financialNotes(prisma, s, period.year, period.month)]);
   const toFill = notes ? manualCount(notes) : 0;
+  // Catatan manajemen (I5b): one company at a time, as the management report.
+  const mgmtKey = scope.mode !== "combined" ? { clientId: client.id, entityId: scope.value, year: period.year, month: period.month } : null;
+  const mgmt = mgmtKey ? await (async () => {
+    const facts = await computedFacts(prisma, mgmtKey);
+    const note = await reportComment(prisma, mgmtKey, facts);
+    const ai = await resolveAiConfig(prisma);
+    return {
+      ...mgmtKey,
+      periodLabel: formatPeriod(period.year, period.month),
+      facts,
+      note: note ? { text: note.text, source: note.source, approved: `${note.approvedBy ?? "Akuntan"} · ${formatDateTime(note.approvedAt)}`, stale: note.stale } : null,
+      aiReady: Boolean(ai.apiKey && ai.model),
+    };
+  })() : null;
   const wsCurrency = ws?.translated ? "IDR" : (client.entities[0]?.functionalCurrency ?? "IDR");
 
   return (
@@ -193,8 +210,14 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
           <TabsTrigger value="cf">Arus Kas</TabsTrigger>
           <TabsTrigger value="notes">CALK{toFill > 0 && <span className="num text-review" data-testid="calk-to-fill">· {toFill} diisi manajemen</span>}</TabsTrigger>
           {multi && <TabsTrigger value="ws">Kertas Kerja Gabungan</TabsTrigger>}
+          {mgmt && <TabsTrigger value="mgmt">Catatan manajemen{mgmt.note?.stale ? <span className="text-review">· ditinjau ulang</span> : null}</TabsTrigger>}
         </TabsList>
 
+        {mgmt && (
+          <TabsContent value="mgmt">
+            <ManagementNoteCard {...mgmt} />
+          </TabsContent>
+        )}
         <TabsContent value="pl">
           <Card>
             <CardHeader>
