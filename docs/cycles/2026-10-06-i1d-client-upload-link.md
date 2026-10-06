@@ -102,6 +102,9 @@ Stage: **Sumber**. Security decision taken under "get them done" (2026-10-06), c
   - begin on an unknown token returns 404.
 
   The test intake was deleted afterwards.
+- End of cycle: `npm run lint` exit 0; `npm run typecheck` exit 0; `npm test`: Test Files 173 passed (173), Tests 1140 passed (1140);
+  `npm run build` exit 0 (routes `/kirim/[token]`, `/kirim/[token]/upload`); `npm run verify:books` → `ALL PASS — 1765 pemeriksaan
+  saldo cocok dengan ground truth.` E2e in CI.
 ## Ship Notes
 - Migration `20261006180000_upload_links`: a new table. New public route `/kirim/<token>` (and `/kirim/<token>/upload`), outside the
   login. It writes only into the link's inbox.
