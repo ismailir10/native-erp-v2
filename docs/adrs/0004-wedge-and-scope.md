@@ -11,3 +11,7 @@
 aging is a standard month-end schedule. Buku now keeps a **subledger** — invoices recorded by the accountant (or from Saldo Awal),
 settled by bank lines, proven against the GL at close (accounting-rules 5c). Still out: an invoicing product (creating, sending,
 numbering, e-Faktur/Coretax), credit notes, reminders. Cycle: `docs/cycles/2026-09-29-receivables-payables.md`.
+
+**Amendment (2026-10-06): see [ADR 0014](0014-three-stage-spine.md).** The out-of-MVP list above is history: auth, PDF statement
+extraction, AR/AP and FX exist. The wedge stands (accounting firms; the statement is the integration). What Buku still does not do,
+and the order of the next iterations, now live in ADR 0014.

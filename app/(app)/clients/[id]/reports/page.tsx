@@ -172,6 +172,16 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
           <a href={withParams(`${base}/reports/export`, { period: period.key, entity: scope.value })} className={buttonVariants({ variant: "outline", size: "sm" })} download data-testid="fs-download">
             <Download /> Unduh Excel
           </a>
+          {scope.mode !== "combined" && (
+            <a href={withParams(`${base}/reports/export/management`, { period: period.key, entity: scope.value })} className={buttonVariants({ variant: "outline", size: "sm" })} download data-testid="fs-download-management">
+              <Download /> Laporan manajemen
+            </a>
+          )}
+          {scope.mode !== "combined" && client.entities.find((e) => e.id === scope.value)?.functionalCurrency === "IDR" && (
+            <a href={withParams(`${base}/reports/export/credit`, { period: period.key, entity: scope.value })} className={buttonVariants({ variant: "outline", size: "sm" })} download data-testid="fs-download-credit">
+              <Download /> Paket kredit bank
+            </a>
+          )}
         </div>
       </div>
       {scope.mode === "combined" && <p className="text-sm text-muted-foreground">{combinedNote}</p>}

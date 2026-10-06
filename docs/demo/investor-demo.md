@@ -11,6 +11,7 @@ Automated end to end by `e2e/investor-demo.spec.ts` — if you change this scrip
 > days per client per month. Buku does it in minutes, and every number traces back to the bank line it came from."
 
 ### 1. Beranda — the firm's month-end at a glance (30 s)
+- **Kemajuan tutup buku** is the firm board: per client, *Sumber* (data complete?), *Review*, *Tutup buku* and *Terkirim*. Grup Ayam shows *1 kurang* under Sumber.
 - Three main destinations: Beranda (with the task list), Dokumen, Laporan. Shared client/company and period selectors govern the work.
 - Ask **Apa yang menghambat tutup buku?** and inspect the cited close controls. Answers keep their original context when selectors change.
 - On **Beranda** open **Semua pekerjaan** and choose **Lengkapi 1 rekening koran** for Grup Ayam Nusantara. The held-back bank statement remains the next live step.
@@ -18,6 +19,7 @@ Automated end to end by `e2e/investor-demo.spec.ts` — if you change this scrip
 > Talking point: *the product gets cheaper to run every month — memory and rules replace AI calls.*
 
 ### 2. Impor Mutasi — the live moment (45 s)
+- Before uploading, point at **Kelengkapan data**: the owner's BRI August is *Bolong*, and **Minta data yang kurang ke klien** already holds the WhatsApp message asking for it (*Salin pesan* / *Kirim lewat WhatsApp*).
 - Rekening *BRI Simpedes (Budi)* is preselected. Click **Pakai file contoh (BRI-5509-2026-08.csv)** (or drop the file from `public/demo/`).
 - Result card: rows imported, **transfers paired automatically** (PT → owner, owner BCA → BRI), balance continuity *Nyambung*, **0 AI calls** (memory + cache), 1 line to review.
 

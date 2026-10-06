@@ -6,19 +6,19 @@ import { formatMonthShort } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
 import type { CompletenessCell, CompletenessRow } from "@/lib/controls/completeness";
 
-/** Bank account × month: where the statements are, where they are missing, where they don't hand over (UC-B4). */
-export function CompletenessCard({ months, rows, importHref }: { months: { year: number; month: number }[]; rows: CompletenessRow[]; importHref: string }) {
+/** Bank account (and ledger file) × month: where the data is, where it is missing, where it doesn't hand over (UC-B4, I1a). */
+export function CompletenessCard({ months, rows, importHref }: { months: { year: number; month: number }[]; rows: CompletenessRow[]; importHref?: string }) {
   const gaps = rows.flatMap((r) => r.cells).filter((c) => c.state === "missing" || c.state === "broken").length;
   return (
     <Card data-testid="completeness">
       <CardHeader>
-        <CardTitle>Kelengkapan rekening koran</CardTitle>
+        <CardTitle>Kelengkapan data</CardTitle>
         <CardDescription>
           {gaps
-            ? `${gaps} bulan rekening bolong atau tidak nyambung. Laporan bulan itu tetap draf sampai mutasinya lengkap.`
-            : "Setiap rekening punya mutasi yang nyambung untuk bulan-bulan ini."}{" "}
-          Tanda – berarti pembukuan rekening itu belum dimulai.{" "}
-          <Link href={importHref} className="font-medium text-primary hover:underline">Impor mutasi</Link>
+            ? `${gaps} bulan data bolong atau tidak nyambung. Laporan bulan itu tetap draf sampai datanya lengkap.`
+            : "Setiap rekening dan buku besar punya data yang nyambung untuk bulan-bulan ini."}{" "}
+          Tanda – berarti pembukuannya belum dimulai.{" "}
+          {importHref && <Link href={importHref} className="font-medium text-primary hover:underline">Impor data</Link>}
         </CardDescription>
       </CardHeader>
       <CardContent className="px-0">

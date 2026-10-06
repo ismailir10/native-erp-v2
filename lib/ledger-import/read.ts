@@ -2,11 +2,11 @@ import ExcelJS from "exceljs";
 import { dateOnly } from "@/lib/format";
 import { parseCents } from "@/lib/money";
 import { normalizeLedgerRate } from "@/lib/fx/currency";
-import { dateParts, MONTHS, readCsv } from "@/lib/import/parsers/common";
+import { dateParts, dayMonthEvidence, MONTHS, readCsv, type DayMonthOrder } from "@/lib/import/parsers/common";
 import { ParseError } from "@/lib/import/types";
 import { readableXlsx, sniffFile } from "@/lib/import/workbook";
 import type { AccountType } from "@/lib/generated/prisma/enums";
-import type { Columns, ColumnKey, LedgerRow, LedgerTotal, NeracaRow, NeracaTotal, RawCell, RawSheet, ReadResult, TableCandidate, TbGroup, TbLayout, TbRead, TbRow } from "@/lib/ledger-import/types";
+import type { Columns, ColumnKey, LedgerDateOrder, LedgerRow, LedgerTotal, NeracaRow, NeracaTotal, RawCell, RawSheet, ReadResult, TableCandidate, TbGroup, TbLayout, TbRead, TbRow } from "@/lib/ledger-import/types";
 import { NO_CODE_PREFIX } from "@/lib/ledger-import/code";
 
 /**
@@ -172,7 +172,7 @@ function cellCents(c: RawCell | undefined): bigint | string {
   }
 }
 
-export function cellDate(c: RawCell | undefined): Date | null {
+export function cellDate(c: RawCell | undefined, order: DayMonthOrder = "DMY"): Date | null {
   if (c instanceof Date) return Number.isFinite(c.getTime()) ? dateOnly(c.getUTCFullYear(), c.getUTCMonth() + 1, c.getUTCDate()) : null;
   const t = cellText(c).replace(/^'/, "");
   // A calendar-impossible date (31/02/1990) is unreadable, never rolled into the next month.
@@ -181,7 +181,7 @@ export function cellDate(c: RawCell | undefined): Date | null {
     return out.getUTCFullYear() === y && out.getUTCMonth() + 1 === mo && out.getUTCDate() === d ? out : null;
   };
   let m = t.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
-  if (m) return real(Number(m[3]), Number(m[2]), Number(m[1]));
+  if (m) return order === "MDY" ? real(Number(m[3]), Number(m[1]), Number(m[2])) : real(Number(m[3]), Number(m[2]), Number(m[1]));
   m = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (m) return real(Number(m[1]), Number(m[2]), Number(m[3]));
   return null;
@@ -501,10 +501,22 @@ const RATE_NOTE = /\b(?:rate|kurs)\s*[:=]\s*([0-9][0-9.,]*)/i;
 
 const TOTAL_LABEL = /^(grand\s+)?(total|jumlah)\b/i;
 
-export function readLedger(sheet: RawSheet, t: TableCandidate): { rows: LedgerRow[]; totals: LedgerTotal[] } {
+export function readLedger(sheet: RawSheet, t: TableCandidate): { rows: LedgerRow[]; totals: LedgerTotal[]; dateOrder?: LedgerDateOrder } {
   const c = t.columns;
   const rows: LedgerRow[] = [];
   const totals: LedgerTotal[] = [];
+  // Day/month or month/day for the whole file, from its text dates (date cells are unambiguous): month/day only when a value proves it.
+  const dateTexts = c.date === undefined ? [] : sheet.rows.slice(t.headerRow + 1).map((row) => (row?.[c.date!] instanceof Date ? "" : cellText(row?.[c.date!])));
+  const ev = dayMonthEvidence(dateTexts);
+  const order: DayMonthOrder = ev.mdy && !ev.dmy ? "MDY" : "DMY";
+  const dateOrder: LedgerDateOrder | undefined =
+    ev.dmy && ev.mdy
+      ? { order, basis: "mixed", examples: [ev.dmy, ev.mdy] }
+      : ev.mdy
+        ? { order, basis: "number", examples: [ev.mdy] }
+        : !ev.dmy && ev.numeric.length >= 2
+          ? { order, basis: "unsure", examples: ev.numeric.slice(0, 1) }
+          : undefined;
   for (let r = t.headerRow + 1; r < sheet.rows.length; r++) {
     const row = sheet.rows[r] ?? [];
     if (row.every(isBlank)) continue;
@@ -518,7 +530,7 @@ export function readLedger(sheet: RawSheet, t: TableCandidate): { rows: LedgerRo
     if (!code && !name && isBlank(debitCell) && isBlank(creditCell)) continue;
     // A total row has no readable date and says Total/Jumlah in its account cells or, with no account, anywhere in the row (often in
     // the date column itself): kept for the tie-out.
-    const totalLabel = !cellDate(dateCell) && (TOTAL_LABEL.test(code || name) || (!code && !name && row.some((x) => TOTAL_LABEL.test(cellText(x)))));
+    const totalLabel = !cellDate(dateCell, order) && (TOTAL_LABEL.test(code || name) || (!code && !name && row.some((x) => TOTAL_LABEL.test(cellText(x)))));
     if (totalLabel) {
       const d = cellCents(debitCell);
       const k = cellCents(creditCell);
@@ -527,7 +539,7 @@ export function readLedger(sheet: RawSheet, t: TableCandidate): { rows: LedgerRo
     }
 
     const errors: string[] = [];
-    const date = cellDate(dateCell);
+    const date = cellDate(dateCell, order);
     if (!date) errors.push(isBlank(dateCell) ? "tanggal kosong" : `tanggal tidak dikenali: ${cellText(dateCell)}`);
     if (!code && !name) errors.push("akun kosong");
     const debit = cellCents(debitCell);
@@ -560,7 +572,7 @@ export function readLedger(sheet: RawSheet, t: TableCandidate): { rows: LedgerRo
       ...(negative ? { negative: true, raw } : {}),
     });
   }
-  return { rows, totals };
+  return { rows, totals, ...(dateOrder ? { dateOrder } : {}) };
 }
 
 const SECTION_ASSET = /^(assets?|aset|aktiva|harta)\b/i;

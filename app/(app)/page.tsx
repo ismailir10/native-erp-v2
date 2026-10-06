@@ -25,7 +25,8 @@ export default async function HomePage({ searchParams }: { searchParams: Workspa
         <NextStep tone="done">{`Semua klien dalam cakupan ini sudah tutup buku ${data.scope.periodLabel}.`}</NextStep>
       )}
       <WorkspaceAsk scope={data.scope} />
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]"><WorkspaceTasks data={data} limit={3} expanded={expanded} /><WorkspaceClose data={data} /></div>
+      <WorkspaceTasks data={data} limit={3} expanded={expanded} />
+      <WorkspaceClose data={data} />
       <WorkspaceFinancials data={data} />
     </div>
   );

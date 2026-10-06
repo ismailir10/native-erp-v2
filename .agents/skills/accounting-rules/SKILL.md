@@ -34,10 +34,14 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
 2. **`postJournal()` (`lib/ledger/post.ts`) is the only writer.** It enforces Σdebit = Σcredit, ≥2 lines,
    one positive side per line, open period, accounts in the entity's client COA. The DB also CHECKs
    `debit>=0, credit>=0, (debit=0) <> (credit=0)` (init migration). Never `prisma.journalLine.create` elsewhere.
+   **The database holds the same rules** (migration `ledger_guards`, I0): a deferred trigger refuses at commit an entry with < 2 lines or
+   Σdebit ≠ Σcredit; an entry must sit in its client's period of its own date, and a line carries its entry's entity and date. A refusal
+   there means code went around `postJournal` — fix the caller, never the trigger.
    A bank GL account belongs to one entity (`BankAccount.entityId`): another entity's entry may not use it — money between
    entities goes through 1190 in each entity's own books (rule 10). The only exception clears what older books left there (a
    line moving that entity's balance on the account toward zero); close control `bank-entity:` (REVIEW) shows such leftovers.
-3. **Posted entries are immutable.** Corrections = new entry. Two named exceptions, both admin only and logged: deleting a client (rule 25)
+3. **Posted entries are immutable.** Corrections = new entry. The database refuses changing a line's amounts, account, entity, date or
+   entry and an entry's entity, period, date or kind (memo, source refs and links may change). Two named exceptions, both admin only and logged: deleting a client (rule 25)
    and **removing a whole import** (ADR 0013, `lib/imports/remove.ts`: open months only, a written reason, refused while an invoice
    settlement, fixed asset or schedule rests on it; the `AuditEvent` keeps what was removed). Bank lines change via `postBankTransaction()`,
    which posts a **RECLASS of the difference** on the classification side only; the bank side never changes.
@@ -57,7 +61,8 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     same accounts and source accounts), dated by the accountant on or after the original, through `postJournal()`; `reversesId` (unique) points
     at the original, so an entry is reversed once and a reversal is never reversed. An entry a schedule, register, pack, stock count or lease
     owns, a foreign-currency or revaluation entry, and every non-adjustment are refused with where to change them instead.
-4. **Locked periods reject every write** — imports, reclasses, adjustments. Closing goes in order: a month can't be locked while an earlier
+4. **Locked periods reject every write** — imports, reclasses, adjustments. The database refuses inserting or deleting a journal entry
+   or line dated in a LOCKED month; only `deleteClient` passes, through `set_config('buku.client_delete', 'on', true)` in its own transaction. Closing goes in order: a month can't be locked while an earlier
    month with entries other than the Saldo Awal is open (`lockPeriod`, checked again under the client lock). Unlock (`unlockPeriod`) is
    explicit, **ADMIN only**, needs a reason (≥ 5 characters), runs in reverse order (refused while a later month is locked) and writes a
    `PeriodUnlockLog` row in the same transaction.
@@ -307,6 +312,11 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     mapped to income or expense. Laba Rugi before the first journal is unknown and sits in Saldo Laba; the draft says so (REVIEW
     `OPENING_BRIDGE`).
 16. Parsers detect format from **content**, not file name, and raise `ParseError` with a Bahasa message the UI shows verbatim.
+16a. **Two-number dates are read in one order per file, never guessed per row** (QA E17, `dayMonthEvidence` in `lib/import/parsers/common.ts`):
+    day/month (Indonesian) unless a value proves month/day (a second number > 12) — then the whole file is month/day and says so;
+    every number ≤ 12 → the order in which a statement runs in time (day/month on a tie or when neither does, with a note); both
+    kinds in one file → a statement is refused, a ledger gets BLOCK `DATE_ORDER_MIXED` (INFO `DATE_ORDER_US` / `DATE_ORDER_UNSURE`
+    otherwise). Known bank formats (BCA, BRI CSV) and PDFs keep their fixed day/month reading.
 
 ## AI (credit is limited — treat every call as money)
 17. LLM runs **outside** DB transactions, only for leftovers, **one request per unique merchant key + direction**,

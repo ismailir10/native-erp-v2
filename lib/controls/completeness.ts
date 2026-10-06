@@ -7,11 +7,14 @@ import { openingDate } from "@/lib/controls/coverage";
  * *ada* (statements cover it and their running balance holds), *bolong* (no statement), or *tidak nyambung* (a statement's opening
  * differs from the previous statement's closing, or its running balance breaks inside the file), with the difference when there is
  * one. Gaps are judged by balances, not dates: a file without a period line spans its first to last row, and days without rows
- * between two statements that hand over lost nothing. Read-only: the bank reconciliation and continuity controls stay the authority; this is the picture of where the gaps are.
+ * between two statements that hand over lost nothing. Books fed by ledger exports get one row of their own (`LEDGER_ROW_ID`). Read-only: the bank reconciliation and continuity controls stay the authority; this is the picture of where the gaps are.
  */
 export type CellState = "ok" | "missing" | "broken" | "before";
 export type CompletenessCell = { year: number; month: number; state: CellState; diff: bigint | null; note: string | null };
-export type CompletenessRow = { bankAccountId: string; entity: string; label: string; currency: string; cells: CompletenessCell[] };
+export type CompletenessRow = { kind: "bank" | "ledger"; bankAccountId: string; entity: string; label: string; currency: string; cells: CompletenessCell[] };
+
+/** The one row for books fed by ledger files (Jurnal, Accurate, Zahir exports): a posted ledger or trial-balance import covers its period. */
+export const LEDGER_ROW_ID = "ledger";
 
 const DAY = 86_400_000;
 
@@ -50,7 +53,24 @@ export async function completenessMatrix(db: Db, clientId: string, year: number,
         return cell("ok");
       });
       if (cells.every((c) => c.state === "before")) continue;
-      rows.push({ bankAccountId: ba.id, entity: e.shortName, label: ba.label, currency: ba.currency, cells });
+      rows.push({ kind: "bank", bankAccountId: ba.id, entity: e.shortName, label: ba.label, currency: ba.currency, cells });
+    }
+  }
+  // Ledger-fed books (I1a): a posted Buku besar or Neraca saldo covers the months of its period; a Neraca alone is an opening and
+  // covers none. From the first covered month on, a month no file covers is *bolong*.
+  const ledgers = await db.ledgerImport.findMany({
+    where: { clientId, status: "POSTED", OR: [{ mode: "LEDGER" }, { data: { path: ["tb"], equals: true } }] },
+    select: { periodStart: true, periodEnd: true },
+  });
+  if (ledgers.length) {
+    const firstStart = new Date(Math.min(...ledgers.map((l) => +l.periodStart)));
+    const cells = months.map(({ year: y, month: m }): CompletenessCell => {
+      const { start, end } = periodBounds(y, m);
+      const state: CellState = +end < +firstStart ? "before" : ledgers.some((l) => +l.periodStart <= +end && +l.periodEnd >= +start) ? "ok" : "missing";
+      return { year: y, month: m, state, diff: null, note: null };
+    });
+    if (!cells.every((c) => c.state === "before")) {
+      rows.push({ kind: "ledger", bankAccountId: LEDGER_ROW_ID, entity: "Ekspor sistem akuntansi", label: "Buku besar (file)", currency: entities[0]?.functionalCurrency ?? "IDR", cells });
     }
   }
   // Months before any account's books start are a column of dashes: leave them out.

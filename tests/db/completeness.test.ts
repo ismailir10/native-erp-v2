@@ -47,3 +47,31 @@ describe("kelengkapan rekening koran", () => {
     expect(row.cells[1]).toMatchObject({ diff: 5n, note: "Saldo awal mei-2.csv tidak sama dengan saldo akhir mei-1.csv" });
   });
 });
+
+describe("kelengkapan buku besar dari file (I1a)", () => {
+  beforeEach(resetDb);
+
+  const ledger = (g: Awaited<ReturnType<typeof makeGroup>>, from: Date, to: Date, opts: { mode?: "LEDGER" | "NERACA"; tb?: boolean; status?: "POSTED" | "DRAFT" } = {}) =>
+    db.ledgerImport.create({
+      data: { firmId: g.firm.id, clientId: g.client.id, fileName: "gl.xlsx", fileHash: `${+from}-${opts.mode}-${opts.tb}`, sheetName: "GL", mode: opts.mode ?? "LEDGER", status: opts.status ?? "POSTED", periodStart: from, periodEnd: to, rowCount: 10, data: opts.tb ? { tb: true } : {} },
+    });
+
+  it("a posted ledger or TB covers its months; a month after the first one without a file is bolong", async () => {
+    const g = await makeGroup();
+    await ledger(g, dateOnly(2026, 3, 1), dateOnly(2026, 4, 30));
+    await ledger(g, dateOnly(2026, 6, 1), dateOnly(2026, 6, 30), { mode: "NERACA", tb: true });
+    const { months, rows } = await completenessMatrix(db, g.client.id, 2026, 7, 6);
+    expect(months.map((m) => m.month)).toEqual([3, 4, 5, 6, 7]);
+    const row = rows.find((r) => r.kind === "ledger")!;
+    expect(row).toMatchObject({ bankAccountId: "ledger", label: "Buku besar (file)" });
+    expect(row.cells.map((c) => c.state)).toEqual(["ok", "ok", "missing", "ok", "missing"]);
+  });
+
+  it("a Neraca alone (an opening) and a draft cover nothing", async () => {
+    const g = await makeGroup();
+    await ledger(g, dateOnly(2026, 3, 31), dateOnly(2026, 3, 31), { mode: "NERACA" });
+    await ledger(g, dateOnly(2026, 4, 1), dateOnly(2026, 4, 30), { status: "DRAFT" });
+    const { rows } = await completenessMatrix(db, g.client.id, 2026, 7, 6);
+    expect(rows.find((r) => r.kind === "ledger")).toBeUndefined();
+  });
+});

@@ -3,7 +3,7 @@ import { parseRupiah } from "@/lib/money";
 import { dateOnly } from "@/lib/format";
 import type { BankCode } from "@/lib/generated/prisma/enums";
 import { ParseError, YearNeededError, type ParsedRow, type ParsedStatement } from "@/lib/import/types";
-import { closingFromRows, dateParts as baseDateParts, MONTHS as MONTH_NUMBER, periodFromText, SenWatch, type DateParts } from "@/lib/import/parsers/common";
+import { chronologicalOrder, closingFromRows, dateParts as baseDateParts, dayMonthEvidence, MONTHS as MONTH_NUMBER, periodFromText, SenWatch, type DateParts, type DayMonthOrder } from "@/lib/import/parsers/common";
 import { detectFormat, periodOf } from "@/lib/import/parsers/pdf";
 
 /**
@@ -96,7 +96,7 @@ export function guessYear(fileName: string | undefined): number | null {
   return m ? 2000 + Number(m[2]) : null;
 }
 
-const dateParts = (text: string) => baseDateParts(text, { serial: true });
+const dateParts = (text: string, order?: DayMonthOrder) => baseDateParts(text, { serial: true, order });
 
 function dateFrom(p: DateParts, cursor: YearCursor): Date {
   const d = dateOnly(p.y ?? cursor.year, p.m, p.d);
@@ -160,6 +160,23 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
   }
   period ??= periodOf(rows.slice(0, headerIdx).map((r) => r.join(" ")).join("\n"));
   const sheetYear = ctx.sheet?.match(/(?<!\d)(20\d{2})(?!\d)/)?.[1];
+  // Day/month or month/day, decided once for the whole file (QA E17): a number > 12 says which; with none, the order that runs in time;
+  // a file mixing both is refused. Day/month (Indonesian) is the default and needs no note.
+  const dateTexts = rows.slice(headerIdx + 1).map((r) => r[cDate] ?? "");
+  const evidence = dayMonthEvidence(dateTexts);
+  if (evidence.dmy && evidence.mdy) {
+    throw new ParseError(`Kolom tanggal mencampur format hari/bulan ("${evidence.dmy}") dan bulan/hari ("${evidence.mdy}"). Samakan format tanggalnya di file lalu unggah ulang.`);
+  }
+  const order: DayMonthOrder = evidence.mdy ? "MDY" : evidence.dmy || evidence.numeric.length < 2 ? "DMY" : (chronologicalOrder(evidence.numeric) ?? "DMY");
+  const orderNote =
+    order === "MDY"
+      ? evidence.mdy
+        ? `Tanggal dibaca sebagai bulan/hari (format AS), karena ada tanggal seperti "${evidence.mdy}".`
+        : "Tanggal dibaca sebagai bulan/hari (format AS): semua tanggal cocok untuk kedua format, dan hanya bulan/hari yang urut waktunya."
+      : !evidence.dmy && evidence.numeric.length >= 2 && !chronologicalOrder(evidence.numeric)
+        ? "Format tanggal tidak bisa dipastikan (semua angka ≤ 12 dan urutannya tidak rapi); dibaca hari/bulan. Periksa bila file memakai format bulan/hari."
+        : null;
+  const dp = (t: string) => dateParts(t, order);
 
   type Draft = { parts: DateParts; description: string; debit: bigint; credit: bigint; amount: bigint; balance: bigint | null; rowNumber: number; rawRow: string; balanceOnly?: boolean };
   const drafts: Draft[] = [];
@@ -208,14 +225,14 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
       }
       const b = bal(r);
       if (written !== null && (b === null || b === written || b === -written)) {
-        openingRow = { balance: b, parts: dateParts(dateText), written };
+        openingRow = { balance: b, parts: dp(dateText), written };
         readNotes.push(`Baris ${i + 1}: baris saldo awal menulis nominal ${(written < 0n ? -written : written).toLocaleString("id-ID")} di kolom mutasi; dibaca sebagai saldo awal, bukan transaksi.`);
         continue;
       }
     }
-    if (label && (noMovement || !dateParts(dateText))) {
+    if (label && (noMovement || !dp(dateText))) {
       const b = bal(r);
-      if (label === "open" && !openingRow) openingRow = { balance: b, parts: dateParts(dateText) };
+      if (label === "open" && !openingRow) openingRow = { balance: b, parts: dp(dateText) };
       if (label === "close" && b !== null) printedClosing = b;
       continue;
     }
@@ -234,7 +251,7 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
       parts = above.parts;
       undated.push(i + 1);
     } else {
-      parts = dateParts(dateText);
+      parts = dp(dateText);
       if (!parts) throw new ParseError(`Format tanggal tidak dikenali di baris ${i + 1}: "${dateText}"`);
     }
     // A dated row that moves no money is no transaction (it could never post). One whose printed balance moved anyway is passed on as
@@ -308,6 +325,7 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
   const senNote = sen.note();
   if (senNote) notes.push(senNote);
   if (newestFirst) notes.push("Baris di file berurutan dari yang terbaru; dibaca dari yang terlama supaya saldo awal, saldo akhir, dan periode benar.");
+  if (orderNote) notes.push(orderNote);
   notes.push(...readNotes);
   if (undated.length) notes.push(`${undated.length} baris tanpa tanggal memakai tanggal baris di atasnya (baris ${undated.slice(0, 5).join(", ")}${undated.length > 5 ? ", …" : ""}); saldo berjalannya ikut diperiksa.`);
   if (undatedSkipped.length) notes.push(`${undatedSkipped.length} baris bernominal tanpa tanggal dan tanpa saldo dilewati (baris ${undatedSkipped.slice(0, 5).join(", ")}${undatedSkipped.length > 5 ? ", …" : ""}): tidak bisa diperiksa. Periksa file bila itu transaksi.`);
