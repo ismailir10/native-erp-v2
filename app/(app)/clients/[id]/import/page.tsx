@@ -16,7 +16,11 @@ import { LedgerImportForm } from "@/components/app/ledger-import-form";
 import { importKindLabel } from "@/lib/ledger-import/code";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
-import { getCurrentMember } from "@/lib/tenant";
+import { getCurrentFirm, getCurrentMember } from "@/lib/tenant";
+import { completenessMatrix } from "@/lib/controls/completeness";
+import { dataRequest } from "@/lib/controls/data-request";
+import { CompletenessCard } from "@/components/app/completeness-card";
+import { DataRequestCard } from "@/components/app/data-request-card";
 import { RemoveImportButton } from "@/components/app/remove-import";
 
 export const metadata = { title: "Impor Mutasi" };
@@ -36,6 +40,9 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
   // Removing an import (ADR 0013) is an admin's decision, like reopening a month.
   const isAdmin = (await getCurrentMember()).role === "ADMIN";
   const tab = !hasBanks || sp.tab === "ledger" ? "ledger" : "statement";
+  // Sumber first (ADR 0014): what is missing for this month, and the message that asks the client for it.
+  const completeness = await completenessMatrix(prisma, client.id, period.year, period.month);
+  const request = dataRequest({ clientName: client.name, firmName: (await getCurrentFirm()).name, period, rows: completeness.rows });
 
   let sample: { bankAccountId: string; fileName: string } | undefined;
   if (process.env.DEMO_MODE === "true") {
@@ -108,6 +115,8 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
         <NextStep href={setup.next?.href} cta={setup.next?.cta}>{setup.next?.text}</NextStep>
       )}
       <SetupSteps progress={setup} />
+      {completeness.rows.length > 0 && <CompletenessCard months={completeness.months} rows={completeness.rows} />}
+      {request && <DataRequestCard message={request} items={request.split("\n").filter((l) => /^\d+\. /.test(l)).length} />}
       {evidenceEnabled() && <p className="text-sm text-muted-foreground">Ingin menyimpan berkas untuk ditanyakan, bukan dibukukan? Pakai <Link href="/documents" className="text-primary hover:underline">Dokumen</Link>. Yang diimpor di sini langsung menjadi jurnal.</p>}
       {!hasBanks ? (
         ledger

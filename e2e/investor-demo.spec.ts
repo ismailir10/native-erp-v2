@@ -29,6 +29,9 @@ test("statement in → reviewed → traceable reports → combined → closed", 
 
   // 2. Live upload of the held-back BRI statement
   await expect(page.getByRole("heading", { name: "Impor Mutasi" })).toBeVisible();
+  // Sumber first (I1a): the grid shows the missing August statement and drafts the request to the client.
+  await expect(page.getByTestId("completeness")).toContainText("Bolong");
+  await expect(page.getByTestId("data-request").getByRole("textbox")).toHaveValue(/Agustus 2026/);
   await pickOption(page, page.getByRole("combobox", { name: "Rekening", exact: true }), /5509/);
   await page.getByTestId("file-input").setInputFiles("public/demo/BRI-5509-2026-08.csv");
   await page.getByRole("button", { name: "Proses mutasi", exact: true }).click();
