@@ -181,11 +181,10 @@ There is no new dependency and no AI credit use.
   - Deleting a client with a closed month works as before.
   - Removing an import in a closed month was already refused by the app, and is now refused by the database too.
   - A refusal message starting "Buku besar:" means code went around `postJournal`.
-- **Rollback** (only if a trigger blocks legitimate work):
-  - Run `DROP TRIGGER "JournalLine_guard" ON "JournalLine"; DROP TRIGGER "JournalEntry_guard" ON "JournalEntry"; DROP TRIGGER
-    "JournalLine_balanced" ON "JournalLine"; DROP TRIGGER "JournalEntry_balanced" ON "JournalEntry";`.
-  - The functions and the index can stay.
-  - Then revert the commit so the next deploy doesn't re-run the migration's intent through a new one.
+- **Rollback** (only if a trigger blocks legitimate work): ship a new migration that runs
+  `DROP TRIGGER "JournalLine_guard" ON "JournalLine"; DROP TRIGGER "JournalEntry_guard" ON "JournalEntry"; DROP TRIGGER
+  "JournalLine_balanced" ON "JournalLine"; DROP TRIGGER "JournalEntry_balanced" ON "JournalEntry";`. The functions and the index can
+  stay. Never edit or delete the applied migration: `_prisma_migrations` keeps its checksum.
 - **No env vars.** New command: `npm run close:timeline` (read-only).
 - **Report downloads now appear in Riwayat perubahan** as *Laporan diunduh*.
 - **Next:**
