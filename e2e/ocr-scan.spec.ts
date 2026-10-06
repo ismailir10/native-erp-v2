@@ -27,7 +27,7 @@ test("a photographed statement is explained and points to Baca scan dengan AI", 
   const setting = page.getByTestId("ocr-setting");
   await expect(setting).toContainText("Baca scan dengan AI");
   await expect(setting).toContainText("UU PDP");
-  await expect(setting.getByLabel("Izinkan Buku mengirim gambar scan rekening koran ke penyedia AI")).toBeVisible();
+  await expect(setting.getByRole("checkbox", { name: "Izinkan Buku mengirim gambar scan rekening koran ke penyedia AI" })).toBeVisible();
 
   const id = await addClient(page, { name: "QA Scan" });
   await uploadStatement(page, id, "foto-rekening.png", tinyPng(), "image/png");

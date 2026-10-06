@@ -38,11 +38,8 @@ export function OcrSettingCard({ enabled, canSave, aiLive }: { enabled: boolean;
           <Checkbox id="ocr-on" checked={on} disabled={!canSave || busy} onCheckedChange={(v) => setOn(v === true)} />
           <label htmlFor="ocr-on">Izinkan Buku mengirim gambar scan rekening koran ke penyedia AI</label>
         </div>
-        {canSave ? (
-          <Button variant="outline" size="sm" disabled={busy || on === enabled} onClick={save}>Simpan</Button>
-        ) : (
-          <p className="text-xs text-muted-foreground">Hanya admin kantor yang dapat mengubah ini.</p>
-        )}
+        {/* Non-admins already read "Hanya admin kantor…" at the top of Pengaturan (ui-rules 9: each fact once). */}
+        {canSave && <Button variant="outline" size="sm" disabled={busy || on === enabled} onClick={save}>Simpan</Button>}
       </CardContent>
     </Card>
   );
