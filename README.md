@@ -84,6 +84,7 @@ Agents with a session-start hook run `scripts/session-start.sh` automatically (P
 | `npm run ai:smoke` | One real, capped LLM call to check the AI key + model (Pengaturan, else `.env`) |
 | `npm run inspect:statement -- <file>` | Parse a statement without the DB: format, balances, continuity (per account for combined PDFs). `--lines` dumps PDF text positions; `PDF_PASSWORD=…` for locked PDFs |
 | `npm run verify:real -- chickin\|goers\|smbc\|all` | Local only: import real files from `data/private/` and compare Buku with the files ([docs/real-data.md](docs/real-data.md)) |
+| `npm run close:timeline -- [--client <id\|name>] [--period YYYY-MM]` | Read-only: per client-month, first file in → lock → first report sent after the lock ([docs/real-month.md](docs/real-month.md)) |
 | `npm run lint` · `npm run typecheck` | |
 
 ## Stack
