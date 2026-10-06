@@ -7,13 +7,15 @@ import { PageHeader, NextStep } from "@/components/app/page-header";
 import { AiSettingsForm } from "@/components/app/ai-settings-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { planRejections } from "@/lib/evidence/plan-stats";
+import { ocrEnabled } from "@/lib/ocr/draft";
+import { OcrSettingCard } from "@/components/app/ocr-setting";
 
 export const metadata = { title: "Pengaturan" };
 
 export default async function SettingsPage() {
   const { firm, member } = await requireWorkspaceSession();
   const isAdmin = member.role === "ADMIN";
-  const [cfg, lastCall, plans] = await Promise.all([resolveAiConfig(prisma), prisma.aiUsage.findFirst({ where: { firmId: firm.id, model: { not: "demo-seed" } }, orderBy: { at: "desc" } }), planRejections(prisma, firm.id)]);
+  const [cfg, lastCall, plans, ocr] = await Promise.all([resolveAiConfig(prisma), prisma.aiUsage.findFirst({ where: { firmId: firm.id, model: { not: "demo-seed" } }, orderBy: { at: "desc" } }), planRejections(prisma, firm.id), ocrEnabled(prisma)]);
   const secretReady = settingsSecretConfigured();
   const live = Boolean(cfg.apiKey && cfg.model);
 
@@ -47,6 +49,7 @@ export default async function SettingsPage() {
         }}
         canSave={isAdmin && secretReady}
       />
+      <OcrSettingCard enabled={ocr} canSave={isAdmin} aiLive={live} />
       <Card>
         <CardHeader>
           <CardTitle>Rencana jawaban AI</CardTitle>

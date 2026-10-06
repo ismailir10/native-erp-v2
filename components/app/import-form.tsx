@@ -5,14 +5,14 @@ import Link from "next/link";
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { FileText, FileUp, Loader2 } from "lucide-react";
+import { FileText, FileUp, Loader2, ScanText } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { StatusPill } from "@/components/app/status";
-import { importAction, importSampleAction } from "@/app/actions";
+import { importAction, importSampleAction, ocrAction } from "@/app/actions";
 import type { ImportSummary } from "@/lib/import/pipeline";
 import { cn } from "@/lib/utils";
 import { MAX_UPLOAD_BYTES, UPLOAD_TOO_BIG } from "@/lib/upload";
@@ -30,6 +30,8 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
   const [needsPassword, setNeedsPassword] = useState(false);
   const [year, setYear] = useState("");
   const [yearHint, setYearHint] = useState<{ guessed: boolean } | null>(null);
+  // A scan or photo (I2a): the error offers Baca scan dengan AI when the workspace switch is on.
+  const [scan, setScan] = useState<{ error: string; ocrReady: boolean } | null>(null);
   const setFile = (f: File | null) => {
     if (f && f.size > MAX_UPLOAD_BYTES) {
       toast.error(UPLOAD_TOO_BIG);
@@ -41,6 +43,7 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
     setNeedsPassword(false);
     setYear("");
     setYearHint(null);
+    setScan(null);
   };
   const [drag, setDrag] = useState(false);
   const [result, setResult] = useState<ImportSummary | null>(null);
@@ -62,7 +65,12 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
 
   const done = (r: Awaited<ReturnType<typeof importAction>>, sent: { file: File; password: string } | null = null) => {
     setMismatch(null);
+    setScan(null);
     if (!r.ok) {
+      if (r.scanned) {
+        setScan({ error: r.error, ocrReady: r.scanned.ocrReady });
+        return;
+      }
       if (r.suggestBankAccountId) {
         setMismatch({ error: r.error, bankId: r.suggestBankAccountId });
         return;
@@ -99,6 +107,20 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
       if (pw) fd.set("password", pw);
       if (yearHint && year) fd.set("year", year);
       done(await importAction(fd), { file: f, password: pw });
+    });
+  const readScan = () =>
+    start(async () => {
+      if (!file) return;
+      const fd = new FormData();
+      fd.set("clientId", clientId);
+      fd.set("bankAccountId", bankId);
+      fd.set("file", file);
+      const r = await ocrAction(fd);
+      if (!r.ok) {
+        toast.error(r.error);
+        return;
+      }
+      router.push(`/clients/${clientId}/import/ocr/${r.draftId}`);
     });
   // Re-run the same file for another account. The file (and its password) go back into the form first, so a password or year
   // prompt for that account can be answered with the normal *Proses mutasi*.
@@ -165,7 +187,7 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
               {file ? <span className="font-medium">{file.name}</span> : <span><span className="font-medium text-primary">Pilih file</span> atau tarik ke sini</span>}
               <span className="text-xs text-muted-foreground">Maks. 5 MB · baris yang sudah pernah diimpor otomatis dilewati</span>
             </button>
-            <input ref={inputRef} type="file" accept=".pdf,.csv,.xlsx,.xls" className="sr-only" data-testid="file-input" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            <input ref={inputRef} type="file" accept=".pdf,.csv,.xlsx,.xls,.jpg,.jpeg,.png" className="sr-only" data-testid="file-input" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
             <FieldDescription>Saldo berjalan dicek di setiap baris. Kalau ada baris yang hilang, hasilnya ditandai Ada celah.</FieldDescription>
           </Field>
           {needsPassword && (
@@ -183,6 +205,21 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
                 Tanggal di file ini hanya hari dan bulan. {yearHint.guessed ? "Tahun diisi dari nama file; pastikan benar sebelum memproses." : "Isi tahunnya, misalnya 2026."} Bulan berikutnya mengikuti, termasuk pergantian Desember ke Januari.
               </FieldDescription>
             </Field>
+          )}
+          {scan && file && (
+            <div role="alert" className="space-y-2 rounded-md border border-review/40 bg-review-subtle px-3 py-2 text-sm" data-testid="scan-notice">
+              <p>{scan.error}</p>
+              {scan.ocrReady ? (
+                <>
+                  <p className="text-muted-foreground">AI bisa menyalin scan ini; setiap baris lalu diperiksa dengan saldo berjalan sebelum Anda mengimpornya.</p>
+                  <Button size="sm" variant="outline" disabled={pending} onClick={readScan}>
+                    {pending ? <Loader2 className="animate-spin" /> : <ScanText />} Baca scan dengan AI
+                  </Button>
+                </>
+              ) : (
+                <p className="text-muted-foreground">Admin kantor bisa menyalakan <span className="font-medium">Baca scan dengan AI</span> di Pengaturan (perlu kunci AI dan model yang bisa membaca gambar).</p>
+              )}
+            </div>
           )}
           {mismatch && file && (
             <div role="alert" className="space-y-2 rounded-md border border-review/40 bg-review-subtle px-3 py-2 text-sm" data-testid="account-mismatch">

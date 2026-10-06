@@ -64,3 +64,17 @@ describe("proof by running balance", () => {
     expect(proveRows([], 0n, null).importable).toBe(false);
   });
 });
+
+describe("printed amounts", async () => {
+  const { readAmount } = await import("@/lib/ocr/amount");
+  it("reads Indonesian and English grouping, markers and brackets, and nothing else", () => {
+    expect(readAmount("1.250.000,00")).toBe(1_250_000n);
+    expect(readAmount("1,250,000.00")).toBe(1_250_000n);
+    expect(readAmount("1,250,000.00 CR")).toBe(1_250_000n);
+    expect(readAmount("(2.500)")).toBe(-2_500n);
+    expect(readAmount("12500.00")).toBe(12_500n);
+    expect(readAmount("")).toBeNull();
+    expect(readAmount("1.25O.000")).toBeNull();
+    expect(readAmount("12.500,50")).toBeNull(); // sen are not whole Rupiah: unreadable, never rounded
+  });
+});

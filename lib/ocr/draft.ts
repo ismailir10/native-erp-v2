@@ -3,7 +3,9 @@ import type { Db } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { runBudgetedAi } from "@/lib/ai/budget";
 import { AiAnswerError, type AiProvider } from "@/lib/ai/provider";
-import { formatRupiah, parseMoney } from "@/lib/money";
+import { formatRupiah } from "@/lib/money";
+import { readAmount } from "@/lib/ocr/amount";
+export { readAmount };
 import { importStatement, type ImportSummary } from "@/lib/import/pipeline";
 import { OcrError, pageImages } from "@/lib/ocr/pages";
 import { proveRows, type OcrRow, type Proof } from "@/lib/ocr/prove";
@@ -25,17 +27,6 @@ export async function setOcrEnabled(db: Pick<Db, "appSetting">, on: boolean) {
 
 const OCR_TOKEN_LIMIT = 120_000;
 const digits = (s: string | null | undefined) => (s ?? "").replace(/\D/g, "");
-
-/** A printed amount ("1.250.000,00", "1,250,000.00", "(2.500)") as whole Rupiah, or null when empty or unreadable. */
-export function readAmount(text: string | null | undefined): bigint | null {
-  const t = (text ?? "").trim().replace(/\s*(CR|DB|K|D)$/i, "");
-  if (!t) return null;
-  try {
-    return parseMoney(t, "IDR");
-  } catch {
-    return null;
-  }
-}
 
 type StoredRow = { date: string; description: string; debit: string | null; credit: string | null; balance: string | null };
 const toStored = (r: OcrRow): StoredRow => ({ date: r.date, description: r.description, debit: r.debit?.toString() ?? null, credit: r.credit?.toString() ?? null, balance: r.balance?.toString() ?? null });

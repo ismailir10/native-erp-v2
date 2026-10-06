@@ -41,6 +41,9 @@ export type DepositProduct = { number: string; product: string; currency: string
 
 export class ParseError extends Error {}
 
+/** A scan or photo with no text to read (I2a): the import page offers *Baca scan dengan AI* when the workspace switch is on. */
+export class ScanError extends ParseError {}
+
 /** The file's account number(s) aren't the selected account: the action can offer the client's matching account instead. */
 export class AccountMismatchError extends ParseError {
   constructor(message: string, readonly fileNumbers: string[]) {

@@ -1,4 +1,5 @@
-import { ParseError, YearNeededError, type ParsedStatement } from "@/lib/import/types";
+import { ParseError, ScanError, YearNeededError, type ParsedStatement } from "@/lib/import/types";
+import { sniffImageFile } from "@/lib/ocr/pages";
 import { isBcaCsv, parseBca } from "@/lib/import/parsers/bca";
 import { isBriCsv, parseBri } from "@/lib/import/parsers/bri";
 import { parseTabular, parseWorkbook, xlsxToSheets } from "@/lib/import/parsers/tabular";
@@ -24,6 +25,8 @@ export async function parseStatement(fileName: string, data: Buffer, opts: Parse
  * running balance (`repairStatement`, rule 12), so every reader — the import, Dokumen — sees the same rows.
  */
 export async function parseStatementSections(fileName: string, data: Buffer, opts: ParseOptions = {}): Promise<ParsedStatement[]> {
+  const kind = sniffImageFile(data);
+  if (kind === "PNG" || kind === "JPEG") throw new ScanError("File ini gambar (foto atau scan) rekening koran, bukan file dengan teks. Minta e-statement atau ekspor CSV/Excel dari internet banking.");
   try {
     const sections = await parseAny(fileName, data, opts);
     // One account's refusal (a year it can't hold) doesn't refuse the file's other accounts: it travels on its own section.

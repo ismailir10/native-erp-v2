@@ -2,7 +2,7 @@ import { extractTextItems, getDocumentProxy } from "unpdf";
 import type { BankCode } from "@/lib/generated/prisma/enums";
 import { dateOnly } from "@/lib/format";
 import { parseRupiah } from "@/lib/money";
-import { ParseError, type DepositProduct, type ParsedRow, type ParsedStatement } from "@/lib/import/types";
+import { ParseError, ScanError, type DepositProduct, type ParsedRow, type ParsedStatement } from "@/lib/import/types";
 import { closingFromRows, dateParts, MONTHS, monthBoundsOf, periodFromText, SenWatch } from "@/lib/import/parsers/common";
 
 /**
@@ -57,7 +57,7 @@ export async function parsePdf(data: Buffer, opts: { password?: string } = {}): 
 export async function parsePdfSections(data: Buffer, opts: { password?: string } = {}): Promise<ParsedStatement[]> {
   const lines = await readLines(data, opts.password);
   if (lines.reduce((n, l) => n + l.cells.reduce((m, c) => m + c.text.replace(/\s/g, "").length, 0), 0) < 20) {
-    throw new ParseError("PDF ini hasil scan (tanpa teks). Minta rekening koran versi e-statement, atau ekspor CSV/Excel dari internet banking.");
+    throw new ScanError("PDF ini hasil scan (tanpa teks). Minta rekening koran versi e-statement, atau ekspor CSV/Excel dari internet banking.");
   }
   const deposits = depositProducts(lines);
   const withDeposits = (st: ParsedStatement): ParsedStatement => (deposits.length ? { ...st, deposits } : st);
