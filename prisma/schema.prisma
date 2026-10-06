@@ -63,6 +63,18 @@ enum WithholdingKind {
   PPH_4_2
 }
 
+/// PPh 21 PTKP status (TK = tidak kawin, K = kawin; the digit is dependants, at most 3).
+enum PtkpStatus {
+  TK0
+  TK1
+  TK2
+  TK3
+  K0
+  K1
+  K2
+  K3
+}
+
 enum BankCode {
   BCA
   MANDIRI
@@ -1538,19 +1550,21 @@ model MortalityTable {
 
 /// An employee of an entity for the PSAK 24 census: monthly wage (upah) in minor units; leftOn when they left.
 model Employee {
-  id         String    @id @default(cuid())
+  id         String      @id @default(cuid())
   firmId     String
   clientId   String
   entityId   String
-  entity     Entity    @relation(fields: [entityId], references: [id])
+  entity     Entity      @relation(fields: [entityId], references: [id])
   name       String
   employeeNo String?
   sex        Sex
-  birthDate  DateTime  @db.Date
-  hireDate   DateTime  @db.Date
+  birthDate  DateTime    @db.Date
+  hireDate   DateTime    @db.Date
   wage       BigInt
-  leftOn     DateTime? @db.Date
-  createdAt  DateTime  @default(now())
+  leftOn     DateTime?   @db.Date
+  /// PTKP status for the PPh 21 TER check (accounting-rules 5j); null = not known, left out of the check.
+  ptkpStatus PtkpStatus?
+  createdAt  DateTime    @default(now())
 
   @@unique([entityId, employeeNo])
   @@index([clientId])
