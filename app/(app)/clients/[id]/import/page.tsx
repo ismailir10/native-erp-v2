@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { loadClientPage } from "@/lib/client-page";
 import type { SearchParams } from "@/lib/scope";
-import { formatDate } from "@/lib/format";
+import { formatDate, periodBounds } from "@/lib/format";
 import { liveUploadFile } from "@/lib/demo/seed";
 import { evidenceEnabled } from "@/lib/evidence/config";
 import { setupProgress } from "@/lib/setup-progress";
@@ -19,6 +19,7 @@ import { ChevronRight } from "lucide-react";
 import { getCurrentFirm, getCurrentMember } from "@/lib/tenant";
 import { completenessMatrix } from "@/lib/controls/completeness";
 import { dataRequest } from "@/lib/controls/data-request";
+import { ownerQuestions } from "@/lib/review-questions";
 import { CompletenessCard } from "@/components/app/completeness-card";
 import { DataRequestCard } from "@/components/app/data-request-card";
 import { RemoveImportButton } from "@/components/app/remove-import";
@@ -42,7 +43,9 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
   const tab = !hasBanks || sp.tab === "ledger" ? "ledger" : "statement";
   // Sumber first (ADR 0014): what is missing for this month, and the message that asks the client for it.
   const completeness = await completenessMatrix(prisma, client.id, period.year, period.month);
-  const request = dataRequest({ clientName: client.name, firmName: (await getCurrentFirm()).name, period, rows: completeness.rows });
+  // …and the lines still in Review the client should explain (I1c), as Review's Excel lists them.
+  const questions = await ownerQuestions(prisma, { firmId: client.firmId, clientId: client.id, entityIds: client.entities.map((e) => e.id), through: periodBounds(period.year, period.month).end });
+  const request = dataRequest({ clientName: client.name, firmName: (await getCurrentFirm()).name, period, rows: completeness.rows, questions });
 
   let sample: { bankAccountId: string; fileName: string } | undefined;
   if (process.env.DEMO_MODE === "true") {
@@ -116,7 +119,7 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
       )}
       <SetupSteps progress={setup} />
       {completeness.rows.length > 0 && <CompletenessCard months={completeness.months} rows={completeness.rows} />}
-      {request && <DataRequestCard message={request} items={request.split("\n").filter((l) => /^\d+\. /.test(l)).length} />}
+      {request && <DataRequestCard message={request.text} items={request.items} />}
       {evidenceEnabled() && <p className="text-sm text-muted-foreground">Ingin menyimpan berkas untuk ditanyakan, bukan dibukukan? Pakai <Link href="/documents" className="text-primary hover:underline">Dokumen</Link>. Yang diimpor di sini langsung menjadi jurnal.</p>}
       {!hasBanks ? (
         ledger

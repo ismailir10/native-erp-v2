@@ -24,7 +24,7 @@ describe("dataRequest", () => {
         { ...bank([cell(2026, 7, "broken")]), bankAccountId: "b2", label: "Mandiri Giro" },
         { kind: "ledger", bankAccountId: "ledger", entity: "Ekspor sistem akuntansi", label: "Buku besar (file)", currency: "IDR", cells: [cell(2026, 7, "ok"), cell(2026, 8, "missing")] },
       ],
-    })!;
+    })!.text;
     expect(text).toContain("Untuk pembukuan PT Contoh Sejahtera sampai Agustus 2026, kami masih memerlukan:");
     expect(text).toContain("1. Rekening koran BCA Giro a.n. PT Uji: April–Mei 2026 dan Agustus 2026.");
     expect(text).toContain("2. Rekening koran BCA Giro a.n. PT Uji, Juni 2026: saldo awalnya tidak sama dengan saldo akhir bulan sebelumnya (selisih Rp 2.150.000).");
@@ -34,8 +34,24 @@ describe("dataRequest", () => {
     expect(text.trim().endsWith("KJA Demo & Rekan")).toBe(true);
   });
 
+  it("asks about unclear transactions too, largest first, up to ten, and counts what it asks", () => {
+    const q = (i: number, amount: bigint) => ({ date: new Date(Date.UTC(2026, 7, i)), entity: "PT Uji", bank: "BCA Giro", description: `TRSF ${i}`, amount, currency: "IDR", suggestion: null });
+    const only = dataRequest({ ...base, rows: [], questions: [q(5, -4_250_000n), q(6, 12_500_000n)] })!;
+    expect(only.items).toBe(2);
+    expect(only.text).toContain("Untuk pembukuan PT Contoh Sejahtera sampai Agustus 2026, mohon penjelasan transaksi berikut: dari/ke siapa dan untuk apa.");
+    expect(only.text).toContain("a. 5 Agu 2026 · BCA Giro · TRSF 5 · keluar Rp 4.250.000");
+    expect(only.text).toContain("b. 6 Agu 2026 · BCA Giro · TRSF 6 · masuk Rp 12.500.000");
+    const many = dataRequest({ ...base, rows: [bank([cell(2026, 8, "missing")])], questions: Array.from({ length: 12 }, (_, i) => q(i + 1, -1000n)) })!;
+    expect(many.items).toBe(13);
+    expect(many.text).toContain("Mohon juga penjelasan transaksi berikut");
+    expect(many.text).toContain("j. 10 Agu 2026");
+    expect(many.text).not.toContain("k. ");
+    expect(many.text).toContain("…dan 2 transaksi lain; daftar lengkapnya kami kirim dalam file Excel.");
+  });
+
   it("is null when nothing is missing", () => {
     expect(dataRequest({ ...base, rows: [bank([cell(2026, 7, "ok"), cell(2026, 8, "before")])] })).toBeNull();
     expect(dataRequest({ ...base, rows: [] })).toBeNull();
+    expect(dataRequest({ ...base, rows: [], questions: [] })).toBeNull();
   });
 });
