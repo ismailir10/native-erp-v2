@@ -1651,6 +1651,26 @@ model InventoryCount {
 
 /// A client's report format (use-case UC-K3): its own labels, order, headings and subtotals for the Laba Rugi and the Neraca. Presentation
 /// only — numbers stay derived from the GL. `format` is validated on write (lib/reports/format.ts); no row = the standard format.
+/// Catatan bulan ini of a company's management report (I5b), saved only by the accountant's click. `facts` is the computed commentary
+/// it was checked against: when the books change and the computed sentences differ, the note is stale and left out of the report.
+model ReportComment {
+  id           String   @id @default(cuid())
+  firmId       String
+  clientId     String
+  entityId     String
+  year         Int
+  month        Int
+  text         String
+  /// AI (a draft that passed the number check) or ACCOUNTANT (typed or edited by the accountant).
+  source       String
+  facts        Json
+  approvedById String?
+  approvedAt   DateTime @default(now())
+
+  @@unique([entityId, year, month])
+  @@index([clientId])
+}
+
 model ReportFormat {
   id          String      @id @default(cuid())
   firmId      String

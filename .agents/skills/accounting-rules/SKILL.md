@@ -350,6 +350,10 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     A draft that moves a bank line is not created, shown as blocked and refused on post when an `ADJUSTMENT` of that entity, dated from
     the line's date to the period end, already moves exactly its amount off its account (`priorCorrection`): never correct twice.
     Drafts for a PT or foreign company never see the Prive line (3300); a CV's or an individual's may.
+20c. **Catatan manajemen** (`lib/reports/report-comment.ts`, I5b): the model gets only the computed commentary sentences (never ledger
+    rows) and may reword them. Every number token of a draft must appear in those sentences (`foreignNumbers`); an AI draft with any other
+    number is never saved. Only the accountant's click saves a note (their own wording may hold other numbers, with a warning). A note
+    keeps the sentences it was approved with; when the books change them it is stale and the report uses the computed sentences again.
 21. Provider is OpenAI-compatible `fetch` (OpenCode Zen default) behind `AiProvider`; swap by config, not code.
     Key + model: **Pengaturan (DB, encrypted) overrides env** — resolve via `resolveAiConfig()` (`lib/settings/ai.ts`).
     `AI_BASE_URL` stays **env-only** so a visitor can't redirect the stored key. *Cek koneksi* hits `GET /models` (no tokens).
