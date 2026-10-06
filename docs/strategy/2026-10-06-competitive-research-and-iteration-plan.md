@@ -1,6 +1,6 @@
 # Competitive research (Zahir, Jurnal) and iteration plan
 
-Status: **proposal, awaiting approval.** Nothing here is built. Each iteration below becomes its own `/spec` cycle when approved.
+Status: **direction approved 2026-10-06** (decisions in §6). Nothing here is built yet. Each iteration becomes its own `/spec` cycle; the first is [parser-builder](../cycles/2026-10-06-parser-builder.md).
 Date: 2026-10-06.
 
 ## 0. Read this first: how solid is the research
@@ -113,7 +113,10 @@ Exit: a scorecard page in `docs/` with today's numbers. Every later iteration st
 
 Goal: *any* rekening koran, or the payout report of any channel, becomes a continuity-proven statement without an engineer.
 
-1. **Layout fingerprint + recipe.** Fingerprint a file's structure (header text, column positions, date and amount shapes). For an unseen
+1. **Parser builder (the owner's framing, approved).** From the UI, an accountant uploads one sample of a new bank's statement; Buku
+   learns a *recipe* for it and every later file of that layout imports without engineering. Cycle 1 covers vocabulary and format
+   variants; structural layouts follow. Mechanism below.
+   **Layout fingerprint + recipe.** Fingerprint a file's structure (header text, column positions, date and amount shapes). For an unseen
    fingerprint, one cached LLM call proposes a *recipe* (column mapping, date format, sign convention, row-continuation rule). The
    existing deterministic reader executes it. **The running-balance check accepts or rejects the recipe.** Accepted recipes are stored
    per fingerprint and reused free. Hand-written parsers stay as the fast path and become recipe fixtures. Credit per new layout is bounded.
@@ -193,7 +196,19 @@ Make being the close layer safe for firms whose clients already use Jurnal, Accu
 5. **Explicit non-goals:** chat as the headline AI feature (Zahir has one); autonomous posting (invariant 4, and firms need traceability
    where US tools sell autonomy); competing on filing rails or bundles we cannot match.
 
-## 6. Risks and decisions needed
+## 6. Decisions
+
+Answered 2026-10-06:
+
+- **D1 approved:** layout and header only go to a model, never counterparty names, account numbers or amounts (digits and letters masked).
+  Scans use OCR on our side later.
+- **D2:** the big Indonesian banks first, and a **parser builder** so new banks need no feature work (now the lead of Iteration 1).
+- **D3:** bank pack first in Iteration 3.
+- **D4 open:** asked what it means. It is the pause on *new accounting modules*, see radical move 2. Default stays "yes" unless a pilot objects.
+
+Original table, kept for the reasoning:
+
+## 6a. Risks and decisions needed
 
 | # | Question | Why it matters | Default if not answered |
 |---|---|---|---|
