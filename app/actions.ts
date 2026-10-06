@@ -33,6 +33,7 @@ import { dateOnly } from "@/lib/format";
 import { liveUploadFile } from "@/lib/demo/seed";
 import { addBankAccount, addClient, addEntity, OnboardingError, type NewClientInput } from "@/lib/onboarding";
 import { EntitySettingsError, setFiscalYearEnd, setReportingFramework } from "@/lib/entity-settings";
+import { setClientModules } from "@/lib/clients/modules";
 import { FormatError, resetReportFormat, saveReportFormat } from "@/lib/reports/format-settings";
 import { deleteSubledgerImport, importAging, resolveSubledgerFinding, SubledgerError } from "@/lib/reconcile/subledger";
 import { OpeningError, postOpening, type OpeningLineInput } from "@/lib/opening";
@@ -646,6 +647,19 @@ export async function saveFiscalYearEndAction(clientId: string, endMonth: number
     const member = await getCurrentMember();
     await setFiscalYearEnd(prisma, { clientId: client.id, endMonth, actorId: member.id });
     revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Which adjustment and subledger modules the client's menu shows (ADR 0014 §2). Presentation only; any member; logged. */
+export async function saveClientModulesAction(clientId: string, modules: string[]): Promise<Result> {
+  try {
+    const client = await getClientForFirm(clientId);
+    const member = await getCurrentMember();
+    await setClientModules(prisma, { clientId: client.id, modules, actorId: member.id });
+    revalidatePath("/", "layout");
     return { ok: true };
   } catch (e) {
     return fail(e);

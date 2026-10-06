@@ -29,3 +29,18 @@ describe("clientModules", () => {
     expect((await clientModules(db, g.firm.id)).get(g.client.id)?.visible).toEqual(["inventory"]);
   });
 });
+
+describe("setClientModules", () => {
+  beforeEach(resetDb);
+
+  it("keeps known keys in catalogue order, logs the change once, and is a no-op when nothing changes", async () => {
+    const { setClientModules } = await import("@/lib/clients/modules");
+    const g = await makeGroup();
+    expect(await setClientModules(db, { clientId: g.client.id, modules: ["benefits", "x", "receivables"] })).toEqual(["receivables", "benefits"]);
+    await setClientModules(db, { clientId: g.client.id, modules: ["receivables", "benefits"] });
+    const events = await db.auditEvent.findMany({ where: { clientId: g.client.id, kind: "MODULES" } });
+    expect(events).toHaveLength(1);
+    expect(events[0].summary).toBe("Modul di menu: tidak ada → Piutang & Utang, Imbalan Kerja");
+    expect((await db.client.findUniqueOrThrow({ where: { id: g.client.id } })).modules).toEqual(["receivables", "benefits"]);
+  });
+});

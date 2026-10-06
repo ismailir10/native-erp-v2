@@ -21,6 +21,8 @@ import { ReportFormatCard } from "@/components/app/report-format-card";
 import { FiscalYearCard } from "@/components/app/fiscal-year-card";
 import { loadReportFormat } from "@/lib/reports/format";
 import { formatUniverse } from "@/lib/reports/format-settings";
+import { ModulesCard } from "@/components/app/modules-card";
+import { clientModules, MODULES } from "@/lib/clients/modules";
 
 export const metadata = { title: "Aturan klasifikasi" };
 
@@ -38,6 +40,7 @@ export default async function SettingsPage({ params, searchParams }: { params: P
     prisma.period.findFirst({ where: { clientId: client.id, status: "LOCKED" }, select: { id: true } }),
   ]);
   const { custom: customFormat, stale: staleFormat, ...formatValue } = reportFormat;
+  const mods = (await clientModules(prisma, client.firmId)).get(client.id) ?? { enabled: [], inUse: [], visible: [] };
   const accounts = new Map((await prisma.account.findMany({ where: { clientId: client.id } })).map((a) => [a.code, a.name]));
   const clientRules = rules.filter((r) => r.clientId);
   const firmRules = rules.filter((r) => !r.clientId);
@@ -59,6 +62,13 @@ export default async function SettingsPage({ params, searchParams }: { params: P
       <EntitiesCard clientId={client.id} entities={client.entities.map((e) => ({ id: e.id, name: e.name, kind: e.kind, banks: e.bankAccounts.map((b) => ({ id: b.id, label: b.label, number: b.number, code: b.account.code, isOverdraft: b.isOverdraft })) }))} />
       <FrameworkCard clientId={client.id} entities={client.entities.map((e) => ({ id: e.id, name: e.name, framework: e.reportingFramework }))} />
       <FiscalYearCard clientId={client.id} endMonth={client.fiscalYearEndMonth} locked={Boolean(lockedPeriod)} />
+      <ModulesCard
+        clientId={client.id}
+        modules={MODULES.map(({ key, label, description }) => ({ key, label, description }))}
+        enabled={mods.enabled}
+        inUse={mods.inUse}
+        defaults={mods.visible.filter((k) => !mods.enabled.includes(k) && !mods.inUse.includes(k))}
+      />
       {/* Keyed on what's saved: after a save or a reset the editor starts again from the server's format. */}
       <ReportFormatCard key={JSON.stringify(reportFormat)} clientId={client.id} initial={formatValue} custom={customFormat} stale={staleFormat} universe={formatUniverse()} />
       <Card>

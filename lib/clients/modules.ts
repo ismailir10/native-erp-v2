@@ -1,5 +1,6 @@
 import type { Db } from "@/lib/db";
 import { TRADING } from "@/lib/controls/sanity";
+import { recordEvent } from "@/lib/audit";
 
 /**
  * The adjustment and subledger modules a client sees in its menu (ADR 0014 §2, I1b). A module shows when the client turned it on or
@@ -45,4 +46,18 @@ export async function clientModules(db: Db, firmId: string): Promise<Map<string,
       return [c.id, { enabled, inUse, visible: MODULES.map((m) => m.key).filter((k) => on.has(k)) }];
     }),
   );
+}
+
+/** Turn modules on or off in a client's menu (any member; presentation only, logged in Riwayat perubahan). */
+export async function setClientModules(db: Db, input: { clientId: string; modules: string[]; actorId?: string | null }) {
+  const next = MODULES.map((m) => m.key).filter((k) => input.modules.includes(k));
+  return db.$transaction(async (tx) => {
+    const before = await tx.client.findUniqueOrThrow({ where: { id: input.clientId }, select: { modules: true } });
+    const prev = before.modules.filter(isModuleKey);
+    if (prev.join() === next.join()) return next;
+    await tx.client.update({ where: { id: input.clientId }, data: { modules: next } });
+    const label = (ks: string[]) => (ks.length ? MODULES.filter((m) => ks.includes(m.key)).map((m) => m.label).join(", ") : "tidak ada");
+    await recordEvent(tx, { clientId: input.clientId, kind: "MODULES", subject: "client:modules", summary: `Modul di menu: ${label(prev)} → ${label(next)}`, before: prev, after: next, actorId: input.actorId ?? null });
+    return next;
+  });
 }
