@@ -877,8 +877,27 @@ model EvidenceIntake {
   facts          EvidenceFact[]
   conflicts      EvidenceConflict[]
   messages       EvidenceMessage[]
+  uploadLink     UploadLink?
 
   @@index([firmId, clientId])
+}
+
+/// Tautan unggah klien (I1d): a secret, expiring, revocable link through which a client drops files into one review inbox. Only the
+/// token's sha256 is stored; the token is shown once. Deleted with its inbox (and so with the client).
+model UploadLink {
+  id          String         @id @default(cuid())
+  firmId      String
+  clientId    String
+  intakeId    String         @unique
+  intake      EvidenceIntake @relation(fields: [intakeId], references: [id], onDelete: Cascade)
+  tokenHash   String         @unique
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  lastUsedAt  DateTime?
+  createdById String?
+  createdAt   DateTime       @default(now())
+
+  @@index([clientId])
 }
 
 model EvidenceDocument {
@@ -1632,6 +1651,26 @@ model InventoryCount {
 
 /// A client's report format (use-case UC-K3): its own labels, order, headings and subtotals for the Laba Rugi and the Neraca. Presentation
 /// only — numbers stay derived from the GL. `format` is validated on write (lib/reports/format.ts); no row = the standard format.
+/// Catatan bulan ini of a company's management report (I5b), saved only by the accountant's click. `facts` is the computed commentary
+/// it was checked against: when the books change and the computed sentences differ, the note is stale and left out of the report.
+model ReportComment {
+  id           String   @id @default(cuid())
+  firmId       String
+  clientId     String
+  entityId     String
+  year         Int
+  month        Int
+  text         String
+  /// AI (a draft that passed the number check) or ACCOUNTANT (typed or edited by the accountant).
+  source       String
+  facts        Json
+  approvedById String?
+  approvedAt   DateTime @default(now())
+
+  @@unique([entityId, year, month])
+  @@index([clientId])
+}
+
 model ReportFormat {
   id          String      @id @default(cuid())
   firmId      String

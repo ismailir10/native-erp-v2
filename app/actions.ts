@@ -3,6 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { getClientForFirm, getCurrentFirm, getCurrentMember } from "@/lib/tenant";
+import { clearReportComment, CommentError, draftCommentary, saveReportComment } from "@/lib/reports/report-comment";
+import { headers } from "next/headers";
+import { appUrl } from "@/lib/supabase/env";
+import { formatDate } from "@/lib/format";
+import { createUploadLink, revokeUploadLink, uploadPath, UploadLinkError } from "@/lib/upload-links";
 import { importStatement, type ImportSummary } from "@/lib/import/pipeline";
 import { resolveProvider } from "@/lib/settings/ai";
 import { acceptSimilar, reviewTransaction, splitTransaction, unpairTransfer, type SplitPartInput } from "@/lib/review";
@@ -1038,6 +1043,83 @@ export async function deleteClientAction(clientId: string, confirmName: string):
     revalidatePath("/", "layout");
     return { ok: true };
   } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Tautan unggah klien (I1d): a secret upload-only link for the client, shown once. Any member; audited. */
+export async function createUploadLinkAction(clientId: string, days: number): Promise<{ ok: true; url: string; expires: string } | { ok: false; error: string }> {
+  try {
+    const client = await getClientForFirm(clientId);
+    const member = await getCurrentMember();
+    const { link, token } = await createUploadLink(prisma, { firmId: client.firmId, clientId: client.id, days, actorId: member.id });
+    revalidatePath(`/clients/${client.id}/import`);
+    return { ok: true, url: `${await publicOrigin()}${uploadPath(token)}`, expires: formatDate(link.expiresAt) };
+  } catch (e) {
+    if (e instanceof UploadLinkError) return { ok: false, error: e.message };
+    return fail(e);
+  }
+}
+export async function revokeUploadLinkAction(clientId: string, linkId: string): Promise<Result> {
+  try {
+    const client = await getClientForFirm(clientId);
+    const member = await getCurrentMember();
+    await revokeUploadLink(prisma, { firmId: client.firmId, clientId: client.id, linkId, actorId: member.id });
+    revalidatePath(`/clients/${client.id}/import`);
+    return { ok: true };
+  } catch (e) {
+    if (e instanceof UploadLinkError) return { ok: false, error: e.message };
+    return fail(e);
+  }
+}
+/** APP_URL when set, else this request's own origin (as the login emails do). */
+async function publicOrigin() {
+  const base = appUrl();
+  if (base) return base;
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  return `${proto}://${host}`;
+}
+
+/** Catatan manajemen (I5b, accounting-rules 20c): one AI draft of the computed sentences, numbers checked; nothing is saved here. */
+export async function draftCommentaryAction(k: { clientId: string; entityId: string; year: number; month: number }): Promise<{ ok: true; text: string; foreign: string[] } | { ok: false; error: string }> {
+  try {
+    const client = await getClientForFirm(k.clientId);
+    const provider = await resolveProvider(prisma);
+    if (!provider) return { ok: false, error: "AI belum diatur di Pengaturan. Kalimat otomatis tetap dipakai." };
+    const d = await draftCommentary(prisma, { ...k, clientId: client.id, firmId: client.firmId, provider });
+    return { ok: true, ...d };
+  } catch (e) {
+    if (e instanceof AiBudgetError || e instanceof AiAnswerError || e instanceof CommentError) return { ok: false, error: e.message };
+    if (e instanceof Error && (e.name === "TimeoutError" || /^(AI \d|Model )/.test(e.message))) {
+      console.error(e);
+      return { ok: false, error: "AI tidak tersedia saat ini. Kalimat otomatis tetap dipakai; coba lagi nanti." };
+    }
+    return fail(e);
+  }
+}
+export async function saveReportCommentAction(k: { clientId: string; entityId: string; year: number; month: number; text: string; source: "AI" | "ACCOUNTANT" }): Promise<{ ok: true; foreign: string[] } | { ok: false; error: string }> {
+  try {
+    const client = await getClientForFirm(k.clientId);
+    const member = await getCurrentMember();
+    const r = await saveReportComment(prisma, { ...k, clientId: client.id, firmId: client.firmId, actorId: member.id });
+    revalidatePath(`/clients/${client.id}/reports`);
+    return { ok: true, ...r };
+  } catch (e) {
+    if (e instanceof CommentError) return { ok: false, error: e.message };
+    return fail(e);
+  }
+}
+export async function clearReportCommentAction(k: { clientId: string; entityId: string; year: number; month: number }): Promise<Result> {
+  try {
+    const client = await getClientForFirm(k.clientId);
+    const member = await getCurrentMember();
+    await clearReportComment(prisma, { ...k, clientId: client.id, firmId: client.firmId, actorId: member.id });
+    revalidatePath(`/clients/${client.id}/reports`);
+    return { ok: true };
+  } catch (e) {
+    if (e instanceof CommentError) return { ok: false, error: e.message };
     return fail(e);
   }
 }

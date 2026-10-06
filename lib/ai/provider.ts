@@ -1,5 +1,6 @@
 import { parseMoney } from "@/lib/money";
 import type { Direction, TaxTag } from "@/lib/generated/prisma/enums";
+import { buildCommentaryPrompt, COMMENTARY_MAX_TOKENS, parseCommentary, type CommentaryInput } from "@/lib/reports/commentary-ai";
 
 /**
  * LLM provider port. Default implementation targets any OpenAI-compatible
@@ -250,9 +251,13 @@ export interface AiProvider {
   planEvidenceAnswer?(question: string, context: string): Promise<EvidencePlanResult>;
   reviewClose?(input: CloseReviewInput): Promise<CloseReviewResult>;
   explainControl?(input: ControlExplainInput): Promise<ControlExplainResult>;
+  /** Catatan manajemen (I5b): reword computed sentences; the caller checks every number. */
+  draftCommentary?(input: CommentaryInput): Promise<CommentaryResult>;
   classify(items: AiItem[], accounts: { code: string; name: string }[], context: string): Promise<AiResult>;
   mapAccounts(items: MapItem[], accounts: { code: string; name: string; group: string }[], context: string): Promise<MapResult>;
 }
+
+export type CommentaryResult = { text: string; promptTokens: number; completionTokens: number; model: string };
 
 export const AI_BATCH_SIZE = 40;
 export const CLASSIFICATION_PROMPT_VERSION = "classification-v2";
@@ -415,6 +420,13 @@ export class OpenAiCompatibleProvider implements AiProvider {
     catch { throw new AiAnswerError("Penjelasan AI tidak valid; periksa kontrol secara manual.", r.promptTokens, r.completionTokens, r.model); }
   }
 
+  async draftCommentary(input: CommentaryInput): Promise<CommentaryResult> {
+    const { system, user } = buildCommentaryPrompt(input);
+    const r = await this.complete(system, user, COMMENTARY_MAX_TOKENS, false, AI_TIMEOUT_MS);
+    try { return { ...r, text: parseCommentary(r.text) }; }
+    catch { throw new AiAnswerError("Catatan AI tidak valid; pakai kalimat otomatis.", r.promptTokens, r.completionTokens, r.model); }
+  }
+
   async reviewClose(input: CloseReviewInput): Promise<CloseReviewResult> {
     const { system, user } = buildCloseReviewPrompt(input);
     const r = await this.complete(system, user, CLOSE_REVIEW_MAX_TOKENS, false, AI_LONG_TIMEOUT_MS);
@@ -482,6 +494,11 @@ export class MockProvider implements AiProvider {
     this.calls++;
     const items = input.controls.map((c) => ({ controlKey: c.key, explanation: `Uji: ${c.title}`, suggestion: "Periksa baris yang dikutip.", refs: c.rows.slice(0, 1).map((r) => r.id) }));
     return { items, promptTokens: 40, completionTokens: 20 * items.length, model: this.model };
+  }
+  async draftCommentary(input: CommentaryInput): Promise<CommentaryResult> {
+    this.calls++;
+    // Deterministic for tests: the facts joined, with the company named once.
+    return { text: `${input.entity}, ${input.period}: ${input.facts.join(" ")}`, promptTokens: 30, completionTokens: 25, model: this.model };
   }
   async explainControl(input: ControlExplainInput): Promise<ControlExplainResult> {
     this.calls++;

@@ -1,7 +1,8 @@
 import type { Db } from "@/lib/db";
 import { formatPeriod } from "@/lib/format";
 import { newWorkbook, n, type WorkbookMeta } from "@/lib/reports/workbook";
-import { commentary, managementSummary, percentOf } from "@/lib/reports/management";
+import { managementSummary, percentOf } from "@/lib/reports/management";
+import { noteForReport } from "@/lib/reports/report-comment";
 
 /** Laporan manajemen bulanan (I4b): Ringkasan with the commentary, and Perubahan Akun. One company, its own currency; read-only. */
 export async function managementWorkbook(db: Db, input: { clientId: string; entityId: string; year: number; month: number; meta: WorkbookMeta }): Promise<Buffer> {
@@ -13,8 +14,11 @@ export async function managementWorkbook(db: Db, input: { clientId: string; enti
   const unit = `Dalam ${s.currency}`;
 
   const ws = sheet("Ringkasan", "Laporan manajemen bulanan", `${month} · ${unit}`, [34, 20, 20, 20, 22]);
-  ws.addRow(["Catatan bulan ini"]).font = { bold: true };
-  for (const line of commentary(s)) ws.addRow([line]).alignment = { wrapText: false };
+  // The accountant's approved note while it still matches the books (I5b), else the computed sentences.
+  const note = await noteForReport(db, input);
+  ws.addRow([note.approved ? "Catatan bulan ini (disetujui akuntan)" : "Catatan bulan ini"]).font = { bold: true };
+  for (const line of note.lines) ws.addRow([line]).alignment = { wrapText: false };
+  if (note.staleNote) ws.addRow(["Catatan yang disetujui tidak dipakai: angka di buku besar berubah sesudahnya. Kalimat di atas dihitung ulang dari buku besar."]).font = { italic: true, color: { argb: "FFC4213A" } };
   ws.addRow([]);
   head(ws, ["", month, last, "Perubahan", "Tahun berjalan"]);
   const rows: [string, bigint, bigint, bigint | null][] = [
