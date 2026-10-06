@@ -9,7 +9,7 @@ import { formatPeriod } from "@/lib/format";
  */
 export async function recordExport(
   db: Db,
-  e: { clientId: string; entityId?: string | null; scope: string; year: number; month: number; file: "Laporan keuangan (Excel)" | "Laporan keuangan (PDF)" | "Kertas kerja PPh Badan"; final: boolean },
+  e: { clientId: string; entityId?: string | null; scope: string; year: number; month: number; file: "Laporan keuangan (Excel)" | "Laporan keuangan (PDF)" | "Kertas kerja PPh Badan" | "Paket kredit bank"; final: boolean },
 ) {
   try {
     const member = await getCurrentMember().catch(() => null);

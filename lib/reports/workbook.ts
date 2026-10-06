@@ -15,13 +15,13 @@ import { statementSet, type SetStatement } from "@/lib/reports/statement-set";
 const NUM = '#,##0;(#,##0);"–"';
 /** Thousands as a display format over exact Rupiah cells (the trailing comma divides by 1.000), so every formula stays exact. */
 const NUM_THOUSANDS = '#,##0,;(#,##0,);"–"';
-const n = (v: bigint) => (v <= BigInt(Number.MAX_SAFE_INTEGER) && v >= -BigInt(Number.MAX_SAFE_INTEGER) ? Number(v) : v.toString());
+export const n = (v: bigint) => (v <= BigInt(Number.MAX_SAFE_INTEGER) && v >= -BigInt(Number.MAX_SAFE_INTEGER) ? Number(v) : v.toString());
 
 /** `meta.draft`: why the statements are not final yet (lib/reports/status.ts); printed in red under every sheet's title. Absent = final. */
-export async function financialStatementsWorkbook(db: Db, scope: Scope, year: number, month: number, meta: { firm: string; title: string; draft?: string }): Promise<Buffer> {
-  const set = await statementSet(db, scope, year, month);
-  const cur = periodBounds(year, month).end;
+export type WorkbookMeta = { firm: string; title: string; draft?: string };
 
+/** A workbook whose sheets open with the title block every Buku export uses (client, sheet title, subtitle, unit, firm, draft). */
+export function newWorkbook(meta: WorkbookMeta) {
   const wb = new ExcelJS.Workbook();
   wb.creator = meta.firm;
   // Totals are formulas; a cached 0 is not written, so Excel recalculates every formula when the file opens.
@@ -46,6 +46,20 @@ export async function financialStatementsWorkbook(db: Db, scope: Scope, year: nu
     r.font = { bold: true };
     r.eachCell((c) => (c.border = { bottom: { style: "thin" } }));
   };
+  return { wb, sheet, head };
+}
+
+export async function financialStatementsWorkbook(db: Db, scope: Scope, year: number, month: number, meta: WorkbookMeta): Promise<Buffer> {
+  const book = newWorkbook(meta);
+  await addStatementSheets(db, book, scope, year, month);
+  return Buffer.from(await book.wb.xlsx.writeBuffer());
+}
+
+/** The statement set's sheets (and CALK + directors' statement when the scope has them) added to `book`. */
+export async function addStatementSheets(db: Db, book: ReturnType<typeof newWorkbook>, scope: Scope, year: number, month: number) {
+  const { wb, sheet, head } = book;
+  const set = await statementSet(db, scope, year, month);
+  const cur = periodBounds(year, month).end;
 
   /** A statement's rows; a format total becomes an Excel formula over the rows it sums (rows not printed are 0 and left out). */
   const statement = (st: SetStatement) => {
@@ -67,7 +81,7 @@ export async function financialStatementsWorkbook(db: Db, scope: Scope, year: nu
   };
   for (const st of set.statements) statement(st);
   const notes = set.notes;
-  if (!notes) return Buffer.from(await wb.xlsx.writeBuffer());
+  if (!notes) return;
 
   // CALK
   const ck = sheet("CALK", "Catatan atas Laporan Keuangan", `Per ${formatDate(cur)} dan untuk periode yang berakhir pada tanggal tersebut (draf)`, [60, 20, 20, 20, 20]);
@@ -95,8 +109,6 @@ export async function financialStatementsWorkbook(db: Db, scope: Scope, year: nu
     r.alignment = { wrapText: true, horizontal: i < 3 ? "center" : "left" };
     if (i < 3) r.font = { bold: true };
   });
-
-  return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
 export const statementsFileName = (label: string, year: number, month: number, ext: "xlsx" | "pdf" = "xlsx") =>

@@ -73,3 +73,25 @@ describe("sourceTrail", () => {
     expect(rows.map((r) => r.code)).toEqual(["1130", "4100"]);
   });
 });
+
+describe("creditPackWorkbook", () => {
+  it("opens on Ringkasan, carries the statement set and the pack's sheets with the figures from the books", async () => {
+    const ExcelJS = (await import("exceljs")).default;
+    const { creditPackWorkbook } = await import("@/lib/reports/credit-pack");
+    await line(7, 1_110_000n, "1130");
+    await sale(7, 1_000_000n);
+    const buf = await creditPackWorkbook(db, { clientId: g.client.id, entityId: g.pt.entity.id, year: 2026, month: 7, meta: { firm: "KJA Uji", title: "PT Uji Sejahtera", draft: "bulan belum ditutup." } });
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buf as unknown as ArrayBuffer);
+    const names = wb.worksheets.map((w) => w.name);
+    expect(names[0]).toBe("Ringkasan");
+    expect(names).toEqual(expect.arrayContaining(["Mutasi vs Omzet", "Umur Piutang", "Umur Utang", "Aset Tetap", "Jejak Sumber"]));
+    expect(names.length).toBeGreaterThan(6); // the statement set sits between Ringkasan and the pack's sheets
+    const values = (name: string) => wb.getWorksheet(name)!.getSheetValues().flat().filter((v) => v !== null && v !== undefined);
+    expect(values("Ringkasan")).toContain(1_000_000); // Pendapatan year to date
+    const jul = wb.getWorksheet("Mutasi vs Omzet")!.getSheetValues().find((r) => Array.isArray(r) && r[1] === "Juli 2026") as unknown[];
+    expect(jul.slice(1, 9)).toEqual(["Juli 2026", 1_110_000, 0, 0, 0, 1_110_000, 1_000_000, 1.11]);
+    expect(values("Umur Piutang").join(" ")).toContain("Tidak ada piutang terbuka");
+    expect(values("Ringkasan").join(" ")).toContain("DRAF — bulan belum ditutup.");
+  });
+});

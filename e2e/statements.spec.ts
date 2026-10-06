@@ -43,6 +43,14 @@ test("financial statements: comparatives, equity, cash flow, notes, download", a
   await page.getByTestId("fs-download-pdf").click();
   const pdf = await readFile(await (await pdfDownload).path());
   expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
+  // Paket Kredit Bank (I4a): the same statements plus what a bank's analyst asks for, opening on Ringkasan.
+  const creditDownload = page.waitForEvent("download");
+  await page.getByTestId("fs-download-credit").click();
+  const pack = new ExcelJS.Workbook();
+  await pack.xlsx.load((await readFile(await (await creditDownload).path())) as unknown as ArrayBuffer);
+  const sheets = pack.worksheets.map((w) => w.name);
+  expect(sheets[0]).toBe("Ringkasan");
+  expect(sheets).toEqual(expect.arrayContaining(["Neraca", "Laba Rugi", "Mutasi vs Omzet", "Umur Piutang", "Umur Utang", "Aset Tetap", "Jejak Sumber"]));
 
   if (process.env.E2E_SCREENSHOTS) {
     await page.getByRole("tab", { name: "Arus Kas" }).click();

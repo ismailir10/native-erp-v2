@@ -20,7 +20,7 @@ This cycle bundles them into one workbook per company. It is the bank pack from 
 and Unifikasi scope decision first. Approved under "get them done" (2026-10-06).
 
 ## Spec
-- [ ] **One Excel workbook per company and month**: `GET /clients/[id]/reports/export/credit?entity=<id>&period=YYYY-MM`. It refuses
+- [x] **One Excel workbook per company and month**: `GET /clients/[id]/reports/export/credit?entity=<id>&period=YYYY-MM`. It refuses
   a combined scope or a non-IDR company in plain Bahasa. The sheets, in order:
   1. **Ringkasan**: company, period, and *final* or *draf* with the reasons (as the statements).
      - Key figures from the books:
@@ -48,9 +48,9 @@ and Unifikasi scope decision first. Approved under "get them done" (2026-10-06).
      - how many journal lines came from rekening koran rows, ledger file rows, Saldo Awal, and adjustments or manual journals.
 
      The heading says every number in Buku can be traced to its row, and how.
-- [ ] **On Laporan Keuangan**, a *Paket kredit bank (Excel)* download next to the existing ones, for a single company. The download is
+- [x] **On Laporan Keuangan**, a *Paket kredit bank (Excel)* download next to the existing ones, for a single company. The download is
   logged as `REPORT_EXPORT` ("Paket kredit bank"), so it counts as *terkirim* (I0, I5a).
-- [ ] Every amount is a bigint, written to Excel as in the statements workbook (numbers within 2^53, text beyond). Nothing is stored.
+- [x] Every amount is a bigint, written to Excel as in the statements workbook (numbers within 2^53, text beyond). Nothing is stored.
 
 **Non-goals:**
 - PDF of the pack;
@@ -68,12 +68,38 @@ and Unifikasi scope decision first. Approved under "get them done" (2026-10-06).
    were left out and why.
 
 ## Tasks
-- [ ] T1 `lib/reports/credit.ts`: `receiptsVsRevenue` (pure aggregation over bank lines + `incomeStatement`) and `sourceTrail`
+- [x] T1 `lib/reports/credit.ts`: `receiptsVsRevenue` (pure aggregation over bank lines + `incomeStatement`) and `sourceTrail`
   (grouped journal lines). DB tests on the group fixture (transfer, loan, split, unreviewed line, revenue month).
-- [ ] T2 `creditPackWorkbook` (reuses the statements workbook builder; adds the sheets) + the route + `REPORT_EXPORT` + download button.
+- [x] T2 `creditPackWorkbook` (reuses the statements workbook builder; adds the sheets) + the route + `REPORT_EXPORT` + download button.
   DB test that the workbook opens with the expected sheet names and figures.
-- [ ] T3 Gates. Accept: lint, typecheck, test, build and verify:books pass (e2e in CI).
+- [x] T3 Gates. Accept: lint, typecheck, test, build and verify:books pass (e2e in CI).
 
 ## Implementation
+- Plan: T1–T3 sequential, inline.
+- T1: `lib/reports/credit.ts`: `receiptsVsRevenue` (money in per month by how each line was classified; split lines by their parts;
+  a line still in Review counts as not classified whatever its suggestion) and `sourceTrail` (one grouped SQL over journal lines × entries:
+  bank / ledger file / Saldo Awal / other). `tests/db/credit-pack.test.ts`.
+- T2: `lib/reports/workbook.ts` is split into `newWorkbook` (the title block every export uses) and `addStatementSheets`.
+  `financialStatementsWorkbook` composes them, and its output is unchanged (the statements e2e asserts the same six sheet names).
+  The rest:
+  - `lib/reports/credit-pack.ts`: `creditPackWorkbook` (Ringkasan first, then the statement set, Mutasi vs Omzet, Umur Piutang,
+    Umur Utang, Aset Tetap, Jejak Sumber).
+  - The route `app/(app)/clients/[id]/reports/export/credit/route.ts` (single IDR company, else a Bahasa 400; logged as
+    `REPORT_EXPORT` "Paket kredit bank").
+  - The *Paket kredit bank* button on Laporan Keuangan for a single IDR company.
+  - A DB test opens the workbook.
+  - The statements e2e downloads the pack and checks its sheets.
 ## Verification
+- Demo data (`receiptsVsRevenue` for August 2026, 12 months back):
+  - PT Ayam Nusantara Digital and PT Jasa Kreatif Digital (PKP) run at **1,11** every month, which is PPN at 11 % on top of revenue.
+  - CV Sinar Retail (not PKP) runs at **1,00**.
+  - August sets apart the lines still in Review (Rp 60 jt and Rp 14,3 jt), and PT Ayam's own-account transfers (Rp 252–297 jt a
+    month).
+- End of cycle:
+  - `npm run lint` exit 0; `npm run typecheck` exit 0.
+  - `npm test`: Test Files 168 passed (168), Tests 1114 passed (1114).
+  - `npm run build` exit 0.
+  - `npm run demo:reset` + `npm run verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`
+  - E2e in CI.
 ## Ship Notes
+- No migration or env var. New route `/clients/[id]/reports/export/credit`. Rollback: revert.
