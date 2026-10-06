@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { BookOpen, Boxes, Building2, ChartColumn, HandCoins, KeyRound, ReceiptText, Warehouse, ChevronDown, ClipboardCheck, Coins, FileSpreadsheet, FolderOpen, Home, Inbox, Landmark, ListFilter, LogOut, NotebookPen, Plus, Scale, Settings2, SlidersHorizontal, Upload, Users, History } from "lucide-react";
+import { BookOpen, Boxes, CalendarCheck, Building2, ChartColumn, HandCoins, KeyRound, ReceiptText, Warehouse, ChevronDown, ClipboardCheck, Coins, FileSpreadsheet, FolderOpen, Home, Inbox, Landmark, ListFilter, LogOut, NotebookPen, Plus, Scale, Settings2, SlidersHorizontal, Upload, Users, History } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { BrandMark } from "@/components/app/brand-mark";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
@@ -40,7 +40,7 @@ function stages(modules: string[]): { label: string; items: Item[] }[] {
         { href: "/close", label: "Tutup Buku", icon: ClipboardCheck },
       ],
     },
-    { label: "3 · Laporan", items: [{ href: "/reports", label: "Laporan Keuangan", icon: FileSpreadsheet }, { href: "/tax", label: "Pajak Badan", icon: ReceiptText }] },
+    { label: "3 · Laporan", items: [{ href: "/reports", label: "Laporan Keuangan", icon: FileSpreadsheet }, { href: "/tax/masa", label: "Pajak Masa", icon: CalendarCheck }, { href: "/tax", label: "Pajak Badan", icon: ReceiptText }] },
   ];
 }
 const SETUP = [
@@ -78,7 +78,9 @@ export function AppSidebar({ firmName, clients, user, documents = true }: { firm
   const [setupOpen, setSetupOpen] = useState(false);
   const closeMobile = () => setOpenMobile(false);
   function accountingLinks(items: Item[], client: Client) {
-    return <SidebarMenuSub>{items.map((item) => <SidebarMenuSubItem key={item.href}><SidebarMenuSubButton isActive={pathname.startsWith(`/clients/${client.id}${item.href}`)} render={<Link href={clientHref(client, item.href)} onClick={closeMobile} />}><item.icon /><span>{item.label}</span></SidebarMenuSubButton></SidebarMenuSubItem>)}</SidebarMenuSub>;
+    // The most specific item wins, so /tax/masa lights Pajak Masa and not Pajak Badan.
+    const active = items.map((i) => i.href).filter((h) => pathname.startsWith(`/clients/${client.id}${h}`)).sort((a, b) => b.length - a.length)[0];
+    return <SidebarMenuSub>{items.map((item) => <SidebarMenuSubItem key={item.href}><SidebarMenuSubButton isActive={item.href === active} render={<Link href={clientHref(client, item.href)} onClick={closeMobile} />}><item.icon /><span>{item.label}</span></SidebarMenuSubButton></SidebarMenuSubItem>)}</SidebarMenuSub>;
   }
   return (
     <Sidebar>

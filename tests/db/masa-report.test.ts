@@ -115,3 +115,20 @@ describe("masaReport — bukti potong and TER states", () => {
     expect(terNote(t)).toMatch(/1 karyawan aktif belum punya status PTKP/);
   });
 });
+
+describe("masaWorkbook", () => {
+  it("opens on Ringkasan with the rows, then Bukti Potong and PPh 21 TER", async () => {
+    const ExcelJS = (await import("exceljs")).default;
+    const { masaWorkbook } = await import("@/lib/tax/masa-workbook");
+    await post(d(7, 25), [{ code: "6100", debit: 10_000_000n }, { code: "BANK", credit: 9_800_000n }, { code: "2140", credit: 200_000n }]);
+    const buf = await masaWorkbook(await report(8), { firm: "KJA Uji", title: "PT Uji Sejahtera", draft: "bulan belum ditutup." });
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buf as unknown as ArrayBuffer);
+    expect(wb.worksheets.map((w) => w.name)).toEqual(["Ringkasan", "Bukti Potong", "PPh 21 TER"]);
+    const text = (name: string) => wb.getWorksheet(name)!.getSheetValues().flat().map(String).join(" | ");
+    expect(text("Ringkasan")).toMatch(/PPh 21 \(2140\) \| 0 \| 15 Sep 2026 \| 200000 \| 0 \| 200000/);
+    expect(text("Ringkasan")).toMatch(/Rp 200\.000 dari Rp 200\.000 belum disetor/);
+    expect(text("Bukti Potong")).toMatch(/Tidak ada pemotongan oleh perusahaan masa ini/);
+    expect(text("PPh 21 TER")).toMatch(/Tidak ada karyawan aktif di sensus/);
+  });
+});

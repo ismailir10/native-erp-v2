@@ -263,6 +263,10 @@ export function rowNotes(r: MasaRow): string[] {
   return out;
 }
 
+/** "Keluaran Rp 2.200 − masukan Rp 400 − lebih bayar dibawa Rp 900". */
+export const ppnLine = (p: NonNullable<MasaRow["ppn"]>) =>
+  `Keluaran ${formatRupiah(p.keluaran)} − masukan ${formatRupiah(p.masukan)}${p.carryIn ? ` − lebih bayar dibawa ${formatRupiah(p.carryIn)}` : ""}`;
+
 /** One sentence on the TER check. */
 export function terNote(t: TerCheck): string {
   switch (t.state) {

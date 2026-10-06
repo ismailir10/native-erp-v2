@@ -18,19 +18,19 @@ Stage: **Laporan**. Scope decision taken under "get them done" (2026-10-06): PPh
 check and worksheet. Buku prepares, the firm submits in Coretax (ADR 0014: Buku is not a PJAP).
 
 ## Spec
-- [ ] **TER (PP 58/2023, PMK 168/2023)**: `lib/tax/ter.ts` holds the three monthly tables, exactly as the Lampiran:
+- [x] **TER (PP 58/2023, PMK 168/2023)**: `lib/tax/ter.ts` holds the three monthly tables, exactly as the Lampiran:
   - A: TK/0, TK/1, K/0, 44 brackets;
   - B: TK/2, TK/3, K/1, K/2, 40 brackets;
   - C: K/3, 41 brackets.
 
   Rates are kept in hundredths of a percent. PPh 21 for a month is the gross times the rate, rounded down to whole Rupiah.
   December is not TER (the year is recomputed under Pasal 17), so the check says so and compares nothing in December.
-- [ ] **Employee PTKP status**: an optional `ptkpStatus` on Employee (TK/0 … K/3):
+- [x] **Employee PTKP status**: an optional `ptkpStatus` on Employee (TK/0 … K/3):
   - set in the employee form;
   - read from an optional *PTKP* column in the census file.
 
   Unset means the employee is left out of the TER check, and the check counts them.
-- [ ] **`masaReport(db, {clientId, entityId, year, month})`**, deterministic and read at request time:
+- [x] **`masaReport(db, {clientId, entityId, year, month})`**, deterministic and read at request time:
   1. **One row per tax**:
      - **PPN**: keluaran (credits on 2130 in the month) and masukan (debits on 1150) give the masa's kurang or lebih bayar, due by
        the end of the next month.
@@ -46,7 +46,7 @@ check and worksheet. Buku prepares, the firm submits in Coretax (ADR 0014: Buku 
      flagged. Payroll was likely booked net to salary expense.
   3. **Bukti potong (Unifikasi)**:
      - lines where this company withheld from a payment (bank OUT with `whtKind`): date, contact and NPWP, description, kind, cash
-       paid, withheld, gross (cash + withheld), and the implied rate;
+       paid, withheld, and gross (cash + withheld);
      - lines where a customer withheld from a receipt (bank IN): the bukti potong to ask the customer for.
   4. **PPh 21 TER check** (January–November): each employee active in the month with a PTKP status:
      - wage, category, rate, PPh 21 estimate;
@@ -54,13 +54,13 @@ check and worksheet. Buku prepares, the firm submits in Coretax (ADR 0014: Buku 
      - *Lolos* within 10 %, else *Perlu dicek*.
 
      The census wage is the PSAK 24 *upah*, not the full gross, so the sheet calls it an estimate.
-- [ ] **Page *Pajak Masa*** at `/clients/[id]/tax/masa`:
+- [x] **Page *Pajak Masa*** at `/clients/[id]/tax/masa`:
   - under "3 · Laporan" next to Pajak Badan;
   - one company in Rupiah (others refused in Bahasa, as Pajak Badan);
   - NextStep names the first problem;
   - problems first;
   - every amount links to the account's Buku Besar for the month.
-- [ ] **Excel *Kertas kerja pajak masa***: `GET /clients/[id]/tax/masa/export?entity&period`, built from the same report:
+- [x] **Excel *Kertas kerja pajak masa***: `GET /clients/[id]/tax/masa/export?entity&period`, built from the same report:
   - sheets *Ringkasan*, *Bukti Potong* and *PPh 21 TER*;
   - logged as `REPORT_EXPORT` ("Kertas kerja pajak masa").
 
@@ -81,18 +81,67 @@ check and worksheet. Buku prepares, the firm submits in Coretax (ADR 0014: Buku 
 3. TER tables cross-checked against two independent published implementations (all 125 brackets identical).
 
 ## Tasks
-- [ ] T1 `lib/tax/ter.ts` + unit tests (bracket edges, categories, worked examples). Accept: tests pass.
-- [ ] T2 Employee `ptkpStatus`: migration, census column, form, view. Accept: DB test for census import with and without the column.
-- [ ] T3 `lib/tax/masa-report.ts` `masaReport` + DB tests:
+- [x] T1 `lib/tax/ter.ts` + unit tests (bracket edges, categories, worked examples). Accept: tests pass.
+- [x] T2 Employee `ptkpStatus`: migration, census column, form, view. Accept: DB test for census import with and without the column.
+- [x] T3 `lib/tax/masa-report.ts` `masaReport` + DB tests:
   - PPN paid on time, and paid short;
   - PPh 21 paid with nothing booked;
   - a payer withholding listed with its contact;
   - the TER check.
 
   Accept: tests pass, and the demo's August reads correctly.
-- [ ] T4 Page, sidebar, Excel route, `REPORT_EXPORT`, e2e (page renders, download opens). Accept: e2e in CI.
-- [ ] T5 Gates. Accept: lint, typecheck, test, build and verify:books pass.
+- [x] T4 Page, sidebar, Excel route, `REPORT_EXPORT`, e2e (page renders, download opens). Accept: e2e in CI.
+- [x] T5 Gates. Accept: lint, typecheck, test, build and verify:books pass.
 
 ## Implementation
+- Plan: T1–T5 sequential, inline.
+- T1: `lib/tax/ter.ts`:
+  - `TER_TABLES` A/B/C, generated from one published implementation and compared bracket by bracket with a second (all 125 equal);
+  - `TER_CATEGORY`, `parsePtkp`, `terRate`, `pph21Ter` (rounded down), `formatTerRate`;
+  - `tests/unit/tax-ter.test.ts`;
+  - accounting-rules 5j.
+- T2: `PtkpStatus` enum and `Employee.ptkpStatus` (migration `20261006150000_employee_ptkp`):
+  - the census reads an optional *PTKP* / *Status PTKP* column; an import without it leaves the stored status alone;
+  - the employee form has a *Status PTKP* select;
+  - `tests/db/benefits-census.test.ts` (+1).
+- T3: `lib/tax/masa-report.ts`:
+  - `masaReport` reads the year's lines on 2130, 1150, 2140, 2141 and 2145.
+    - A payment is a debit in an entry that credits a bank account, so ledger-file sources count as well as statements.
+    - What a masa owes is its credits net of non-payment debits; openings are left out.
+    - PPN: keluaran − masukan, with lebih bayar carried from January of the previous masa's year.
+    - Payments in the window after the masa before fell due, up to this one's due date, pay the previous masa.
+    - Later payments in the month first cover a shortfall (*terlambat*) and the rest counts as paid ahead.
+    - `other` is the month-end balance that neither this masa nor the previous shortfall explains.
+  - `rowNotes`, `terNote` and `ppnLine` give the Bahasa sentences.
+  - The TER check takes employees active in the month with a PTKP status and passes within 10 % of the booked PPh 21.
+  - Spec deviation: no "implied rate" on bukti potong lines. Gross includes PPN for most services, so a rate from it would mislead.
+  - Test: `tests/db/masa-report.test.ts`.
+- T4: the page `app/(app)/clients/[id]/tax/masa/page.tsx`:
+  - problems first, NextStep naming the first problem;
+  - amounts link to the account's Buku Besar;
+  - columns hidden on phones.
+
+  Around it:
+  - Sidebar *Pajak Masa* under "3 · Laporan". The most specific menu item is now the active one, so `/tax/masa` does not also light
+    Pajak Badan.
+  - `lib/tax/masa-workbook.ts` and the route `.../tax/masa/export`, logged as `REPORT_EXPORT` "Kertas kerja pajak masa".
+  - E2e: `qa-tax-split.spec.ts` checks the page and the download on its PPN and PPh 23 case. `qa-access.spec.ts` covers the route and
+    the export across firms.
 ## Verification
+- Demo, August 2026 (`now` = 6 October):
+  - **PT Ayam**:
+    - PPN *Perlu dicek*: July owed Rp 80.225.676 and Rp 37.475.676 was not paid by 31 Aug. The synthetic payments are random amounts,
+      not the masa's keluaran − masukan.
+    - PPh 21 *Perlu dicek*: remitted with nothing withheld. The demo books payroll net to 6100 and draws down the opening 2140.
+  - **PT Jasa Kreatif**: PPN *Perlu dicek* for the same reason.
+  - **CV Sinar Retail** (not PKP): all *Lolos* / nihil.
+  - No demo census, so the TER card asks for one.
+
+  The findings are true of the synthetic data, which has no masa discipline. The demo scenario is left unchanged, because shifting its
+  random sequence would move every amount.
+- End of cycle: `npm run lint` exit 0; `npm run typecheck` exit 0; `npm test`: Test Files 172 passed (172), Tests 1135 passed (1135);
+  `npm run build` exit 0 (routes `/clients/[id]/tax/masa`, `/tax/masa/export`); `npm run verify:books` → `ALL PASS — 1765 pemeriksaan saldo
+  cocok dengan ground truth.` E2e in CI.
 ## Ship Notes
+- Migration `20261006150000_employee_ptkp`: a new enum and a nullable column, so no backfill is needed. New routes: `/clients/[id]/tax/masa`
+  and `/clients/[id]/tax/masa/export`. Rollback: revert the code; the column can stay.
