@@ -4,6 +4,9 @@ import { importStatement } from "@/lib/import/pipeline";
 import { createInvoice } from "@/lib/receivables/invoices";
 import { deleteFaktur, fakturNotes, fakturRecon, importFaktur } from "@/lib/tax/faktur";
 import { runControls } from "@/lib/controls";
+import { masaReport } from "@/lib/tax/masa-report";
+import { masaWorkbook } from "@/lib/tax/masa-workbook";
+import ExcelJS from "exceljs";
 
 // Ekualisasi PPN (I5c): Coretax faktur against the PPN the books hold for the masa, matched one to one on the exact PPN.
 type G = Awaited<ReturnType<typeof makeGroup>>;
@@ -53,6 +56,14 @@ describe("ekualisasi PPN", () => {
     expect(k.unmatchedBook.map((b) => [b.label, b.ppn])).toEqual([["TRSF CR CV MITRA BARU", 3_300_000n]]);
     expect(k.notCounted.map((f) => f.number)).toEqual(["04002600000000004"]);
     expect(fakturNotes(await recon())).toEqual(["Faktur keluaran: PPN faktur Rp 14.300.000 vs buku Rp 15.400.000 (selisih Rp 1.100.000); 1 faktur belum ada di buku, 1 PPN di buku tanpa faktur."]);
+
+    // The masa workbook carries the same comparison on its own sheet.
+    const rep = (await masaReport(db, { clientId: g.client.id, entityId: g.pt.entity.id, year: 2026, month: 8 }))!;
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load((await masaWorkbook(rep, { firm: "KJA Uji", title: "PT Uji" }, await recon())) as unknown as ArrayBuffer);
+    expect(wb.worksheets.map((w) => w.name)).toEqual(["Ringkasan", "Bukti Potong", "PPh 21 TER", "Ekualisasi PPN"]);
+    const cells = wb.getWorksheet("Ekualisasi PPN")!.getSheetValues().flat().map(String);
+    expect(cells).toEqual(expect.arrayContaining(["Faktur belum ada di buku", "04002600000000003", "PPN di buku tanpa faktur", "TRSF CR CV MITRA BARU"]));
 
     // Masukan: the credited faktur ties to the PAKAN purchase split by the rule.
     expect(await imp(MASUKAN)).toMatchObject({ direction: "MASUKAN", created: 1 });

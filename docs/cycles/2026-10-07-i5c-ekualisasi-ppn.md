@@ -79,7 +79,7 @@ Stage: **Laporan** (Pajak Masa).
   re-import that cancels a faktur; another firm's client refused.
 - [x] T3 The card on Pajak Masa, the actions, the Excel sheet and the close control. E2e: upload keluaran with one cancelled and one
   unbooked faktur, see the difference explained, and see the control.
-- [ ] T4 Gates.
+- [x] T4 Gates.
 
 ## Implementation
 - Plan: T1–T4 sequential, inline.
@@ -113,4 +113,26 @@ Stage: **Laporan** (Pajak Masa).
   - `masaWorkbook` gets the *Ekualisasi PPN* sheet only when faktur exist, so earlier exports keep their three sheets.
   - E2e: `e2e/ekualisasi-ppn.spec.ts`.
 ## Verification
+- `tests/unit/faktur-read.test.ts` (5):
+  - a keluaran list under title rows, with a cancelled faktur;
+  - the masa taken from the date, and sen rounding;
+  - masukan credited vs approved, and a replaced faktur;
+  - the refusals;
+  - a semicolon CSV.
+- `tests/db/faktur.test.ts` (3):
+  - The receipt and the invoice match their faktur. One faktur is not booked and one book PPN has no faktur; the
+    PPN remittance is not counted.
+  - The workbook gets the *Ekualisasi PPN* sheet.
+  - Masukan ties.
+  - A re-import cancels a faktur. The control flags the masa and goes when the faktur are removed. Audit summaries are recorded.
+  - An individual's books and another client's company are refused.
+- End of cycle: `npm run lint` exit 0; `npm run typecheck` exit 0; `npm test`: Test Files 180 passed (180), Tests 1169 passed (1169);
+  `npm run build` exit 0; `npm run verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`; `npm run test:e2e` on
+  the local stack: 53 passed (5.0m).
+- Screens checked at 1440 and 390 px (the e2e's `E2E_SCREENSHOTS` hook): the difference is explained both ways, and on a phone the
+  secondary columns fold under the number.
+
 ## Ship Notes
+- Migration `20261007100000_coretax_faktur`: a new table. No env var.
+- Nothing changes for a firm until it uploads a Coretax export. The control and the workbook sheet appear only for masas with faktur.
+- Rollback: revert; the table can stay.
