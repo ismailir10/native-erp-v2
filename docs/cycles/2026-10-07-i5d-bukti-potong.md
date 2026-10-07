@@ -66,7 +66,7 @@ Stage: **Laporan** (Pajak Masa).
   - a re-import cancelling a slip;
   - refusals.
 - [x] T3 UI in the Bukti potong card, actions, the Excel part. E2e.
-- [ ] T4 Gates.
+- [x] T4 Gates.
 
 ## Implementation
 - Plan: T1–T4 sequential, inline.
@@ -101,4 +101,24 @@ Stage: **Laporan** (Pajak Masa).
   - The Excel *Bukti Potong* sheet gets *Cocokkan dengan Coretax* when slips exist.
   - E2e: `e2e/bukti-potong.spec.ts`. The withholding is booked with the Review hint's *Potong PPh 23 2%*.
 ## Verification
+- `tests/unit/bupot-read.test.ts` (4):
+  - the dibuat list with the company's own NPWP column, a pembetulan counted and a cancelled slip not;
+  - a diterima CSV with the masa taken from its date;
+  - kinds by code and by words;
+  - the refusals.
+- `tests/db/bupot.test.ts` (3):
+  - In dibuat, two slips are matched, one of them *beda jenis* (4(2) in the books, PPh 23 on the slip). One slip has no withholding in
+    the books, and one withholding has no slip.
+  - The *Bukti Potong* sheet carries the comparison.
+  - Diterima ties.
+  - A re-import cancels a slip. The control flags the masa and goes with the slips.
+  - An individual's books are refused.
+- `tests/db/faktur.test.ts` is unchanged and green on the shared matcher.
+- End of cycle: `npm run lint` exit 0; `npm run typecheck` exit 0; `npm test`: Test Files 182 passed (182), Tests 1176 passed (1176);
+  `npm run build` exit 0; `npm run verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`; `npm run test:e2e`
+  on the local stack: 54 passed (5.1m).
+
 ## Ship Notes
+- Migration `20261007120000_coretax_bupot`: a new table. No env var.
+- Nothing changes until a firm uploads a Coretax slip list.
+- Rollback: revert; the table can stay.
