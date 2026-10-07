@@ -31,7 +31,7 @@ export function merchantKey(description: string): string {
  * unrelated payments: it must never be learned (Memory), turned into a rule or grouped as *serupa*.
  * Fee, interest, tax and stamp words are not here: those descriptions mean the same thing every time.
  */
-const CHANNEL_WORDS = new Set(
+export const CHANNEL_WORDS = new Set(
   (
     "BI FAST BIF OUTGOING INCOMING TRSF TRF TRANSFER TRANSFERS EBANKING MBANKING IBANKING BANKING INTERNET MOBILE ONLINE DB CR KR DR DEBIT KREDIT CREDIT " +
     "RTGS SKN LLG KLIRING CLEARING SWITCHING ONLINE KE DARI FROM TO VIA ATAS NAMA AN OVERBOOKING PINDAH DANA BUKU PB " +

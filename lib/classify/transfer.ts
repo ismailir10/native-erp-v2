@@ -1,6 +1,6 @@
 import type { Classification, ClassifyInput } from "@/lib/classify/types";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
-import { isGenericKey, merchantKey } from "@/lib/import/normalize";
+import { CHANNEL_WORDS, isGenericKey, merchantKey } from "@/lib/import/normalize";
 import { formatDate } from "@/lib/format";
 import { formatRupiah } from "@/lib/money";
 
@@ -34,19 +34,29 @@ const OWN_TRANSFER_WORDS = new Set(
     "MASUK KELUAR MCM INHOUSETRF INHOUSE NBMB TGL JAM WIB SDR SDRI BPK IBU NO REF CABANG KCP BERITA NOREK ESB").split(" "),
 );
 
+/** Legal forms say what kind of body an entity is, not which one: a bank prints "BELIFI" for PT Belifi. */
+const LEGAL_FORMS = new Set("PT CV UD PD TBK FIRMA FA KOPERASI PERSERO PERUM YAYASAN".split(" "));
+
 /**
- * Takes the group's own names out of a key's words. A bank may cut a long name ("PT GEMILANG MAHAKAR" for PT Gemilang Mahakarya Nusa):
- * a run of at least two of the name's words counts, the last of them possibly cut short (≥ 3 letters).
+ * Takes the group's own names out of a key's words. A bank may cut a long name ("PT GEMILANG MAHAKAR" for PT Gemilang Mahakarya Nusa)
+ * or drop its legal form ("BELIFI" for PT Belifi): a run of at least two of the name's words counts (one when the name, without its
+ * legal form, is a single word), the last of them possibly cut short (≥ 3 letters).
  */
 function withoutOwnNames(words: string[], ownNames: string[]): string[] {
-  const names = ownNames.map((n) => merchantKey(n).split(" ").filter(Boolean)).filter((n) => n.join(" ").length >= 3).sort((a, b) => b.length - a.length);
+  const names = ownNames
+    .map((n) => merchantKey(n).split(" ").filter((w) => w && !LEGAL_FORMS.has(w)))
+    .filter((n) => n.join(" ").length >= 3)
+    .sort((a, b) => b.length - a.length);
   const out = [...words];
   for (const name of names) {
     for (let i = 0; i < out.length; i++) {
       let m = 0;
       while (m < name.length && i + m < out.length && out[i + m] === name[m]) m++;
       const cut = i + m < out.length && m < name.length && out[i + m].length >= 3 && name[m].startsWith(out[i + m]) ? 1 : 0;
-      if (m + cut >= Math.min(2, name.length)) out.splice(i--, m + cut);
+      if (m + cut < Math.min(2, name.length)) continue;
+      const form = i > 0 && LEGAL_FORMS.has(out[i - 1]) ? 1 : 0; // "PT" printed before the name
+      out.splice(i - form, m + cut + form);
+      i -= 1 + form;
     }
   }
   return out;
@@ -58,7 +68,7 @@ function withoutOwnNames(words: string[], ownNames: string[]): string[] {
  */
 export function thirdPartyName(description: string, ownNames: string[]): string | null {
   const words = withoutOwnNames(merchantKey(description).split(" ").filter(Boolean), ownNames);
-  const rest = words.filter((w) => /^[A-Z]{2,}$/.test(w) && !BANK_WORDS.has(w) && !OWN_TRANSFER_WORDS.has(w));
+  const rest = words.filter((w) => /^[A-Z]{2,}$/.test(w) && !BANK_WORDS.has(w) && !OWN_TRANSFER_WORDS.has(w) && !CHANNEL_WORDS.has(w));
   return rest.length && !isGenericKey(rest.join(" ")) ? rest.join(" ") : null;
 }
 
@@ -148,6 +158,25 @@ export function matchTransfers(
     } else {
       result.set(i.id, { method: "TRANSFER", accountCode: code, taxTag: null, confidence: 0.92, reason: "Transfer antar rekening sendiri (pasangan belum diimpor)" });
     }
+  }
+
+  // Names another group entity, and all that is left is a short code printed beside the name (BCA BI-FAST "… KE 002 ALFI YANDRA KBB"):
+  // too unsure to post, too likely the group's own money to leave on the simple guess (an expense). It waits in Review on 1190.
+  for (const i of naming) {
+    if (result.has(i.id) || !TRANSFER_HINT.test(i.description)) continue;
+    const rest = thirdPartyName(i.description, allNames)?.split(" ") ?? [];
+    if (rest.some((w) => w.length > 3)) continue;
+    const d = i.description.toUpperCase();
+    const other = ownNames.find((e) => e.entityId !== i.entityId && e.names.some((n) => d.includes(n)));
+    const name = other?.names.find((n) => d.includes(n));
+    if (!name) continue;
+    result.set(i.id, {
+      method: "TRANSFER",
+      accountCode: ACCOUNT_CODES.INTERCOMPANY,
+      taxTag: null,
+      confidence: AMBIGUOUS_CONFIDENCE,
+      reason: `Menyebut entitas grup ${name}, ditambah "${rest.join(" ")}" yang bukan nama dikenal: periksa sebelum dicatat antar entitas`,
+    });
   }
   return result;
 }
