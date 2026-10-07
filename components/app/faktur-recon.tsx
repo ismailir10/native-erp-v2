@@ -83,6 +83,8 @@ export function FakturRecon({ clientId, entityId, year, month, label, ledgerHref
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A new key empties the file picker after an upload, so it never shows a file that is already in.
+  const [picker, setPicker] = useState(0);
 
   async function upload() {
     if (!file) return;
@@ -96,6 +98,7 @@ export function FakturRecon({ clientId, entityId, year, month, label, ledgerHref
     if (!r.ok) return void setError(r.error);
     setError(null);
     setFile(null);
+    setPicker((n) => n + 1);
     const other = r.masas.filter((m) => m !== `${year}-${String(month).padStart(2, "0")}`);
     toast.success(`${r.direction === "KELUARAN" ? "Faktur keluaran" : "Faktur masukan"}: ${r.created} baru, ${r.updated} berubah`, {
       description: [other.length ? `Termasuk masa lain: ${other.join(", ")}` : "", ...r.notes].filter(Boolean).join(" · ") || undefined,
@@ -114,7 +117,7 @@ export function FakturRecon({ clientId, entityId, year, month, label, ledgerHref
     <div className="space-y-6" data-testid="faktur-recon">
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-3">
-          <Input type="file" accept=".xlsx,.xls,.csv" aria-label="File faktur Coretax" className="max-w-sm" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          <Input key={picker} type="file" accept=".xlsx,.xls,.csv" aria-label="File faktur Coretax" className="max-w-sm" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
           <Button variant="outline" onClick={upload} disabled={busy || !file} data-testid="faktur-upload">
             <Upload /> {busy ? "Membaca…" : "Unggah faktur"}
           </Button>

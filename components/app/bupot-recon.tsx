@@ -46,6 +46,8 @@ export function BupotRecon({ clientId, entityId, year, month, label, directions 
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A new key empties the file picker after an upload, so it never shows a file that is already in.
+  const [picker, setPicker] = useState(0);
 
   async function upload() {
     if (!file) return;
@@ -59,6 +61,7 @@ export function BupotRecon({ clientId, entityId, year, month, label, directions 
     if (!r.ok) return void setError(r.error);
     setError(null);
     setFile(null);
+    setPicker((n) => n + 1);
     const other = r.masas.filter((m) => m !== `${year}-${String(month).padStart(2, "0")}`);
     toast.success(`${r.direction === "DIBUAT" ? "Bukti potong dibuat" : "Bukti potong diterima"}: ${r.created} baru, ${r.updated} berubah`, {
       description: [other.length ? `Termasuk masa lain: ${other.join(", ")}` : "", ...r.notes].filter(Boolean).join(" · ") || undefined,
@@ -78,7 +81,7 @@ export function BupotRecon({ clientId, entityId, year, month, label, directions 
       <div className="space-y-2">
         <p className="font-medium">Cocokkan dengan Coretax</p>
         <div className="flex flex-wrap items-center gap-3">
-          <Input type="file" accept=".xlsx,.xls,.csv" aria-label="File bukti potong Coretax" className="max-w-sm" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          <Input key={picker} type="file" accept=".xlsx,.xls,.csv" aria-label="File bukti potong Coretax" className="max-w-sm" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
           <Button variant="outline" onClick={upload} disabled={busy || !file} data-testid="bupot-upload">
             <Upload /> {busy ? "Membaca…" : "Unggah bukti potong"}
           </Button>
