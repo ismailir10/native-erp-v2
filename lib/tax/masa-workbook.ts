@@ -1,5 +1,6 @@
 import { ppnLine, pph25Notes, pph25StateLabel, previousStateLabel, rowNotes, terNote, terRow, withholdingLabel, type MasaReport } from "@/lib/tax/masa-report";
 import { formatDate, formatPeriod } from "@/lib/format";
+import { formatRupiah } from "@/lib/money";
 import { newWorkbook, n, type WorkbookMeta } from "@/lib/reports/workbook";
 import { DIRECTION_LABEL, type FakturRecon } from "@/lib/tax/faktur";
 import { BUPOT_DIRECTION_LABEL, type BupotRecon } from "@/lib/tax/bupot";
@@ -87,6 +88,10 @@ export async function masaWorkbook(r: MasaReport, meta: WorkbookMeta, faktur?: F
     for (const e of r.ter.employees.map(terRow)) {
       const row = ter.addRow([e.name, e.employeeNo ?? "", e.statusLabel, e.category, n(e.wage), e.rateLabel, n(e.tax)]);
       for (const c of [2, 3, 4, 6]) row.getCell(c).numFmt = "@";
+    }
+    for (const e of r.ter.leavers) {
+      const row = ter.addRow([`${e.name} (berhenti bulan ini: Pasal 17 setahun ${formatRupiah(e.annual)} − TER ${formatRupiah(e.ter)})`, e.employeeNo ?? "", PTKP_LABEL[e.status], "", n(e.gross), "Pasal 17", n(e.december)]);
+      for (const c of [2, 3, 6]) row.getCell(c).numFmt = "@";
     }
     const total = ter.addRow(["Jumlah estimasi", "", "", "", "", "", n(r.ter.estimate)]);
     total.font = { bold: true };

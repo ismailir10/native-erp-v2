@@ -139,6 +139,20 @@ describe("masaReport — PPh 21, 23", () => {
     expect(rep.ter.state === "CHECKED" && rep.ter.employees.map((e) => [e.name, e.category, e.rate])).toEqual([["Ani", "A", 200]]);
   });
 
+  it("takes an employee leaving in the masa out of TER: the last masa is Pasal 17 for the months worked less TER before it", async () => {
+    await db.employee.create({ data: { firmId: g.firm.id, clientId: g.client.id, entityId: g.pt.entity.id, name: "Ani", sex: "FEMALE", birthDate: dateOnly(1990, 1, 1), hireDate: dateOnly(2020, 1, 1), wage: 10_000_000n, ptkpStatus: "TK0" } });
+    await db.employee.create({ data: { firmId: g.firm.id, clientId: g.client.id, entityId: g.pt.entity.id, name: "Dodi", sex: "MALE", birthDate: dateOnly(1988, 1, 1), hireDate: dateOnly(2019, 1, 1), wage: 20_000_000n, ptkpStatus: "TK0", leftOn: d(6, 30) } });
+    const june = (await report(6)).ter;
+    // Ani: TER 2 % of 10 jt. Dodi leaves 30 June: 6 months, bruto 120 jt − biaya jabatan 3 jt − PTKP 54 jt = PKP 63 jt → 3,45 jt;
+    // TER January–May 9 % × 20 jt × 5 = 9 jt → lebih potong 5,55 jt in his last masa.
+    expect(june.state === "CHECKED" && june.employees.map((e) => e.name)).toEqual(["Ani"]);
+    expect(june.state === "CHECKED" && june.leavers.map((e) => [e.name, e.months, e.pkp, e.annual, e.ter, e.december])).toEqual([["Dodi", 6, 63_000_000n, 3_450_000n, 9_000_000n, -5_550_000n]]);
+    expect(june).toMatchObject({ estimate: 200_000n - 5_550_000n });
+    expect(terNote(june)).toMatch(/^Estimasi PPh 21 lebih potong Rp 5\.350\.000 \(dikembalikan ke karyawan\) dari upah sensus: TER, dan tarif Pasal 17 setahun untuk 1 karyawan yang berhenti bulan ini;/);
+    // In July he is gone, and only Ani's TER remains.
+    expect((await report(7)).ter).toMatchObject({ state: "CHECKED", leavers: [], estimate: 200_000n });
+  });
+
   it("recomputes December under Pasal 17 less TER (PMK 168/2023), and names a lebih potong", async () => {
     await db.employee.create({ data: { firmId: g.firm.id, clientId: g.client.id, entityId: g.pt.entity.id, name: "Ani", sex: "FEMALE", birthDate: dateOnly(1990, 1, 1), hireDate: dateOnly(2020, 1, 1), wage: 10_000_000n, ptkpStatus: "TK0" } });
     await db.employee.create({ data: { firmId: g.firm.id, clientId: g.client.id, entityId: g.pt.entity.id, name: "Budi (keluar)", sex: "MALE", birthDate: dateOnly(1990, 1, 1), hireDate: dateOnly(2020, 1, 1), wage: 9_000_000n, ptkpStatus: "K1", leftOn: d(7, 31) } });

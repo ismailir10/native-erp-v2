@@ -202,6 +202,8 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     ≤ Rp 500 rb a month) − PTKP (Rp 54 jt + 4,5 jt married + 4,5 jt per dependent) → PKP rounded down to thousands → Pasal 17 layers
     (5/15/25/30/35 %) − TER of the months worked January–November = December (negative = lebih potong). Same 10 % tolerance against
     the PPh 21 booked for December; THR, bonus and the employee's JHT / JP iuran are not in the census, so it says it is an estimate.
+    An employee whose last day falls in a masa January–November gets the same recompute for the months worked through it (masa pajak
+    terakhir), not TER; the masa's estimate is TER for the others plus that.
     The TER check uses the census wage (`Employee.wage`, the PSAK 24 *upah*) and the employee's PTKP status, so it is an **estimate** and
     says so. A masa is judged on what was booked *for* it (credits in the month; PPN keluaran − masukan), paid by bank lines classified to
     the tax account up to its due date (PPh: the 15th of the next month; PPN: the end of the next month); an older balance is shown apart,
