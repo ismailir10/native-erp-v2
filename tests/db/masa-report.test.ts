@@ -222,6 +222,14 @@ describe("Tutup Buku — Pajak masa disetor", () => {
     await post(d(8, 14), [{ code: "2140", debit: 50_000n }, { code: "BANK", credit: 50_000n }]);
     expect(await control(8)).toMatchObject({ status: "PASS", detail: "Masa Juli 2026 disetor penuh sampai jatuh tempo; saldo PPh 21 sesuai yang masih terutang" });
   });
+
+  it("does not call a masa before the Saldo Awal paid in full: Buku never saw it", async () => {
+    // A Neraca per 31 August opened on August: July is before the books.
+    await post(d(8, 31), [{ code: "BANK", debit: 300_000n }, { code: "2140", credit: 200_000n }, { code: "3200", credit: 100_000n }], "OPENING");
+    expect(await control(8)).toMatchObject({ status: "PASS", detail: "Masa Juli 2026 sebelum pembukuan di Buku (mulai 31 Agu 2026): setorannya tidak bisa dicek di sini; saldo PPh 21 dari saldo awal" });
+    // September judges August, whose payable the opening holds: unpaid by 15 September it is flagged like any other masa.
+    expect((await control(9))?.detail).toMatch(/^PPh 21: Masa Agustus 2026: Rp 200\.000 dari Rp 200\.000 belum disetor/);
+  });
 });
 
 describe("masaReport — bukti potong and TER states", () => {
