@@ -29,6 +29,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { buttonVariants } from "@/components/ui/button";
 import { Download } from "lucide-react";
 
+const TAB = "h-7 flex-none";
+
 export const metadata = { title: "Laporan Keuangan" };
 
 export default async function ReportsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
@@ -203,14 +205,15 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
       </div>
       {scope.mode === "combined" && <p className="text-sm text-muted-foreground">{combinedNote}</p>}
       <UrlTabs defaultValue={tab}>
-        <TabsList className="max-w-full justify-start overflow-x-auto">
-          <TabsTrigger value="pl">Laba Rugi</TabsTrigger>
-          <TabsTrigger value="bs">Neraca</TabsTrigger>
-          <TabsTrigger value="eq">Perubahan Ekuitas</TabsTrigger>
-          <TabsTrigger value="cf">Arus Kas</TabsTrigger>
-          <TabsTrigger value="notes">CALK{toFill > 0 && <span className="num text-review" data-testid="calk-to-fill">· {toFill} diisi manajemen</span>}</TabsTrigger>
-          {multi && <TabsTrigger value="ws">Kertas Kerja Gabungan</TabsTrigger>}
-          {mgmt && <TabsTrigger value="mgmt">Catatan manajemen{mgmt.note?.stale ? <span className="text-review">· ditinjau ulang</span> : null}</TabsTrigger>}
+        {/* The tabs wrap on a phone: a strip scrolling sideways hid CALK and Catatan manajemen off-screen (ui-rules 11). */}
+        <TabsList className="max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto">
+          <TabsTrigger className={TAB} value="pl">Laba Rugi</TabsTrigger>
+          <TabsTrigger className={TAB} value="bs">Neraca</TabsTrigger>
+          <TabsTrigger className={TAB} value="eq">Perubahan Ekuitas</TabsTrigger>
+          <TabsTrigger className={TAB} value="cf">Arus Kas</TabsTrigger>
+          <TabsTrigger className={TAB} value="notes">CALK{toFill > 0 && <span className="num text-review" data-testid="calk-to-fill">· {toFill} diisi manajemen</span>}</TabsTrigger>
+          {multi && <TabsTrigger className={TAB} value="ws">Kertas Kerja Gabungan</TabsTrigger>}
+          {mgmt && <TabsTrigger className={TAB} value="mgmt">Catatan manajemen{mgmt.note?.stale ? <span className="text-review">· ditinjau ulang</span> : null}</TabsTrigger>}
         </TabsList>
 
         {mgmt && (

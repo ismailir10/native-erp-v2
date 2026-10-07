@@ -38,7 +38,9 @@ Stage: **Pembukuan** (close).
 - [x] T3 Pajak Masa is not called final while lines wait in Review: the banner counts the company's lines of the month still in
   Review ("4 mutasi … masih di Review, jadi pajak masa ini belum final", *Buka Review*) instead of "lolos semua pemeriksaan … untuk
   lapor". *Masa lalu* drops the "disetor" line when it equals the amount owed (ui-rules 9). E2e in `e2e/accountant-hints.spec.ts`.
-- [x] T4 Gates.
+- [x] T4 Laporan Keuangan tabs wrap on a phone: the strip scrolled sideways and hid CALK, Kertas Kerja Gabungan and Catatan manajemen
+  past the screen edge (found by the sweep at 390 px).
+- [x] T5 Gates.
 
 ## Implementation
 - T1: `collectControls` runs `masaReport` per company after the tax pack. "Active" means owed, a balance or a previous masa with something
