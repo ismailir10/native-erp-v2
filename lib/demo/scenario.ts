@@ -42,6 +42,8 @@ export type ClientScenario = {
   closedThrough: { year: number; month: number };
   /** Statement held back from the seed and written to public/demo for the live upload. */
   liveUpload?: { bankKey: string; year: number; month: number };
+  /** PPh 25 angsuran per entity from a masa ("YYYY-MM"), as the accountant typed it from last year's SPT. */
+  instalments?: { entity: number; from: string; amount: bigint }[];
 };
 
 // ---------- deterministic PRNG ----------
@@ -67,6 +69,8 @@ const bcaDesc = (dir: "DB" | "CR", y: number, m: number, dd: number, who: string
 const T = (accountCode: string, taxTag: TaxTag | null = null): Truth => ({ accountCode, taxTag });
 /** Payroll paid net: PPh 21 (5 % of gross) withheld, owed to the state by the 15th of the next month. */
 const payroll = (cash: bigint): Truth => ({ ...T("6100"), withholding: { kind: "PPH_21", amount: ((cash * 5n) / 95n / 1000n) * 1000n } });
+/** PT Ayam's PPh 25 angsuran per bulan from its 2025 SPT. */
+const PT_AYAM_PPH25 = 25_000_000n;
 /** Building rent paid by a company, net of the PPh 4(2) final 10% it withholds (gross = cash ÷ 90%; amounts chosen to divide evenly). */
 const rent = (cash: bigint): Truth => ({ ...T("6120"), withholding: { kind: "PPH_4_2", amount: (cash * 10n) / 90n } });
 const AI = (accountCode: string, reason: string, confidence = 0.86, taxTag: TaxTag | null = null): AiAnswer => ({ accountCode, reason, confidence, taxTag });
@@ -155,6 +159,8 @@ function grupAyam(): ClientScenario {
     lines.push({ bankKey: "pt-bca", date: d(y, m, 15), description: "SETORAN PPN MASA DJP", amount: -jt(40, 60), truth: T("2130", "PPN_KELUARAN"), remit: "PPN" });
     lines.push({ bankKey: "pt-bca", date: d(y, m, 10), description: "SETORAN PAJAK PPH 21 DJP", amount: -jt(7, 9), truth: T("2140", "PPH_21"), remit: "PPH_21" });
     lines.push({ bankKey: "pt-bca", date: d(y, m, 11), description: "SETORAN PPH 4(2) SEWA GUDANG DJP", amount: 0n, truth: T("2145", "PPH_4_2"), remit: "PPH_4_2" });
+    // PPh 25 for the month before, by the 15th (the firm rule files it to 1180 with its masa pajak).
+    lines.push({ bankKey: "pt-bca", date: d(y, m, 14), description: "SETORAN PPH 25 MASA DJP", amount: -PT_AYAM_PPH25, truth: T("1180", "PPH_25") });
     // bank items
     lines.push({ bankKey: "pt-bca", date: d(y, m, 28), description: "BIAYA ADM", amount: -30_000n, truth: T("7100") });
     lines.push({ bankKey: "pt-bca", date: d(y, m, 28), description: "BUNGA JASA GIRO", amount: 850_000n, truth: T("4900") });
@@ -299,6 +305,7 @@ function grupAyam(): ClientScenario {
     lines,
     closedThrough: { year: 2026, month: 7 },
     liveUpload: { bankKey: "own-bri", year: 2026, month: 8 },
+    instalments: [{ entity: 0, from: "2026-01", amount: PT_AYAM_PPH25 }],
   });
 }
 

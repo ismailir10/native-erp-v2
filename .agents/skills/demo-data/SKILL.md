@@ -28,7 +28,8 @@ Shapes are modelled on them; names, numbers and account numbers are invented.
 - **Coretax faktur** (`lib/demo/faktur.ts`, evidence only): one per taxed line, with the PPN the books split from it, so the ekualisasi
   ties every closed month; in August the DP and the machine wait on Review, and tie once the walk decides them.
 - Every month is a tidy client's: tax remittances pay exactly what the previous masa left owed (`remitTaxes`: PPN, PPh 21 withheld
-  from payroll, PPh 4(2) 10% withheld from building rent by PT Ayam and CV Sinar), and the opening piutang / utang settle in March.
+  from payroll, PPh 4(2) 10% withheld from building rent by PT Ayam and CV Sinar), PT Ayam pays its PPh 25 angsuran (Rp 25 jt, seeded
+  from January) by the 14th, and the opening piutang / utang settle in March.
 - **CV Sinar Retail**: 2 lines to review. **PT Jasa Kreatif Digital**: fully closed.
 
 ## Changing it
