@@ -18,3 +18,4 @@ One file per decision: context → decision → consequences. Supersede, don't e
 | [0012](0012-no-plug-findings.md) | No plug: a Saldo Awal difference waits on 3290 as a Temuan (finding) the accountant resolves in writing; the close FAILs until then |
 | [0013](0013-removing-an-import.md) | An admin removes a posted import (open months, nothing resting on it, with a reason) instead of reversing it; append-only change log `AuditEvent` |
 | [0014](0014-three-stage-spine.md) | Three stages per client-month (Sumber → Buku Besar → Laporan) + a firm close board; AI proposes, arithmetic proves, the accountant approves; iteration order I0–I5 (updates 0004) |
+| [0015](0015-production-only.md) | Production is the only hosted environment; development and e2e use a throwaway local Supabase stack (`npm run auth:local`), never production (supersedes the rest of staging in 0008/0010/0011) |

@@ -99,11 +99,13 @@ docs/{cycles,adrs,demo}/   history, decisions, demo script
 ## 6. Environment
 
 - Postgres 16 locally (`docker compose up -d` or the sandbox's preinstalled server); Supabase Postgres in production ([ADR 0010](docs/adrs/0010-supabase-platform.md)).
-- Login = Supabase Auth, email + password; local dev uses the *staging* project's Auth (keys in `.env`, see `.env.example`). Access = `FirmMember` (role ADMIN | AKUNTAN).
+- Login = Supabase Auth, email + password. **Production is the only hosted environment** ([ADR 0015](docs/adrs/0015-production-only.md)): local dev and e2e
+  use a throwaway local Supabase stack (`npm run auth:local`, needs Docker; in a cloud sandbox start `dockerd` first). Never point dev, seeds
+  or e2e at production. Access = `FirmMember` (role ADMIN | AKUNTAN).
 - `.env` from `.env.example`. `DEMO_MODE=true` enables synthetic demo fixtures; see [operator reset boundaries](README.md#deploy-vercel--supabase).
 - AI: `AI_BASE_URL` (env-only, default OpenCode Zen); key + model from **Pengaturan** (encrypted, `SETTINGS_SECRET`, admin role
   only), else `AI_API_KEY` / `AI_MODEL`. No key = rules-only mode, fully working.
-- Real client files: only locally or in production, the one real workspace ([ADR 0008](docs/adrs/0008-one-workspace.md)); staging is synthetic. Read [docs/real-data.md](docs/real-data.md) first.
+- Real client files: only locally or in production, the one real workspace ([ADR 0008](docs/adrs/0008-one-workspace.md)); local is synthetic. Read [docs/real-data.md](docs/real-data.md) first.
   **Credit is limited** — tests and seed never call a real model (MockProvider + cache). `npm run ai:smoke` makes one real call.
 - Access and environment setup: [README → Invitation operations](README.md#invitation-operations). Session tenancy lives in [`lib/tenant.ts`](lib/tenant.ts), authentication in [`lib/auth/`](lib/auth/).
 
@@ -121,4 +123,4 @@ when a real incident shows the need, and record it as an ADR.
 - PRs are drafts to `main`, body follows `.github/pull_request_template.md`.
 - **Tool-neutral.** Any coding agent (or person) works here the same way: branches `task/<slug>`, no AI-tool names in
   branches, code, docs, commits or PRs, and no AI attribution trailers or "generated with" footers.
-- Branch lifecycle and production promotion: follow [README → Branch workflow](README.md#branch-workflow) and the ship skill. Start new work from main; `staging` is frozen.
+- Branch lifecycle and production promotion: follow [README → Branch workflow](README.md#branch-workflow) and the ship skill. Start new work from main; `staging` is frozen history.
