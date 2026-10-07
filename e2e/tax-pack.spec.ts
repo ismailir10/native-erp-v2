@@ -95,6 +95,14 @@ test("tax pack: corrections, PPh badan with 31E, credits, current-tax journal", 
 
   await page.goto(`${base}/ledger/8100?period=2026-09`);
   await expect(page.getByText("PPh badan 2026 (estimasi s.d. September 2026)")).toBeVisible();
+
+  // December is the year: next year's PPh 25 = (61,6 jt − 20 jt PPh 23) ÷ 12, and one click puts it on Pajak Masa from April 2027.
+  await page.goto(`${base}/tax?period=2026-12`);
+  await expect(page.getByTestId("tax-next")).toContainText("3.466.666");
+  await page.getByTestId("tax-next-adopt").getByRole("button", { name: "Jadikan angsuran mulai masa April 2027" }).click();
+  await expect(page.getByText("Angsuran PPh 25 mulai masa April 2027 disimpan")).toBeVisible();
+  await page.goto(`${base}/tax/masa?period=2027-04`);
+  await expect(page.getByTestId("pph25-instalment")).toContainText("Angsuran Rp 3.466.666 per bulan mulai masa April 2027");
   if (process.env.E2E_SCREENSHOTS) {
     await page.goto(`${base}/tax?period=2026-09`);
     await page.screenshot({ path: `${process.env.E2E_SCREENSHOTS}/tax-1440.png`, fullPage: true });

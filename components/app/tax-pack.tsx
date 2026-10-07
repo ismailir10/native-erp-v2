@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SimpleSelect } from "@/components/app/simple-select";
 import { Money } from "@/components/app/money";
-import { acceptSuggestionAction, addCorrectionAction, addCreditAction, deleteCorrectionAction, deleteCreditAction, deleteLossAction, dismissSuggestionAction, postTaxAction, setCorrectionPercentAction, setLossAction, setRegimeAction, setTaxMonthAction } from "@/app/actions";
+import { acceptSuggestionAction, addCorrectionAction, addCreditAction, deleteCorrectionAction, deleteCreditAction, deleteLossAction, dismissSuggestionAction, postTaxAction, setCorrectionPercentAction, setLossAction, setInstalmentAction, setRegimeAction, setTaxMonthAction } from "@/app/actions";
 import { formatMoney } from "@/lib/money";
 import type { TaxPackView } from "@/lib/tax/view";
 
@@ -238,6 +238,24 @@ export function TaxPackPanel(props: { clientId: string; periodKey: string; perio
               ))}
               {v.settlement && row(BigInt(v.settlement.balance) >= 0n ? "PPh Pasal 29 kurang bayar" : "PPh Pasal 28A lebih bayar", BigInt(v.settlement.balance) < 0n ? (-BigInt(v.settlement.balance)).toString() : v.settlement.balance, { strong: true, testid: "tax-balance" })}
               {v.settlement && row(v.months < 12 ? "Angsuran PPh 25 tahun berikutnya per bulan (proyeksi setahun)" : "Angsuran PPh 25 tahun berikutnya per bulan", v.settlement.nextInstalment, { muted: true, testid: "tax-next" })}
+              {v.settlement && v.month === 12 && BigInt(v.settlement.nextInstalment) > 0n && (
+                // The year's SPT sets next year's PPh 25 from the masa it is filed (by April): one click puts it on Pajak Masa.
+                <div className="flex flex-wrap items-center gap-2 pb-1 pl-4 text-xs text-muted-foreground" data-testid="tax-next-adopt">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-6 px-2 text-xs"
+                    disabled={busy}
+                    onClick={() => run(() => setInstalmentAction({ clientId: props.clientId, entityId: v.entity.id, from: `${v.year + 1}-04`, amount: formatMoney(BigInt(v.settlement!.nextInstalment), cur, { bare: true }) }), `Angsuran PPh 25 mulai masa April ${v.year + 1} disimpan`)}
+                  >
+                    Jadikan angsuran mulai masa April {v.year + 1}
+                  </Button>
+                  <span>
+                    Januari–Maret tetap angsuran sekarang sampai SPT disampaikan; masanya bisa diubah di{" "}
+                    <Link href={`${base}/tax/masa?entity=${v.entity.id}&period=${v.year + 1}-04`} className="text-primary underline-offset-2 hover:underline">Pajak Masa</Link>.
+                  </span>
+                </div>
+              )}
             </>
           )}
         </CardContent>
