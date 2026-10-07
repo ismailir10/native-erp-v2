@@ -38,4 +38,9 @@ expatriates; NPWP-less surcharge (abolished for NIK holders).
   sheet; a July hire turns the estimate into lebih potong Rp 50.000 and REVIEW. An employee who left in July is not in December.
 - `e2e/pph21-december.spec.ts`: census with *Status PTKP* imported, Pajak Masa December shows the table, the lebih potong and *Perlu dicek*.
 
+- Full gates on main + this change: `npm test` 1193 passed; build; `verify:books` ALL PASS (1765); `test:e2e` 57 passed, 1 failed
+  (`new-client-bank-row`: the delete toast showed, the redirect to Beranda did not arrive in 5 s while this sandbox's Postgres went
+  down). It passes 4 of 4 on its own after restarting Postgres; it does not touch PPh 21.
+
 ## Ship Notes
+- No migration. December's PPh 21 card changes from "not checked" to the annual table and a status. Rollback: revert.
