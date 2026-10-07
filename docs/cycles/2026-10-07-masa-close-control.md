@@ -55,6 +55,9 @@ Stage: **Pembukuan** (close).
 - `npm run test:e2e` locally: 50 passed and 1 failed. The failure was `leases.spec.ts`: the register was 10 jt off the ledger, meaning
   one of three rent payments did not land on 2170. It did not reproduce in 20 repeats (5 serial, 15 on 3 workers). This change does not
   touch Review or leases, so it is recorded here rather than fixed; CI is the confirmation run.
+- CI on 663bd37 failed in `accountant-hints.spec.ts` (from the usability pass): `Cari akun` matched two inputs, the previous picker's
+  still closing. The two specs that fill it (`accountant-hints`, `qa-tax-split`) now target the open one (`expanded: true`); 18 of 18 in
+  6 repeats.
 - Final head (after T2–T4): `npm run test:e2e` 52 passed (5.1m); `npm test` 1161 passed.
 
 ## Ship Notes

@@ -18,7 +18,8 @@ const CSV = [
 
 async function pick(page: Page, item: Locator, account: string) {
   await item.getByRole("combobox", { name: "Akun", exact: true }).click();
-  await page.getByRole("combobox", { name: "Cari akun" }).fill(account);
+  // The previous picker's search box can still be in the DOM while its popup closes: fill the open one.
+  await page.getByRole("combobox", { name: "Cari akun", expanded: true }).fill(account);
   await page.keyboard.press("Enter");
 }
 

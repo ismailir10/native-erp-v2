@@ -21,7 +21,7 @@ const CSV = [
 
 async function classify(page: Page, item: Locator, v: { account: string; tax?: RegExp; withholding?: RegExp }) {
   await item.getByRole("combobox", { name: "Akun", exact: true }).click();
-  await page.getByRole("combobox", { name: "Cari akun" }).fill(v.account);
+  await page.getByRole("combobox", { name: "Cari akun", expanded: true }).fill(v.account);
   await page.keyboard.press("Enter");
   if (v.tax) {
     await item.getByRole("combobox", { name: "Pajak", exact: true }).click();
