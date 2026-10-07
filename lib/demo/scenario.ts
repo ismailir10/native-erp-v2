@@ -29,7 +29,7 @@ export type DemoLine = {
   /** What the (simulated) AI answers for this merchant — may be wrong on purpose. */
   ai?: AiAnswer;
   /** A tax remittance: its amount is set by `remitTaxes` to what the previous masa left owed. */
-  remit?: "PPN" | "PPH_21";
+  remit?: "PPN" | "PPH_21" | "PPH_4_2";
 };
 export type OpeningLine = { code: string; amount: bigint }; // signed: debit +, credit −
 export type ClientScenario = {
@@ -67,6 +67,8 @@ const bcaDesc = (dir: "DB" | "CR", y: number, m: number, dd: number, who: string
 const T = (accountCode: string, taxTag: TaxTag | null = null): Truth => ({ accountCode, taxTag });
 /** Payroll paid net: PPh 21 (5 % of gross) withheld, owed to the state by the 15th of the next month. */
 const payroll = (cash: bigint): Truth => ({ ...T("6100"), withholding: { kind: "PPH_21", amount: ((cash * 5n) / 95n / 1000n) * 1000n } });
+/** Building rent paid by a company, net of the PPh 4(2) final 10% it withholds (gross = cash ÷ 90%; amounts chosen to divide evenly). */
+const rent = (cash: bigint): Truth => ({ ...T("6120"), withholding: { kind: "PPH_4_2", amount: (cash * 10n) / 90n } });
 const AI = (accountCode: string, reason: string, confidence = 0.86, taxTag: TaxTag | null = null): AiAnswer => ({ accountCode, reason, confidence, taxTag });
 
 // =====================================================================================
@@ -134,7 +136,7 @@ function grupAyam(): ClientScenario {
       date: d(y, m, 5),
       description: bcaDesc("DB", y, m, 5, "PT GRAHA LOGISTIK CIKARANG SEWA GUDANG"),
       amount: -45_000_000n,
-      truth: T("6120"),
+      truth: rent(45_000_000n),
       ai: AI("6120", "Sewa gudang bulanan", 0.9),
     });
     for (let i = 0; i < 2; i++) {
@@ -152,6 +154,7 @@ function grupAyam(): ClientScenario {
     // taxes
     lines.push({ bankKey: "pt-bca", date: d(y, m, 15), description: "SETORAN PPN MASA DJP", amount: -jt(40, 60), truth: T("2130", "PPN_KELUARAN"), remit: "PPN" });
     lines.push({ bankKey: "pt-bca", date: d(y, m, 10), description: "SETORAN PAJAK PPH 21 DJP", amount: -jt(7, 9), truth: T("2140", "PPH_21"), remit: "PPH_21" });
+    lines.push({ bankKey: "pt-bca", date: d(y, m, 11), description: "SETORAN PPH 4(2) SEWA GUDANG DJP", amount: 0n, truth: T("2145", "PPH_4_2"), remit: "PPH_4_2" });
     // bank items
     lines.push({ bankKey: "pt-bca", date: d(y, m, 28), description: "BIAYA ADM", amount: -30_000n, truth: T("7100") });
     lines.push({ bankKey: "pt-bca", date: d(y, m, 28), description: "BUNGA JASA GIRO", amount: 850_000n, truth: T("4900") });
@@ -248,6 +251,12 @@ function grupAyam(): ClientScenario {
     }
   }
 
+  // The opening receivables and payables settle in March, so the Neraca's piutang and utang move like a real business's. Fixed
+  // descriptions and amounts (no rand()), so nothing else in the scenario shifts.
+  lines.push({ bankKey: "pt-bca", date: d(2026, 3, 6), description: "TRSF E-BANKING CR 0603/FTSCY/WS951204 CV SUMBER PANGAN NUSANTARA", amount: 250_000_000n, truth: T("1130") });
+  lines.push({ bankKey: "pt-mdr", date: d(2026, 3, 13), description: "TRANSFER DARI UD RIZKI POULTRY PELUNASAN INV FEB", amount: 170_000_000n, truth: T("1130") });
+  lines.push({ bankKey: "pt-bca", date: d(2026, 3, 10), description: "TRSF E-BANKING DB 1003/FTSCY/WS961877 PT SINAR OBAT HEWAN PELUNASAN TAGIHAN FEB", amount: -240_000_000n, truth: T("2110") });
+
   return remitTaxes({
     key: "grup-ayam",
     spec: {
@@ -280,6 +289,8 @@ function grupAyam(): ClientScenario {
         // February's PPN and the PPh 21 withheld from February's payroll, remitted in March.
         { code: "2130", amount: -48_500_000n },
         { code: "2140", amount: -8_700_000n },
+        // February's PPh 4(2) withheld from the warehouse rent, remitted by 15 March.
+        { code: "2145", amount: -5_000_000n },
         { code: "2210", amount: -600_000_000n },
         { code: "3100", amount: -2_000_000_000n },
       ],
@@ -305,7 +316,8 @@ function sinarRetail(): ClientScenario {
       const dd = day(4 + i * 8, 8 + i * 8);
       lines.push({ bankKey: "bca", date: d(y, m, dd), description: bcaDesc("DB", y, m, dd, "PT DISTRIBUSI SEMBAKO NUSANTARA"), amount: -jt(45, 60), truth: T("5100"), ai: AI("5100", "Pembelian barang dagang", 0.9) });
     }
-    lines.push({ bankKey: "bca", date: d(y, m, 1), description: bcaDesc("DB", y, m, 1, "HJ ROSMIATI SEWA RUKO"), amount: -12_500_000n, truth: T("6120"), ai: AI("6120", "Sewa ruko toko", 0.88) });
+    lines.push({ bankKey: "bca", date: d(y, m, 1), description: bcaDesc("DB", y, m, 1, "HJ ROSMIATI SEWA RUKO"), amount: -13_500_000n, truth: rent(13_500_000n), ai: AI("6120", "Sewa ruko toko", 0.88) });
+    lines.push({ bankKey: "bca", date: d(y, m, 11), description: "SETORAN PPH 4(2) SEWA RUKO DJP", amount: 0n, truth: T("2145", "PPH_4_2"), remit: "PPH_4_2" });
     lines.push({ bankKey: "bca", date: d(y, m, 25), description: "GAJI KARYAWAN TOKO", amount: -jt(21, 23), truth: T("6100") });
     lines.push({ bankKey: "bca", date: d(y, m, 12), description: "PEMBAYARAN PLN PRABAYAR", amount: -jt(2, 3, 10_000), truth: T("6130") });
     lines.push({ bankKey: "bca", date: d(y, m, 28), description: "BIAYA ADM", amount: -15_000n, truth: T("7100") });
@@ -314,7 +326,7 @@ function sinarRetail(): ClientScenario {
       lines.push({ bankKey: "bca", date: d(y, m, 23), description: bcaDesc("CR", y, m, 23, "PT KOPERASI PEGAWAI PEMDA BELANJA GROSIR"), amount: 14_300_000n, truth: T("4100"), open: true, ai: AI("4100", "Penjualan grosir", 0.83) });
     }
   }
-  return {
+  return remitTaxes({
     key: "sinar",
     spec: {
       name: "CV Sinar Retail",
@@ -323,10 +335,11 @@ function sinarRetail(): ClientScenario {
       rules: [{ pattern: "QRIS", direction: "IN", accountCode: "4100", taxTag: null, priority: 50 }],
     },
     banks: { bca: { entity: 0, bank: 0, opening: 145_000_000n } },
-    openings: [[{ code: "1160", amount: 95_000_000n }, { code: "3100", amount: -150_000_000n }]],
+    // February's PPh 4(2) withheld from the shop rent, remitted by 15 March.
+    openings: [[{ code: "1160", amount: 95_000_000n }, { code: "2145", amount: -1_500_000n }, { code: "3100", amount: -150_000_000n }]],
     lines,
     closedThrough: { year: 2026, month: 7 },
-  };
+  });
 }
 
 // =====================================================================================
@@ -387,9 +400,9 @@ function remitTaxes(sc: ClientScenario): ClientScenario {
       const net = keluaran - masukan - carry;
       owed.set(`${e}:PPN:${k}`, net > 0n ? net : 0n);
       carry = net < 0n ? -net : 0n;
-      owed.set(`${e}:PPH_21:${k}`, inMonth.reduce((s, l) => s + (l.truth.withholding?.kind === "PPH_21" ? l.truth.withholding.amount : 0n), 0n));
+      for (const kind of ["PPH_21", "PPH_4_2"] as const) owed.set(`${e}:${kind}:${k}`, inMonth.reduce((s, l) => s + (l.truth.withholding?.kind === kind ? l.truth.withholding.amount : 0n), 0n));
     }
-    for (const [tax, code] of [["PPN", "2130"], ["PPH_21", "2140"]] as const) {
+    for (const [tax, code] of [["PPN", "2130"], ["PPH_21", "2140"], ["PPH_4_2", "2145"]] as const) {
       owed.set(`${e}:${tax}:${first - 1}`, -(sc.openings[e] ?? []).filter((o) => o.code === code).reduce((s, o) => s + o.amount, 0n));
     }
   });
