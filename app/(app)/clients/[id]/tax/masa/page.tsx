@@ -3,7 +3,7 @@ import { Download } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { loadClientPage } from "@/lib/client-page";
 import { type SearchParams, withParams } from "@/lib/scope";
-import { formatDate, formatPeriod } from "@/lib/format";
+import { formatDate, formatPeriod, periodBounds } from "@/lib/format";
 import { formatRupiah } from "@/lib/money";
 import { packApplies } from "@/lib/tax/pack";
 import { masaReport, ppnLine, previousStateLabel, rowNotes, terNote, terRow, withholdingLabel, type MasaRow, type WithholdingLine } from "@/lib/tax/masa-report";
@@ -53,12 +53,19 @@ export default async function TaxMasaPage({ params, searchParams }: { params: Pr
   const firstProblem = rows.find((r) => r.status === "REVIEW");
   const terReview = report.ter.state === "CHECKED" && report.ter.status === "REVIEW";
   const reviewInWht = [...report.withheldByUs, ...report.withheldFromUs].filter((w) => w.inReview).length;
+  // Lines still in Review sit on 1999 without their tax: the masa's PPN and PPh are not final until they are decided.
+  const { start, end } = periodBounds(period.year, period.month);
+  const pending = await prisma.bankTransaction.count({ where: { entityId: entity.id, status: "NEEDS_REVIEW", date: { gte: start, lte: end } } });
 
   return (
     <div className="space-y-6">
       {header}
       {firstProblem ? (
         <NextStep>{firstProblem.label}: {rowNotes(firstProblem)[0]}</NextStep>
+      ) : pending ? (
+        <NextStep href={withParams(`${base}/review`, { period: period.key })} cta="Buka Review">
+          {pending} mutasi {entity.shortName} {label} masih di Review, jadi pajak masa ini belum final. Selesaikan Review sebelum lapor di Coretax.
+        </NextStep>
       ) : terReview ? (
         <NextStep>{terNote(report.ter)}</NextStep>
       ) : (
@@ -183,7 +190,7 @@ function TaxRow({ r, href }: { r: MasaRow; href: string }) {
           <div className="text-xs text-muted-foreground">
             {formatPeriod(p.masa.year, p.masa.month)} · {r.netPayroll ? "disetor tanpa terutang" : previousStateLabel(p.state)}
           </div>
-          {paid + late > 0n && <div className="num text-xs text-muted-foreground">disetor {formatRupiah(paid + late, { bare: true })}</div>}
+          {paid + late > 0n && paid + late !== p.owed && <div className="num text-xs text-muted-foreground">disetor {formatRupiah(paid + late, { bare: true })}</div>}
         </TableCell>
         <TableCell className="hidden text-right md:table-cell"><Link href={href} className="hover:text-primary"><Money value={r.balance} /></Link></TableCell>
         <TableCell className="hidden text-right sm:table-cell"><StatusPill status={r.status} /></TableCell>

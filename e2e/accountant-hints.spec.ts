@@ -62,3 +62,13 @@ test("Review hints catch capex, down payments and missing withholding; the reque
   await expect(request.getByLabel("Pesan permintaan data")).toHaveValue(/tanpa perlu akun \(berlaku sampai .+\):\nhttps?:\/\/[^\n]+\/kirim\/[A-Za-z0-9_-]{43}\n\nTerima kasih/);
   await expect(page.getByTestId("upload-link-row").first()).toContainText("Aktif");
 });
+
+test("Pajak Masa is not called final while the month's lines wait in Review", async ({ page }) => {
+  const id = await addClient(page, { name: "QA Masa Review" });
+  await uploadStatement(page, id, "masa-review.csv", CSV);
+  await expect(page.getByTestId("import-result")).toContainText("Nyambung");
+  await page.goto(`/clients/${id}/tax/masa?period=2026-08`);
+  await expect(page.getByText(/^4 mutasi .+ Agustus 2026 masih di Review, jadi pajak masa ini belum final/)).toBeVisible();
+  await expect(page.getByRole("link", { name: "Buka Review" })).toHaveAttribute("href", /\/review\?period=2026-08/);
+  await expect(page.getByText("lolos semua pemeriksaan")).toHaveCount(0);
+});

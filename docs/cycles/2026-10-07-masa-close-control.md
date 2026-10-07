@@ -21,6 +21,9 @@ Stage: **Pembukuan** (close).
 - [x] **PPh 21 leaves the Unifikasi list.** Payroll now carries PPh 21 withholding, so payroll lines appeared under *Bukti potong
   (Unifikasi)*. PPh 21 slips (BPMP / BP21) are made per recipient in e-Bupot 21/26, not in Unifikasi. The list and the Excel sheet now
   hold PPh 22, 23 and 4(2) only, and say where PPh 21 goes.
+- [x] **Pajak Masa waits for Review.** On the demo, August read "lolos semua pemeriksaan … unduh untuk lapor di Coretax" while the DP
+  (PPN keluaran) and the machine (PPN masukan) were still in Review on 1999. Filing from that would understate both. The banner now
+  says how many of the month's lines are in Review, and links there.
 
 **Non-goals:**
 - blocking the close (FAIL);
@@ -32,7 +35,10 @@ Stage: **Pembukuan** (close).
 - [x] T1 The control in `lib/controls/index.ts`, accounting-rules 5j, and a DB test (absent, REVIEW when short, PASS once paid).
 - [x] T2 PPh 21 out of the Unifikasi list (`masaReport` query, page, workbook) + the bukti-potong test asserts a payroll line is not
   listed.
-- [x] T3 Gates.
+- [x] T3 Pajak Masa is not called final while lines wait in Review: the banner counts the company's lines of the month still in
+  Review ("4 mutasi … masih di Review, jadi pajak masa ini belum final", *Buka Review*) instead of "lolos semua pemeriksaan … untuk
+  lapor". *Masa lalu* drops the "disetor" line when it equals the amount owed (ui-rules 9). E2e in `e2e/accountant-hints.spec.ts`.
+- [x] T4 Gates.
 
 ## Implementation
 - T1: `collectControls` runs `masaReport` per company after the tax pack. "Active" means owed, a balance or a previous masa with something
