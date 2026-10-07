@@ -74,7 +74,7 @@ Stage: **Laporan** (Pajak Masa).
   - status rules (cancelled, replaced, not credited);
   - sen rounding;
   - a missing column refused.
-- [ ] T2 Migration + `lib/tax/faktur.ts`: `importFaktur` (upsert, counts, audit), `deleteFaktur`, `fakturRecon` (totals, one-to-one
+- [x] T2 Migration + `lib/tax/faktur.ts`: `importFaktur` (upsert, counts, audit), `deleteFaktur`, `fakturRecon` (totals, one-to-one
   matching). Client delete. DB tests: a matching month; a faktur not booked; book PPN without a faktur; a cancelled faktur ignored; a
   re-import that cancels a faktur; another firm's client refused.
 - [ ] T3 The card on Pajak Masa, the actions, the Excel sheet and the close control. E2e: upload keluaran with one cancelled and one
@@ -89,5 +89,16 @@ Stage: **Laporan** (Pajak Masa).
   - The masa is read from a number, an `MM-YYYY` value or a month name; otherwise it is the faktur date.
   - A duplicated faktur number is refused.
   - Test: `tests/unit/faktur-read.test.ts`.
+- T2: migration `20261007100000_coretax_faktur` with CHECKs on direction and month, and `lib/tax/faktur.ts`.
+  - `importFaktur`: an upsert that counts new, changed and unchanged faktur.
+  - `deleteFaktur`: one direction of one masa.
+  - `fakturRecon`: book PPN per source (bank line, invoice with its void netted, journal); remittances are excluded.
+  - Matching: one to one on the exact PPN, scored by NPWP (16-digit read as 15-digit), then a shared name word, then the nearest date.
+  - `fakturNotes`.
+
+  Around it:
+  - Control `faktur:<entity>`, only when faktur for the masa exist.
+  - Audit kind `FAKTUR`; client delete; `FakturError` in the action errors; accounting-rules 5k.
+  - Test: `tests/db/faktur.test.ts`.
 ## Verification
 ## Ship Notes

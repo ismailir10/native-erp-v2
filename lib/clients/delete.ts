@@ -69,6 +69,7 @@ export async function deleteClient(db: Db, input: { firmId: string; clientId: st
       await tx.reportFormat.deleteMany({ where: { clientId } });
       await tx.reportComment.deleteMany({ where: { clientId } });
       await tx.ocrDraft.deleteMany({ where: { clientId } });
+      await tx.coretaxFaktur.deleteMany({ where: { clientId } });
       await tx.periodUnlockLog.deleteMany({ where: { clientId } });
       await tx.period.deleteMany({ where: { clientId } });
       await tx.account.deleteMany({ where: { clientId } });

@@ -1708,3 +1708,35 @@ model ReportFormat {
   updatedBy   FirmMember? @relation("ReportFormatBy", fields: [updatedById], references: [id], onDelete: SetNull)
   updatedAt   DateTime    @updatedAt
 }
+
+/// A faktur from a Coretax export (I5c): evidence for the ekualisasi PPN, never posted. Re-importing updates it (status can change).
+model CoretaxFaktur {
+  id           String   @id @default(cuid())
+  firmId       String
+  clientId     String
+  entityId     String
+  /// KELUARAN (the company sold) | MASUKAN (the company bought).
+  direction    String
+  number       String
+  date         DateTime @db.Date
+  /// The masa pajak the faktur is reported in.
+  year         Int
+  month        Int
+  npwp         String?
+  name         String
+  dpp          BigInt
+  ppn          BigInt
+  /// As written in the export.
+  status       String
+  /// Counts toward the masa: not cancelled / replaced / rejected / draft; masukan only when credited.
+  counted      Boolean
+  uncredited   Boolean  @default(false)
+  fileName     String
+  sourceRef    String
+  importedById String?
+  importedAt   DateTime @default(now())
+
+  @@unique([entityId, direction, number])
+  @@index([clientId])
+  @@index([entityId, year, month])
+}

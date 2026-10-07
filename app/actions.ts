@@ -43,6 +43,7 @@ import { EntitySettingsError, setFiscalYearEnd, setReportingFramework } from "@/
 import { setClientModules } from "@/lib/clients/modules";
 import { FormatError, resetReportFormat, saveReportFormat } from "@/lib/reports/format-settings";
 import { deleteSubledgerImport, importAging, resolveSubledgerFinding, SubledgerError } from "@/lib/reconcile/subledger";
+import { FakturError } from "@/lib/tax/faktur";
 import { OpeningError, postOpening, type OpeningLineInput } from "@/lib/opening";
 import { FindingError, resolveOpeningFinding } from "@/lib/findings";
 import { removeLedgerImport, removeStatementImport, RemoveImportError } from "@/lib/imports/remove";
@@ -76,7 +77,7 @@ function fail(e: unknown): { ok: false; error: string; needsPassword?: boolean; 
   if (e instanceof PdfPasswordError) return { ok: false, error: e.message, needsPassword: true };
   if (e instanceof YearNeededError) return { ok: false, error: e.message, needsYear: true, yearGuess: e.guess };
   if (e instanceof DeleteClientError) return { ok: false, error: e.message };
-  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError || e instanceof FindingError || e instanceof RemoveImportError || e instanceof MoneyError || e instanceof RateError || e instanceof RevaluationError || e instanceof LedgerImportError || e instanceof MappingError || e instanceof EntitySettingsError || e instanceof FormatError || e instanceof SubledgerError) return { ok: false, error: e.message };
+  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError || e instanceof FindingError || e instanceof RemoveImportError || e instanceof MoneyError || e instanceof RateError || e instanceof RevaluationError || e instanceof LedgerImportError || e instanceof MappingError || e instanceof EntitySettingsError || e instanceof FormatError || e instanceof SubledgerError || e instanceof FakturError) return { ok: false, error: e.message };
   const infra = infraErrorMessage(e);
   console.error(e);
   return { ok: false, error: infra ?? "Terjadi kesalahan tak terduga. Coba lagi." };
