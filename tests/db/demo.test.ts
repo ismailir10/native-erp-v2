@@ -6,6 +6,7 @@ import { importStatement } from "@/lib/import/pipeline";
 import { runControls } from "@/lib/controls";
 import { MockProvider } from "@/lib/ai/provider";
 import { masaReport } from "@/lib/tax/masa-report";
+import { fakturRecon } from "@/lib/tax/faktur";
 
 /** Layer 2: the seeded demo (built through the real pipeline) matches generator ground truth. */
 describe("demo seed vs ground truth", () => {
@@ -20,6 +21,14 @@ describe("demo seed vs ground truth", () => {
     for (const e of companies) for (const month of [3, 4, 5, 6, 7, 8]) {
       const r = await masaReport(db, { clientId: e.clientId, entityId: e.id, year: 2026, month, now: new Date(Date.UTC(2026, 8, 20)) });
       expect(r!.rows.filter((x) => x.status !== "PASS").map((x) => `${month}:${x.key}`)).toEqual([]);
+    }
+
+    // The demo's Coretax faktur tie every closed month; August waits on the DP and the machine still in Review.
+    for (const e of companies) for (const month of [3, 4, 5, 6, 7, 8]) {
+      const f = await fakturRecon(db, { clientId: e.clientId, entityId: e.id, year: 2026, month });
+      const open = f.directions.flatMap((d) => d.unmatchedFaktur.map((x) => `${month}:${d.direction}:${x.name}`));
+      expect(open).toEqual(month === 8 && f.directions.some((d) => d.unmatchedFaktur.length) ? ["8:KELUARAN:CV PETERNAKAN BERKAH JAYA DP AYAM", "8:MASUKAN:PT AGRO TEKNIK MANDIRI MESIN PAKAN OTOMATIS"] : []);
+      expect(f.directions.flatMap((d) => d.unmatchedBook)).toEqual([]);
     }
 
     const client = await db.client.findFirstOrThrow({ where: { name: "Grup Ayam Nusantara" } });

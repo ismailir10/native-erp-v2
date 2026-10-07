@@ -34,6 +34,13 @@ Automated end to end by `e2e/investor-demo.spec.ts` — if you change this scrip
 
 > Talking point: *AI never writes to the books on its own. Every decision trains the client's memory.*
 
+### 3b. Pajak Masa — the books tie to Coretax (30 s, optional)
+- Open **Pajak Masa**. PPN, PPh 21 and the previous masa are *Lolos* (remitted in full, on time).
+- *Ekualisasi PPN (Coretax)*: every faktur keluaran and masukan is matched to its line in the books. Before Review, the DP and the
+  machine showed up as *faktur belum ada di buku*; now both tie.
+
+> Talking point: *the firm's month-end question "do the faktur match the books?" is answered before the SPT, row by row.*
+
 ### 4. Laporan Keuangan — trace any number (45 s)
 - Laba Rugi August + YTD. Click **4100 Penjualan** → Buku Besar → click any line →
   the sheet shows the **journal and the original statement row** (file, row number, raw text).

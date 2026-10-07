@@ -25,6 +25,8 @@ Shapes are modelled on them; names, numbers and account numbers are invented.
   one where AI is wrong (machine → should be 1210 Aset Tetap). August depreciation installment (6/120) proposed, not yet posted (one-click moment); after the machine is reviewed to 1210 it is a fixed-asset candidate for a new schedule.
 - **Taxes are tidy**: payroll is paid net with PPh 21 (5 % of gross) withheld to 2140, and every PPN / PPh 21 remittance pays exactly what the
   previous masa owed (`remitTaxes`; the March ones pay the opening 2130 / 2140), so Pajak Masa is *Lolos* on every PT month.
+- **Coretax faktur** (`lib/demo/faktur.ts`, evidence only): one per taxed line, with the PPN the books split from it, so the ekualisasi
+  ties every closed month; in August the DP and the machine wait on Review, and tie once the walk decides them.
 - **CV Sinar Retail**: 2 lines to review. **PT Jasa Kreatif Digital**: fully closed.
 
 ## Changing it

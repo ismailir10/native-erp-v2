@@ -58,6 +58,12 @@ test("statement in → reviewed → traceable reports → combined → closed", 
   await expect(page.getByText("Antrean kosong")).toBeVisible();
   await expect(page.getByTestId("review-saving")).toHaveCount(0); // accepts are optimistic: every save done
 
+  // 3b. Pajak Masa: with the DP and the machine decided, the Coretax faktur tie to the books (ekualisasi PPN, I5c).
+  await page.getByRole("link", { name: "Pajak Masa" }).click();
+  await expect(page.getByRole("heading", { name: "Pajak Masa" })).toBeVisible();
+  await expect(page.getByTestId("faktur-KELUARAN")).toContainText("Lolos");
+  await expect(page.getByTestId("faktur-MASUKAN")).toContainText("Lolos");
+
   // 4. Every number traces to its bank row: P&L → account → ledger line → statement row
   await page.getByRole("link", { name: "Laporan Keuangan" }).click();
   await expect(page.getByRole("heading", { name: "Laporan Keuangan" })).toBeVisible();

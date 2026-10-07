@@ -12,6 +12,7 @@ import { dateOnly } from "@/lib/format";
 import { merchantKey } from "@/lib/import/normalize";
 import { aiCacheKey } from "@/lib/ai/classify";
 import { renderStatement } from "@/lib/demo/writers";
+import { demoFaktur } from "@/lib/demo/faktur";
 import { aiTable, DEMO_MONTHS, scenarios, statementFiles, type ClientScenario, type Truth } from "@/lib/demo/scenario";
 
 export const OPENING_DATE = dateOnly(2026, 2, 28);
@@ -43,6 +44,29 @@ export async function seedDemo(db: Db, opts: { log?: (s: string) => void; liveAi
     const { client, entities } = await db.$transaction((tx) => createClient(tx, firm.id, sc.spec));
     log(`• ${client.name}`);
     await postOpenings(db, sc, client.id, entities);
+    // Coretax faktur for the ekualisasi (I5c): evidence only, never posted; they tie as each month's lines are reviewed.
+    const faktur = demoFaktur(sc);
+    if (faktur.length) {
+      await db.coretaxFaktur.createMany({
+        data: faktur.map((f) => ({
+          firmId: firm.id,
+          clientId: client.id,
+          entityId: entities[f.entity].entity.id,
+          direction: f.direction,
+          number: f.number,
+          date: f.date,
+          year: f.year,
+          month: f.month,
+          name: f.name,
+          dpp: f.dpp,
+          ppn: f.ppn,
+          status: f.direction === "KELUARAN" ? "APPROVED" : "CREDITED",
+          counted: true,
+          fileName: "coretax-demo.xlsx",
+          sourceRef: f.sourceRef,
+        })),
+      });
+    }
     const first = DEMO_MONTHS[0];
     const depreciation =
       sc.key === DEPRECIATION.clientKey
