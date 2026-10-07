@@ -72,7 +72,9 @@ Stage: across all three (**Sumber**, **Pembukuan**, **Laporan**).
 
 ## Verification
 - Sweep: no HTTP 5xx, no console errors and no page overflow at 390 px after the fixes.
-- `npm run lint` exit 0; `npm run typecheck` exit 0; `npm test`: Test Files 178 passed (178), Tests 1159 passed (1159).
+- `npm run lint` exit 0; `npm run typecheck` exit 0; `npm test`: Test Files 178 passed (178), Tests 1159 passed (1159); `npm run build` exit 0;
+  `npm run verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`; `npm run test:e2e` on the local stack: 51
+  passed (4.7m).
 
 ## Ship Notes
 - No migration, no env var. The owner may pause or delete the `native-erp-v2-staging` Supabase project and the Vercel Preview env.
