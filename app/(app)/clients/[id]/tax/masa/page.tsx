@@ -281,11 +281,19 @@ export default async function TaxMasaPage({ params, searchParams }: { params: Pr
               </TableBody>
               <TableFooter>
                 <TableRow>
-                  <TableCell colSpan={2}>Estimasi TER</TableCell>
+                  <TableCell colSpan={2}>{report.ter.leavers.length ? "Estimasi TER (karyawan aktif)" : "Estimasi TER"}</TableCell>
                   <TableCell className="hidden sm:table-cell" />
                   <TableCell />
-                  <TableCell className="text-right"><Money value={report.ter.estimate} strong /></TableCell>
+                  <TableCell className="text-right"><Money value={report.ter.estimate - report.ter.leavers.reduce((t, e) => t + e.december, 0n)} strong /></TableCell>
                 </TableRow>
+                {report.ter.leavers.length > 0 && (
+                  <TableRow>
+                    <TableCell colSpan={2}>Estimasi PPh 21 (termasuk yang berhenti)</TableCell>
+                    <TableCell className="hidden sm:table-cell" />
+                    <TableCell />
+                    <TableCell className="text-right"><Money value={report.ter.estimate} strong /></TableCell>
+                  </TableRow>
+                )}
                 <TableRow>
                   <TableCell colSpan={2}><Link href={ledger("2140")} className="hover:text-primary">Terutang di buku besar (2140)</Link></TableCell>
                   <TableCell className="hidden sm:table-cell" />
@@ -294,6 +302,38 @@ export default async function TaxMasaPage({ params, searchParams }: { params: Pr
                 </TableRow>
               </TableFooter>
             </Table>
+          )}
+          {report.ter.state === "CHECKED" && report.ter.leavers.length > 0 && (
+            <div className="space-y-2" data-testid="pph21-leavers">
+              <p className="font-medium">Berhenti bulan ini: PPh 21 masa terakhir dengan tarif Pasal 17 (PMK 168/2023)</p>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="eyebrow">Nama</TableHead>
+                    <TableHead className="eyebrow hidden text-right md:table-cell">Bruto s.d. bulan ini</TableHead>
+                    <TableHead className="eyebrow hidden text-right md:table-cell">PKP</TableHead>
+                    <TableHead className="eyebrow hidden text-right sm:table-cell">PPh Pasal 17</TableHead>
+                    <TableHead className="eyebrow hidden text-right sm:table-cell">TER sebelumnya</TableHead>
+                    <TableHead className="eyebrow text-right">Masa terakhir</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {report.ter.leavers.map((e) => (
+                    <TableRow key={e.id}>
+                      <TableCell>
+                        {e.name}
+                        <div className="text-xs text-muted-foreground">{PTKP_LABEL[e.status]} · {e.months} bulan</div>
+                      </TableCell>
+                      <TableCell className="hidden text-right md:table-cell"><Money value={e.gross} /></TableCell>
+                      <TableCell className="hidden text-right md:table-cell"><Money value={e.pkp} /></TableCell>
+                      <TableCell className="hidden text-right sm:table-cell"><Money value={e.annual} /></TableCell>
+                      <TableCell className="hidden text-right sm:table-cell"><Money value={e.ter} /></TableCell>
+                      <TableCell className="text-right"><Money value={e.december} /></TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
           {report.ter.state === "ANNUAL" && (
             <Table data-testid="pph21-annual">

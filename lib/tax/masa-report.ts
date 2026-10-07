@@ -98,7 +98,8 @@ export type AnnualEmployee = { id: string; name: string; employeeNo: string | nu
 export type TerCheck =
   | { state: "NO_EMPLOYEES" }
   | { state: "NO_STATUS"; missing: number }
-  | { state: "CHECKED"; employees: TerEmployee[]; missing: number; estimate: bigint; booked: bigint; status: "PASS" | "REVIEW" }
+  /** `leavers`: employees whose last day falls in the masa; their last masa is the Pasal 17 recompute (PMK 168/2023), not TER. */
+  | { state: "CHECKED"; employees: TerEmployee[]; leavers: AnnualEmployee[]; missing: number; estimate: bigint; booked: bigint; status: "PASS" | "REVIEW" }
   | { state: "ANNUAL"; employees: AnnualEmployee[]; missing: number; estimate: bigint; booked: bigint; status: "PASS" | "REVIEW" };
 
 /**
@@ -324,22 +325,27 @@ async function terCheck(db: Db, input: { clientId: string; entityId: string; mas
     const base = estimate < 0n ? -estimate : estimate;
     return (diff < 0n ? -diff : diff) * 10_000n <= base * TOLERANCE_BP;
   };
-  if (input.masa.month === 12) {
-    // December (PMK 168/2023): the year under Pasal 17 less the TER of January–November, for the months worked this year.
-    const year = input.masa.year;
-    const annual = known.map((e) => {
-      const months = e.hireDate.getUTCFullYear() < year ? 12 : 12 - e.hireDate.getUTCMonth();
-      return { id: e.id, name: e.name, employeeNo: e.employeeNo, status: e.ptkpStatus!, wage: e.wage, ...pph21Annual(e.wage, e.ptkpStatus!, months) };
-    });
+  // The year through this masa under Pasal 17 less the TER of the months before it (PMK 168/2023), for the months worked this year.
+  const { year, month } = input.masa;
+  const annualFor = (e: (typeof known)[number]) => {
+    const months = e.hireDate.getUTCFullYear() < year ? month : month - e.hireDate.getUTCMonth();
+    return { id: e.id, name: e.name, employeeNo: e.employeeNo, status: e.ptkpStatus!, wage: e.wage, ...pph21Annual(e.wage, e.ptkpStatus!, months) };
+  };
+  if (month === 12) {
+    // December: every employee's year.
+    const annual = known.map(annualFor);
     const estimate = annual.reduce((t, e) => t + e.december, 0n);
     return { state: "ANNUAL", employees: annual, missing, estimate, booked: input.booked, status: within(estimate) && missing === 0 ? "PASS" : "REVIEW" };
   }
-  const employees = known.map((e) => {
+  // January–November: TER, except for an employee whose last day falls in this masa (masa pajak terakhir: Pasal 17).
+  const leaving = (e: (typeof known)[number]) => e.leftOn !== null && +e.leftOn >= +start && +e.leftOn <= +end;
+  const employees = known.filter((e) => !leaving(e)).map((e) => {
     const r = pph21Ter(e.wage, e.ptkpStatus!);
     return { id: e.id, name: e.name, employeeNo: e.employeeNo, status: e.ptkpStatus!, category: r.category, wage: e.wage, rate: r.rate, tax: r.tax };
   });
-  const estimate = employees.reduce((s, e) => s + e.tax, 0n);
-  return { state: "CHECKED", employees, missing, estimate, booked: input.booked, status: within(estimate) && missing === 0 ? "PASS" : "REVIEW" };
+  const leavers = known.filter(leaving).map(annualFor);
+  const estimate = employees.reduce((s, e) => s + e.tax, 0n) + leavers.reduce((s, e) => s + e.december, 0n);
+  return { state: "CHECKED", employees, leavers, missing, estimate, booked: input.booked, status: within(estimate) && missing === 0 ? "PASS" : "REVIEW" };
 }
 
 const STATE_LABEL: Record<PreviousMasa["state"], string> = {
@@ -399,7 +405,9 @@ export function terNote(t: TerCheck): string {
     case "NO_STATUS":
       return `${t.missing} karyawan aktif belum punya status PTKP. Isi statusnya di Imbalan Kerja untuk mengecek PPh 21 dengan TER.`;
     case "CHECKED": {
-      const head = `Estimasi TER ${formatRupiah(t.estimate)} dari upah sensus; PPh 21 yang dicatat terutang ${formatRupiah(t.booked)}.`;
+      const head = t.leavers.length
+        ? `Estimasi PPh 21 ${t.estimate < 0n ? `lebih potong ${formatRupiah(-t.estimate)} (dikembalikan ke karyawan)` : formatRupiah(t.estimate)} dari upah sensus: TER, dan tarif Pasal 17 setahun untuk ${t.leavers.length} karyawan yang berhenti bulan ini; PPh 21 yang dicatat terutang ${formatRupiah(t.booked)}.`
+        : `Estimasi TER ${formatRupiah(t.estimate)} dari upah sensus; PPh 21 yang dicatat terutang ${formatRupiah(t.booked)}.`;
       const gap = t.status === "PASS" ? " Selisihnya dalam 10 %." : t.missing ? ` ${t.missing} karyawan belum punya status PTKP.` : " Selisihnya lebih dari 10 %: periksa daftar gaji bulan ini.";
       return head + gap;
     }
