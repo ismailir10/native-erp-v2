@@ -8,11 +8,13 @@ import type { OwnerQuestion } from "@/lib/review-questions";
  * line per account (missing months as ranges), one per month whose statement doesn't hand over or breaks inside, one for the ledger
  * export. Then (I1c) the lines still in Review the client should explain, largest first, up to `MAX_QUESTIONS` (the Excel from Review
  * holds the full list). Plain Bahasa for WhatsApp or e-mail; the accountant sends it. `items` counts what is asked (each missing range or broken month, each
- * transaction). Null when there is nothing to ask.
+ * transaction). Then (I5d) the bukti potong its customers still owe: withholding the books hold on receipts with no slip in the imported
+ * Coretax *diterima* list — the client asks the customer, since the slip is the client's tax credit. Null when there is nothing to ask.
  */
+export type MissingSlip = { entity: string; date: Date; description: string; kind: string; pph: bigint; currency: string };
 export const MAX_QUESTIONS = 10;
 
-export function dataRequest(input: { clientName: string; firmName: string; period: { year: number; month: number }; rows: CompletenessRow[]; questions?: OwnerQuestion[] }): { text: string; items: number } | null {
+export function dataRequest(input: { clientName: string; firmName: string; period: { year: number; month: number }; rows: CompletenessRow[]; questions?: OwnerQuestion[]; slips?: MissingSlip[] }): { text: string; items: number } | null {
   const lines: string[] = [];
   for (const r of input.rows) {
     const what = r.kind === "ledger" ? "Ekspor buku besar dari sistem akuntansi" : `Rekening koran ${r.label} a.n. ${r.entity}`;
@@ -28,7 +30,8 @@ export function dataRequest(input: { clientName: string; firmName: string; perio
     }
   }
   const questions = input.questions ?? [];
-  if (!lines.length && !questions.length) return null;
+  const slips = input.slips ?? [];
+  if (!lines.length && !questions.length && !slips.length) return null;
   const until = formatPeriod(input.period.year, input.period.month);
   const out = ["Halo Bapak/Ibu,", ""];
   if (lines.length) {
@@ -49,8 +52,17 @@ export function dataRequest(input: { clientName: string; firmName: string; perio
     if (questions.length > MAX_QUESTIONS) out.push(`…dan ${questions.length - MAX_QUESTIONS} transaksi lain; daftar lengkapnya kami kirim dalam file Excel.`);
     out.push("");
   }
+  if (slips.length) {
+    out.push(
+      lines.length || questions.length
+        ? "Mohon juga mintakan bukti potong dari pelanggan untuk penerimaan berikut (dipakai sebagai kredit pajak):"
+        : `Untuk pembukuan ${input.clientName} sampai ${until}, mohon mintakan bukti potong dari pelanggan untuk penerimaan berikut (dipakai sebagai kredit pajak):`,
+    );
+    slips.forEach((x) => out.push(`- ${formatDate(x.date)} · ${x.entity} · ${x.description.slice(0, 80)} · ${x.kind} ${formatMoney(x.pph, x.currency)}`));
+    out.push("");
+  }
   out.push("Terima kasih.", input.firmName);
-  return { text: out.join("\n"), items: lines.length + questions.length };
+  return { text: out.join("\n"), items: lines.length + questions.length + slips.length };
 }
 
 /** Consecutive months as ranges: "April–Mei 2026", "Desember 2025–Januari 2026", "Juli 2026". */

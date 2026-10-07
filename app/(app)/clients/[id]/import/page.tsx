@@ -18,7 +18,10 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { getCurrentFirm, getCurrentMember } from "@/lib/tenant";
 import { completenessMatrix } from "@/lib/controls/completeness";
-import { dataRequest } from "@/lib/controls/data-request";
+import { dataRequest, type MissingSlip } from "@/lib/controls/data-request";
+import { bupotRecon } from "@/lib/tax/bupot";
+import { BUPOT_KIND_LABEL } from "@/lib/tax/bupot-read";
+import { packApplies } from "@/lib/tax/pack";
 import { ownerQuestions } from "@/lib/review-questions";
 import { CompletenessCard } from "@/components/app/completeness-card";
 import { DataRequestCard } from "@/components/app/data-request-card";
@@ -47,7 +50,13 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
   const completeness = await completenessMatrix(prisma, client.id, period.year, period.month);
   // …and the lines still in Review the client should explain (I1c), as Review's Excel lists them.
   const questions = await ownerQuestions(prisma, { firmId: client.firmId, clientId: client.id, entityIds: client.entities.map((e) => e.id), through: periodBounds(period.year, period.month).end });
-  const request = dataRequest({ clientName: client.name, firmName: (await getCurrentFirm()).name, period, rows: completeness.rows, questions });
+  // …and the bukti potong customers still owe (I5d): withholding on receipts with no slip in an imported Coretax *diterima* list.
+  const slips: MissingSlip[] = [];
+  for (const e of client.entities.filter(packApplies)) {
+    const d = (await bupotRecon(prisma, { clientId: client.id, entityId: e.id, year: period.year, month: period.month })).directions.find((x) => x.direction === "DITERIMA");
+    if (d && d.imported > 0) for (const b of d.unmatchedBook) slips.push({ entity: e.shortName, date: b.date, description: b.description, kind: BUPOT_KIND_LABEL[b.kind], pph: b.pph, currency: "IDR" });
+  }
+  const request = dataRequest({ clientName: client.name, firmName: (await getCurrentFirm()).name, period, rows: completeness.rows, questions, slips });
   // Tautan unggah klien (I1d): files the client sent without an account, waiting in Dokumen.
   const links = evidenceEnabled() ? await uploadLinks(prisma, client.id) : [];
 

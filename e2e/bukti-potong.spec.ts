@@ -42,3 +42,31 @@ test("Coretax bukti potong against the withholding in the books; Tutup Buku flag
   await expect(page.getByTestId("control-bupot")).toContainText("Bukti potong Coretax = buku");
   await expect(page.getByTestId("control-bupot")).toContainText("Perlu dicek");
 });
+
+test("a customer's withholding with no slip in the imported diterima list goes into the request to the client", async ({ page }) => {
+  const id = await addClient(page, { name: "QA Bukti Diterima" });
+  const csv = ["Tanggal;Keterangan;Debet;Kredit;Saldo", "01/08/2026;SALDO AWAL;;;100.000.000,00", "05/08/2026;TRSF CR PT BANK DIGITAL NUSA;0,00;53.900.000,00;153.900.000,00", ""].join("\n");
+  await uploadStatement(page, id, "diterima.csv", csv);
+  await expect(page.getByTestId("import-result")).toContainText("Nyambung");
+  await page.goto(`/clients/${id}/review?period=2026-08`);
+  const item = page.getByTestId("review-item").filter({ hasText: "BANK DIGITAL" });
+  await item.getByRole("combobox", { name: "Akun", exact: true }).click();
+  await page.getByRole("combobox", { name: "Cari akun", expanded: true }).fill("4110");
+  await page.keyboard.press("Enter");
+  await item.getByRole("combobox", { name: "Pemotongan PPh", exact: true }).click();
+  await page.getByRole("option", { name: /PPh 23/ }).first().click();
+  await item.getByTestId("accept").click();
+  await expect(page.getByTestId("review-item").filter({ hasText: "BANK DIGITAL" })).toHaveCount(0);
+  await expect(page.getByTestId("review-saving")).toHaveCount(0);
+
+  // Coretax's diterima list holds another customer's slip only: the bank's is still owed.
+  const list = ["Nomor Bukti Potong;Tanggal Bukti Potong;NPWP Pemotong;Nama Pemotong;Kode Objek Pajak;Penghasilan Bruto;PPh", "BP-90;10/08/2026;0222;PT Lain;24-104-01;10000000;200000", ""].join("\n");
+  await page.goto(`/clients/${id}/tax/masa?period=2026-08`);
+  await page.getByLabel("File bukti potong Coretax").setInputFiles({ name: "diterima.csv", mimeType: "text/csv", buffer: Buffer.from(list) });
+  await page.getByTestId("bupot-upload").click();
+  await expect(page.getByText("Bukti potong diterima: 1 baru, 0 berubah")).toBeVisible();
+  await expect(page.getByTestId("bupot-noslip-DITERIMA")).toContainText("TRSF CR PT BANK DIGITAL NUSA");
+
+  await page.goto(`/clients/${id}/import?period=2026-08`);
+  await expect(page.getByTestId("data-request").getByLabel("Pesan permintaan data")).toHaveValue(/mohon mintakan bukti potong dari pelanggan untuk penerimaan berikut \(dipakai sebagai kredit pajak\):\n- 5 Agu 2026 · .+ · TRSF CR PT BANK DIGITAL NUSA · PPh 23 Rp 1\.100\.000/);
+});
