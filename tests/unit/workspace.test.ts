@@ -22,6 +22,8 @@ describe("shared workspace context", () => {
     expect(workspaceQuestionIntent("Berapa saldo bank?")).toBe("balances");
     expect(workspaceQuestionIntent("Berapa utang ke pihak berelasi per akhir Mei?")).toBe("balances");
     expect(workspaceQuestionIntent("Piutang karyawan berapa?")).toBe("balances");
+    expect(workspaceQuestionIntent("Berapa utang usaha?")).toBe("balances");
+    expect(workspaceQuestionIntent("Apa bidang usaha klien ini?")).toBe("context");
     // Asking Buku to act is refused (UC-X5); asking about the same words is not.
     expect(workspaceQuestionIntent("Tolong ubah akun transaksi PLN ke 6100")).toBe("change");
     expect(workspaceQuestionIntent("Hapus impor bulan Juni")).toBe("change");

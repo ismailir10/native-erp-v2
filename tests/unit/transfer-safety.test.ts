@@ -123,6 +123,14 @@ describe("transfers to the group's owner as banks print them", () => {
     expect(r.has("d")).toBe(false);
   });
 
+  it("finds the entity by its name without the legal form when only the full name was kept (short names under 8 letters are dropped)", () => {
+    const full = [{ entityId: "pt", names: ["PT SINARLA MAHAJAYA NUSANTARA"] }, { entityId: "owner", names: ["BUDI HARTONO"] }];
+    const r = matchTransfers([line("o", "bri", "2026-06-25", "TRSF KE SINARLA MAHAJAYA NUSANTARA", -10_000_000n, "owner")], full);
+    expect(r.get("o")).toMatchObject({ accountCode: "1190", confidence: 0.92 });
+    // A whole word only: another company whose name starts the same way is not the group.
+    expect(matchTransfers([line("x", "bri", "2026-06-25", "TRSF KE SINARLA MAHAJAYA NUSANTARAKU", -10_000_000n, "owner")], full).get("x")?.accountCode).not.toBe("1190");
+  });
+
   it("a real person's name beside the owner's is a payment, not a transfer", () => {
     const r = matchTransfers([line("x", "bca", "2026-06-03", "BI-FAST DB BIF TRANSFER KE 002 BUDI HARTONO UNTUK SUPPLIER KAIN", -5_000_000n)], group);
     expect(r.has("x")).toBe(false);

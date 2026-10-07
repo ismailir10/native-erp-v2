@@ -92,6 +92,7 @@ export function matchTransfers(
 ): Map<string, Classification> {
   const result = new Map<string, Classification>();
   const allNames = ownNames.flatMap((e) => e.names);
+  ownNames = spellings(ownNames);
   const looksLikeTransfer = (i: TransferCandidate) => !i.matched && !i.pairRefused && (TRANSFER_HINT.test(i.description) || mentionsOwn(i, ownNames));
   const clean = (i: TransferCandidate) => !thirdPartyName(i.description, allNames);
   const hinted = items.filter((i) => looksLikeTransfer(i) && clean(i));
@@ -141,8 +142,8 @@ export function matchTransfers(
     if (result.has(i.id) || !TRANSFER_HINT.test(i.description)) continue;
     const lookalike = naming.filter((n) => (i.amount < 0n ? fits(i, n) : fits(n, i)));
     const d = i.description.toUpperCase();
-    const other = ownNames.find((e) => e.entityId !== i.entityId && e.names.some((n) => d.includes(n)));
-    const self = ownNames.find((e) => e.entityId === i.entityId && e.names.some((n) => d.includes(n)));
+    const other = ownNames.find((e) => e.entityId !== i.entityId && e.names.some((n) => says(d, n)));
+    const self = ownNames.find((e) => e.entityId === i.entityId && e.names.some((n) => says(d, n)));
     const code = other ? ACCOUNT_CODES.INTERCOMPANY : self ? ACCOUNT_CODES.CLEARING : null;
     if (!code) continue;
     if (lookalike.length) {
@@ -167,8 +168,8 @@ export function matchTransfers(
     const rest = thirdPartyName(i.description, allNames)?.split(" ") ?? [];
     if (rest.some((w) => w.length > 3)) continue;
     const d = i.description.toUpperCase();
-    const other = ownNames.find((e) => e.entityId !== i.entityId && e.names.some((n) => d.includes(n)));
-    const name = other?.names.find((n) => d.includes(n));
+    const other = ownNames.find((e) => e.entityId !== i.entityId && e.names.some((n) => says(d, n)));
+    const name = other?.names.find((n) => says(d, n));
     if (!name) continue;
     result.set(i.id, {
       method: "TRANSFER",
@@ -181,7 +182,21 @@ export function matchTransfers(
   return result;
 }
 
+/** The names an entity goes by in bank text: as registered, and without its legal form ("PT BELIFI" is printed "BELIFI"). */
+function spellings(ownNames: { entityId: string; names: string[] }[]) {
+  return ownNames.map((e) => ({
+    entityId: e.entityId,
+    names: [...new Set(e.names.flatMap((n) => {
+      const bare = n.split(/\s+/).filter((w) => w && !LEGAL_FORMS.has(w)).join(" ");
+      return bare.length >= 3 && bare !== n ? [n, bare] : [n];
+    }))],
+  }));
+}
+
+/** A whole-word mention: "BELIFI" in "TRSF KE BELIFI", not in "BELIFIX". */
+const says = (description: string, name: string) => new RegExp(`(^|[^A-Z0-9])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^A-Z0-9])`).test(description);
+
 function mentionsOwn(i: ClassifyInput, ownNames: { entityId: string; names: string[] }[]) {
   const d = i.description.toUpperCase();
-  return ownNames.some((e) => e.names.some((n) => d.includes(n)));
+  return ownNames.some((e) => e.names.some((n) => says(d, n)));
 }

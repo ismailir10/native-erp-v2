@@ -64,12 +64,12 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
   const cur = formatPeriod(year, month);
   const fmtAmount = (v: bigint) => formatMoney(v, currency);
   const bsCols = ["Akun", formatDate(asOf), formatDate(lastYearEnd)];
-  const plCols = ["Akun", `${periodFrom(yearStart, asOf)} – ${formatDate(asOf)}`, `${periodFrom(prior.start, priorTo)} – ${formatDate(priorTo)}`];
   // Books that start inside the year (a Saldo Awal or an imported Neraca, nothing before it) cover the months from there, not the year.
   const firstOpening = await db.journalEntry.findFirst({ where: { entityId: { in: scope.entityIds }, kind: "OPENING", date: { gte: lastYearEnd, lte: asOf } }, orderBy: { date: "asc" }, select: { date: true } });
   const booksStart = firstOpening && +firstOpening.date >= +yearStart && !(await db.journalLine.findFirst({ where: { entityId: { in: scope.entityIds }, date: { lt: firstOpening.date } }, select: { id: true } }))
     ? new Date(+firstOpening.date + 86_400_000)
     : yearStart;
+  const plCols = ["Akun", `${periodFrom(+booksStart > +asOf ? yearStart : booksStart, asOf)} – ${formatDate(asOf)}`, `${periodFrom(prior.start, priorTo)} – ${formatDate(priorTo)}`];
   const periodText = +booksStart > +asOf
     ? `posisi keuangan per ${formatDate(asOf)}, saldo awal pembukuan`
     : `${periodFrom(booksStart, asOf, true)} – ${formatDate(asOf)}`;
@@ -297,7 +297,8 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
     // A deferred tax asset needs taxable profit to use it (SAK EP Bab 29, PSAK 46): with a fiscal loss, losses carried forward or a capital
     // deficiency, the estimate is not to be booked as it stands.
     const dta = (p.deferred?.amount ?? 0n) > 0n;
-    const doubtful = dta && (p.fiscalProfit < 0n || p.losses.length > 0 || bs.totals.equity < 0n);
+    const ownEquity = entities.length === 1 ? bs.totals.equity : (await balanceSheet(db, { clientId: scope.clientId, entityIds: [e.id] }, asOf)).totals.equity; // this entity's, not the group's
+    const doubtful = dta && (p.fiscalProfit < 0n || p.losses.length > 0 || ownEquity < 0n);
     add(`Pajak penghasilan${entities.length > 1 ? ` · ${e.shortName}` : ""}`, [
       `Rekonsiliasi laba komersial ke laba fiskal ${year} s.d. ${cur} (estimasi, bukan SPT).`,
       ...(unbooked ? [`Pajak penghasilan kini ini belum dijurnal, jadi Laba Rugi dan Neraca belum memuatnya. Catat jurnalnya di Pajak Badan sebelum laporan ini final.`] : []),

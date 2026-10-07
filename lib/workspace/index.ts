@@ -7,6 +7,7 @@ import { closeReadiness, runControls } from "@/lib/controls";
 import { setupProgress } from "@/lib/setup-progress";
 import { askEvidence } from "@/lib/evidence/answers";
 import { completenessMatrix } from "@/lib/controls/completeness";
+import { financialYear, fiscalEndMonth } from "@/lib/fiscal";
 
 export type WorkspaceInput = { scope?: string; period?: string };
 export class WorkspaceInputError extends Error {}
@@ -135,6 +136,8 @@ export function workspaceQuestionIntent(question: string) {
   if (/\b(tutup buku|close|kesiapan|siap|hambatan|penghambat)\b/.test(q)) return "readiness";
   // "transfer ke ALFI YANDRA", "pembayaran dari DINA", "mutasi dengan \"PT PAKAN\"": bank lines by counterparty.
   if (/\b(transfer|transaksi|mutasi|pembayaran|bayar|dibayar|penerimaan|terima|diterima|kiriman|dikirim|setoran)\b/.test(q) && counterpartyOf(question)) return "transactions";
+  // "Utang usaha" / "piutang usaha" are accounts, not the business profile the word "usaha" otherwise asks about.
+  if (/\b(utang|hutang|piutang|uang muka|persediaan|liabilitas|payables?|receivables?)\b/.test(q) && !/\b(dokumen|file|laporan unggahan)\b/.test(q)) return "balances";
   if (/\b(profil|profile|usaha|industry|industri|konteks)\b/.test(q)) return "context";
   if (/\b(dokumen|file|sumber|rekening koran|laporan unggahan)\b/.test(q)) return "evidence";
   if (/\b(laba|profit|pendapatan|revenue)\b/.test(q)) return "profit";
@@ -327,23 +330,28 @@ export async function askWorkspace(db: Db, firmId: string, input: WorkspaceInput
       }
       if (resolved.kind === "entity") answer.limitations.push("Kesiapan mencakup seluruh klien induk, termasuk perusahaan lain di dalamnya.");
     } else {
-      // A balance asked by name: Buku's accounts and the client's own (imported) accounts holding a balance at the month's end.
+      // A balance asked by name: Buku's accounts and the client's own (imported) accounts at the month's end.
       const named: { label: string; value: string; source: string }[] = [];
       if (intent === "balances" && !accountCode) {
         const { end } = periodBounds(resolved.year, resolved.month);
         for (const e of data.entities) {
-          const tb = (await trialBalance(db, { clientId: e.clientId, entityIds: [e.id] }, end)).filter((r) => r.net !== 0n);
-          const parts = await db.journalLine.groupBy({ by: ["sourceAccountId"], where: { entityId: e.id, date: { lte: end }, sourceAccountId: { not: null } }, _sum: { debit: true, credit: true } });
-          const sources = await db.sourceAccount.findMany({ where: { id: { in: parts.map((x) => x.sourceAccountId!) } }, select: { id: true, code: true, name: true } });
+          // Every account is a candidate, a cleared one included: "utang usaha" asked after it was paid off answers Rp 0, not cash.
+          const tb = new Map((await trialBalance(db, { clientId: e.clientId, entityIds: [e.id] }, end)).map((r) => [r.account.code, r.net]));
+          const chart = await db.account.findMany({ where: { clientId: e.clientId, isSuspense: false, isClearing: false }, select: { code: true, name: true } });
+          // A client's own income or expense account counts from the start of the tahun buku, like Buku's (trialBalance).
+          const yearStart = financialYear(await fiscalEndMonth(db, e.clientId), resolved.year, resolved.month).start;
+          const sources = await db.sourceAccount.findMany({ where: { entityId: e.id }, select: { id: true, code: true, name: true, account: { select: { type: true } } } });
+          const sum = async (from?: Date) => new Map((await db.journalLine.groupBy({ by: ["sourceAccountId"], where: { entityId: e.id, date: { gte: from, lte: end }, sourceAccountId: { not: null } }, _sum: { debit: true, credit: true } })).map((x) => [x.sourceAccountId!, (x._sum.debit ?? 0n) - (x._sum.credit ?? 0n)]));
+          const [lifetime, ytd] = await Promise.all([sum(), sum(yearStart)]);
           const candidates = [
-            ...tb.map((r) => ({ name: r.account.name, label: `${r.account.code} ${r.account.name}`, net: r.net, href: workspaceHref(`/clients/${e.clientId}/ledger/${encodeURIComponent(r.account.code)}`, resolved, { entity: e.id }) })),
+            ...chart.map((a) => ({ name: a.name, label: `${a.code} ${a.name}`, net: tb.get(a.code) ?? 0n, href: workspaceHref(`/clients/${e.clientId}/ledger/${encodeURIComponent(a.code)}`, resolved, { entity: e.id }) })),
             ...sources.map((x) => {
-              const p = parts.find((y) => y.sourceAccountId === x.id)!;
-              return { name: x.name, label: `${x.code} ${x.name} (akun klien)`, net: (p._sum.debit ?? 0n) - (p._sum.credit ?? 0n), href: workspaceHref(`/clients/${e.clientId}/ledger/akun/${x.id}`, resolved, { entity: e.id }) };
-            }).filter((x) => x.net !== 0n),
+              const pl = x.account?.type === "PENDAPATAN" || x.account?.type === "BEBAN";
+              return { name: x.name, label: `${x.code} ${x.name} (akun klien)`, net: (pl ? ytd : lifetime).get(x.id) ?? 0n, href: workspaceHref(`/clients/${e.clientId}/ledger/akun/${x.id}`, resolved, { entity: e.id }) };
+            }),
           ];
           for (const c of accountsNamed(question, candidates)) {
-            named.push({ label: `${e.name} · ${c.label}`, value: `${formatMoney(c.net < 0n ? -c.net : c.net, e.currency)} ${c.net < 0n ? "Kredit" : "Debit"}`, source: c.href });
+            named.push({ label: `${e.name} · ${c.label}`, value: c.net === 0n ? formatMoney(0n, e.currency) : `${formatMoney(c.net < 0n ? -c.net : c.net, e.currency)} ${c.net < 0n ? "Kredit" : "Debit"}`, source: c.href });
             answer.citations.push({ label: `${e.name} · buku besar ${c.label}`, href: c.href });
           }
         }

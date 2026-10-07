@@ -238,3 +238,12 @@ it("puts a masa paid short on the task list as its own high-priority task, until
   await db.$transaction(async (tx) => postJournal(tx, { entityId: g.pt.entity.id, date: dateOnly(2026, 8, 14), kind: "ADJUSTMENT", memo: "Setor PPh 21", lines: [{ accountId: await id("2140"), debit: 200_000n }, { accountId: bank, credit: 200_000n }] }));
   expect(await tax()).toBeUndefined();
 });
+
+it("answers a balance asked by name, a cleared account at Rp 0 rather than the cash balance", async () => {
+  const g = await makeGroup();
+  await sale(g, g.pt.entity.id, 1_500n);
+  const scope = `entity:${g.pt.entity.id}`;
+  const payable = await askWorkspace(db, g.firm.id, { scope, period: "2026-08", question: "Berapa utang usaha?" });
+  expect(payable.rows.map(r => [r.label.split(" · ").at(-1), r.value])).toEqual([["2110 Utang Usaha", "Rp 0"]]);
+  expect(payable.text).toContain("akun yang disebut");
+});
