@@ -55,6 +55,7 @@ Stage: **Pembukuan** (close).
 - `npm run test:e2e` locally: 50 passed and 1 failed. The failure was `leases.spec.ts`: the register was 10 jt off the ledger, meaning
   one of three rent payments did not land on 2170. It did not reproduce in 20 repeats (5 serial, 15 on 3 workers). This change does not
   touch Review or leases, so it is recorded here rather than fixed; CI is the confirmation run.
+- Final head (after T2–T4): `npm run test:e2e` 52 passed (5.1m); `npm test` 1161 passed.
 
 ## Ship Notes
 - No migration. Real clients may see a new REVIEW on Tutup Buku where a masa was paid late or short: that is the point.
