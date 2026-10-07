@@ -77,7 +77,7 @@ Stage: **Laporan** (Pajak Masa).
 - [x] T2 Migration + `lib/tax/faktur.ts`: `importFaktur` (upsert, counts, audit), `deleteFaktur`, `fakturRecon` (totals, one-to-one
   matching). Client delete. DB tests: a matching month; a faktur not booked; book PPN without a faktur; a cancelled faktur ignored; a
   re-import that cancels a faktur; another firm's client refused.
-- [ ] T3 The card on Pajak Masa, the actions, the Excel sheet and the close control. E2e: upload keluaran with one cancelled and one
+- [x] T3 The card on Pajak Masa, the actions, the Excel sheet and the close control. E2e: upload keluaran with one cancelled and one
   unbooked faktur, see the difference explained, and see the control.
 - [ ] T4 Gates.
 
@@ -100,5 +100,17 @@ Stage: **Laporan** (Pajak Masa).
   - Control `faktur:<entity>`, only when faktur for the masa exist.
   - Audit kind `FAKTUR`; client delete; `FakturError` in the action errors; accounting-rules 5k.
   - Test: `tests/db/faktur.test.ts`.
+- T3: the UI and the export.
+  - Actions `importFakturAction` and `deleteFakturAction`.
+  - `components/app/faktur-recon.tsx`:
+    - upload;
+    - per direction: PPN faktur, PPN di buku and Selisih;
+    - the unmatched faktur and the unmatched book PPN, with ledger links;
+    - counts of not-counted and uncredited faktur;
+    - *Hapus … masa ini* with a confirmation.
+  - The card *Ekualisasi PPN (Coretax)* (`#ekualisasi`) on Pajak Masa. Its banner names the faktur gap after open Review lines and
+    before TER.
+  - `masaWorkbook` gets the *Ekualisasi PPN* sheet only when faktur exist, so earlier exports keep their three sheets.
+  - E2e: `e2e/ekualisasi-ppn.spec.ts`.
 ## Verification
 ## Ship Notes

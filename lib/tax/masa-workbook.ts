@@ -1,9 +1,10 @@
 import { ppnLine, previousStateLabel, rowNotes, terNote, terRow, withholdingLabel, type MasaReport } from "@/lib/tax/masa-report";
 import { formatDate, formatPeriod } from "@/lib/format";
 import { newWorkbook, n, type WorkbookMeta } from "@/lib/reports/workbook";
+import { DIRECTION_LABEL, type FakturRecon } from "@/lib/tax/faktur";
 
 /** Kertas kerja pajak masa (I4c): the same report the page shows, never a second computation. Whole Rupiah as Excel numbers. */
-export async function masaWorkbook(r: MasaReport, meta: WorkbookMeta): Promise<Buffer> {
+export async function masaWorkbook(r: MasaReport, meta: WorkbookMeta, faktur?: FakturRecon): Promise<Buffer> {
   const book = newWorkbook(meta);
   const { sheet, head } = book;
   const label = formatPeriod(r.masa.year, r.masa.month);
@@ -51,6 +52,31 @@ export async function masaWorkbook(r: MasaReport, meta: WorkbookMeta): Promise<B
     const total = ter.addRow(["Jumlah estimasi", "", "", "", "", "", n(r.ter.estimate)]);
     total.font = { bold: true };
     ter.addRow(["PPh 21 terutang di buku besar (2140)", "", "", "", "", "", n(r.ter.booked)]);
+  }
+
+  // Ekualisasi PPN (I5c): only once Coretax faktur of the masa were imported.
+  if (faktur?.any) {
+    const ek = sheet("Ekualisasi PPN", "Ekualisasi PPN: faktur Coretax vs buku", `${sub} · faktur dari ekspor Coretax, buku dari buku besar`, [24, 14, 22, 36, 18, 18, 30]);
+    for (const d of faktur.directions.filter((x) => x.imported > 0)) {
+      ek.addRow([`${DIRECTION_LABEL[d.direction]} (${d.account})`]).font = { bold: true };
+      head(ek, ["", "PPN faktur", "PPN di buku", "Selisih", "Status"]);
+      const sum = ek.addRow(["Jumlah", n(d.fakturPpn), n(d.bookPpn), n(d.difference), d.status === "MATCH" ? "Cocok" : "Selisih"]);
+      sum.getCell(5).numFmt = "@";
+      const list = (title: string, rows: (string | number)[][], cols: string[]) => {
+        if (!rows.length) return;
+        ek.addRow([title]).font = { bold: true };
+        head(ek, cols);
+        for (const x of rows) {
+          const row = ek.addRow(x);
+          row.getCell(1).numFmt = "@";
+        }
+      };
+      list("Faktur belum ada di buku", d.unmatchedFaktur.map((f) => [f.number, formatDate(f.date), f.npwp ?? "", f.name, n(f.dpp), n(f.ppn), `${f.fileName} ${f.sourceRef}`]), ["Nomor faktur", "Tanggal", "NPWP", "Lawan transaksi", "DPP", "PPN", "Sumber"]);
+      list("PPN di buku tanpa faktur", d.unmatchedBook.map((b) => [formatDate(b.date), b.kind === "BANK" ? "Mutasi bank" : b.kind === "INVOICE" ? "Faktur penjualan/pembelian" : "Jurnal", "", b.label, "", n(b.ppn), ""]), ["Tanggal", "Sumber", "", "Keterangan", "", "PPN", ""]);
+      list("Cocok", d.matched.map((m) => [m.faktur.number, formatDate(m.faktur.date), m.faktur.npwp ?? "", m.faktur.name, n(m.faktur.dpp), n(m.faktur.ppn), m.book.label]), ["Nomor faktur", "Tanggal", "NPWP", "Lawan transaksi", "DPP", "PPN", "Di buku"]);
+      list("Tidak dihitung", [...d.notCounted, ...d.uncredited].map((f) => [f.number, formatDate(f.date), f.npwp ?? "", f.name, n(f.dpp), n(f.ppn), f.status || "belum dikreditkan"]), ["Nomor faktur", "Tanggal", "NPWP", "Lawan transaksi", "DPP", "PPN", "Status"]);
+      ek.addRow([]);
+    }
   }
   return Buffer.from(await book.wb.xlsx.writeBuffer());
 }
