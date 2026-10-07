@@ -5,6 +5,8 @@ import { formatRupiah } from "@/lib/money";
 import { packApplies } from "@/lib/tax/pack";
 import { readFaktur, type FakturDirection } from "@/lib/tax/faktur-read";
 import { matchOneToOne } from "@/lib/tax/coretax-match";
+import { createInvoice } from "@/lib/receivables/invoices";
+import { dateOnly } from "@/lib/format";
 
 /**
  * Ekualisasi PPN (I5c, accounting-rules 5j): faktur from a Coretax export against the PPN the books hold for the same masa — keluaran on
@@ -186,6 +188,39 @@ export async function fakturRecon(db: Db, input: { clientId: string; entityId: s
     });
   }
   return { year, month, directions, any: all.length > 0 };
+}
+
+const iso = (d: Date) => d.toISOString().slice(0, 10);
+
+/**
+ * A counted faktur that isn't in the books, recorded by the accountant's click (I5e) as a sales invoice (keluaran: Dr receivable / Cr
+ * the chosen revenue + 2130) or a purchase bill (masukan: Dr the chosen expense or asset + 1150 / Cr payable) through the invoice writer
+ * (rule 5c). Number, date, counterparty, NPWP, DPP and PPN are the faktur's; due 30 days after it unless given. The payment that comes
+ * later settles it in Piutang & Utang.
+ */
+export async function bookFaktur(db: Db, input: { clientId: string; fakturId: string; counterCode: string; dueDate?: string | null; actorId?: string | null }) {
+  const f = await db.coretaxFaktur.findFirst({ where: { id: input.fakturId, clientId: input.clientId } });
+  if (!f) throw new FakturError("Faktur tidak ditemukan.");
+  if (!f.counted) throw new FakturError(`Faktur ${f.number} berstatus ${f.status || "tidak dihitung"}: tidak dicatat ke buku.`);
+  const direction = f.direction === "KELUARAN" ? "SALES" : "PURCHASE";
+  const exists = await db.invoice.findFirst({ where: { entityId: f.entityId, direction, number: f.number }, select: { id: true } });
+  if (exists) throw new FakturError(`Faktur ${f.number} sudah tercatat di Piutang & Utang.`);
+  const due = new Date(+f.date + 30 * 86_400_000);
+  return createInvoice(db, {
+    clientId: input.clientId,
+    entityId: f.entityId,
+    direction,
+    contactName: f.name.trim() || (direction === "SALES" ? "Pembeli tanpa nama" : "Penjual tanpa nama"),
+    contactNpwp: f.npwp,
+    number: f.number,
+    issueDate: iso(f.date),
+    dueDate: input.dueDate?.trim() || iso(dateOnly(due.getUTCFullYear(), due.getUTCMonth() + 1, due.getUTCDate())),
+    description: `Faktur pajak ${f.number} (Coretax, ${f.fileName} ${f.sourceRef})`,
+    dpp: f.dpp.toString(),
+    ppn: f.ppn.toString(),
+    counterCode: input.counterCode,
+    actorId: input.actorId,
+  });
 }
 
 /** One sentence per direction that differs, for the close control and the page banner. */

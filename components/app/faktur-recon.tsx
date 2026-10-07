@@ -21,10 +21,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Money } from "@/components/app/money";
 import { StatusPill } from "@/components/app/status";
-import { deleteFakturAction, importFakturAction } from "@/app/actions";
+import { bookFakturAction, deleteFakturAction, importFakturAction } from "@/app/actions";
+import { SimpleSelect } from "@/components/app/simple-select";
 
 /** Ekualisasi PPN (I5c) on Pajak Masa: faktur from Coretax against the books, the unmatched lines both ways. Amounts arrive as strings. */
-export type FakturItem = { number: string; date: string; npwp: string | null; name: string; ppn: string; status: string; sourceRef: string };
+export type FakturItem = { id: string; number: string; date: string; npwp: string | null; name: string; ppn: string; status: string; sourceRef: string };
 export type BookItem = { key: string; date: string; label: string; ppn: string; kind: "BANK" | "INVOICE" | "JOURNAL" };
 export type DirectionView = {
   direction: "KELUARAN" | "MASUKAN";
@@ -44,7 +45,40 @@ export type DirectionView = {
 
 const SOURCE: Record<BookItem["kind"], string> = { BANK: "Mutasi bank", INVOICE: "Faktur di Piutang & Utang", JOURNAL: "Jurnal" };
 
-export function FakturRecon({ clientId, entityId, year, month, label, ledgerHref, directions }: { clientId: string; entityId: string; year: number; month: number; label: string; ledgerHref: Record<"KELUARAN" | "MASUKAN", string>; directions: DirectionView[] }) {
+type Account = { code: string; name: string };
+
+/** Records one faktur that isn't in the books as a receivable (keluaran) or payable (masukan), against the account the accountant picks. */
+function BookFaktur({ clientId, faktur, direction, accounts, preferred }: { clientId: string; faktur: FakturItem; direction: "KELUARAN" | "MASUKAN"; accounts: Account[]; preferred: string }) {
+  const router = useRouter();
+  const [code, setCode] = useState(accounts.find((a) => a.code === preferred)?.code ?? accounts[0]?.code ?? "");
+  const sales = direction === "KELUARAN";
+  async function book() {
+    const r = await bookFakturAction({ clientId, fakturId: faktur.id, counterCode: code });
+    if (!r.ok) return void toast.error(r.error);
+    toast.success(`Faktur ${r.number} dicatat sebagai ${sales ? "piutang" : "utang"}`);
+    router.refresh();
+  }
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger render={<Button variant="outline" size="sm" />}>{sales ? "Catat piutang" : "Catat utang"}</AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Catat faktur {faktur.number} sebagai {sales ? "piutang" : "utang"}?</AlertDialogTitle>
+          <AlertDialogDescription>
+            {faktur.name || "Lawan transaksi tanpa nama"}, {faktur.date}: jurnal {sales ? "piutang usaha ke pendapatan dan PPN keluaran" : "beban atau aset dan PPN masukan ke utang usaha"} dari DPP dan PPN faktur. Pembayarannya nanti dicocokkan di Piutang & Utang.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <SimpleSelect label={sales ? "Akun pendapatan" : "Akun beban atau aset"} value={code} onChange={setCode} options={accounts.map((a) => ({ value: a.code, label: `${a.code} ${a.name}` }))} placeholder="Pilih akun" />
+        <AlertDialogFooter>
+          <AlertDialogCancel>Batal</AlertDialogCancel>
+          <AlertDialogAction disabled={!code} onClick={book}>{sales ? "Catat piutang" : "Catat utang"}</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+export function FakturRecon({ clientId, entityId, year, month, label, ledgerHref, directions, accounts }: { clientId: string; entityId: string; year: number; month: number; label: string; ledgerHref: Record<"KELUARAN" | "MASUKAN", string>; directions: DirectionView[]; accounts: Record<"KELUARAN" | "MASUKAN", Account[]> }) {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -133,6 +167,7 @@ export function FakturRecon({ clientId, entityId, year, month, label, ledgerHref
                         <TableHead className="eyebrow hidden sm:table-cell">Tanggal</TableHead>
                         <TableHead className="eyebrow hidden md:table-cell">Lawan transaksi</TableHead>
                         <TableHead className="eyebrow text-right">PPN</TableHead>
+                        <TableHead className="w-0"><span className="sr-only">Catat</span></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -142,6 +177,9 @@ export function FakturRecon({ clientId, entityId, year, month, label, ledgerHref
                           <TableCell className="num hidden sm:table-cell">{f.date}</TableCell>
                           <TableCell className="hidden md:table-cell">{f.name}{f.npwp && <span className="num ml-1 text-xs text-muted-foreground">{f.npwp}</span>}</TableCell>
                           <TableCell className="text-right"><Money value={BigInt(f.ppn)} /></TableCell>
+                          <TableCell className="text-right">
+                            <BookFaktur clientId={clientId} faktur={f} direction={d.direction} accounts={accounts[d.direction]} preferred={d.direction === "KELUARAN" ? "4100" : "5100"} />
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

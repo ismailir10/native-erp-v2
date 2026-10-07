@@ -171,6 +171,9 @@ export function ReviewQueue({
 
   const suggestion = (i: ReviewItem): Choice => ({ code: i.suggestedCode ?? "", tax: i.taxTag ?? "none", rule: false });
   const get = (i: ReviewItem) => choice[i.id] ?? suggestion(i);
+  // A save reads the store at the moment of the click, not the render the handler came from: an account picked a moment before
+  // *Simpan* is the one saved, even if React has not re-rendered in between.
+  const latest = (i: ReviewItem) => readDrafts()[i.id] ?? suggestion(i);
   const isChanged = (i: ReviewItem, c: Choice) => c.code !== (i.suggestedCode ?? "") || c.tax !== (i.taxTag ?? "none") || (!!c.wht && c.wht !== "none");
   const unsaved = (i: ReviewItem) => !!choice[i.id] && (isChanged(i, choice[i.id]) || choice[i.id].rule);
 
@@ -200,7 +203,7 @@ export function ReviewQueue({
   }, [router]);
 
   const accept = (i: ReviewItem) => {
-    const c = get(i);
+    const c = latest(i);
     if (!c.code) return void toast.error("Pilih akun dulu");
     const tax = withheld(i, c);
     if (c.wht && c.wht !== "none" && tax === null) return void toast.error("Tarif pemotongan tidak terbaca. Tulis persen, mis. 2 atau 1,5.");
@@ -238,7 +241,7 @@ export function ReviewQueue({
   };
 
   const acceptSimilar = async (i: ReviewItem) => {
-    const c = get(i);
+    const c = latest(i);
     if (!c.code) return void toast.error("Pilih akun dulu");
     setBusy(i.id);
     const override = isChanged(i, c) ? { accountCode: c.code, taxTag: c.tax === "none" ? null : (c.tax as never) } : undefined;
