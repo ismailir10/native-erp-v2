@@ -43,7 +43,7 @@ import { EntitySettingsError, setFiscalYearEnd, setReportingFramework } from "@/
 import { setClientModules } from "@/lib/clients/modules";
 import { FormatError, resetReportFormat, saveReportFormat } from "@/lib/reports/format-settings";
 import { deleteSubledgerImport, importAging, resolveSubledgerFinding, SubledgerError } from "@/lib/reconcile/subledger";
-import { deleteFaktur, FakturError, importFaktur } from "@/lib/tax/faktur";
+import { bookFaktur, deleteFaktur, FakturError, importFaktur } from "@/lib/tax/faktur";
 import { BupotError, deleteBupot, importBupot } from "@/lib/tax/bupot";
 import { OpeningError, postOpening, type OpeningLineInput } from "@/lib/opening";
 import { FindingError, resolveOpeningFinding } from "@/lib/findings";
@@ -761,6 +761,17 @@ export async function importFakturAction(formData: FormData): Promise<Result<{ d
     const r = await importFaktur(prisma, { clientId: client.id, entityId: String(formData.get("entityId")), fileName: file.name, data: Buffer.from(await file.arrayBuffer()), actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true, direction: r.direction, created: r.created, updated: r.updated, unchanged: r.unchanged, masas: r.masas.map((m) => `${m.year}-${String(m.month).padStart(2, "0")}`), notes: r.notes };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function bookFakturAction(input: { clientId: string; fakturId: string; counterCode: string }): Promise<Result<{ number: string }>> {
+  try {
+    const client = await getClientForFirm(input.clientId);
+    const inv = await bookFaktur(prisma, { clientId: client.id, fakturId: input.fakturId, counterCode: input.counterCode, actorId: (await getCurrentMember()).id });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, number: inv.number };
   } catch (e) {
     return fail(e);
   }

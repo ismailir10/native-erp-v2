@@ -65,6 +65,7 @@ export default async function TaxMasaPage({ params, searchParams }: { params: Pr
   const pending = await prisma.bankTransaction.count({ where: { entityId: entity.id, status: "NEEDS_REVIEW", date: { gte: start, lte: end } } });
   const faktur = await fakturRecon(prisma, { clientId: client.id, entityId: entity.id, year: period.year, month: period.month });
   const fakturGap = fakturNotes(faktur)[0];
+  const counterAccounts = (await prisma.account.findMany({ where: { clientId: client.id }, orderBy: { code: "asc" } })).filter((a) => !a.isBank && !a.isSuspense && !a.isClearing && !a.isIntercompany);
   const bupot = await bupotRecon(prisma, { clientId: client.id, entityId: entity.id, year: period.year, month: period.month });
   const bupotGap = bupotNotes(bupot)[0];
   const day = (d: Date) => formatDate(d);
@@ -130,6 +131,11 @@ export default async function TaxMasaPage({ params, searchParams }: { params: Pr
             month={period.month}
             label={label}
             ledgerHref={{ KELUARAN: ledger("2130"), MASUKAN: ledger("1150") }}
+            accounts={{
+              // The same choices as a sales invoice or a purchase bill in Piutang & Utang.
+              KELUARAN: counterAccounts.filter((a) => a.type === "PENDAPATAN").map(({ code, name }) => ({ code, name })),
+              MASUKAN: counterAccounts.filter((a) => (a.type === "BEBAN" || a.type === "ASET") && a.fsLine !== "PIUTANG_USAHA" && a.taxTag === null).map(({ code, name }) => ({ code, name })),
+            }}
             directions={faktur.directions.map((d) => ({
               direction: d.direction,
               label: DIRECTION_LABEL[d.direction],
@@ -140,10 +146,10 @@ export default async function TaxMasaPage({ params, searchParams }: { params: Pr
               difference: d.difference.toString(),
               status: d.status,
               matched: d.matched.length,
-              unmatchedFaktur: d.unmatchedFaktur.map((f) => ({ number: f.number, date: day(f.date), npwp: f.npwp, name: f.name, ppn: f.ppn.toString(), status: f.status, sourceRef: f.sourceRef })),
+              unmatchedFaktur: d.unmatchedFaktur.map((f) => ({ id: f.id, number: f.number, date: day(f.date), npwp: f.npwp, name: f.name, ppn: f.ppn.toString(), status: f.status, sourceRef: f.sourceRef })),
               unmatchedBook: d.unmatchedBook.map((b) => ({ key: b.key, date: day(b.date), label: b.label, ppn: b.ppn.toString(), kind: b.kind })),
-              notCounted: d.notCounted.map((f) => ({ number: f.number, date: day(f.date), npwp: f.npwp, name: f.name, ppn: f.ppn.toString(), status: f.status, sourceRef: f.sourceRef })),
-              uncredited: d.uncredited.map((f) => ({ number: f.number, date: day(f.date), npwp: f.npwp, name: f.name, ppn: f.ppn.toString(), status: f.status, sourceRef: f.sourceRef })),
+              notCounted: d.notCounted.map((f) => ({ id: f.id, number: f.number, date: day(f.date), npwp: f.npwp, name: f.name, ppn: f.ppn.toString(), status: f.status, sourceRef: f.sourceRef })),
+              uncredited: d.uncredited.map((f) => ({ id: f.id, number: f.number, date: day(f.date), npwp: f.npwp, name: f.name, ppn: f.ppn.toString(), status: f.status, sourceRef: f.sourceRef })),
             }))}
           />
         </CardContent>

@@ -55,6 +55,18 @@ test("Coretax faktur keluaran against the books: matched, not booked, booked wit
   await expect(k.getByTestId("faktur-unfaktured-KELUARAN")).toContainText("3.300.000");
   await expect(page.getByText("Faktur keluaran: PPN faktur Rp 13.200.000 vs buku Rp 14.300.000 (selisih Rp 1.100.000); 1 faktur belum ada di buku, 1 PPN di buku tanpa faktur.")).toBeVisible();
 
+  // The faktur not in the books is a sale not yet paid: one click books it as a receivable, and only the unfakturised receipt remains.
+  await k.getByTestId("faktur-unbooked-KELUARAN").getByRole("button", { name: "Catat piutang" }).click();
+  const dialog = page.getByRole("alertdialog");
+  await expect(dialog).toContainText("Catat faktur 04002600000000002 sebagai piutang?");
+  await expect(dialog.getByRole("combobox", { name: "Akun pendapatan" })).toContainText("4100");
+  await dialog.getByRole("button", { name: "Catat piutang" }).click();
+  await expect(page.getByText("Faktur 04002600000000002 dicatat sebagai piutang")).toBeVisible();
+  await expect(k.getByTestId("faktur-unbooked-KELUARAN")).toHaveCount(0);
+  await expect(page.getByText("Faktur keluaran: PPN faktur Rp 13.200.000 vs buku Rp 16.500.000 (selisih Rp 3.300.000); 1 PPN di buku tanpa faktur.")).toBeVisible();
+  await page.goto(`/clients/${id}/receivables?period=2026-08`);
+  await expect(page.getByText("04002600000000002").first()).toBeVisible();
+
   await page.goto(`/clients/${id}/close?period=2026-08`);
   await expect(page.getByTestId("control-faktur")).toContainText("Faktur Coretax = buku");
   await expect(page.getByTestId("control-faktur")).toContainText("Perlu dicek");

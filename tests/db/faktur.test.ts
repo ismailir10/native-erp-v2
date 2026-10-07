@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { db, makeGroup, resetDb } from "../helpers";
 import { importStatement } from "@/lib/import/pipeline";
 import { createInvoice } from "@/lib/receivables/invoices";
-import { deleteFaktur, fakturNotes, fakturRecon, importFaktur } from "@/lib/tax/faktur";
+import { bookFaktur, deleteFaktur, fakturNotes, fakturRecon, importFaktur } from "@/lib/tax/faktur";
 import { runControls } from "@/lib/controls";
 import { masaReport } from "@/lib/tax/masa-report";
 import { masaWorkbook } from "@/lib/tax/masa-workbook";
@@ -89,6 +89,22 @@ describe("ekualisasi PPN", () => {
       "Faktur keluaran PT Uji dari faktur.csv: 0 baru, 1 berubah (Agustus 2026)",
       "Faktur keluaran PT Uji masa Agustus 2026 dihapus (4 faktur)",
     ]);
+  });
+
+  it("records a faktur not in the books as a receivable by click, after which it ties; never twice, never a cancelled one", async () => {
+    await imp(KELUARAN());
+    const f3 = await db.coretaxFaktur.findFirstOrThrow({ where: { number: "04002600000000003" } });
+    const inv = await bookFaktur(db, { clientId: g.client.id, fakturId: f3.id, counterCode: "4100" });
+    expect(inv).toMatchObject({ direction: "SALES", number: "04002600000000003", dpp: 20_000_000n, ppn: 2_200_000n, total: 22_200_000n });
+    expect(inv.dueDate.toISOString().slice(0, 10)).toBe("2026-09-24");
+    const lines = await db.journalLine.findMany({ where: { entryId: inv.entryId! }, include: { account: true }, orderBy: { id: "asc" } });
+    expect(lines.map((l) => [l.account.code, l.debit, l.credit])).toEqual([["1130", 22_200_000n, 0n], ["4100", 0n, 20_000_000n], ["2130", 0n, 2_200_000n]]);
+    const k = (await recon()).directions[0];
+    expect(k.unmatchedFaktur).toEqual([]);
+    expect(k.matched.find((m) => m.faktur.number === "04002600000000003")?.book).toMatchObject({ kind: "INVOICE", label: "04002600000000003 · CV Sumber Lain" });
+    await expect(bookFaktur(db, { clientId: g.client.id, fakturId: f3.id, counterCode: "4100" })).rejects.toThrow("Faktur 04002600000000003 sudah tercatat di Piutang & Utang.");
+    const f4 = await db.coretaxFaktur.findFirstOrThrow({ where: { number: "04002600000000004" } });
+    await expect(bookFaktur(db, { clientId: g.client.id, fakturId: f4.id, counterCode: "4100" })).rejects.toThrow("Faktur 04002600000000004 berstatus CANCELLED: tidak dicatat ke buku.");
   });
 
   it("refuses an individual's books and another client's company", async () => {
