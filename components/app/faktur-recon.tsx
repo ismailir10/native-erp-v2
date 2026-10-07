@@ -170,17 +170,24 @@ export function FakturRecon({ clientId, entityId, year, month, label, ledgerHref
                         <TableHead className="eyebrow hidden sm:table-cell">Tanggal</TableHead>
                         <TableHead className="eyebrow hidden md:table-cell">Lawan transaksi</TableHead>
                         <TableHead className="eyebrow text-right">PPN</TableHead>
-                        <TableHead className="w-0"><span className="sr-only">Catat</span></TableHead>
+                        <TableHead className="hidden w-0 sm:table-cell"><span className="sr-only">Catat</span></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {d.unmatchedFaktur.map((f) => (
                         <TableRow key={f.number}>
-                          <TableCell className="num">{f.number}<div className="text-xs text-muted-foreground md:hidden">{f.name}</div></TableCell>
+                          <TableCell className="num whitespace-normal">
+                            {f.number}
+                            <div className="text-xs text-muted-foreground md:hidden">{f.name}</div>
+                            {/* On a phone the action sits under the faktur, so the PPN column stays on screen. */}
+                            <div className="mt-1 sm:hidden">
+                              <BookFaktur clientId={clientId} faktur={f} direction={d.direction} accounts={accounts[d.direction]} preferred={d.direction === "KELUARAN" ? "4100" : "5100"} />
+                            </div>
+                          </TableCell>
                           <TableCell className="num hidden sm:table-cell">{f.date}</TableCell>
                           <TableCell className="hidden md:table-cell">{f.name}{f.npwp && <span className="num ml-1 text-xs text-muted-foreground">{f.npwp}</span>}</TableCell>
                           <TableCell className="text-right"><Money value={BigInt(f.ppn)} /></TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="hidden text-right sm:table-cell">
                             <BookFaktur clientId={clientId} faktur={f} direction={d.direction} accounts={accounts[d.direction]} preferred={d.direction === "KELUARAN" ? "4100" : "5100"} />
                           </TableCell>
                         </TableRow>
