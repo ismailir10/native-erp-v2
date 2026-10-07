@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import ExcelJS from "exceljs";
 import { db, makeGroup, resetDb } from "../helpers";
 import { postJournal } from "@/lib/ledger/post";
 import { dateOnly } from "@/lib/format";
 import { masaReport, rowNotes, terNote } from "@/lib/tax/masa-report";
 import { runControls } from "@/lib/controls";
+import { masaWorkbook } from "@/lib/tax/masa-workbook";
 import { postPpnOffset } from "@/lib/tax/ppn-offset";
 import { taxSummary } from "@/lib/reports/tax";
 
@@ -135,7 +137,28 @@ describe("masaReport — PPh 21, 23", () => {
     expect(r.due).toEqual(d(9, 15));
     expect(rep.ter).toMatchObject({ state: "CHECKED", estimate: 200_000n, booked: 200_000n, missing: 0, status: "PASS" });
     expect(rep.ter.state === "CHECKED" && rep.ter.employees.map((e) => [e.name, e.category, e.rate])).toEqual([["Ani", "A", 200]]);
-    expect(terNote((await report(12)).ter)).toMatch(/Desember dihitung ulang dengan tarif Pasal 17/);
+  });
+
+  it("recomputes December under Pasal 17 less TER (PMK 168/2023), and names a lebih potong", async () => {
+    await db.employee.create({ data: { firmId: g.firm.id, clientId: g.client.id, entityId: g.pt.entity.id, name: "Ani", sex: "FEMALE", birthDate: dateOnly(1990, 1, 1), hireDate: dateOnly(2020, 1, 1), wage: 10_000_000n, ptkpStatus: "TK0" } });
+    await db.employee.create({ data: { firmId: g.firm.id, clientId: g.client.id, entityId: g.pt.entity.id, name: "Budi (keluar)", sex: "MALE", birthDate: dateOnly(1990, 1, 1), hireDate: dateOnly(2020, 1, 1), wage: 9_000_000n, ptkpStatus: "K1", leftOn: d(7, 31) } });
+    // December's payroll withholds Ani's Pasal 17 balance: Rp 3 jt for the year less TER 2 % × 11 = Rp 800.000.
+    await post(d(12, 25), [{ code: "6100", debit: 10_000_000n }, { code: "BANK", credit: 9_200_000n }, { code: "2140", credit: 800_000n }]);
+    const dec = (await report(12, dateOnly(2027, 1, 5))).ter;
+    expect(dec).toMatchObject({ state: "ANNUAL", estimate: 800_000n, booked: 800_000n, missing: 0, status: "PASS" });
+    expect(dec.state === "ANNUAL" && dec.employees.map((e) => [e.name, e.months, e.pkp, e.annual, e.ter, e.december])).toEqual([["Ani", 12, 60_000_000n, 3_000_000n, 2_200_000n, 800_000n]]);
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load((await masaWorkbook(await report(12, dateOnly(2027, 1, 5)), { firm: "KJA Uji", title: "PT Uji" })) as unknown as ArrayBuffer);
+    const cells = wb.getWorksheet("PPh 21 TER")!.getSheetValues().flat().map(String);
+    expect(cells).toEqual(expect.arrayContaining(["PPh 21 Desember", "Ani", "TK/0", "Jumlah estimasi PPh 21 Desember"]));
+    expect(terNote(dec)).toBe("Estimasi PPh 21 Desember Rp 800.000: PPh 21 setahun dengan tarif Pasal 17 dikurangi TER Januari–November, dari upah sensus; PPh 21 yang dicatat terutang Rp 800.000. Selisihnya dalam 10 %.");
+
+    // Cici joined in July: six months, PKP Rp 3 jt → Rp 150.000 for the year, less TER Rp 1 jt → lebih potong Rp 850.000.
+    await db.employee.create({ data: { firmId: g.firm.id, clientId: g.client.id, entityId: g.pt.entity.id, name: "Cici", sex: "FEMALE", birthDate: dateOnly(1995, 1, 1), hireDate: d(7, 1), wage: 10_000_000n, ptkpStatus: "TK0" } });
+    const withCici = (await report(12, dateOnly(2027, 1, 5))).ter;
+    expect(withCici).toMatchObject({ state: "ANNUAL", estimate: -50_000n, status: "REVIEW" });
+    expect(withCici.state === "ANNUAL" && withCici.employees.find((e) => e.name === "Cici")).toMatchObject({ months: 6, december: -850_000n });
+    expect(terNote(withCici)).toMatch(/^Estimasi PPh 21 Desember lebih potong Rp 50\.000 \(dikembalikan ke karyawan\)/);
   });
 
   it("flags PPh 21 remitted with nothing booked as withheld (payroll booked net)", async () => {

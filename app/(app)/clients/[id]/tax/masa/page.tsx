@@ -15,6 +15,7 @@ import { Pph25Instalment } from "@/components/app/pph25-instalment";
 import { BUPOT_DIRECTION_LABEL, bupotNotes, bupotRecon } from "@/lib/tax/bupot";
 import { BUPOT_KIND_LABEL } from "@/lib/tax/bupot-read";
 import { withholdingAccountCode } from "@/lib/tax/withholding";
+import { PTKP_LABEL } from "@/lib/tax/ter";
 import type { WithholdingKind } from "@/lib/generated/prisma/enums";
 import { DIRECTION_LABEL, fakturNotes, fakturRecon } from "@/lib/tax/faktur";
 import { ScopeBar } from "@/components/app/scope-bar";
@@ -60,7 +61,7 @@ export default async function TaxMasaPage({ params, searchParams }: { params: Pr
   // Problems first (ui-rules 10).
   const rows = [...report.rows].sort((a, b) => (a.status === b.status ? 0 : a.status === "REVIEW" ? -1 : 1));
   const firstProblem = rows.find((r) => r.status === "REVIEW");
-  const terReview = report.ter.state === "CHECKED" && report.ter.status === "REVIEW";
+  const terReview = (report.ter.state === "CHECKED" || report.ter.state === "ANNUAL") && report.ter.status === "REVIEW";
   const reviewInWht = [...report.withheldByUs, ...report.withheldFromUs].filter((w) => w.inReview).length;
   // Lines still in Review sit on 1999 without their tax: the masa's PPN and PPh are not final until they are decided.
   const { start, end } = periodBounds(period.year, period.month);
@@ -233,14 +234,26 @@ export default async function TaxMasaPage({ params, searchParams }: { params: Pr
 
       <Card data-testid="masa-ter">
         <CardHeader>
-          <CardTitle>PPh 21 dengan TER</CardTitle>
-          <CardDescription>PP 58/2023, Januari–November. Estimasi dari upah di sensus karyawan dan status PTKP.</CardDescription>
+          {period.month === 12 ? (
+            <>
+              <CardTitle>PPh 21 Desember (Pasal 17 setahun)</CardTitle>
+              <CardDescription>
+                PMK 168/2023: PPh 21 setahun dihitung ulang dengan tarif Pasal 17, dikurangi TER Januari–November; hasilnya PPh 21 Desember (negatif = lebih
+                potong, dikembalikan ke karyawan). Estimasi dari upah sensus dan status PTKP; THR, bonus dan iuran JHT / JP karyawan belum termasuk.
+              </CardDescription>
+            </>
+          ) : (
+            <>
+              <CardTitle>PPh 21 dengan TER</CardTitle>
+              <CardDescription>PP 58/2023, Januari–November. Estimasi dari upah di sensus karyawan dan status PTKP.</CardDescription>
+            </>
+          )}
         </CardHeader>
         <CardContent className="space-y-4 text-sm">
           <div className="flex flex-wrap items-start gap-2">
-            {report.ter.state === "CHECKED" && <StatusPill status={report.ter.status} />}
+            {(report.ter.state === "CHECKED" || report.ter.state === "ANNUAL") && <StatusPill status={report.ter.status} />}
             <p className="min-w-0 flex-1">{terNote(report.ter)}</p>
-            {report.ter.state !== "CHECKED" && report.ter.state !== "DECEMBER" && (
+            {(report.ter.state === "NO_EMPLOYEES" || report.ter.state === "NO_STATUS") && (
               <Link href={withParams(`${base}/benefits`, { entity: entity.id, period: period.key })} className="text-primary underline-offset-2 hover:underline">Buka Imbalan Kerja</Link>
             )}
           </div>
@@ -277,6 +290,49 @@ export default async function TaxMasaPage({ params, searchParams }: { params: Pr
                   <TableCell colSpan={2}><Link href={ledger("2140")} className="hover:text-primary">Terutang di buku besar (2140)</Link></TableCell>
                   <TableCell className="hidden sm:table-cell" />
                   <TableCell />
+                  <TableCell className="text-right"><Money value={report.ter.booked} strong /></TableCell>
+                </TableRow>
+              </TableFooter>
+            </Table>
+          )}
+          {report.ter.state === "ANNUAL" && (
+            <Table data-testid="pph21-annual">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="eyebrow">Nama</TableHead>
+                  <TableHead className="eyebrow hidden sm:table-cell">PTKP</TableHead>
+                  <TableHead className="eyebrow hidden text-right md:table-cell">Bruto setahun</TableHead>
+                  <TableHead className="eyebrow hidden text-right md:table-cell">PKP</TableHead>
+                  <TableHead className="eyebrow hidden text-right sm:table-cell">PPh setahun</TableHead>
+                  <TableHead className="eyebrow hidden text-right sm:table-cell">TER Jan–Nov</TableHead>
+                  <TableHead className="eyebrow text-right">Desember</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {report.ter.employees.map((e) => (
+                  <TableRow key={e.id}>
+                    <TableCell>
+                      {e.name}
+                      <div className="text-xs text-muted-foreground"><span className="sm:hidden">{PTKP_LABEL[e.status]} · </span>{e.months} bulan</div>
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">{PTKP_LABEL[e.status]}</TableCell>
+                    <TableCell className="hidden text-right md:table-cell"><Money value={e.gross} /></TableCell>
+                    <TableCell className="hidden text-right md:table-cell"><Money value={e.pkp} /></TableCell>
+                    <TableCell className="hidden text-right sm:table-cell"><Money value={e.annual} /></TableCell>
+                    <TableCell className="hidden text-right sm:table-cell"><Money value={e.ter} /></TableCell>
+                    <TableCell className="text-right"><Money value={e.december} /></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+              <TableFooter>
+                <TableRow>
+                  <TableCell>Estimasi PPh 21 Desember</TableCell>
+                  <TableCell colSpan={5} className="hidden sm:table-cell" />
+                  <TableCell className="text-right"><Money value={report.ter.estimate} strong /></TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell><Link href={ledger("2140")} className="hover:text-primary">Terutang di buku besar (2140)</Link></TableCell>
+                  <TableCell colSpan={5} className="hidden sm:table-cell" />
                   <TableCell className="text-right"><Money value={report.ter.booked} strong /></TableCell>
                 </TableRow>
               </TableFooter>

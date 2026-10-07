@@ -4,6 +4,7 @@ import { newWorkbook, n, type WorkbookMeta } from "@/lib/reports/workbook";
 import { DIRECTION_LABEL, type FakturRecon } from "@/lib/tax/faktur";
 import { BUPOT_DIRECTION_LABEL, type BupotRecon } from "@/lib/tax/bupot";
 import { BUPOT_KIND_LABEL } from "@/lib/tax/bupot-read";
+import { PTKP_LABEL } from "@/lib/tax/ter";
 
 /** Kertas kerja pajak masa (I4c): the same report the page shows, never a second computation. Whole Rupiah as Excel numbers. */
 export async function masaWorkbook(r: MasaReport, meta: WorkbookMeta, faktur?: FakturRecon, bupot?: BupotRecon): Promise<Buffer> {
@@ -65,9 +66,22 @@ export async function masaWorkbook(r: MasaReport, meta: WorkbookMeta, faktur?: F
   }
   bp.addRow(["PPh 21 tidak masuk Unifikasi: bukti potongnya dibuat per penerima di e-Bupot 21/26."]);
 
-  const ter = sheet("PPh 21 TER", "PPh 21 dengan tarif efektif rata-rata (PP 58/2023)", `${sub} · estimasi dari upah sensus`, [32, 14, 10, 10, 18, 10, 18]);
+  const december = r.masa.month === 12;
+  const ter = december
+    ? sheet("PPh 21 TER", "PPh 21 Desember: Pasal 17 setahun dikurangi TER Januari–November (PMK 168/2023)", `${sub} · estimasi dari upah sensus; THR, bonus dan iuran JHT / JP karyawan belum termasuk`, [32, 14, 10, 8, 18, 16, 16, 16, 16, 18, 18])
+    : sheet("PPh 21 TER", "PPh 21 dengan tarif efektif rata-rata (PP 58/2023)", `${sub} · estimasi dari upah sensus`, [32, 14, 10, 10, 18, 10, 18]);
   ter.addRow([terNote(r.ter)]);
   ter.addRow([]);
+  if (r.ter.state === "ANNUAL") {
+    head(ter, ["Nama", "No. karyawan", "PTKP", "Bulan", "Bruto setahun", "Biaya jabatan", "PTKP (Rp)", "PKP", "PPh setahun", "TER Jan–Nov", "PPh 21 Desember"]);
+    for (const e of r.ter.employees) {
+      const row = ter.addRow([e.name, e.employeeNo ?? "", PTKP_LABEL[e.status], e.months, n(e.gross), n(e.biayaJabatan), n(e.ptkp), n(e.pkp), n(e.annual), n(e.ter), n(e.december)]);
+      for (const c of [2, 3]) row.getCell(c).numFmt = "@";
+    }
+    const total = ter.addRow(["Jumlah estimasi PPh 21 Desember", "", "", "", "", "", "", "", "", "", n(r.ter.estimate)]);
+    total.font = { bold: true };
+    ter.addRow(["PPh 21 terutang di buku besar (2140)", "", "", "", "", "", "", "", "", "", n(r.ter.booked)]);
+  }
   if (r.ter.state === "CHECKED") {
     head(ter, ["Nama", "No. karyawan", "PTKP", "Kategori", "Upah", "Tarif", "PPh 21"]);
     for (const e of r.ter.employees.map(terRow)) {

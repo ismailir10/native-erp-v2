@@ -197,7 +197,11 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     put on Persediaan directly − persediaan akhir, which equals the Laba Rugi line by construction.
 5j. **Pajak masa — PPN, PPh 21 (TER), Unifikasi** (`lib/tax/ter.ts`, `lib/tax/masa-report.ts`): computed at read time per company and month,
     nothing stored, nothing posted. TER is PP 58/2023's three monthly tables kept verbatim (brackets inclusive at their upper bound, rate in
-    hundredths of a percent, tax rounded down to whole Rupiah), January–November only: December is the Pasal 17 year recompute, never TER.
+    hundredths of a percent, tax rounded down to whole Rupiah), January–November only. December is the Pasal 17 year recompute, never TER
+    (`pph21Annual`, PMK 168/2023): per employee in December's census, the months worked this year × census wage − biaya jabatan (5 %,
+    ≤ Rp 500 rb a month) − PTKP (Rp 54 jt + 4,5 jt married + 4,5 jt per dependent) → PKP rounded down to thousands → Pasal 17 layers
+    (5/15/25/30/35 %) − TER of the months worked January–November = December (negative = lebih potong). Same 10 % tolerance against
+    the PPh 21 booked for December; THR, bonus and the employee's JHT / JP iuran are not in the census, so it says it is an estimate.
     The TER check uses the census wage (`Employee.wage`, the PSAK 24 *upah*) and the employee's PTKP status, so it is an **estimate** and
     says so. A masa is judged on what was booked *for* it (credits in the month; PPN keluaran − masukan), paid by bank lines classified to
     the tax account up to its due date (PPh: the 15th of the next month; PPN: the end of the next month); an older balance is shown apart,
