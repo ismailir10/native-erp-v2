@@ -5,7 +5,7 @@ file to a closed month.
 
 ## Rules
 1. There is **one workspace** ([ADR 0008](adrs/0008-one-workspace.md)). Real client work lives in production (https://native-erp-v2.vercel.app),
-   behind invitation-only login, on Supabase project `native-erp-v2` with `DEMO_MODE=false`. Staging is synthetic pre-production: never upload real files there.
+   behind invitation-only login, on Supabase project `native-erp-v2` with `DEMO_MODE=false`. It is the only hosted environment ([ADR 0015](adrs/0015-production-only.md)).
 2. Real data lives in exactly two places:
    - **Local**: Postgres on your machine. Files go in `data/private/` (gitignored).
    - **Production**: the workspace above. No demo firm and no reset. Never point `demo:reset` at its database.
@@ -111,11 +111,10 @@ Imports the files in `data/private/` into a fresh client and compares Buku with 
 |---|---|---|
 | Local | `npm run dev` with `.env` → `postgresql://buku:buku@localhost:5432/buku` and `DEMO_MODE=false` | local `buku` |
 | Production (real workspace) | https://native-erp-v2.vercel.app (invitation login) | Supabase `native-erp-v2` |
-| Staging (synthetic, frozen) | No deployments; local-dev Auth, e2e from a laptop, on-demand `vercel deploy` previews | Supabase `native-erp-v2-staging` |
 
-New work merges into `main` after CI passes, and each merge deploys production. Git branch `staging` is frozen. See [Branch workflow](../README.md#branch-workflow).
+New work merges into `main` after CI passes, and each merge deploys production. There is no staging ([ADR 0015](adrs/0015-production-only.md)). See [Branch workflow](../README.md#branch-workflow).
 
 Google OAuth for Drive must list the production callback URL.
 
 Never point `.env` at the production database, because `npm run demo:reset` truncates whatever `DATABASE_URL` points at;
-local `.env` uses the staging project's Auth keys only, never production's.
+local `.env` uses the local Supabase stack's Auth (`npm run auth:local`), never production's.

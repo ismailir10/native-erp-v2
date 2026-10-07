@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { loadClientPage } from "@/lib/client-page";
 import { type SearchParams, withParams } from "@/lib/scope";
 import { formatDate, formatPeriod } from "@/lib/format";
+import { formatRupiah } from "@/lib/money";
 import { packApplies } from "@/lib/tax/pack";
 import { masaReport, ppnLine, previousStateLabel, rowNotes, terNote, terRow, withholdingLabel, type MasaRow, type WithholdingLine } from "@/lib/tax/masa-report";
 import { NextStep, PageHeader } from "@/components/app/page-header";
@@ -76,11 +77,11 @@ export default async function TaxMasaPage({ params, searchParams }: { params: Pr
             <TableHeader>
               <TableRow>
                 <TableHead className="eyebrow">Pajak</TableHead>
-                <TableHead className="eyebrow text-right">Terutang {label}</TableHead>
+                <TableHead className="eyebrow text-right">Terutang masa ini</TableHead>
                 <TableHead className="eyebrow hidden text-right md:table-cell">Jatuh tempo</TableHead>
                 <TableHead className="eyebrow hidden text-right sm:table-cell">Masa lalu</TableHead>
                 <TableHead className="eyebrow hidden text-right md:table-cell">Saldo akun</TableHead>
-                <TableHead className="eyebrow text-right">Status</TableHead>
+                <TableHead className="eyebrow hidden text-right sm:table-cell">Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -163,21 +164,28 @@ export default async function TaxMasaPage({ params, searchParams }: { params: Pr
 function TaxRow({ r, href }: { r: MasaRow; href: string }) {
   const notes = rowNotes(r);
   const p = r.previous;
+  const paid = p.paid.reduce((t, x) => t + x.amount, 0n);
+  const late = p.late.reduce((t, x) => t + x.amount, 0n);
   return (
     <>
       <TableRow data-testid={`masa-row-${r.key}`}>
         <TableCell className="font-medium">
           <Link href={href} className="hover:text-primary">{r.label}</Link>
           <span className="ml-1 text-xs text-muted-foreground">{r.code}</span>
+          {/* Phones: the status sits under the name (the Status column is hidden below sm). */}
+          <div className="mt-1 sm:hidden"><StatusPill status={r.status} /></div>
         </TableCell>
         <TableCell className="text-right"><Link href={href} className="hover:text-primary"><Money value={r.owed} /></Link></TableCell>
         <TableCell className="num hidden text-right md:table-cell">{formatDate(r.due)}</TableCell>
         <TableCell className="hidden text-right sm:table-cell">
           <Money value={p.owed} />
-          <div className="text-xs text-muted-foreground">{formatPeriod(p.masa.year, p.masa.month)} · {previousStateLabel(p.state)}</div>
+          <div className="text-xs text-muted-foreground">
+            {formatPeriod(p.masa.year, p.masa.month)} · {r.netPayroll ? "disetor tanpa terutang" : previousStateLabel(p.state)}
+          </div>
+          {paid + late > 0n && <div className="num text-xs text-muted-foreground">disetor {formatRupiah(paid + late, { bare: true })}</div>}
         </TableCell>
         <TableCell className="hidden text-right md:table-cell"><Link href={href} className="hover:text-primary"><Money value={r.balance} /></Link></TableCell>
-        <TableCell className="text-right"><StatusPill status={r.status} /></TableCell>
+        <TableCell className="hidden text-right sm:table-cell"><StatusPill status={r.status} /></TableCell>
       </TableRow>
       {(notes.length > 0 || r.ppn) && (
         <TableRow className="hover:bg-transparent">

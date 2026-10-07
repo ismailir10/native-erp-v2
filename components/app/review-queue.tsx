@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Check, CheckCheck, Loader2 } from "lucide-react";
+import { Check, CheckCheck, CircleAlert, Loader2 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Kbd } from "@/components/ui/kbd";
@@ -18,6 +18,7 @@ import { DEFAULT_RATE, grossUpWithholding, WITHHOLDING_LABEL } from "@/lib/tax/w
 import type { WithholdingKind } from "@/lib/generated/prisma/enums";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { accountantHints } from "@/lib/classify/hints";
 
 export type ReviewItem = {
   id: string;
@@ -35,6 +36,8 @@ export type ReviewItem = {
   similar: number;
   /** Only the simple guess stands behind the suggestion: Enter doesn't accept it, and accepting it unchanged isn't learned. */
   guess: boolean;
+  /** The entity's kind (PT, CV, PERORANGAN…): only a business is a withholding agent in the hints. */
+  entityKind?: string;
 };
 export type AccountOption = { code: string; name: string; group: string };
 /** `wht`: tax the counterparty or we withheld ("none" or a kind) at `rate` %, added to the net bank amount (accounting-rules 5h). */
@@ -252,7 +255,11 @@ export function ReviewQueue({
   };
 
   // Confident suggestions the reviewer hasn't touched: accepted in one click, in order, through the same saves as Enter.
-  const confident = visible.filter((i) => i.method === "AI" && i.confidence >= 0.8 && !unsaved(i) && i.suggestedCode);
+  // A line with an open accountant hint (capex, a down payment, missing withholding) is never accepted in bulk: it needs a look.
+  const hintsFor = (i: ReviewItem, c = get(i)) => accountantHints({ description: i.description, amount: BigInt(i.amount), account: accounts.find((o) => o.code === c.code) ?? null, wht: c.wht ?? "none", entityKind: i.entityKind ?? "PT" });
+  const sure = visible.filter((i) => i.method === "AI" && i.confidence >= 0.8 && !unsaved(i) && i.suggestedCode);
+  const confident = sure.filter((i) => hintsFor(i).length === 0);
+  const hinted = sure.length - confident.length;
   const acceptConfident = () => {
     for (const i of confident) accept(i);
     toast.success(`${confident.length} usulan diterima`);
@@ -315,6 +322,7 @@ export function ReviewQueue({
           <CheckCheck /> Terima {confident.length} usulan AI yakin (≥ 80%)
         </Button>
       )}
+      {confident.length > 1 && hinted > 0 && <span className="text-xs text-muted-foreground">{hinted} usulan dengan petunjuk dicek satu per satu</span>}
     </div>
   );
 
@@ -395,6 +403,22 @@ export function ReviewQueue({
                   </span>
                 )}
               </div>
+              {(() => {
+                const hints = hintsFor(i, c);
+                return hints.length > 0 && (
+                  <ul className="mt-3 space-y-1.5" data-testid="review-hints">
+                    {hints.map((h) => (
+                      <li key={h.key} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-review-subtle px-3 py-2 text-sm">
+                        <CircleAlert className="size-4 shrink-0 text-review" aria-hidden />
+                        <span className="min-w-0 flex-1">{h.text}</span>
+                        {h.apply && (
+                          <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); set(i, h.apply!); }}>{h.applyLabel}</Button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                );
+              })()}
               <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
                 <AccountPicker value={c.code} onChange={(v) => set(i, { code: v })} options={accounts} ariaLabel="Akun" className="w-80 max-w-full" />
                 <Select modal={false} value={c.tax} onValueChange={(v) => set(i, { tax: v as string })}>

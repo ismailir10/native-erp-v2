@@ -200,7 +200,8 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     The TER check uses the census wage (`Employee.wage`, the PSAK 24 *upah*) and the employee's PTKP status, so it is an **estimate** and
     says so. A masa is judged on what was booked *for* it (credits in the month; PPN keluaran − masukan), paid by bank lines classified to
     the tax account up to its due date (PPh: the 15th of the next month; PPN: the end of the next month); an older balance is shown apart,
-    never netted against a missed month. Buku prepares; the firm files in Coretax (ADR 0014: not a PJAP).
+    never netted against a missed month. An opening balance on a tax account belongs to the masa before its date (the books start owing
+    it), so the first remittance reads as paying it. Buku prepares; the firm files in Coretax (ADR 0014: not a PJAP).
 6. `bigint` **minor units of the entity's functional currency** everywhere in the domain (ADR 0006). IDR has exponent 0,
    so for IDR entities that is whole Rupiah, as before. Parse with `parseRupiah()` / `parseMinor()` (handles `1.234.567,00`,
    `1,234,567.00`, `(2.500)`), format with `formatRupiah()` / `formatMoney(value, currency)`. Convert to `Number` only for chart

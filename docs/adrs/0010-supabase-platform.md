@@ -1,5 +1,7 @@
 # 0010 — Supabase platform: email + password login, members with roles, who-did-what
 
+> **Staging retired by [0015](0015-production-only.md)** (2026-10-07): production is the only hosted environment; local development and e2e use a local Supabase stack.
+
 **Context.** Login was a 6-digit email code (Resend) or a 12-digit shared code through Better Auth, invitations were CLI-only, and a
 separate `ADMIN_PASSCODE` guarded the AI key and the Google Drive connection. Accountants met three different secrets and none of them
 was "my account". The books recorded *which bank row* but never *who* posted, signed off, locked or imported — the auditable close

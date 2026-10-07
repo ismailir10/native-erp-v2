@@ -1,5 +1,7 @@
 # 0011 — Merge to main directly; Vercel builds production only
 
+> **Staging retired by [0015](0015-production-only.md)** (2026-10-07): production is the only hosted environment; local development and e2e use a local Supabase stack.
+
 **Context.** [0008](0008-one-workspace.md) made staging a deployed, synthetic pre-production: task PRs merged into `staging`, and a
 separate `staging` → `main` PR with a staging smoke test promoted each release. With one developer that doubled every release, and
 Vercel built a preview for every PR push and every staging merge, spending the build allowance on environments nobody opened.

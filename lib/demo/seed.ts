@@ -84,7 +84,16 @@ export async function seedDemo(db: Db, opts: { log?: (s: string) => void; liveAi
         if (openKeys.has(key) && !closed) continue;
         const tr = truth.get(key);
         if (!tr) throw new Error(`Seed: tidak ada truth untuk ${key}`);
-        await reviewTransaction(db, { bankTxId: t.id, accountCode: tr.accountCode, taxTag: tr.taxTag, learn: true }); // the scenario's truth is the accountant's decision
+        await reviewTransaction(db, { bankTxId: t.id, accountCode: tr.accountCode, taxTag: tr.taxTag, withholding: tr.withholding, learn: true }); // the scenario's truth is the accountant's decision
+      }
+      // Payroll is filed by a rule, paid net: the accountant adds the PPh 21 withheld (gross salary expense, 2140 owed).
+      const posted = await db.bankTransaction.findMany({
+        where: { bankAccount: { entity: { clientId: client.id } }, status: { not: "NEEDS_REVIEW" }, whtAmount: 0n, date: { gte: dateOnly(year, month, 1), lte: dateOnly(year, month + 1, 0) } },
+        include: { bankAccount: true },
+      });
+      for (const t of posted) {
+        const tr = truth.get(lineKey(t.bankAccount.number, t.date, t.amount, t.description));
+        if (tr?.withholding) await reviewTransaction(db, { bankTxId: t.id, accountCode: tr.accountCode, taxTag: tr.taxTag, withholding: tr.withholding, learn: false });
       }
       // Closed months: the accountant already clicked Catat on that month's installment.
       if (depreciation && closed) await postInstallment(db, { clientId: client.id, scheduleId: depreciation.id, k: (year - first.year) * 12 + month - first.month + 1 });

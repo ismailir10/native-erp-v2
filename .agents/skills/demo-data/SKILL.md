@@ -23,6 +23,8 @@ Shapes are modelled on them; names, numbers and account numbers are invented.
 - **Grup Ayam Nusantara** (PT + owner Budi): owner's BRI Simpedes August file is held back → controls show
   BRI recon REVIEW, 1199 open, 1190 residual Rp 31 jt. Uploading it clears all three. 4 + 1 lines to review,
   one where AI is wrong (machine → should be 1210 Aset Tetap). August depreciation installment (6/120) proposed, not yet posted (one-click moment); after the machine is reviewed to 1210 it is a fixed-asset candidate for a new schedule.
+- **Taxes are tidy**: payroll is paid net with PPh 21 (5 % of gross) withheld to 2140, and every PPN / PPh 21 remittance pays exactly what the
+  previous masa owed (`remitTaxes`; the March ones pay the opening 2130 / 2140), so Pajak Masa is *Lolos* on every PT month.
 - **CV Sinar Retail**: 2 lines to review. **PT Jasa Kreatif Digital**: fully closed.
 
 ## Changing it

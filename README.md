@@ -29,7 +29,7 @@ Supported evidence formats include text PDFs, XLSX, XLS, CSV, Google Docs/Sheets
 
 ### Current experience and limits
 
-**Available in this implementation:** invitation-only login with email + password (Supabase Auth; admin and akuntan roles), dashboard-level Tanya Buku, shared client/company and period selectors, prioritized work, document evidence and company-context review, financial reports, and controlled month-end close. Production (`main`) is the only deployed environment; the synthetic staging Supabase project backs local development and e2e Auth.
+**Available in this implementation:** invitation-only login with email + password (Supabase Auth; admin and akuntan roles), dashboard-level Tanya Buku, shared client/company and period selectors, prioritized work, document evidence and company-context review, financial reports, and controlled month-end close. Production (`main`) is the only hosted environment; a throwaway local Supabase stack backs local development and e2e Auth ([ADR 0015](docs/adrs/0015-production-only.md)).
 
 **Tanya Buku supports bounded read-only questions:** close readiness, posted profit/revenue, cash and account balances, bank transfers to or from a named party in the month (count, totals, accounts they sit on), the transactions still in Review to ask the client about, document search, and company context. Its portfolio answers are calculated with deterministic tools; unsupported questions say so. Answers retain the scope and period at submission, with source links and session-only history. Document-specific AI tools remain available within their existing budget controls; an AI answer plan with harmless slips is normalised, one that names an entity outside the chosen scope is ignored with a note, and Pengaturan shows the 30-day plan-rejection rate. Cross-client views compare companies in their own currencies; they do not consolidate them. Always-on agents and live bank feeds are not implemented.
 
@@ -61,15 +61,17 @@ Review the [standalone, clickable HTML prototype](docs/prototypes/buku-workspace
 
 ## Quick start
 ```bash
-cp .env.example .env            # then paste the *staging* Supabase keys (Settings → API keys) and a DEMO_ADMIN_PASSWORD
+cp .env.example .env            # then set a DEMO_ADMIN_PASSWORD (≥ 8 chars)
+npm run auth:local              # local Supabase Auth in Docker (the stack CI uses); writes its URL + keys into .env
 docker compose up -d            # Postgres 16 (or `brew install postgresql@16` + create role/db `buku`, and `buku_test` for tests)
 npm ci
 npx prisma migrate deploy
 npm run demo:reset              # seed "KJA Demo & Rekan" + the demo admin (≈5 s, no AI credit used)
 npm run dev                     # http://localhost:3000/login → DEMO_ADMIN_EMAIL / DEMO_ADMIN_PASSWORD
 ```
-Identity lives in Supabase Auth ([ADR 0010](docs/adrs/0010-supabase-platform.md)); local development uses the staging project's Auth with a local
-database, so nothing you do locally touches production users. To invite a real address instead of the demo admin:
+Identity lives in Supabase Auth ([ADR 0010](docs/adrs/0010-supabase-platform.md)). Production is the only hosted environment
+([ADR 0015](docs/adrs/0015-production-only.md)); local development uses a throwaway local Supabase stack and a local database, so
+nothing you do locally touches production users or books. To invite a real address instead of the demo admin:
 `npm run access -- list` (firm ID) then `npm run access -- invite --firm FIRM_ID --email you@example.com --name "Nama" --role ADMIN`.
 For an empty non-demo database, `npm run access -- init --name "Your firm"` creates the firm first.
 
@@ -110,26 +112,25 @@ Next.js 16 (App Router, server actions) · TypeScript · Tailwind v4 · shadcn (
 | `AI_TIMEOUT_MS` / `AI_LONG_TIMEOUT_MS` | Optional per-call timeouts (defaults 90 000 for classification/mapping, 180 000 for close review and *Jelaskan*) |
 
 ## Deploy (Vercel + Supabase)
-Supabase organisation **Rightjet**, two projects in `ap-southeast-1`: `native-erp-v2` (production) and `native-erp-v2-staging`.
-1. **Connect Supabase to the Vercel project** (Vercel → Integrations → Supabase): production ↔ `native-erp-v2`, preview ↔
-   `native-erp-v2-staging`. The integration injects `POSTGRES_PRISMA_URL`, `POSTGRES_URL_NON_POOLING`, `NEXT_PUBLIC_SUPABASE_URL`,
+Supabase organisation **Rightjet**, project `native-erp-v2` in `ap-southeast-1`: production, the only hosted environment
+([ADR 0015](docs/adrs/0015-production-only.md)). The former `native-erp-v2-staging` project is unused.
+1. **Connect Supabase to the Vercel project** (Vercel → Integrations → Supabase): production ↔ `native-erp-v2`. The integration injects `POSTGRES_PRISMA_URL`, `POSTGRES_URL_NON_POOLING`, `NEXT_PUBLIC_SUPABASE_URL`,
    `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` per environment — no database password is typed anywhere.
 2. **Env vars** (Settings → Environment Variables): `DEMO_MODE` per the table below, `SETTINGS_SECRET`, `EVIDENCE_ENABLED=true`, `APP_URL`,
    and optionally `AI_BASE_URL`. Production: `INITIAL_FIRM_NAME` + `INITIAL_ADMIN_EMAIL` (the build invites that admin once).
-   Preview: `DEMO_ADMIN_EMAIL` + `DEMO_ADMIN_PASSWORD`. The AI key + model are set in **Pengaturan** by an admin.
-3. **Supabase Auth settings** (both projects, done in the dashboard): Site URL = the environment's origin, redirect allow-list
-   `<origin>/auth/callback` (staging also the `native-erp-v2-*-ismails-projects-…vercel.app` wildcard and `http://localhost:3000`),
+   The AI key + model are set in **Pengaturan** by an admin.
+3. **Supabase Auth settings** (done in the dashboard): Site URL = the production origin, redirect allow-list `<origin>/auth/callback`,
    *Allow new users to sign up* **off**, minimum password length 8, Data API **off** (Prisma owns `public`; nothing is exposed via PostgREST).
    **Custom SMTP** (Authentication → Emails → SMTP) is required before invitations reach addresses outside the Supabase organisation;
    the Bahasa templates to paste are in `supabase/templates/`.
 4. **Connect Git** (Settings → Git): `ismailir10/native-erp-v2`; production branch `main`.
-5. **Access**: application login is required everywhere. Production is the one real workspace ([ADR 0008](docs/adrs/0008-one-workspace.md), releases per [ADR 0011](docs/adrs/0011-main-only-releases.md)); on-demand previews keep Vercel protection as an additional boundary and hold synthetic data only. Do not copy staging users or secrets into production.
+5. **Access**: application login is required. Production is the one real workspace ([ADR 0008](docs/adrs/0008-one-workspace.md), releases per [ADR 0011](docs/adrs/0011-main-only-releases.md), the only hosted environment per [ADR 0015](docs/adrs/0015-production-only.md)). Never point local development, seeds or e2e at it.
 6. Functions run in `sin1` (Settings → Functions), the same region as the Supabase projects — every page runs many queries.
 
 | Vercel environment | Supabase project | `DEMO_MODE` | Who sees it |
 |---|---|---|---|
 | Production (`main`) | `native-erp-v2` | `false` | Invited accountants. **The real workspace**, see [docs/real-data.md](docs/real-data.md) |
-| Preview (on demand only, `vercel deploy`) | `native-erp-v2-staging` | `true` | Invited users + Vercel protection. Synthetic |
+| Local development, CI, e2e | local stack (`npm run auth:local` / `supabase start`) | `true` | You. Synthetic, disposable |
 
 Git deployments are on for `main` only (`vercel.json` → `git.deploymentEnabled`): PRs and other branches build no preview, so every
 merge to `main` is one production deploy.
@@ -156,19 +157,18 @@ login page sends a reset link and never reveals whether the address is a member.
 
 Missing Supabase configuration keeps the workspace closed and shows a setup message instead of a server error.
 
-E2E creates its member through the Supabase admin API (CI: a local `supabase start` stack; a laptop: the staging project's Auth from
-`.env`) and logs in through the real form. It never sends mail or enables an authentication bypass. `.playwright/` holds the ephemeral
+E2E creates its members through the Supabase admin API of the local stack (CI and laptops alike: `npm run auth:local`) and logs in
+through the real form. Its setup refuses a non-localhost database. It never sends mail or enables an authentication bypass. `.playwright/` holds the ephemeral
 session and credentials and is ignored by Git.
 
 ## Branch workflow
 
 `main` is the repository default, the base for new work and production. Create a temporary `task/<slug>` branch from current
 `main`, open its PR against `main`, and merge after CI passes — the merge deploys to production. GitHub automatically deletes the
-merged task branch; remove its local copy after returning to `main`. `staging` is frozen: kept, protected, no new work.
+merged task branch; remove its local copy after returning to `main`. `staging` is frozen history ([ADR 0015](docs/adrs/0015-production-only.md)).
 Both branches are protected from deletion and force-push, and require the CI `check` result.
 
-Supabase: project `native-erp-v2` (real workspace, git `main`) and project `native-erp-v2-staging` (synthetic demo: local-dev Auth,
-e2e from a laptop, on-demand previews). Nothing else.
+Supabase: project `native-erp-v2` (the real workspace, git `main`). Nothing else is hosted; development runs on the local stack.
 
 ## For contributors (humans and agents)
 Read [AGENTS.md](AGENTS.md) (also reachable as `CLAUDE.md`): the spec → build → ship loop, gates, and which skill (`.agents/skills/`) governs which folder.

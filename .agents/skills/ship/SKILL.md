@@ -21,30 +21,27 @@ description: Ship a completed Buku cycle — preflight the cycle doc, push the f
 5. `staging` is frozen (kept, no new work, no deploys). New work always starts from updated `main`.
 
 ## Deploy (when the user asks)
-Vercel project `native-erp-v2` (team "Ismail's projects", slug `ismails-projects-196d40d3`) + Supabase org Rightjet (`native-erp-v2` = production, `native-erp-v2-staging` = synthetic, local-dev Auth).
+Vercel project `native-erp-v2` (team "Ismail's projects", slug `ismails-projects-196d40d3`) + Supabase org Rightjet (`native-erp-v2` = production, the only hosted environment, [ADR 0015](../../../docs/adrs/0015-production-only.md)).
 The environment ↔ Supabase project map and the env var list are owned by [README → Deploy](../../../README.md#deploy-vercel--supabase)
 and [ADR 0008](../../../docs/adrs/0008-one-workspace.md); check them, don't restate them. In short:
 - **Production (git `main`) is the one real workspace** → Supabase **`native-erp-v2`**, `DEMO_MODE=false`, invitation login
   (`https://native-erp-v2.vercel.app`). Real client files live here or locally, nowhere else.
-- **Preview deployments are off** (`vercel.json` → `git.deploymentEnabled` only for `main`). The Preview environment settings and the
-  Supabase project `native-erp-v2-staging` stay: synthetic data, used for local-dev Auth and e2e from a laptop. A preview can still be
-  built on demand with `vercel deploy` (ask first — it spends build minutes).
+- **Preview deployments are off** (`vercel.json` → `git.deploymentEnabled` only for `main`) and there is no staging: development, CI and e2e
+  run on the local Supabase stack (`npm run auth:local`). Never point dev, seeds or e2e at production.
 - If a login says "Email atau kata sandi tidak cocok" for a known member, check which Supabase project the environment's
   `NEXT_PUBLIC_SUPABASE_URL` and database URL point at first (auth users and members must be in the same project).
 
 Build: `npm run vercel-build` → `scripts/vercel-build.sh`: `prisma generate`, `prisma migrate deploy` on `POSTGRES_URL_NON_POOLING`,
 seed-if-empty only when `DEMO_MODE=true`, first-admin bootstrap (`INITIAL_*`), `next build`. Schema changes ship by committing a migration.
 
-Env vars are **per environment** — Production and Preview each need their own auth, Google and evidence settings; a var set only
-for `Preview (staging)` does not exist in Production. Never copy staging secrets into production.
+Env vars that matter are **Production** ones; the Preview environment is unused.
 - Inspect names with `vercel env ls production` (values stay hidden). The Vercel MCP can't list env vars (403); use the CLI or dashboard.
 - Non-secret values (`APP_URL`, `EVIDENCE_ENABLED`, `GOOGLE_REDIRECT_URI`, `GOOGLE_CLIENT_ID`, `INITIAL_*`, `DEMO_ADMIN_EMAIL`) you may set with
   `printf %s VALUE | vercel env add NAME production`. **Secrets are set by the user or the Supabase integration** (`GOOGLE_CLIENT_SECRET`,
   `SETTINGS_SECRET`, `DEMO_ADMIN_PASSWORD`, Supabase keys and DB URLs): give them a command that pipes the value straight in.
-  Secret-type vars can't be pulled back, so a "copy from staging" pull returns nothing useful — generate or rotate instead.
+  Secret-type vars can't be pulled back — generate or rotate instead.
 - Env changes take effect only after a redeploy: `vercel redeploy <latest production URL> --target production` (ask first).
-- Google OAuth (GCP project `native-erp-v2`, client "Buku Staging", testing mode): the client must list each environment's exact
-  `/api/google/callback` URL, and the connecting Google account must be a test user.
+- Google OAuth (GCP project `native-erp-v2`, testing mode): the client must list the production and `localhost` `/api/google/callback` URLs, and the connecting Google account must be a test user.
 - `SETTINGS_SECRET` encrypts the Drive refresh token and the Pengaturan AI key. Changing it (or pointing at a DB written under
   another secret) means reconnect Google and re-save the AI key.
 - Cloud agent sandboxes may not reach Supabase (proxy) — never migrate/seed a hosted database from a sandbox; let the build do it.

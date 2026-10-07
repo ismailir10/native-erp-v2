@@ -79,6 +79,16 @@ describe("masaReport — PPh 21, 23", () => {
     expect(rowNotes(r).join(" ")).toMatch(/Gaji mungkin dicatat neto/);
   });
 
+  it("reads an opening balance as the masa before the books start, so its remittance is paid in full", async () => {
+    await post(d(2, 28), [{ code: "2140", credit: 300n }, { code: "2130", credit: 900n }, { code: "3100", debit: 1_200n }], "OPENING");
+    await post(d(3, 10), [{ code: "2140", debit: 300n }, { code: "BANK", credit: 300n }]);
+    await post(d(3, 15), [{ code: "2130", debit: 900n }, { code: "BANK", credit: 900n }]);
+    const pph = await row(3, "PPH_21");
+    expect(pph.previous).toMatchObject({ owed: 300n, state: "LUNAS" });
+    expect(pph).toMatchObject({ other: 0n, netPayroll: false, status: "PASS" });
+    expect((await row(3, "PPN")).previous).toMatchObject({ owed: 900n, state: "LUNAS" });
+  });
+
   it("names a PPh 23 payment made after the 15th as late, and an old opening balance apart", async () => {
     await post(d(1, 1), [{ code: "2141", credit: 40n }, { code: "3100", debit: 40n }], "OPENING");
     await post(d(7, 3), [{ code: "6190", debit: 5_000n }, { code: "BANK", credit: 4_900n }, { code: "2141", credit: 100n }]);
