@@ -47,6 +47,7 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
     // A key with no counterparty ("BI FAST OUTGOING") groups unrelated payments: never offered as *serupa*.
     similar: isGenericKey(t.merchantKey) ? 1 : (similarCount.get(`${t.merchantKey}|${t.direction}`) ?? 1),
     guess: isSimpleGuess(t),
+    entityKind: t.bankAccount.entity.kind,
   }));
   const options = classifiableOptions(accounts);
 

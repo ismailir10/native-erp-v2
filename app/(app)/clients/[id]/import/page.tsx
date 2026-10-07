@@ -123,7 +123,7 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
       )}
       <SetupSteps progress={setup} />
       {completeness.rows.length > 0 && <CompletenessCard months={completeness.months} rows={completeness.rows} />}
-      {request && <DataRequestCard message={request.text} items={request.items} />}
+      {request && <DataRequestCard message={request.text} items={request.items} clientId={client.id} canLink={evidenceEnabled()} />}
       {evidenceEnabled() && (
         <UploadLinksCard
           clientId={client.id}

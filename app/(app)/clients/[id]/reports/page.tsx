@@ -50,7 +50,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
   const tab = typeof sp.tab === "string" ? sp.tab : "pl";
   const combinedNote = `Gabungan adalah pandangan manajemen, bukan konsolidasi menurut SAK (yang berlaku untuk induk–anak). Saldo antar entitas (1190) saling meniadakan bila kedua sisinya sudah tercatat; saldo 1190 yang masih tampil belum ada pasangannya di entitas lain.${
     mixed ? " Entitas non-Rupiah dijabarkan: aset & liabilitas dengan kurs penutup, laba rugi dengan kurs rata-rata, ekuitas dengan kurs historis; selisihnya di akun 3900." : ""
-  }`;
+  } Laporan manajemen, catatan manajemen dan paket kredit bank dibuat per perusahaan: pilih perusahaannya di atas.`;
   const note = currencyNote(currency, mixed);
   const header = (
     <PageHeader
