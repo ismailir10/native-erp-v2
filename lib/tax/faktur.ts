@@ -5,6 +5,7 @@ import { formatRupiah } from "@/lib/money";
 import { packApplies } from "@/lib/tax/pack";
 import { readFaktur, type FakturDirection } from "@/lib/tax/faktur-read";
 import { matchOneToOne } from "@/lib/tax/coretax-match";
+import { notPpnOffset } from "@/lib/tax/masa-report";
 import { createInvoice } from "@/lib/receivables/invoices";
 import { dateOnly } from "@/lib/format";
 
@@ -108,7 +109,7 @@ export type FakturRecon = { year: number; month: number; directions: DirectionRe
 async function bookPpn(db: Db, entityId: string, direction: FakturDirection, year: number, month: number): Promise<BookPpn[]> {
   const { start, end } = periodBounds(year, month);
   const lines = await db.journalLine.findMany({
-    where: { entityId, date: { gte: start, lte: end }, account: { code: ACCOUNT[direction] }, entry: { kind: { not: "OPENING" } } },
+    where: { entityId, date: { gte: start, lte: end }, account: { code: ACCOUNT[direction] }, entry: { kind: { not: "OPENING" }, ...notPpnOffset } },
     select: {
       debit: true,
       credit: true,

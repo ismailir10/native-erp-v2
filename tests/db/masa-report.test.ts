@@ -4,6 +4,8 @@ import { postJournal } from "@/lib/ledger/post";
 import { dateOnly } from "@/lib/format";
 import { masaReport, rowNotes, terNote } from "@/lib/tax/masa-report";
 import { runControls } from "@/lib/controls";
+import { postPpnOffset } from "@/lib/tax/ppn-offset";
+import { taxSummary } from "@/lib/reports/tax";
 
 // Pajak masa (I4c): each tax judged on what was booked for the masa and the bank payments filed to it by the due date.
 type G = Awaited<ReturnType<typeof makeGroup>>;
@@ -34,7 +36,8 @@ describe("masaReport — PPN", () => {
     await post(d(8, 6), [{ code: "BANK", debit: 22_200n }, { code: "4100", credit: 20_000n }, { code: "2130", credit: 2_200n }]);
     const r = await row(8, "PPN");
     expect(r.previous).toMatchObject({ owed: 700n, state: "LUNAS", short: 0n });
-    expect(r.ppn).toEqual({ keluaran: 2_200n, masukan: 0n, carryIn: 0n, carryOut: 0n });
+    // July's masukan 400 is still on 1150: compensating it is the masa-end journal still to post.
+    expect(r.ppn).toEqual({ keluaran: 2_200n, masukan: 0n, carryIn: 0n, carryOut: 0n, offset: 400n, offsetLater: null });
     expect(r).toMatchObject({ owed: 2_200n, balance: 2_200n, other: 0n, status: "PASS" });
     expect(r.due).toEqual(d(9, 30));
   });
@@ -64,8 +67,58 @@ describe("masaReport — corrections", () => {
     await post(d(8, 9), [{ code: "5100", debit: 4_000n }, { code: "1150", debit: 400n }, { code: "BANK", credit: 4_400n }]);
     await post(d(8, 10), [{ code: "5100", debit: 400n }, { code: "1150", credit: 400n }]);
     const r = await row(8, "PPN");
-    expect(r.ppn).toEqual({ keluaran: 0n, masukan: 0n, carryIn: 0n, carryOut: 0n });
+    expect(r.ppn).toEqual({ keluaran: 0n, masukan: 0n, carryIn: 0n, carryOut: 0n, offset: 0n, offsetLater: null });
     expect(r).toMatchObject({ owed: 0n, balance: 0n, other: 0n, status: "PASS" });
+  });
+});
+
+describe("kompensasi PPN", () => {
+  const offset = (month: number) => postPpnOffset(db, { clientId: g.client.id, entityId: g.pt.entity.id, year: 2026, month });
+  const entries = () => db.journalEntry.findMany({ where: { sourceRef: { startsWith: "ppn-offset:" } }, include: { lines: { include: { account: true } } }, orderBy: { createdAt: "asc" } });
+
+  it("credits the masukan not yet compensated against keluaran at the masa end; the masa's figures and balance stay as they were", async () => {
+    await post(d(7, 5), [{ code: "BANK", debit: 11_100n }, { code: "4100", credit: 10_000n }, { code: "2130", credit: 1_100n }]);
+    await post(d(7, 9), [{ code: "5100", debit: 4_000n }, { code: "1150", debit: 400n }, { code: "BANK", credit: 4_400n }]);
+    await post(d(8, 20), [{ code: "2130", debit: 700n }, { code: "BANK", credit: 700n }]);
+    await post(d(8, 6), [{ code: "BANK", debit: 22_200n }, { code: "4100", credit: 20_000n }, { code: "2130", credit: 2_200n }]);
+    await post(d(8, 12), [{ code: "5100", debit: 3_000n }, { code: "1150", debit: 300n }, { code: "BANK", credit: 3_300n }]);
+    const before = await row(8, "PPN");
+    expect(before.ppn).toMatchObject({ keluaran: 2_200n, masukan: 300n, offset: 700n });
+
+    // July's 400 and August's 300 in one entry, dated 31 August.
+    await offset(8);
+    const [e] = await entries();
+    expect(e).toMatchObject({ date: d(8, 31), kind: "ADJUSTMENT", sourceRef: "ppn-offset:2026-08", memo: "Kompensasi PPN masukan ke PPN keluaran masa Agustus 2026" });
+    expect(e.lines.map((l) => [l.account.code, l.debit, l.credit])).toEqual([["2130", 700n, 0n], ["1150", 0n, 700n]]);
+    const after = await row(8, "PPN");
+    expect(after.ppn).toMatchObject({ keluaran: 2_200n, masukan: 300n, carryOut: 0n, offset: 0n });
+    expect(after).toMatchObject({ owed: before.owed, balance: before.balance, other: 0n, status: "PASS" });
+    // Not a remittance either: the client's tax card still counts only the bank payment as disetor.
+    expect(await taxSummary(db, { clientId: g.client.id, entityIds: [g.pt.entity.id] }, d(8, 1), d(8, 31))).toMatchObject({ ppnKeluaran: 2_200n, ppnMasukan: 300n, ppnDisetor: 700n });
+
+    await expect(offset(8)).rejects.toThrow("Tidak ada PPN masukan yang perlu dikompensasikan masa Agustus 2026.");
+    // July reads the August entry as done: compensating July now would count it twice.
+    expect((await row(7, "PPN")).ppn).toMatchObject({ offset: 0n, offsetLater: d(8, 31) });
+    await expect(offset(7)).rejects.toThrow("Kompensasi PPN sudah dijurnal per 31 Agu 2026.");
+
+    // A masukan taken back off after the compensation (dated in August): the masa now compensated too much, and one click reverses it.
+    await post(d(8, 25), [{ code: "5100", debit: 300n }, { code: "1150", credit: 300n }]);
+    expect((await row(8, "PPN")).ppn).toMatchObject({ masukan: 0n, offset: -300n });
+    await offset(8);
+    expect((await entries())[1].lines.map((l) => [l.account.code, l.debit, l.credit])).toEqual([["1150", 300n, 0n], ["2130", 0n, 300n]]);
+    expect((await row(8, "PPN")).ppn).toMatchObject({ masukan: 0n, offset: 0n });
+  });
+
+  it("leaves a lebih bayar on 1150 and compensates it in the masa that uses it", async () => {
+    await post(d(6, 9), [{ code: "5100", debit: 9_000n }, { code: "1150", debit: 900n }, { code: "BANK", credit: 9_900n }]);
+    await post(d(7, 5), [{ code: "BANK", debit: 16_650n }, { code: "4100", credit: 15_000n }, { code: "2130", credit: 1_650n }]);
+    expect((await row(6, "PPN")).ppn).toMatchObject({ carryOut: 900n, offset: 0n });
+    await expect(offset(6)).rejects.toThrow("Tidak ada PPN masukan yang perlu dikompensasikan masa Juni 2026.");
+    expect((await row(7, "PPN")).ppn).toMatchObject({ carryIn: 900n, carryOut: 0n, offset: 900n });
+    await offset(7);
+    const r = await row(7, "PPN");
+    expect(r).toMatchObject({ owed: 750n, balance: 750n, other: 0n });
+    expect(r.ppn).toMatchObject({ keluaran: 1_650n, masukan: 0n, carryIn: 900n, offset: 0n });
   });
 });
 

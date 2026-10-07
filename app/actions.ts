@@ -30,6 +30,7 @@ import { candidateViews, type CandidateView } from "@/lib/receivables/view";
 import { postCkpn, saveCkpnSetting, type CkpnSettingInput } from "@/lib/receivables/ckpn";
 import { taxPack } from "@/lib/tax/pack";
 import { postTax } from "@/lib/tax/post";
+import { postPpnOffset } from "@/lib/tax/ppn-offset";
 import { recordInventoryCount } from "@/lib/inventory";
 import { acceptSuggestion, addCorrection, addCredit, deleteCorrection, deleteCredit, deleteLoss, dismissSuggestion, setCorrectionPercent, setLoss, setRegime, setTaxMonth, type CorrectionInput, type CreditInput } from "@/lib/tax/records";
 import type { TaxPostingKind, TaxRegime } from "@/lib/generated/prisma/enums";
@@ -612,6 +613,10 @@ export async function recordInventoryCountAction(input: { clientId: string; enti
 
 export async function postTaxAction(input: { clientId: string; entityId: string; year: number; month: number; kind: TaxPostingKind }) {
   return taxWrite(input.clientId, (clientId, actorId) => postTax(prisma, { ...input, clientId, actorId }));
+}
+
+export async function postPpnOffsetAction(input: { clientId: string; entityId: string; year: number; month: number }) {
+  return taxWrite(input.clientId, (clientId, actorId) => postPpnOffset(prisma, { ...input, clientId, actorId }));
 }
 
 export async function postInstallmentAction(clientId: string, scheduleId: string, k: number): Promise<Result> {
