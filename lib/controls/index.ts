@@ -18,6 +18,7 @@ import { inventoryRows } from "@/lib/inventory";
 import { openingDate, statementCoverage } from "@/lib/controls/coverage";
 import { packApplies, taxPack } from "@/lib/tax/pack";
 import { masaReport, rowNotes } from "@/lib/tax/masa-report";
+import { DIRECTION_LABEL, fakturNotes, fakturRecon } from "@/lib/tax/faktur";
 import { findingLabel } from "@/lib/findings";
 import { compareSubledger } from "@/lib/reconcile/subledger";
 
@@ -435,6 +436,25 @@ async function collectControls(db: Db, clientId: string, year: number, month: nu
               : `Masa ${prev} disetor penuh sampai jatuh tempo; saldo ${active.map((r) => r.label).join(", ")} sesuai yang masih terutang`,
           href: `${base}/tax/masa?period=${year}-${String(month).padStart(2, "0")}&entity=${e.id}`,
           ack: acks.get(mKey),
+        });
+      }
+    }
+
+    // Ekualisasi PPN (I5c): only once Coretax faktur of the masa were imported, so a firm that doesn't use it sees nothing new.
+    if (e.kind !== "PERORANGAN" && e.functionalCurrency === "IDR") {
+      const fr = await fakturRecon(db, { clientId, entityId: e.id, year, month });
+      if (fr.any) {
+        const fKey = `faktur:${e.id}`;
+        const notes = fakturNotes(fr);
+        const done = fr.directions.filter((d) => d.status === "MATCH");
+        controls.push({
+          key: fKey,
+          title: "Faktur Coretax = buku",
+          scope: e.shortName,
+          status: notes.length ? "REVIEW" : "PASS",
+          detail: notes.length ? notes.join(" ") : `${done.map((d) => `${DIRECTION_LABEL[d.direction]} ${fmt(d.fakturPpn)}`).join(" dan ")} sama dengan PPN di buku`,
+          href: `${base}/tax/masa?period=${year}-${String(month).padStart(2, "0")}&entity=${e.id}#ekualisasi`,
+          ack: acks.get(fKey),
         });
       }
     }

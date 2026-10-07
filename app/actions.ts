@@ -43,6 +43,7 @@ import { EntitySettingsError, setFiscalYearEnd, setReportingFramework } from "@/
 import { setClientModules } from "@/lib/clients/modules";
 import { FormatError, resetReportFormat, saveReportFormat } from "@/lib/reports/format-settings";
 import { deleteSubledgerImport, importAging, resolveSubledgerFinding, SubledgerError } from "@/lib/reconcile/subledger";
+import { deleteFaktur, FakturError, importFaktur } from "@/lib/tax/faktur";
 import { OpeningError, postOpening, type OpeningLineInput } from "@/lib/opening";
 import { FindingError, resolveOpeningFinding } from "@/lib/findings";
 import { removeLedgerImport, removeStatementImport, RemoveImportError } from "@/lib/imports/remove";
@@ -76,7 +77,7 @@ function fail(e: unknown): { ok: false; error: string; needsPassword?: boolean; 
   if (e instanceof PdfPasswordError) return { ok: false, error: e.message, needsPassword: true };
   if (e instanceof YearNeededError) return { ok: false, error: e.message, needsYear: true, yearGuess: e.guess };
   if (e instanceof DeleteClientError) return { ok: false, error: e.message };
-  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError || e instanceof FindingError || e instanceof RemoveImportError || e instanceof MoneyError || e instanceof RateError || e instanceof RevaluationError || e instanceof LedgerImportError || e instanceof MappingError || e instanceof EntitySettingsError || e instanceof FormatError || e instanceof SubledgerError) return { ok: false, error: e.message };
+  if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError || e instanceof FindingError || e instanceof RemoveImportError || e instanceof MoneyError || e instanceof RateError || e instanceof RevaluationError || e instanceof LedgerImportError || e instanceof MappingError || e instanceof EntitySettingsError || e instanceof FormatError || e instanceof SubledgerError || e instanceof FakturError) return { ok: false, error: e.message };
   const infra = infraErrorMessage(e);
   console.error(e);
   return { ok: false, error: infra ?? "Terjadi kesalahan tak terduga. Coba lagi." };
@@ -744,6 +745,33 @@ export async function importAgingAction(formData: FormData): Promise<Result<{ st
     });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true, status: r.status, difference: r.difference.toString(), notes: r.notes, rows: r.rows };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Ekualisasi PPN (I5c): one Coretax faktur export for a company; keluaran or masukan is read from the file. */
+export async function importFakturAction(formData: FormData): Promise<Result<{ direction: string; created: number; updated: number; unchanged: number; masas: string[]; notes: string[] }>> {
+  try {
+    const client = await getClientForFirm(String(formData.get("clientId")));
+    const file = formData.get("file");
+    if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Pilih file daftar faktur dari Coretax (XLSX, XLS atau CSV)." };
+    if (file.size > MAX_UPLOAD) return { ok: false, error: "File terlalu besar (maks. 5 MB)." };
+    const r = await importFaktur(prisma, { clientId: client.id, entityId: String(formData.get("entityId")), fileName: file.name, data: Buffer.from(await file.arrayBuffer()), actorId: (await getCurrentMember()).id });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, direction: r.direction, created: r.created, updated: r.updated, unchanged: r.unchanged, masas: r.masas.map((m) => `${m.year}-${String(m.month).padStart(2, "0")}`), notes: r.notes };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function deleteFakturAction(input: { clientId: string; entityId: string; direction: "KELUARAN" | "MASUKAN"; year: number; month: number }): Promise<Result<{ count: number }>> {
+  try {
+    const client = await getClientForFirm(input.clientId);
+    if (input.direction !== "KELUARAN" && input.direction !== "MASUKAN") return { ok: false, error: "Jenis faktur tidak dikenal." };
+    const count = await deleteFaktur(prisma, { clientId: client.id, entityId: input.entityId, direction: input.direction, year: input.year, month: input.month, actorId: (await getCurrentMember()).id });
+    revalidatePath(`/clients/${client.id}`, "layout");
+    return { ok: true, count };
   } catch (e) {
     return fail(e);
   }

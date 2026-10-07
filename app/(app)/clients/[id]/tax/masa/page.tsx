@@ -8,6 +8,8 @@ import { formatRupiah } from "@/lib/money";
 import { packApplies } from "@/lib/tax/pack";
 import { masaReport, ppnLine, previousStateLabel, rowNotes, terNote, terRow, withholdingLabel, type MasaRow, type WithholdingLine } from "@/lib/tax/masa-report";
 import { NextStep, PageHeader } from "@/components/app/page-header";
+import { FakturRecon } from "@/components/app/faktur-recon";
+import { DIRECTION_LABEL, fakturNotes, fakturRecon } from "@/lib/tax/faktur";
 import { ScopeBar } from "@/components/app/scope-bar";
 import { Money } from "@/components/app/money";
 import { StatusPill } from "@/components/app/status";
@@ -56,6 +58,9 @@ export default async function TaxMasaPage({ params, searchParams }: { params: Pr
   // Lines still in Review sit on 1999 without their tax: the masa's PPN and PPh are not final until they are decided.
   const { start, end } = periodBounds(period.year, period.month);
   const pending = await prisma.bankTransaction.count({ where: { entityId: entity.id, status: "NEEDS_REVIEW", date: { gte: start, lte: end } } });
+  const faktur = await fakturRecon(prisma, { clientId: client.id, entityId: entity.id, year: period.year, month: period.month });
+  const fakturGap = fakturNotes(faktur)[0];
+  const day = (d: Date) => formatDate(d);
 
   return (
     <div className="space-y-6">
@@ -66,6 +71,8 @@ export default async function TaxMasaPage({ params, searchParams }: { params: Pr
         <NextStep href={withParams(`${base}/review`, { period: period.key })} cta="Buka Review">
           {pending} mutasi {entity.shortName} {label} masih di Review, jadi pajak masa ini belum final. Selesaikan Review sebelum lapor di Coretax.
         </NextStep>
+      ) : fakturGap ? (
+        <NextStep href="#ekualisasi" cta="Lihat ekualisasi">{fakturGap}</NextStep>
       ) : terReview ? (
         <NextStep>{terNote(report.ter)}</NextStep>
       ) : (
@@ -95,6 +102,41 @@ export default async function TaxMasaPage({ params, searchParams }: { params: Pr
               {rows.map((r) => <TaxRow key={r.key} r={r} href={ledger(r.code)} />)}
             </TableBody>
           </Table>
+        </CardContent>
+      </Card>
+
+      <Card id="ekualisasi" className="scroll-mt-6">
+        <CardHeader>
+          <CardTitle>Ekualisasi PPN (Coretax)</CardTitle>
+          <CardDescription>
+            Faktur dari Coretax dibandingkan dengan PPN di buku besar masa ini: keluaran dengan 2130, masukan dengan 1150. Faktur hanya dibandingkan, tidak pernah dijurnal; koreksi lewat Review,
+            Piutang & Utang atau Jurnal Penyesuaian.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <FakturRecon
+            clientId={client.id}
+            entityId={entity.id}
+            year={period.year}
+            month={period.month}
+            label={label}
+            ledgerHref={{ KELUARAN: ledger("2130"), MASUKAN: ledger("1150") }}
+            directions={faktur.directions.map((d) => ({
+              direction: d.direction,
+              label: DIRECTION_LABEL[d.direction],
+              account: d.account,
+              imported: d.imported,
+              fakturPpn: d.fakturPpn.toString(),
+              bookPpn: d.bookPpn.toString(),
+              difference: d.difference.toString(),
+              status: d.status,
+              matched: d.matched.length,
+              unmatchedFaktur: d.unmatchedFaktur.map((f) => ({ number: f.number, date: day(f.date), npwp: f.npwp, name: f.name, ppn: f.ppn.toString(), status: f.status, sourceRef: f.sourceRef })),
+              unmatchedBook: d.unmatchedBook.map((b) => ({ key: b.key, date: day(b.date), label: b.label, ppn: b.ppn.toString(), kind: b.kind })),
+              notCounted: d.notCounted.map((f) => ({ number: f.number, date: day(f.date), npwp: f.npwp, name: f.name, ppn: f.ppn.toString(), status: f.status, sourceRef: f.sourceRef })),
+              uncredited: d.uncredited.map((f) => ({ number: f.number, date: day(f.date), npwp: f.npwp, name: f.name, ppn: f.ppn.toString(), status: f.status, sourceRef: f.sourceRef })),
+            }))}
+          />
         </CardContent>
       </Card>
 

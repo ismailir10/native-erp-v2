@@ -203,6 +203,14 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     never netted against a missed month. An opening balance on a tax account belongs to the masa before its date (the books start owing
     it), so the first remittance reads as paying it. Tutup Buku carries it as *Pajak masa disetor* per Rupiah company with tax activity
     (`masa:<entity>`): REVIEW while any tax is short, late, paid with nothing withheld or holding an unexplained balance. Buku prepares; the firm files in Coretax (ADR 0014: not a PJAP).
+5k. **Ekualisasi PPN — faktur Coretax** (`lib/tax/faktur-read.ts`, `lib/tax/faktur.ts`, I5c): a Coretax *Daftar Faktur Keluaran / Masukan*
+    export is **evidence, never posted** (`CoretaxFaktur`, unique per entity + direction + number; a re-import updates status and amounts,
+    audited `FAKTUR`). Cancelled, replaced, rejected and draft faktur are kept but not counted; masukan counts only once credited. Per
+    company and masa the counted PPN is compared with the books (keluaran: net credits on 2130, masukan: net debits on 1150, per bank line
+    or invoice — a void nets its invoice; remittances and openings excluded). Matching is one to one on the exact PPN (same NPWP first, a
+    16-digit NPWP read as its 15-digit form, then a shared name word, then the nearest date). Within Rp 1 per faktur = cocok. Control
+    `faktur:<entity>` (REVIEW while either side differs) exists only once faktur for the masa were imported. Corrections go through
+    Review, invoices or Jurnal Penyesuaian, never from the faktur.
 6. `bigint` **minor units of the entity's functional currency** everywhere in the domain (ADR 0006). IDR has exponent 0,
    so for IDR entities that is whole Rupiah, as before. Parse with `parseRupiah()` / `parseMinor()` (handles `1.234.567,00`,
    `1,234,567.00`, `(2.500)`), format with `formatRupiah()` / `formatMoney(value, currency)`. Convert to `Number` only for chart
