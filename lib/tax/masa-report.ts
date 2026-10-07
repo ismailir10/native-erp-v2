@@ -21,6 +21,14 @@ const TAXES: { key: MasaKey; label: string; code: string }[] = [
 ];
 const PPN_MASUKAN = "1150";
 
+/**
+ * The PPN compensation journal of a masa (Dr 2130 PPN Keluaran / Cr 1150 PPN Masukan, `postPpnOffset`) carries this prefix in its
+ * `sourceRef`. It moves PPN between the two accounts and is neither keluaran nor masukan, so every per-masa sum skips it.
+ */
+export const PPN_OFFSET_REF = "ppn-offset:";
+/** Prisma filter for journal entries other than a PPN compensation (a null sourceRef included). */
+export const notPpnOffset = { OR: [{ sourceRef: null }, { NOT: { sourceRef: { startsWith: PPN_OFFSET_REF } } }] };
+
 const shift = (m: Masa, by: number): Masa => {
   const i = m.year * 12 + m.month - 1 + by;
   return { year: Math.floor(i / 12), month: (i % 12) + 1 };
@@ -53,8 +61,10 @@ export type MasaRow = {
   /** Booked for this masa: credits net of non-payment debits (PPN: keluaran − masukan − lebih bayar carried in, never below zero). */
   owed: bigint;
   due: Date;
-  /** PPN only: the month's keluaran and masukan, and the lebih bayar carried in and out. */
-  ppn: { keluaran: bigint; masukan: bigint; carryIn: bigint; carryOut: bigint } | null;
+  /** PPN only: the month's keluaran and masukan, and the lebih bayar carried in and out. `offset`: PPN masukan still to compensate
+   *  against keluaran at the masa end (1150's balance less the lebih bayar carried out; negative = compensated too much); none when a
+   *  compensation is already journalled after this masa (`offsetLater`). */
+  ppn: { keluaran: bigint; masukan: bigint; carryIn: bigint; carryOut: bigint; offset: bigint; offsetLater: Date | null } | null;
   previous: PreviousMasa;
   /** Paid in the report month toward this masa (after the previous one was covered). */
   paidAhead: bigint;
@@ -96,7 +106,7 @@ export type MasaReport = {
   ter: TerCheck;
 };
 
-type Line = { code: string; date: Date; debit: bigint; credit: bigint; opening: boolean; payment: boolean };
+type Line = { code: string; date: Date; debit: bigint; credit: bigint; opening: boolean; payment: boolean; offset: boolean };
 
 export async function masaReport(db: Db, input: { clientId: string; entityId: string; year: number; month: number; now?: Date }): Promise<MasaReport | null> {
   const { clientId, entityId, year, month } = input;
@@ -113,9 +123,9 @@ export async function masaReport(db: Db, input: { clientId: string; entityId: st
   const from = dateOnly(prev.year, 1, 1);
   const raw = await db.journalLine.findMany({
     where: { entityId, accountId: { in: accounts.map((a) => a.id) }, date: { gte: from, lte: end } },
-    select: { accountId: true, date: true, debit: true, credit: true, entry: { select: { kind: true, lines: { where: { credit: { gt: 0 }, account: { isBank: true } }, select: { id: true }, take: 1 } } } },
+    select: { accountId: true, date: true, debit: true, credit: true, entry: { select: { kind: true, sourceRef: true, lines: { where: { credit: { gt: 0 }, account: { isBank: true } }, select: { id: true }, take: 1 } } } },
   });
-  const lines: Line[] = raw.map((l) => ({ code: codeOf.get(l.accountId)!, date: l.date, debit: l.debit, credit: l.credit, opening: l.entry.kind === "OPENING", payment: l.debit > 0n && l.entry.lines.length > 0 }));
+  const lines: Line[] = raw.map((l) => ({ code: codeOf.get(l.accountId)!, date: l.date, debit: l.debit, credit: l.credit, opening: l.entry.kind === "OPENING", payment: l.debit > 0n && l.entry.lines.length > 0, offset: l.entry.sourceRef?.startsWith(PPN_OFFSET_REF) ?? false }));
   // Balances through the month end (all time, openings included).
   const balances = await db.journalLine.groupBy({ by: ["accountId"], where: { entityId, accountId: { in: accounts.map((a) => a.id) }, date: { lte: end } }, _sum: { debit: true, credit: true } });
   const credit = (code: string) => {
@@ -127,6 +137,7 @@ export async function masaReport(db: Db, input: { clientId: string; entityId: st
   // "per 1 Maret" is February's tax), so the first remittance reads as paying it.
   const owedIn = (l: Line, m: Masa) => inMasa(l.opening ? new Date(+l.date - 86_400_000) : l.date, m);
   const sum = (xs: bigint[]) => xs.reduce((s, v) => s + v, 0n);
+  const offsetLater = (await db.journalEntry.findFirst({ where: { entityId, sourceRef: { startsWith: PPN_OFFSET_REF }, date: { gt: end } }, orderBy: { date: "asc" }, select: { date: true } }))?.date ?? null;
 
   const rows: MasaRow[] = TAXES.map((t) => {
     const own = lines.filter((l) => l.code === t.code);
@@ -139,16 +150,19 @@ export async function masaReport(db: Db, input: { clientId: string; entityId: st
       let carry = 0n;
       for (let m: Masa = { year: prev.year, month: 1 }; keyOf(m) <= keyOf(masa); m = shift(m, 1)) {
         // Net of corrections: a reclass that takes PPN back off (Dr 2130, Cr 1150) lowers the masa; a remittance to 2130 is a payment, not
-        // keluaran. On 1150 a purchase's own bank credit is not a payment, so masukan nets every line of the month.
-        const k = sum(own.filter((l) => !l.payment && owedIn(l, m)).map((l) => l.credit - l.debit));
-        const mk = sum(masukan.filter((l) => owedIn(l, m)).map((l) => l.debit - l.credit));
+        // keluaran. On 1150 a purchase's own bank credit is not a payment, so masukan nets every line of the month. The compensation
+        // journal is neither.
+        const k = sum(own.filter((l) => !l.payment && !l.offset && owedIn(l, m)).map((l) => l.credit - l.debit));
+        const mk = sum(masukan.filter((l) => !l.offset && owedIn(l, m)).map((l) => l.debit - l.credit));
         const net = k - mk - carry;
         owed.set(keyOf(m), { keluaran: k, masukan: mk, carryIn: carry, carryOut: net < 0n ? -net : 0n, owed: net > 0n ? net : 0n });
         carry = net < 0n ? -net : 0n;
       }
       owedOf = (m) => owed.get(keyOf(m))?.owed ?? 0n;
       const cur = owed.get(keyOf(masa))!;
-      ppn = { keluaran: cur.keluaran, masukan: cur.masukan, carryIn: cur.carryIn, carryOut: cur.carryOut };
+      // What compensation leaves on 1150 is the lebih bayar carried forward; the rest of its balance goes against 2130.
+      const offset = offsetLater ? 0n : -credit(PPN_MASUKAN) - cur.carryOut;
+      ppn = { keluaran: cur.keluaran, masukan: cur.masukan, carryIn: cur.carryIn, carryOut: cur.carryOut, offset, offsetLater };
     } else {
       owedOf = (m) => sum(own.filter((l) => !l.payment && owedIn(l, m)).map((l) => l.credit - l.debit));
     }

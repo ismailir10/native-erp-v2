@@ -6,6 +6,7 @@ import { bookFaktur, deleteFaktur, fakturNotes, fakturRecon, importFaktur } from
 import { runControls } from "@/lib/controls";
 import { masaReport } from "@/lib/tax/masa-report";
 import { masaWorkbook } from "@/lib/tax/masa-workbook";
+import { postPpnOffset } from "@/lib/tax/ppn-offset";
 import ExcelJS from "exceljs";
 
 // Ekualisasi PPN (I5c): Coretax faktur against the PPN the books hold for the masa, matched one to one on the exact PPN.
@@ -68,6 +69,11 @@ describe("ekualisasi PPN", () => {
     // Masukan: the credited faktur ties to the PAKAN purchase split by the rule.
     expect(await imp(MASUKAN)).toMatchObject({ direction: "MASUKAN", created: 1 });
     expect((await recon()).directions[1]).toMatchObject({ fakturPpn: 5_500_000n, bookPpn: 5_500_000n, difference: 0n, status: "MATCH", unmatchedFaktur: [], unmatchedBook: [] });
+
+    // The masa's PPN compensation (Dr 2130 / Cr 1150) is neither keluaran nor masukan: the comparison is the same after it.
+    await postPpnOffset(db, { clientId: g.client.id, entityId: g.pt.entity.id, year: 2026, month: 8 });
+    const after = await recon();
+    expect(after.directions.map((d) => [d.bookPpn, d.unmatchedBook.length])).toEqual([[15_400_000n, 1], [5_500_000n, 0]]);
   });
 
   it("updates a faktur cancelled since the last export, and the close control flags the masa until faktur and books agree", async () => {

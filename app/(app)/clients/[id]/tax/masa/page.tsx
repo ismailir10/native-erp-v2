@@ -10,6 +10,7 @@ import { masaReport, ppnLine, previousStateLabel, rowNotes, terNote, terRow, wit
 import { NextStep, PageHeader } from "@/components/app/page-header";
 import { FakturRecon } from "@/components/app/faktur-recon";
 import { BupotRecon } from "@/components/app/bupot-recon";
+import { PpnOffset } from "@/components/app/ppn-offset";
 import { BUPOT_DIRECTION_LABEL, bupotNotes, bupotRecon } from "@/lib/tax/bupot";
 import { BUPOT_KIND_LABEL } from "@/lib/tax/bupot-read";
 import { withholdingAccountCode } from "@/lib/tax/withholding";
@@ -69,6 +70,7 @@ export default async function TaxMasaPage({ params, searchParams }: { params: Pr
   const bupot = await bupotRecon(prisma, { clientId: client.id, entityId: entity.id, year: period.year, month: period.month });
   const bupotGap = bupotNotes(bupot)[0];
   const day = (d: Date) => formatDate(d);
+  const offset = report.rows.find((r) => r.key === "PPN")!.ppn!.offset;
 
   return (
     <div className="space-y-6">
@@ -85,6 +87,10 @@ export default async function TaxMasaPage({ params, searchParams }: { params: Pr
         <NextStep href="#bukti-potong" cta="Lihat bukti potong">{bupotGap}</NextStep>
       ) : terReview ? (
         <NextStep>{terNote(report.ter)}</NextStep>
+      ) : offset !== 0n ? (
+        <NextStep href="#ppn-offset" cta="Lihat kompensasi">
+          Catat jurnal kompensasi PPN masa {label}, supaya Neraca menampilkan utang PPN bersih, bukan PPN masukan dan keluaran yang belum saling dikreditkan.
+        </NextStep>
       ) : (
         <NextStep tone="done">Pajak masa {label} lolos semua pemeriksaan. Unduh kertas kerjanya untuk lapor di Coretax.</NextStep>
       )}
@@ -109,7 +115,14 @@ export default async function TaxMasaPage({ params, searchParams }: { params: Pr
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((r) => <TaxRow key={r.key} r={r} href={ledger(r.code)} />)}
+              {rows.map((r) => (
+                <TaxRow
+                  key={r.key}
+                  r={r}
+                  href={ledger(r.code)}
+                  extra={r.ppn && r.ppn.offset !== 0n ? <PpnOffset clientId={client.id} entityId={entity.id} year={period.year} month={period.month} amount={r.ppn.offset.toString()} date={day(end)} /> : null}
+                />
+              ))}
             </TableBody>
           </Table>
         </CardContent>
@@ -252,7 +265,7 @@ export default async function TaxMasaPage({ params, searchParams }: { params: Pr
   );
 }
 
-function TaxRow({ r, href }: { r: MasaRow; href: string }) {
+function TaxRow({ r, href, extra }: { r: MasaRow; href: string; extra: React.ReactNode }) {
   const notes = rowNotes(r);
   const p = r.previous;
   const paid = p.paid.reduce((t, x) => t + x.amount, 0n);
@@ -283,6 +296,7 @@ function TaxRow({ r, href }: { r: MasaRow; href: string }) {
           <TableCell colSpan={6} className="pt-0 text-xs whitespace-normal text-muted-foreground">
             {r.ppn && <div>{ppnLine(r.ppn)}</div>}
             {notes.map((x) => <div key={x}>{x}</div>)}
+            {extra}
           </TableCell>
         </TableRow>
       )}

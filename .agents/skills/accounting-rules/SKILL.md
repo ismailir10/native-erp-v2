@@ -204,6 +204,11 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     never netted against a missed month. An opening balance on a tax account belongs to the masa before its date (the books start owing
     it), so the first remittance reads as paying it. Tutup Buku carries it as *Pajak masa disetor* per Rupiah company with tax activity
     (`masa:<entity>`): REVIEW while any tax is short, late, paid with nothing withheld or holding an unexplained balance. Buku prepares; the firm files in Coretax (ADR 0014: not a PJAP).
+    **Kompensasi PPN** (`lib/tax/ppn-offset.ts`) is the one posting here, by click only: at the masa end, Dr 2130 / Cr 1150 for 1150's
+    balance less the lebih bayar carried to the next masa (the other way round when compensated too much), so the Neraca shows the net
+    Utang PPN and only a lebih bayar stays on 1150. Months never compensated are caught up in the same entry; once one is dated after a
+    masa, that masa proposes none. The entry carries `sourceRef` `ppn-offset:YYYY-MM` and every per-masa sum (keluaran, masukan,
+    setoran, the ekualisasi's book PPN) skips it (`notPpnOffset`).
 5k. **Ekualisasi PPN — faktur Coretax** (`lib/tax/faktur-read.ts`, `lib/tax/faktur.ts`, I5c): a Coretax *Daftar Faktur Keluaran / Masukan*
     export is **evidence, never posted** (`CoretaxFaktur`, unique per entity + direction + number; a re-import updates status and amounts,
     audited `FAKTUR`). Cancelled, replaced, rejected and draft faktur are kept but not counted; masukan counts only once credited. Per
