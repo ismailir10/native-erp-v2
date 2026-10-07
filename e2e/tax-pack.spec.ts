@@ -57,12 +57,12 @@ test("tax pack: corrections, PPh badan with 31E, credits, current-tax journal", 
   await page.getByRole("button", { name: "Simpan kredit" }).click();
   await expect(page.getByText("Kredit pajak ditambahkan")).toBeVisible();
 
-  // PKP 610 jt, turnover ≤ 4,8 M → all at 11 % = 67,1 jt; credits 20 jt → PPh 29 47,1 jt; PPh 25 next year (67,1 − 20) ÷ 12.
+  // PKP 610 jt, turnover ≤ 4,8 M → all at 11 % = 67,1 jt; credits 20 jt → PPh 29 47,1 jt; PPh 25 next year projects the nine months to a year: (67,1 − 20) ÷ 9.
   await expect(page.getByTestId("tax-pkp")).toContainText("610.000.000");
   await expect(page.getByTestId("tax-due")).toContainText("67.100.000");
   await expect(page.getByTestId("tax-balance")).toContainText("PPh Pasal 29 kurang bayar");
   await expect(page.getByTestId("tax-balance")).toContainText("47.100.000");
-  await expect(page.getByTestId("tax-next")).toContainText("3.925.000");
+  await expect(page.getByTestId("tax-next")).toContainText("5.233.333");
 
   // A 2025 loss of 50 jt from last year's SPT: PKP 560 jt → 61,6 jt; PPh 29 41,6 jt.
   await page.getByRole("button", { name: "Rugi fiskal" }).click();

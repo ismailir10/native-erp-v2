@@ -17,6 +17,8 @@ function toView(p: TaxPack) {
     regime: p.regime,
     profitBeforeTax: s(p.profitBeforeTax),
     turnover: s(p.turnover),
+    months: p.months,
+    annualTurnover: s(p.tax.annualTurnover),
     corrections: p.corrections.map((c) => ({ key: c.key, label: c.label, direction: c.direction, kind: c.kind, amount: s(c.amount), source: c.source })),
     suggestions: p.suggestions.map((x) => ({ ...x, amount: s(x.amount), corrected: s(x.corrected) })),
     positive: s(p.positive),
