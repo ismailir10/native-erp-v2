@@ -1,7 +1,7 @@
 /**
  * PPh 21 tarif efektif rata-rata (TER) bulanan, PP 58/2023 Lampiran and PMK 168/2023 (accounting-rules 5j). A month's PPh 21 for
  * January–November is the month's gross income times the rate of the bracket it falls in; December is recomputed under Pasal 17 for
- * the year, so no TER applies. Each bracket is [upper bound in whole Rupiah, inclusive (null = no bound), rate in hundredths of a
+ * the year (`pph21Annual`), so no TER applies. Each bracket is [upper bound in whole Rupiah, inclusive (null = no bound), rate in hundredths of a
  * percent]. The tables were checked bracket by bracket against two independent published implementations.
  */
 export type PtkpStatus = "TK0" | "TK1" | "TK2" | "TK3" | "K0" | "K1" | "K2" | "K3";
@@ -44,4 +44,76 @@ export function formatTerRate(rate: number): string {
   const whole = Math.floor(rate / 100);
   const frac = rate % 100;
   return `${whole}${frac ? `,${String(frac).padStart(2, "0").replace(/0$/, "")}` : ""} %`;
+}
+
+/** PTKP a year (PMK 101/2016, still in force): Rp 54 jt for the employee, + Rp 4,5 jt married, + Rp 4,5 jt per dependent (≤ 3). */
+export const PTKP_AMOUNT: Record<PtkpStatus, bigint> = {
+  TK0: 54_000_000n,
+  TK1: 58_500_000n,
+  TK2: 63_000_000n,
+  TK3: 67_500_000n,
+  K0: 58_500_000n,
+  K1: 63_000_000n,
+  K2: 67_500_000n,
+  K3: 72_000_000n,
+};
+
+/** Pasal 17 ayat (1) huruf a (UU HPP): upper bound of each layer (null = none) and its rate in percent. */
+export const PASAL_17: [bigint | null, bigint][] = [
+  [60_000_000n, 5n],
+  [250_000_000n, 15n],
+  [500_000_000n, 25n],
+  [5_000_000_000n, 30n],
+  [null, 35n],
+];
+
+/** Pasal 17 tax on a PKP (already rounded down to thousands), layer by layer, rounded down to whole Rupiah. */
+export function pasal17(pkp: bigint): bigint {
+  let tax = 0n;
+  let lower = 0n;
+  for (const [upper, rate] of PASAL_17) {
+    if (pkp <= lower) break;
+    const top = upper === null || pkp < upper ? pkp : upper;
+    tax += ((top - lower) * rate) / 100n;
+    lower = upper ?? lower;
+    if (upper === null) break;
+  }
+  return tax;
+}
+
+/** Biaya jabatan: 5 % of gross, at most Rp 500 rb for each month worked (Rp 6 jt a year). */
+export const BIAYA_JABATAN_PER_MONTH = 500_000n;
+
+export type Pph21Annual = {
+  months: number;
+  gross: bigint;
+  biayaJabatan: bigint;
+  neto: bigint;
+  ptkp: bigint;
+  pkp: bigint;
+  /** PPh 21 for the year under Pasal 17. */
+  annual: bigint;
+  /** TER withheld for the months worked January–November. */
+  ter: bigint;
+  /** December's PPh 21: annual − TER; negative = lebih potong, returned to the employee. */
+  december: bigint;
+};
+
+/**
+ * December's PPh 21 of a permanent employee still employed at year end (PMK 168/2023): the year recomputed under Pasal 17 less the TER
+ * of January–November. `months` counts the months worked in the year (December included); the monthly wage is the same every month,
+ * so THR, bonus and the employee's JHT / JP iuran are left out (an estimate, like the TER check).
+ */
+export function pph21Annual(wage: bigint, status: PtkpStatus, months: number): Pph21Annual {
+  const m = BigInt(Math.max(1, Math.min(12, months)));
+  const gross = wage > 0n ? wage * m : 0n;
+  const fivePercent = (gross * 5n) / 100n;
+  const cap = BIAYA_JABATAN_PER_MONTH * m;
+  const biayaJabatan = fivePercent < cap ? fivePercent : cap;
+  const neto = gross - biayaJabatan;
+  const ptkp = PTKP_AMOUNT[status];
+  const pkp = neto > ptkp ? ((neto - ptkp) / 1000n) * 1000n : 0n;
+  const annual = pasal17(pkp);
+  const ter = pph21Ter(wage, status).tax * (m - 1n);
+  return { months: Number(m), gross, biayaJabatan, neto, ptkp, pkp, annual, ter, december: annual - ter };
 }
