@@ -3,6 +3,7 @@ import { db, makeGroup, resetDb } from "../helpers";
 import { postJournal } from "@/lib/ledger/post";
 import { dateOnly } from "@/lib/format";
 import { masaReport, rowNotes, terNote } from "@/lib/tax/masa-report";
+import { runControls } from "@/lib/controls";
 
 // Pajak masa (I4c): each tax judged on what was booked for the masa and the bank payments filed to it by the due date.
 type G = Awaited<ReturnType<typeof makeGroup>>;
@@ -101,6 +102,22 @@ describe("masaReport — PPh 21, 23", () => {
       "Masa Juli 2026: disetor setelah jatuh tempo 15 Agu 2026 (20 Agu 2026 Rp 100).",
       "Saldo 2141 memuat Rp 40 dari masa yang lebih lama (atau setoran yang belum tercatat).",
     ]);
+  });
+});
+
+describe("Tutup Buku — Pajak masa disetor", () => {
+  const control = async (month: number) => (await runControls(db, g.client.id, 2026, month)).find((c) => c.key === `masa:${g.pt.entity.id}`);
+
+  it("is absent with no tax activity, flags a masa paid short, and passes once paid in full", async () => {
+    expect(await control(8)).toBeUndefined();
+    await post(d(7, 25), [{ code: "6100", debit: 10_000_000n }, { code: "BANK", credit: 9_800_000n }, { code: "2140", credit: 200_000n }]);
+    await post(d(8, 10), [{ code: "2140", debit: 150_000n }, { code: "BANK", credit: 150_000n }]);
+    const short = await control(8);
+    expect(short).toMatchObject({ title: "Pajak masa disetor", status: "REVIEW" });
+    expect(short!.detail).toMatch(/^PPh 21: Masa Juli 2026: Rp 50\.000 dari Rp 200\.000 belum disetor sampai jatuh tempo 15 Agu 2026/);
+    expect(short!.href).toContain("/tax/masa?period=2026-08");
+    await post(d(8, 14), [{ code: "2140", debit: 50_000n }, { code: "BANK", credit: 50_000n }]);
+    expect(await control(8)).toMatchObject({ status: "PASS", detail: "Masa Juli 2026 disetor penuh sampai jatuh tempo; saldo PPh 21 sesuai yang masih terutang" });
   });
 });
 

@@ -17,6 +17,7 @@ import { valuation } from "@/lib/benefits/valuation";
 import { inventoryRows } from "@/lib/inventory";
 import { openingDate, statementCoverage } from "@/lib/controls/coverage";
 import { packApplies, taxPack } from "@/lib/tax/pack";
+import { masaReport, rowNotes } from "@/lib/tax/masa-report";
 import { findingLabel } from "@/lib/findings";
 import { compareSubledger } from "@/lib/reconcile/subledger";
 
@@ -408,6 +409,32 @@ async function collectControls(db: Db, clientId: string, year: number, month: nu
           detail: `Estimasi PPh terutang ${fmt(pack.tax.due)}; jurnal pajak kini yang belum dicatat ${expense >= 0n ? "" : "mengurangi beban "}${fmt(expense < 0n ? -expense : expense)}`,
           href: `${base}/tax?period=${year}-12&entity=${e.id}`,
           ack: acks.get(tKey),
+        });
+      }
+    }
+
+    // Pajak masa (rule 5j): a company's last masa paid in full by its due date, and the tax accounts holding only what is still owed.
+    // Skipped for a company with no tax activity at all, and for a non-Rupiah book (the masa is filed in Rupiah).
+    if (e.kind !== "PERORANGAN" && e.functionalCurrency === "IDR") {
+      const masa = await masaReport(db, { clientId, entityId: e.id, year, month });
+      const active = masa?.rows.filter((r) => r.owed || r.balance || r.previous.owed || r.previous.paid.length || r.previous.late.length) ?? [];
+      if (masa && active.length) {
+        const mKey = `masa:${e.id}`;
+        const flagged = masa.rows.filter((r) => r.status === "REVIEW");
+        const pending = active.filter((r) => r.previous.state === "BELUM_JATUH_TEMPO");
+        const prev = formatPeriod(masa.rows[0].previous.masa.year, masa.rows[0].previous.masa.month);
+        controls.push({
+          key: mKey,
+          title: "Pajak masa disetor",
+          scope: e.shortName,
+          status: flagged.length ? "REVIEW" : "PASS",
+          detail: flagged.length
+            ? flagged.map((r) => `${r.label}: ${rowNotes(r)[0] ?? "periksa saldonya"}`).join(" · ")
+            : pending.length
+              ? `${pending.map((r) => r.label).join(", ")} masa ${prev} jatuh tempo ${formatDate(pending[0].previous.due)} dan belum disetor penuh; saldo akun pajak sesuai yang terutang`
+              : `Masa ${prev} disetor penuh sampai jatuh tempo; saldo ${active.map((r) => r.label).join(", ")} sesuai yang masih terutang`,
+          href: `${base}/tax/masa?period=${year}-${String(month).padStart(2, "0")}&entity=${e.id}`,
+          ack: acks.get(mKey),
         });
       }
     }
