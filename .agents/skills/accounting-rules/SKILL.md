@@ -209,6 +209,11 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     Utang PPN and only a lebih bayar stays on 1150. Months never compensated are caught up in the same entry; once one is dated after a
     masa, that masa proposes none. The entry carries `sourceRef` `ppn-offset:YYYY-MM` and every per-masa sum (keluaran, masukan,
     setoran, the ekualisasi's book PPN) skips it (`notPpnOffset`).
+    **PPh 25 angsuran** (`lib/tax/instalment.ts`, `masaReport.pph25`): the instalment is typed by the accountant per entity **from a masa
+    onward** (`TaxInstalment`, audited `PPH25`; the latest `from` on or before a masa is in force) — from the last SPT, an SKP or a
+    pembetulan, never computed. The masa due in the report month (the 15th) is judged on the bank lines tagged PPH_25 for it (by masa
+    pajak, rule 5d) like the other rows; with payments but no instalment it reads *Disetor* and asks for one. None under PP 55. It joins
+    *Pajak masa disetor* in Tutup Buku and the Ringkasan of the Excel; the account (1180) holds instalments paid ahead, so no balance check.
 5k. **Ekualisasi PPN — faktur Coretax** (`lib/tax/faktur-read.ts`, `lib/tax/faktur.ts`, I5c): a Coretax *Daftar Faktur Keluaran / Masukan*
     export is **evidence, never posted** (`CoretaxFaktur`, unique per entity + direction + number; a re-import updates status and amounts,
     audited `FAKTUR`). Cancelled, replaced, rejected and draft faktur are kept but not counted; masukan counts only once credited. Per

@@ -1,4 +1,4 @@
-import { ppnLine, previousStateLabel, rowNotes, terNote, terRow, withholdingLabel, type MasaReport } from "@/lib/tax/masa-report";
+import { ppnLine, pph25Notes, pph25StateLabel, previousStateLabel, rowNotes, terNote, terRow, withholdingLabel, type MasaReport } from "@/lib/tax/masa-report";
 import { formatDate, formatPeriod } from "@/lib/format";
 import { newWorkbook, n, type WorkbookMeta } from "@/lib/reports/workbook";
 import { DIRECTION_LABEL, type FakturRecon } from "@/lib/tax/faktur";
@@ -21,6 +21,15 @@ export async function masaWorkbook(r: MasaReport, meta: WorkbookMeta, faktur?: F
     row.getCell(8).numFmt = "@";
     row.getCell(9).numFmt = "@";
     if (x.ppn) ws.addRow([ppnLine(x.ppn)]);
+  }
+  if (r.pph25) {
+    // PPh 25 is an instalment paid ahead (1180), not a payable: no owed balance, so the balance column stays empty.
+    const p = r.pph25;
+    const paid = p.previous.paid.reduce((s, x) => s + x.amount, 0n);
+    const row = ws.addRow(["PPh 25 (angsuran)", p.current.expected === null ? "" : n(p.current.expected), formatDate(p.current.due), p.previous.expected === null ? "" : n(p.previous.expected), n(paid), n(p.previous.short), "", `${p.status === "PASS" ? "Lolos" : "Perlu dicek"} · ${pph25StateLabel(p.previous.state)}`, pph25Notes(p).join(" ")]);
+    row.getCell(3).numFmt = "@";
+    row.getCell(8).numFmt = "@";
+    row.getCell(9).numFmt = "@";
   }
   ws.addRow([]);
   ws.addRow(["Jatuh tempo setor: PPh tanggal 15 bulan berikutnya, PPN akhir bulan berikutnya (PMK 81/2024); hari libur menggeser ke hari kerja berikutnya."]);

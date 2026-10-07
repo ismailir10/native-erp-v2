@@ -1771,3 +1771,20 @@ model CoretaxBupot {
   @@index([clientId])
   @@index([entityId, year, month])
 }
+
+/// PPh 25 angsuran per bulan from a masa onward (rule 5j): the instalment of a masa is the latest `from` on or before it. Set by the
+/// accountant from the last SPT, an SKP or a pembetulan; never computed.
+model TaxInstalment {
+  id          String   @id @default(cuid())
+  firmId      String
+  clientId    String
+  entityId    String
+  /// First day of the first masa it applies to.
+  from        DateTime @db.Date
+  amount      BigInt
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@unique([entityId, from])
+  @@index([clientId])
+}

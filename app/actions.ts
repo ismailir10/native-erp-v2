@@ -31,6 +31,7 @@ import { postCkpn, saveCkpnSetting, type CkpnSettingInput } from "@/lib/receivab
 import { taxPack } from "@/lib/tax/pack";
 import { postTax } from "@/lib/tax/post";
 import { postPpnOffset } from "@/lib/tax/ppn-offset";
+import { deleteInstalment, setInstalment } from "@/lib/tax/instalment";
 import { recordInventoryCount } from "@/lib/inventory";
 import { acceptSuggestion, addCorrection, addCredit, deleteCorrection, deleteCredit, deleteLoss, dismissSuggestion, setCorrectionPercent, setLoss, setRegime, setTaxMonth, type CorrectionInput, type CreditInput } from "@/lib/tax/records";
 import type { TaxPostingKind, TaxRegime } from "@/lib/generated/prisma/enums";
@@ -617,6 +618,13 @@ export async function postTaxAction(input: { clientId: string; entityId: string;
 
 export async function postPpnOffsetAction(input: { clientId: string; entityId: string; year: number; month: number }) {
   return taxWrite(input.clientId, (clientId, actorId) => postPpnOffset(prisma, { ...input, clientId, actorId }));
+}
+
+export async function setInstalmentAction(input: { clientId: string; entityId: string; from: string; amount: string }) {
+  return taxWrite(input.clientId, (clientId, actorId) => setInstalment(prisma, { ...input, clientId, actorId }));
+}
+export async function deleteInstalmentAction(input: { clientId: string; id: string }) {
+  return taxWrite(input.clientId, (clientId, actorId) => deleteInstalment(prisma, { ...input, clientId, actorId }));
 }
 
 export async function postInstallmentAction(clientId: string, scheduleId: string, k: number): Promise<Result> {

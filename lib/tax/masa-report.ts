@@ -4,6 +4,8 @@ import { dateOnly, formatDate, formatPeriod, periodBounds } from "@/lib/format";
 import { formatRupiah } from "@/lib/money";
 import { WITHHOLDING_LABEL } from "@/lib/tax/withholding";
 import { formatTerRate, PTKP_LABEL, pph21Ter, type PtkpStatus, type TerCategory } from "@/lib/tax/ter";
+import { defaultTaxMonth } from "@/lib/tax/masa";
+import { instalmentFor, instalments, type Instalment } from "@/lib/tax/instalment";
 
 /**
  * Pajak masa of one company and month (I4c, accounting-rules 5j): PPN, PPh 21, PPh 23 and the other withholdings, each judged on what
@@ -97,10 +99,26 @@ export type TerCheck =
   | { state: "NO_STATUS"; missing: number }
   | { state: "CHECKED"; employees: TerEmployee[]; missing: number; estimate: bigint; booked: bigint; status: "PASS" | "REVIEW" };
 
+/**
+ * PPh 25 angsuran: the masa due in the report month (the 15th), judged on the bank lines tagged PPH_25 for it (by masa pajak, else the
+ * month before payment) against the instalment in force; and the report masa, due the 15th of the next month. `expected` null = no
+ * instalment set, so the amount can't be judged ("DISETOR" when something was paid, "BELUM_DIISI" when not).
+ */
+export type Pph25 = {
+  previous: { masa: Masa; expected: bigint | null; due: Date; paid: Payment[]; late: Payment[]; short: bigint; state: PreviousMasa["state"] | "DISETOR" | "BELUM_DIISI" };
+  current: { masa: Masa; expected: bigint | null; due: Date; paid: Payment[] };
+  /** The instalment in force for the report masa (and every one set, for the form). */
+  instalment: Instalment | null;
+  instalments: Instalment[];
+  status: "PASS" | "REVIEW";
+};
+
 export type MasaReport = {
   entity: { id: string; name: string; shortName: string; npwp: string | null };
   masa: Masa;
   rows: MasaRow[];
+  /** Null under PP 55 (final), and for a company with no instalment set and no PPh 25 paid for these two masa. */
+  pph25: Pph25 | null;
   withheldByUs: WithholdingLine[];
   withheldFromUs: WithholdingLine[];
   ter: TerCheck;
@@ -228,7 +246,61 @@ export async function masaReport(db: Db, input: { clientId: string; entityId: st
     rows,
     withheldByUs: wht.filter((w) => w.direction === "OUT"),
     withheldFromUs: wht.filter((w) => w.direction === "IN"),
+    pph25: await pph25Check(db, { clientId, entityId, masa, now }),
     ter: await terCheck(db, { clientId, entityId, masa, booked: rows.find((r) => r.key === "PPH_21")!.owed }),
+  };
+}
+
+async function pph25Check(db: Db, input: { clientId: string; entityId: string; masa: Masa; now: Date }): Promise<Pph25 | null> {
+  const { masa, now } = input;
+  const regime = (await db.taxYear.findUnique({ where: { entityId_year: { entityId: input.entityId, year: masa.year } }, select: { regime: true } }))?.regime;
+  if (regime === "FINAL_UMKM") return null;
+  const prev = shift(masa, -1);
+  const { end } = periodBounds(masa.year, masa.month);
+  const list = await instalments(db, input.entityId);
+  // Payments for either masa: made from the start of the masa before through the end of the report month (paid ahead or in arrears).
+  const lines = await db.bankTransaction.findMany({
+    where: { entityId: input.entityId, taxTag: "PPH_25", direction: "OUT", status: { not: "NEEDS_REVIEW" }, date: { gte: dateOnly(prev.year, prev.month, 1), lte: end } },
+    orderBy: [{ date: "asc" }, { rowNumber: "asc" }],
+    select: { date: true, amount: true, taxMonth: true },
+  });
+  const forMasa = (m: Masa) =>
+    lines
+      .filter((t) => {
+        const k = t.taxMonth ?? defaultTaxMonth(t.date);
+        return k.getUTCFullYear() === m.year && k.getUTCMonth() + 1 === m.month;
+      })
+      .map((t) => ({ date: t.date, amount: -t.amount }));
+  const prevIn = instalmentFor(list, prev.year, prev.month);
+  const curIn = instalmentFor(list, masa.year, masa.month);
+  const prevPaid = forMasa(prev);
+  const curPaid = forMasa(masa);
+  if (!prevIn && !curIn && !prevPaid.length && !curPaid.length) return null;
+
+  const due = dueDate("PPH_23", prev);
+  const onTime = prevPaid.filter((p) => +p.date <= +due);
+  const late = prevPaid.filter((p) => +p.date > +due);
+  const sum = (xs: Payment[]) => xs.reduce((t, p) => t + p.amount, 0n);
+  const expected = prevIn?.amount ?? null;
+  let short = 0n;
+  let state: Pph25["previous"]["state"];
+  if (expected === null) state = prevPaid.length ? "DISETOR" : "BELUM_DIISI";
+  else {
+    const paidOnTime = sum(onTime);
+    short = expected > paidOnTime + sum(late) ? expected - paidOnTime - sum(late) : 0n;
+    state =
+      expected === 0n && !prevPaid.length ? "NIHIL"
+      : short > 0n ? (+now <= +due ? "BELUM_JATUH_TEMPO" : "KURANG")
+      : paidOnTime < expected ? "TERLAMBAT"
+      : sum(prevPaid) > expected ? "LEBIH"
+      : "LUNAS";
+  }
+  return {
+    previous: { masa: prev, expected, due, paid: onTime, late, short, state },
+    current: { masa, expected: curIn?.amount ?? null, due: dueDate("PPH_23", masa), paid: curPaid },
+    instalment: curIn,
+    instalments: list,
+    status: state === "KURANG" || state === "TERLAMBAT" ? "REVIEW" : "PASS",
   };
 }
 
@@ -282,6 +354,24 @@ export function rowNotes(r: MasaRow): string[] {
   if (r.ppn && r.ppn.carryOut > 0n) out.push(`PPN lebih bayar ${rp(r.ppn.carryOut)} dikompensasikan ke masa berikutnya.`);
   return out;
 }
+
+/** The plain sentences the PPh 25 row needs, problems first (page, Excel and Tutup Buku). */
+export function pph25Notes(p: Pph25): string[] {
+  const v = p.previous;
+  const prevLabel = formatPeriod(v.masa.year, v.masa.month);
+  const rp = (x: bigint) => formatRupiah(x);
+  const paid = [...v.paid, ...v.late].reduce((t, x) => t + x.amount, 0n);
+  const out: string[] = [];
+  if (v.state === "KURANG") out.push(`Masa ${prevLabel}: ${rp(v.short)} dari angsuran ${rp(v.expected!)} belum disetor sampai jatuh tempo ${formatDate(v.due)}.`);
+  if (v.state === "TERLAMBAT") out.push(`Masa ${prevLabel}: angsuran disetor setelah jatuh tempo ${formatDate(v.due)} (${v.late.map((x) => `${formatDate(x.date)} ${rp(x.amount)}`).join(", ")}).`);
+  if (v.state === "BELUM_JATUH_TEMPO") out.push(`Masa ${prevLabel} jatuh tempo ${formatDate(v.due)}; ${rp(v.short)} belum disetor.`);
+  if (v.state === "LEBIH") out.push(`Masa ${prevLabel}: disetor ${rp(paid)}, lebih dari angsuran ${rp(v.expected!)}.`);
+  if (!p.instalment) out.push("Angsuran PPh 25 per bulan belum diisi: isi dari SPT tahunan terakhir supaya setorannya bisa dicek.");
+  return out;
+}
+
+const PPH25_STATE_LABEL: Record<Pph25["previous"]["state"], string> = { ...STATE_LABEL, DISETOR: "Disetor", BELUM_DIISI: "Angsuran belum diisi" };
+export const pph25StateLabel = (s: Pph25["previous"]["state"]) => PPH25_STATE_LABEL[s];
 
 /** "Keluaran Rp 2.200 − masukan Rp 400 − lebih bayar dibawa Rp 900". */
 export const ppnLine = (p: NonNullable<MasaRow["ppn"]>) =>
