@@ -49,6 +49,17 @@ describe("dataRequest", () => {
     expect(many.text).toContain("…dan 2 transaksi lain; daftar lengkapnya kami kirim dalam file Excel.");
   });
 
+  it("asks the client to get the bukti potong its customers still owe (I5d)", () => {
+    const slip = { entity: "PT Uji", date: new Date(Date.UTC(2026, 7, 5)), description: "TRSF CR PT BANK DIGITAL NUSA", kind: "PPh 23", pph: 1_100_000n, currency: "IDR" };
+    const only = dataRequest({ ...base, rows: [], slips: [slip] })!;
+    expect(only.items).toBe(1);
+    expect(only.text).toContain("Untuk pembukuan PT Contoh Sejahtera sampai Agustus 2026, mohon mintakan bukti potong dari pelanggan untuk penerimaan berikut (dipakai sebagai kredit pajak):");
+    expect(only.text).toContain("- 5 Agu 2026 · PT Uji · TRSF CR PT BANK DIGITAL NUSA · PPh 23 Rp 1.100.000");
+    const withMissing = dataRequest({ ...base, rows: [bank([cell(2026, 8, "missing")])], slips: [slip] })!;
+    expect(withMissing.items).toBe(2);
+    expect(withMissing.text).toContain("Mohon juga mintakan bukti potong dari pelanggan");
+  });
+
   it("is null when nothing is missing", () => {
     expect(dataRequest({ ...base, rows: [bank([cell(2026, 7, "ok"), cell(2026, 8, "before")])] })).toBeNull();
     expect(dataRequest({ ...base, rows: [] })).toBeNull();

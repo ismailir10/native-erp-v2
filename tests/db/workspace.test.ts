@@ -222,3 +222,19 @@ it("papan kantor: Sumber counts this month's gaps; Terkirim is the first report 
   const after = await event(new Date(+lockedAt + 1000));
   expect((await getWorkspaceOverview(db, g.firm.id, { period: "2026-07" })).clients[0].sentAt).toEqual(after.createdAt);
 });
+
+it("puts a masa paid short on the task list as its own high-priority task, until it is paid", async () => {
+  const g = await makeGroup();
+  const id = async (code: string) => (await db.account.findUniqueOrThrow({ where: { clientId_code: { clientId: g.client.id, code } } })).id;
+  const bank = g.pt.banks[0].accountId;
+  // Past setup: Saldo Awal at 30 June and an imported statement, as in the ranking test.
+  for (const e of [g.pt.entity.id, g.owner.entity.id]) await db.$transaction(async (tx) => postJournal(tx, { entityId: e, date: dateOnly(2026, 6, 30), kind: "OPENING", memo: "Saldo awal", lines: [{ accountId: await id("1110"), debit: 50_000_000n }, { accountId: await id("3100"), credit: 50_000_000n }] }));
+  await db.statementImport.create({ data: { firmId: g.firm.id, bankAccountId: g.pt.banks[0].id, fileName: "bca.csv", format: "BCA", periodStart: dateOnly(2026, 8, 1), periodEnd: dateOnly(2026, 8, 31), openingBalance: 0n, closingBalance: 0n, rowCount: 0, continuityOk: true } });
+  await db.$transaction(async (tx) => postJournal(tx, { entityId: g.pt.entity.id, date: dateOnly(2026, 7, 25), kind: "ADJUSTMENT", memo: "Gaji Juli", lines: [{ accountId: await id("6100"), debit: 10_000_000n }, { accountId: bank, credit: 9_800_000n }, { accountId: await id("2140"), credit: 200_000n }] }));
+  const tax = async () => (await getWorkspaceOverview(db, g.firm.id, { period: "2026-08" })).tasks.find((t) => t.id === `tax:masa:${g.pt.entity.id}`);
+  expect(await tax()).toMatchObject({ title: "Periksa setoran pajak PT Uji", priority: "high", clientId: g.client.id });
+  expect((await tax())!.detail).toMatch(/^Grup Uji · PPh 21: Masa Juli 2026: Rp 200\.000 dari Rp 200\.000 belum disetor sampai jatuh tempo 15 Agu 2026/);
+  expect((await tax())!.href).toContain("/tax/masa?period=2026-08");
+  await db.$transaction(async (tx) => postJournal(tx, { entityId: g.pt.entity.id, date: dateOnly(2026, 8, 14), kind: "ADJUSTMENT", memo: "Setor PPh 21", lines: [{ accountId: await id("2140"), debit: 200_000n }, { accountId: bank, credit: 200_000n }] }));
+  expect(await tax()).toBeUndefined();
+});

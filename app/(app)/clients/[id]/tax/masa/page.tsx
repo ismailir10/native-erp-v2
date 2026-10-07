@@ -300,9 +300,9 @@ function WithholdingTable({ title, lines, empty }: { title: string; lines: Withh
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="eyebrow">Tanggal</TableHead>
+              <TableHead className="eyebrow hidden sm:table-cell">Tanggal</TableHead>
               <TableHead className="eyebrow">Lawan transaksi</TableHead>
-              <TableHead className="eyebrow">Jenis</TableHead>
+              <TableHead className="eyebrow hidden sm:table-cell">Jenis</TableHead>
               <TableHead className="eyebrow hidden text-right sm:table-cell">Bruto</TableHead>
               <TableHead className="eyebrow text-right">Dipotong</TableHead>
             </TableRow>
@@ -310,12 +310,14 @@ function WithholdingTable({ title, lines, empty }: { title: string; lines: Withh
           <TableBody>
             {lines.map((w) => (
               <TableRow key={w.id}>
-                <TableCell className="num whitespace-nowrap">{formatDate(w.date)}</TableCell>
+                <TableCell className="num hidden whitespace-nowrap sm:table-cell">{formatDate(w.date)}</TableCell>
                 <TableCell className="whitespace-normal">
                   <div>{w.contact?.name ?? <span className="text-muted-foreground">Belum ditautkan ke kontak</span>}{w.contact?.npwp ? <span className="num ml-1 text-xs text-muted-foreground">NPWP {w.contact.npwp}</span> : null}</div>
                   <div className="text-xs text-muted-foreground">{w.description}{w.inReview ? " · belum direview" : ""}</div>
+                  {/* Phones: the date and kind sit under the name (their columns are hidden below sm), so the amount withheld stays in view. */}
+                  <div className="num text-xs text-muted-foreground sm:hidden">{formatDate(w.date)} · {withholdingLabel(w.kind)}</div>
                 </TableCell>
-                <TableCell>{withholdingLabel(w.kind)}</TableCell>
+                <TableCell className="hidden sm:table-cell">{withholdingLabel(w.kind)}</TableCell>
                 <TableCell className="hidden text-right sm:table-cell"><Money value={w.gross} /></TableCell>
                 <TableCell className="text-right"><Money value={w.withheld} /></TableCell>
               </TableRow>
