@@ -2,9 +2,11 @@ import { ppnLine, previousStateLabel, rowNotes, terNote, terRow, withholdingLabe
 import { formatDate, formatPeriod } from "@/lib/format";
 import { newWorkbook, n, type WorkbookMeta } from "@/lib/reports/workbook";
 import { DIRECTION_LABEL, type FakturRecon } from "@/lib/tax/faktur";
+import { BUPOT_DIRECTION_LABEL, type BupotRecon } from "@/lib/tax/bupot";
+import { BUPOT_KIND_LABEL } from "@/lib/tax/bupot-read";
 
 /** Kertas kerja pajak masa (I4c): the same report the page shows, never a second computation. Whole Rupiah as Excel numbers. */
-export async function masaWorkbook(r: MasaReport, meta: WorkbookMeta, faktur?: FakturRecon): Promise<Buffer> {
+export async function masaWorkbook(r: MasaReport, meta: WorkbookMeta, faktur?: FakturRecon, bupot?: BupotRecon): Promise<Buffer> {
   const book = newWorkbook(meta);
   const { sheet, head } = book;
   const label = formatPeriod(r.masa.year, r.masa.month);
@@ -38,6 +40,20 @@ export async function masaWorkbook(r: MasaReport, meta: WorkbookMeta, faktur?: F
   };
   list("Dipotong oleh perusahaan: buat bukti potong di Coretax", r.withheldByUs, "Tidak ada pemotongan oleh perusahaan masa ini.");
   list("Dipotong oleh pelanggan: minta bukti potongnya", r.withheldFromUs, "Tidak ada pemotongan oleh pelanggan masa ini.");
+  // Bukti potong Unifikasi (I5d): the Coretax slips against these lines, once slips of the masa were imported.
+  if (bupot?.any) {
+    bp.addRow(["Cocokkan dengan Coretax"]).font = { bold: true };
+    for (const d of bupot.directions.filter((x) => x.imported > 0)) {
+      bp.addRow([BUPOT_DIRECTION_LABEL[d.direction]]).font = { bold: true };
+      head(bp, ["", "", "", "", "", "PPh bukti potong", "PPh di buku", "Selisih", "Status"]);
+      const sum = bp.addRow(["Jumlah", "", "", "", "", n(d.slipPph), n(d.bookPph), n(d.difference), d.status === "MATCH" ? "Cocok" : "Selisih"]);
+      sum.getCell(9).numFmt = "@";
+      for (const x of d.unmatchedSlips) bp.addRow([formatDate(x.date), x.name, x.npwp ?? "", `Bukti potong ${x.number} tanpa pemotongan di buku`, BUPOT_KIND_LABEL[x.kind], n(x.pph), "", "", ""]).getCell(3).numFmt = "@";
+      for (const x of d.unmatchedBook) bp.addRow([formatDate(x.date), x.contact ?? "", x.npwp ?? "", `${x.description}: pemotongan di buku tanpa bukti potong`, BUPOT_KIND_LABEL[x.kind], "", n(x.pph), "", ""]).getCell(3).numFmt = "@";
+      for (const p of d.kindDiffers) bp.addRow([formatDate(p.slip.date), p.slip.name, p.slip.npwp ?? "", `Bukti potong ${p.slip.number}: ${BUPOT_KIND_LABEL[p.slip.kind]}, di buku ${BUPOT_KIND_LABEL[p.book.kind]}`, "Beda jenis", n(p.slip.pph), n(p.book.pph), "", ""]).getCell(3).numFmt = "@";
+      bp.addRow([]);
+    }
+  }
   bp.addRow(["PPh 21 tidak masuk Unifikasi: bukti potongnya dibuat per penerima di e-Bupot 21/26."]);
 
   const ter = sheet("PPh 21 TER", "PPh 21 dengan tarif efektif rata-rata (PP 58/2023)", `${sub} · estimasi dari upah sensus`, [32, 14, 10, 10, 18, 10, 18]);

@@ -211,6 +211,12 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     16-digit NPWP read as its 15-digit form, then a shared name word, then the nearest date). Within Rp 1 per faktur = cocok. Control
     `faktur:<entity>` (REVIEW while either side differs) exists only once faktur for the masa were imported. Corrections go through
     Review, invoices or Jurnal Penyesuaian, never from the faktur.
+    **Bukti potong Unifikasi** (`lib/tax/bupot-read.ts`, `lib/tax/bupot.ts`, I5d) follow the same pattern (`CoretaxBupot`, audited
+    `BUKTI_POTONG`): *dibuat* (the recipient's columns) against outgoing bank lines with PPh 23 / 4(2) / 22 withheld, *diterima* (the
+    withholder's columns) against incoming lines with withholding, by bank date month; PPh 21 stays out (e-Bupot 21/26). The kind comes from
+    the Kode Objek Pajak (24 = PPh 23, 28 = 4(2), 22, 27 = 26); a pair matched on the amount but of another kind is *beda jenis*. A
+    *pembetulan* counts; cancelled, replaced, rejected and draft slips don't. Equal to the Rupiah, no allowance. Control `bupot:<entity>`
+    exists only once slips for the masa were imported. The shared matcher is `lib/tax/coretax-match.ts`.
 6. `bigint` **minor units of the entity's functional currency** everywhere in the domain (ADR 0006). IDR has exponent 0,
    so for IDR entities that is whole Rupiah, as before. Parse with `parseRupiah()` / `parseMinor()` (handles `1.234.567,00`,
    `1,234,567.00`, `(2.500)`), format with `formatRupiah()` / `formatMoney(value, currency)`. Convert to `Number` only for chart

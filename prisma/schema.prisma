@@ -1740,3 +1740,34 @@ model CoretaxFaktur {
   @@index([clientId])
   @@index([entityId, year, month])
 }
+
+/// A bukti potong (BPPU, Unifikasi) from a Coretax export (I5d): evidence against the withholding on bank lines, never posted.
+model CoretaxBupot {
+  id           String   @id @default(cuid())
+  firmId       String
+  clientId     String
+  entityId     String
+  /// DIBUAT (the company withheld) | DITERIMA (withheld from the company).
+  direction    String
+  number       String
+  date         DateTime @db.Date
+  year         Int
+  month        Int
+  npwp         String?
+  name         String
+  /// Kode Objek Pajak as written, and the kind read from it (PPH_23 | PPH_4_2 | PPH_22 | PPH_26 | LAINNYA).
+  kop          String
+  kind         String
+  dpp          BigInt
+  pph          BigInt
+  status       String
+  counted      Boolean
+  fileName     String
+  sourceRef    String
+  importedById String?
+  importedAt   DateTime @default(now())
+
+  @@unique([entityId, direction, number])
+  @@index([clientId])
+  @@index([entityId, year, month])
+}

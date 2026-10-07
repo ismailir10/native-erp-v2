@@ -9,6 +9,11 @@ import { packApplies } from "@/lib/tax/pack";
 import { masaReport, ppnLine, previousStateLabel, rowNotes, terNote, terRow, withholdingLabel, type MasaRow, type WithholdingLine } from "@/lib/tax/masa-report";
 import { NextStep, PageHeader } from "@/components/app/page-header";
 import { FakturRecon } from "@/components/app/faktur-recon";
+import { BupotRecon } from "@/components/app/bupot-recon";
+import { BUPOT_DIRECTION_LABEL, bupotNotes, bupotRecon } from "@/lib/tax/bupot";
+import { BUPOT_KIND_LABEL } from "@/lib/tax/bupot-read";
+import { withholdingAccountCode } from "@/lib/tax/withholding";
+import type { WithholdingKind } from "@/lib/generated/prisma/enums";
 import { DIRECTION_LABEL, fakturNotes, fakturRecon } from "@/lib/tax/faktur";
 import { ScopeBar } from "@/components/app/scope-bar";
 import { Money } from "@/components/app/money";
@@ -60,6 +65,8 @@ export default async function TaxMasaPage({ params, searchParams }: { params: Pr
   const pending = await prisma.bankTransaction.count({ where: { entityId: entity.id, status: "NEEDS_REVIEW", date: { gte: start, lte: end } } });
   const faktur = await fakturRecon(prisma, { clientId: client.id, entityId: entity.id, year: period.year, month: period.month });
   const fakturGap = fakturNotes(faktur)[0];
+  const bupot = await bupotRecon(prisma, { clientId: client.id, entityId: entity.id, year: period.year, month: period.month });
+  const bupotGap = bupotNotes(bupot)[0];
   const day = (d: Date) => formatDate(d);
 
   return (
@@ -73,6 +80,8 @@ export default async function TaxMasaPage({ params, searchParams }: { params: Pr
         </NextStep>
       ) : fakturGap ? (
         <NextStep href="#ekualisasi" cta="Lihat ekualisasi">{fakturGap}</NextStep>
+      ) : bupotGap ? (
+        <NextStep href="#bukti-potong" cta="Lihat bukti potong">{bupotGap}</NextStep>
       ) : terReview ? (
         <NextStep>{terNote(report.ter)}</NextStep>
       ) : (
@@ -140,7 +149,7 @@ export default async function TaxMasaPage({ params, searchParams }: { params: Pr
         </CardContent>
       </Card>
 
-      <Card data-testid="masa-withholding">
+      <Card id="bukti-potong" className="scroll-mt-6" data-testid="masa-withholding">
         <CardHeader>
           <CardTitle>Bukti potong (Unifikasi)</CardTitle>
           <CardDescription>
@@ -151,6 +160,32 @@ export default async function TaxMasaPage({ params, searchParams }: { params: Pr
         <CardContent className="space-y-6">
           <WithholdingTable title="Dipotong oleh perusahaan: buat bukti potongnya di Coretax" lines={report.withheldByUs} empty="Tidak ada pemotongan oleh perusahaan masa ini." />
           <WithholdingTable title="Dipotong oleh pelanggan: minta bukti potongnya" lines={report.withheldFromUs} empty="Tidak ada pemotongan oleh pelanggan masa ini." />
+          <BupotRecon
+            clientId={client.id}
+            entityId={entity.id}
+            year={period.year}
+            month={period.month}
+            label={label}
+            directions={bupot.directions.map((d) => {
+              const slip = (x: (typeof d.unmatchedSlips)[number]) => ({ number: x.number, date: day(x.date), name: x.name, npwp: x.npwp, kind: BUPOT_KIND_LABEL[x.kind], pph: x.pph.toString(), status: x.status });
+              // The withholding sits on the payable (2141 / 2145) for slips the company made, on 1180 / 8200 for slips it received.
+              const wht = (x: (typeof d.unmatchedBook)[number]) => ({ id: x.id, date: day(x.date), description: x.description, kind: BUPOT_KIND_LABEL[x.kind], pph: x.pph.toString(), href: ledger(withholdingAccountCode(x.kind as WithholdingKind, d.direction === "DIBUAT" ? "OUT" : "IN")) });
+              return {
+                direction: d.direction,
+                label: BUPOT_DIRECTION_LABEL[d.direction],
+                imported: d.imported,
+                slipPph: d.slipPph.toString(),
+                bookPph: d.bookPph.toString(),
+                difference: d.difference.toString(),
+                status: d.status,
+                matched: d.matched.length,
+                kindDiffers: d.kindDiffers.map((p) => ({ slip: slip(p.slip), book: wht(p.book) })),
+                unmatchedSlips: d.unmatchedSlips.map(slip),
+                unmatchedBook: d.unmatchedBook.map(wht),
+                notCounted: d.notCounted.length,
+              };
+            })}
+          />
         </CardContent>
       </Card>
 
