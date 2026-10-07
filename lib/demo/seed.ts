@@ -1,4 +1,5 @@
 import { isClassifiable } from "@/lib/coa/template";
+import { setInstalment } from "@/lib/tax/instalment";
 import type { Db } from "@/lib/db";
 import { createClient, createFirm } from "@/lib/setup";
 import { importStatement } from "@/lib/import/pipeline";
@@ -72,6 +73,8 @@ export async function seedDemo(db: Db, opts: { log?: (s: string) => void; liveAi
       sc.key === DEPRECIATION.clientKey
         ? await createSchedule(db, { clientId: client.id, entityId: entities[DEPRECIATION.entity].entity.id, kind: "DEPRECIATION", memo: "Penyusutan aset tetap (garis lurus)", debitCode: "6180", creditCode: "1219", amount: formatMoney(DEPRECIATION.monthly * BigInt(DEPRECIATION.months), "IDR", { bare: true }), months: DEPRECIATION.months, startYear: first.year, startMonth: first.month })
         : null;
+
+    for (const i of sc.instalments ?? []) await setInstalment(db, { clientId: client.id, entityId: entities[i.entity].entity.id, from: i.from, amount: formatMoney(i.amount, "IDR", { bare: true }) });
 
     const truth = new Map<string, Truth>();
     for (const l of sc.lines) {
