@@ -214,6 +214,7 @@ export function TaxPackPanel(props: { clientId: string; periodKey: string; perio
               {row("Penghasilan kena pajak (dibulatkan ke bawah ribuan)", v.tax.pkp, { testid: "tax-pkp" })}
               {BigInt(v.fiscalProfit) < 0n && <p className="pb-1 text-xs text-muted-foreground">Rugi fiskal: PKP nol. Kompensasi kerugian tahun lalu belum dihitung di sini.</p>}
               {row("Peredaran bruto (pendapatan usaha)", v.turnover, { muted: true })}
+              {v.months < 12 && row(`Peredaran bruto disetahunkan (× 12 ÷ ${v.months} bulan), dasar Pasal 31E`, v.annualTurnover, { muted: true, testid: "tax-annual-turnover" })}
               {BigInt(v.tax.facilityPkp) > 0n && row(`PKP fasilitas Pasal 31E ${formatMoney(BigInt(v.tax.facilityPkp), cur)} × 11%`, v.tax.facilityTax)}
               {BigInt(v.tax.regularPkp) > 0n && row(`PKP lainnya ${formatMoney(BigInt(v.tax.regularPkp), cur)} × 22%`, v.tax.regularTax)}
               {row("PPh badan terutang", v.tax.due, { strong: true, testid: "tax-due" })}
@@ -236,7 +237,7 @@ export function TaxPackPanel(props: { clientId: string; periodKey: string; perio
                 </div>
               ))}
               {v.settlement && row(BigInt(v.settlement.balance) >= 0n ? "PPh Pasal 29 kurang bayar" : "PPh Pasal 28A lebih bayar", BigInt(v.settlement.balance) < 0n ? (-BigInt(v.settlement.balance)).toString() : v.settlement.balance, { strong: true, testid: "tax-balance" })}
-              {v.settlement && row("Angsuran PPh 25 tahun berikutnya per bulan", v.settlement.nextInstalment, { muted: true, testid: "tax-next" })}
+              {v.settlement && row(v.months < 12 ? "Angsuran PPh 25 tahun berikutnya per bulan (proyeksi setahun)" : "Angsuran PPh 25 tahun berikutnya per bulan", v.settlement.nextInstalment, { muted: true, testid: "tax-next" })}
             </>
           )}
         </CardContent>

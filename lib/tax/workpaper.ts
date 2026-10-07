@@ -50,13 +50,14 @@ export async function taxWorkpaper(db: Db, pack: TaxPack, meta: { firm: string; 
     if (pack.compensation > 0n) add("Kompensasi kerugian", -pack.compensation, "Kompensasi Kerugian");
     add("Penghasilan kena pajak (dibulatkan ke bawah ribuan)", pack.tax.pkp);
     add("Peredaran bruto (pendapatan usaha)", pack.turnover, "Laba Rugi");
+    if (pack.months < 12) add(`Peredaran bruto disetahunkan (× 12 ÷ ${pack.months} bulan), dasar Pasal 31E`, pack.tax.annualTurnover);
     if (pack.tax.facilityPkp > 0n) add(`PKP fasilitas Pasal 31E ${pack.tax.facilityPkp.toLocaleString("id-ID")} × 11%`, pack.tax.facilityTax);
     if (pack.tax.regularPkp > 0n) add(`PKP lainnya ${pack.tax.regularPkp.toLocaleString("id-ID")} × 22%`, pack.tax.regularTax);
     add("PPh badan terutang", pack.tax.due);
     for (const c of pack.credits) add(`  Kredit ${CREDIT[c.type]} ${formatDate(c.date)}`, -c.amount, "Kredit Pajak");
     if (pack.settlement) {
       add(pack.settlement.balance >= 0n ? "PPh Pasal 29 kurang bayar" : "PPh Pasal 28A lebih bayar", pack.settlement.balance < 0n ? -pack.settlement.balance : pack.settlement.balance);
-      add("Angsuran PPh 25 tahun berikutnya per bulan", pack.settlement.nextInstalment);
+      add(pack.months < 12 ? "Angsuran PPh 25 tahun berikutnya per bulan (proyeksi setahun)" : "Angsuran PPh 25 tahun berikutnya per bulan", pack.settlement.nextInstalment);
     }
   }
   table(rec, ["Uraian", "Jumlah (Rp)", "Sumber"], lines, [2], [62, 20, 26]);

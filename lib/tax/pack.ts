@@ -43,6 +43,8 @@ export type TaxPack = {
   taxYearId: string | null;
   profitBeforeTax: bigint;
   turnover: bigint;
+  /** Months of the year the books cover through the chosen month; under 12, Pasal 31E is judged on the turnover annualised. */
+  months: number;
   /** The Laba Rugi behind profit before tax, per account: income positive, expenses negative (the workpaper's first sheet). */
   profitAndLoss: { code: string; name: string; section: string; amount: bigint }[];
   corrections: Correction[];
@@ -69,6 +71,21 @@ export type TaxPack = {
 };
 
 type Reader = Db | Tx;
+
+/**
+ * Months of `year` the books cover through `month`. Books opened inside the year with a balance sheet only start the day after the
+ * opening; an opening that carries income or expense holds the year so far, so it covers from January, as does any earlier opening.
+ */
+async function monthsCovered(db: Reader, entityId: string, year: number, month: number): Promise<number> {
+  const opening = await db.journalEntry.findFirst({
+    where: { entityId, kind: "OPENING", date: { gte: dateOnly(year, 1, 1), lte: periodBounds(year, month).end } },
+    orderBy: { date: "asc" },
+    select: { date: true, lines: { select: { account: { select: { type: true } } } } },
+  });
+  if (!opening || opening.lines.some((l) => l.account.type === "PENDAPATAN" || l.account.type === "BEBAN")) return month;
+  const start = new Date(+opening.date + 86_400_000);
+  return start.getUTCFullYear() > year ? month : Math.max(1, month - start.getUTCMonth());
+}
 
 /** A PPh badan pack applies to companies (not individuals) keeping IDR books. */
 export const packApplies = (e: { kind: string; functionalCurrency: string }) => e.kind !== "PERORANGAN" && e.functionalCurrency === "IDR";
@@ -147,7 +164,8 @@ export async function taxPack(db: Db, clientId: string, entityId: string, year: 
   const negative = final ? 0n : corrections.filter((c) => c.direction === "NEGATIVE").reduce((t, c) => t + c.amount, 0n);
   const fiscalProfit = profitBeforeTax + positive - negative;
   const carried = final ? { rows: [], used: 0n } : compensate(fiscalProfit, year, taxYear?.losses ?? []);
-  const tax = corporateTax({ regime, pkp: roundDownThousands(fiscalProfit - carried.used), turnover });
+  const months = await monthsCovered(db, entityId, year, month);
+  const tax = corporateTax({ regime, pkp: roundDownThousands(fiscalProfit - carried.used), turnover, months });
   // Last year's fiscal loss from Buku's own December pack (when that year has books), offered until recorded or dismissed.
   let lossSuggestion: { originYear: number; amount: bigint } | null = null;
   const lossKey = `loss:${year - 1}`;
@@ -171,7 +189,7 @@ export async function taxPack(db: Db, clientId: string, entityId: string, year: 
   const sum = (xs: Credit[]) => xs.reduce((t, c) => t + c.amount, 0n);
   const settled = final
     ? null
-    : settlement({ due: tax.due, instalments: sum(credits.filter((c) => c.type === "PPH_25")), withheld: sum(credits.filter((c) => c.type === "PPH_22" || c.type === "PPH_23" || c.type === "PPH_24")), other: sum(credits.filter((c) => c.type === "OTHER")) });
+    : settlement({ due: tax.due, instalments: sum(credits.filter((c) => c.type === "PPH_25")), withheld: sum(credits.filter((c) => c.type === "PPH_22" || c.type === "PPH_23" || c.type === "PPH_24")), other: sum(credits.filter((c) => c.type === "OTHER")), months });
 
   // ---- pajak tangguhan (fixed-asset register and the receivable allowance) ----
   const held = await allowanceBalance(db, clientId, entityId, through);
@@ -206,7 +224,7 @@ export async function taxPack(db: Db, clientId: string, entityId: string, year: 
     proposals.CURRENT = diff(target, postedCurrent);
   }
   if (applicable && deferred && !laterPosting.DEFERRED) proposals.DEFERRED = deferredDiff(deferred.amount, postedDeferred, deferred.oci);
-  return { entity, year, month, through, applicable, regime, taxYearId: taxYear?.id ?? null, profitBeforeTax, turnover, profitAndLoss, corrections, suggestions, positive, negative, fiscalProfit, losses: carried.rows, compensation: carried.used, lossSuggestion, tax, credits, settlement: settled, deferred, proposals, laterPosting };
+  return { entity, year, month, through, applicable, regime, taxYearId: taxYear?.id ?? null, profitBeforeTax, turnover, months, profitAndLoss, corrections, suggestions, positive, negative, fiscalProfit, losses: carried.rows, compensation: carried.used, lossSuggestion, tax, credits, settlement: settled, deferred, proposals, laterPosting };
 }
 
 /**

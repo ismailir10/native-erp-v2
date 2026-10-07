@@ -42,9 +42,25 @@ describe("tax pack", () => {
     // Turnover ≤ 4,8 M: all PKP at 11 %.
     expect(p.tax).toMatchObject({ pkp: 595_000_000n, facilityPkp: 595_000_000n, due: 65_450_000n });
     expect(p.credits.map((c) => [c.type, c.amount, c.accountCode])).toEqual([["PPH_25", 30_000_000n, "1180"], ["PPH_23", 2_000_000n, "1180"]]);
-    expect(p.settlement).toEqual({ credits: 32_000_000n, balance: 33_450_000n, nextInstalment: 5_287_500n });
+    // Next year's PPh 25 projects the nine months to a year: (65,45 jt − 2 jt PPh 23) ÷ 9.
+    expect(p.months).toBe(9);
+    expect(p.settlement).toEqual({ credits: 32_000_000n, balance: 33_450_000n, nextInstalment: 7_050_000n });
     expect(lines(p.proposals.CURRENT)).toEqual([["1180", -32_000_000n], ["2146", -33_450_000n], ["8100", 65_450_000n]]);
     expect(p.deferred).toBeNull();
+  });
+
+  it("judges Pasal 31E on the turnover annualised over the months the books cover", async () => {
+    const g = await makeGroup();
+    // Books opened 31 May 2026 with a balance sheet only: June–August are the year so far (3 months).
+    await db.$transaction(async (tx) => postJournal(tx, { entityId: g.pt.entity.id, date: dateOnly(2026, 5, 31), kind: "OPENING", memo: "Saldo awal", lines: [{ accountId: await acc(g, "1110"), debit: 100_000_000n }, { accountId: await acc(g, "3100"), credit: 100_000_000n }] }));
+    await journal(g, dateOnly(2026, 6, 30), "1130", "4100", 2_400_000_000n, "Penjualan");
+    await journal(g, dateOnly(2026, 7, 31), "6100", "1110", 1_400_000_000n, "Gaji");
+    const p = (await taxPack(db, g.client.id, g.pt.entity.id, 2026, 8))!;
+    // 2,4 M in 3 months is 9,6 M a year: 4,8 ÷ 9,6 of PKP 1 M at 11 % (not all of it, as 2,4 M ≤ 4,8 M would say).
+    expect(p.months).toBe(3);
+    expect(p.tax).toMatchObject({ turnover: 2_400_000_000n, annualTurnover: 9_600_000_000n, pkp: 1_000_000_000n, facilityPkp: 500_000_000n, regularPkp: 500_000_000n, due: 165_000_000n });
+    // December counts June–December: seven months, still annualised (a short first year is annualised for 31E as well).
+    expect((await taxPack(db, g.client.id, g.pt.entity.id, 2026, 12))!.months).toBe(7);
   });
 
   it("takes a PPh 25 already expensed on 8100 off the expense instead of a prepaid account", async () => {

@@ -26,6 +26,18 @@ describe("PPh badan arithmetic", () => {
     expect(corporateTax({ regime: "NORMAL", pkp: 1_000n, turnover: 7_000_000_000n })).toMatchObject({ facilityPkp: 685n, facilityTax: 75n, regularPkp: 315n, regularTax: 69n, due: 144n });
   });
 
+  it("annualises an interim turnover for both 31E tests (PSAK 3: the rate the year is heading for)", () => {
+    // 3,2 M in 8 months is 4,8 M a year: all at 11 %; 8 M in 8 months is 12 M a year: 4,8 ÷ 12 at 11 %.
+    expect(corporateTax({ regime: "NORMAL", pkp: 1_000_000_000n, turnover: 3_200_000_000n, months: 8 })).toMatchObject({ annualTurnover: 4_800_000_000n, facilityPkp: 1_000_000_000n });
+    expect(corporateTax({ regime: "NORMAL", pkp: 1_000_000_000n, turnover: 8_000_000_000n, months: 8 })).toMatchObject({ annualTurnover: 12_000_000_000n, facilityPkp: 400_000_000n, regularPkp: 600_000_000n });
+    // 40 M in 8 months passes Rp 50 M a year: no facility.
+    expect(corporateTax({ regime: "NORMAL", pkp: 1_000_000_000n, turnover: 40_000_000_000n, months: 8 }).facilityPkp).toBe(0n);
+    // A full year is not annualised.
+    expect(corporateTax({ regime: "NORMAL", pkp: 1_000_000_000n, turnover: 10_000_000_000n, months: 12 }).facilityPkp).toBe(480_000_000n);
+    // The projected instalment: (due − withheld) over the months, as a year ÷ 12.
+    expect(settlement({ due: 80_000_000n, instalments: 0n, withheld: 8_000_000n, months: 8 }).nextInstalment).toBe(9_000_000n);
+  });
+
   it("computes the PP 55/2022 final tax as 0,5 % of turnover, rounded down", () => {
     expect(corporateTax({ regime: "FINAL_UMKM", pkp: 999_000n, turnover: 1_234_567_890n })).toMatchObject({ pkp: 0n, due: 6_172_839n });
   });
