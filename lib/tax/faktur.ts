@@ -4,6 +4,7 @@ import { formatPeriod, periodBounds } from "@/lib/format";
 import { formatRupiah } from "@/lib/money";
 import { packApplies } from "@/lib/tax/pack";
 import { readFaktur, type FakturDirection } from "@/lib/tax/faktur-read";
+import { matchOneToOne } from "@/lib/tax/coretax-match";
 
 /**
  * Ekualisasi PPN (I5c, accounting-rules 5j): faktur from a Coretax export against the PPN the books hold for the same masa — keluaran on
@@ -101,14 +102,6 @@ export type DirectionRecon = {
 };
 export type FakturRecon = { year: number; month: number; directions: DirectionRecon[]; any: boolean };
 
-/** NPWP digits; a company's 16-digit NPWP (since 2024) is "0" + its 15-digit one, so both read the same. */
-const digits = (s: string | null | undefined) => {
-  const d = (s ?? "").replace(/\D/g, "");
-  return d.length === 16 && d.startsWith("0") ? d.slice(1) : d;
-};
-const NAME_NOISE = new Set(["PT", "CV", "TBK", "UD", "PERSERO", "INDONESIA", "TRSF", "TRANSFER", "DARI", "BANKING", "KE", "DB", "CR"]);
-const words = (s: string) => new Set(s.toUpperCase().split(/[^A-Z0-9]+/).filter((w) => w.length >= 4 && !NAME_NOISE.has(w)));
-
 /** Book PPN sources of the masa on the direction's account: net per bank line / invoice (a void nets its invoice), positive only. */
 async function bookPpn(db: Db, entityId: string, direction: FakturDirection, year: number, month: number): Promise<BookPpn[]> {
   const { start, end } = periodBounds(year, month);
@@ -155,23 +148,13 @@ async function bookPpn(db: Db, entityId: string, direction: FakturDirection, yea
   return [...by.values()].filter((b) => b.ppn > 0n).sort((a, b) => +a.date - +b.date || a.key.localeCompare(b.key));
 }
 
-/** One to one on the exact PPN: the same NPWP first, then a shared name word, then the earliest date. */
+/** One to one on the exact PPN (`lib/tax/coretax-match.ts`). */
 function match(faktur: FakturView[], book: BookPpn[]) {
-  const free = new Set(book.map((b) => b.key));
-  const matched: { faktur: FakturView; book: BookPpn }[] = [];
-  const unmatchedFaktur: FakturView[] = [];
-  for (const f of [...faktur].sort((a, b) => +a.date - +b.date || a.number.localeCompare(b.number))) {
-    const fw = words(f.name);
-    const score = (b: BookPpn) => (digits(f.npwp) && digits(f.npwp) === digits(b.npwp) ? 2 : [...words(b.label)].some((w) => fw.has(w)) ? 1 : 0);
-    const best = book
-      .filter((b) => free.has(b.key) && b.ppn === f.ppn)
-      .sort((a, b) => score(b) - score(a) || Math.abs(+a.date - +f.date) - Math.abs(+b.date - +f.date))[0];
-    if (best) {
-      free.delete(best.key);
-      matched.push({ faktur: f, book: best });
-    } else unmatchedFaktur.push(f);
-  }
-  return { matched, unmatchedFaktur, unmatchedBook: book.filter((b) => free.has(b.key)) };
+  const r = matchOneToOne(
+    faktur.map((f) => ({ item: f, key: f.number, date: f.date, amount: f.ppn, npwp: f.npwp, text: f.name })),
+    book.map((b) => ({ item: b, key: b.key, date: b.date, amount: b.ppn, npwp: b.npwp, text: b.label })),
+  );
+  return { matched: r.matched.map((m) => ({ faktur: m.doc, book: m.book })), unmatchedFaktur: r.unmatchedDocs, unmatchedBook: r.unmatchedBook };
 }
 
 export async function fakturRecon(db: Db, input: { clientId: string; entityId: string; year: number; month: number }): Promise<FakturRecon> {
