@@ -2,6 +2,8 @@ import type { TaxTag } from "@/lib/generated/prisma/enums";
 import type { ClientSpec } from "@/lib/setup";
 import { dateOnly } from "@/lib/format";
 import { merchantKey } from "@/lib/import/normalize";
+import { splitPpn } from "@/lib/money";
+import type { Withholding } from "@/lib/tax/withholding";
 import type { StatementFile } from "@/lib/demo/writers";
 
 /**
@@ -14,7 +16,7 @@ import type { StatementFile } from "@/lib/demo/writers";
 export const DEMO_MONTHS = [3, 4, 5, 6, 7, 8].map((m) => ({ year: 2026, month: m }));
 export const CURRENT = { year: 2026, month: 8 };
 
-export type Truth = { accountCode: string; taxTag: TaxTag | null };
+export type Truth = { accountCode: string; taxTag: TaxTag | null; withholding?: Withholding };
 export type AiAnswer = { accountCode: string; confidence: number; taxTag: TaxTag | null; reason: string };
 export type DemoLine = {
   bankKey: string;
@@ -26,6 +28,8 @@ export type DemoLine = {
   open?: boolean;
   /** What the (simulated) AI answers for this merchant — may be wrong on purpose. */
   ai?: AiAnswer;
+  /** A tax remittance: its amount is set by `remitTaxes` to what the previous masa left owed. */
+  remit?: "PPN" | "PPH_21";
 };
 export type OpeningLine = { code: string; amount: bigint }; // signed: debit +, credit −
 export type ClientScenario = {
@@ -61,6 +65,8 @@ const bcaDesc = (dir: "DB" | "CR", y: number, m: number, dd: number, who: string
   `TRSF E-BANKING ${dir} ${String(dd).padStart(2, "0")}${String(m).padStart(2, "0")}/FTSCY/WS9${ref()} ${who}`;
 
 const T = (accountCode: string, taxTag: TaxTag | null = null): Truth => ({ accountCode, taxTag });
+/** Payroll paid net: PPh 21 (5 % of gross) withheld, owed to the state by the 15th of the next month. */
+const payroll = (cash: bigint): Truth => ({ ...T("6100"), withholding: { kind: "PPH_21", amount: ((cash * 5n) / 95n / 1000n) * 1000n } });
 const AI = (accountCode: string, reason: string, confidence = 0.86, taxTag: TaxTag | null = null): AiAnswer => ({ accountCode, reason, confidence, taxTag });
 
 // =====================================================================================
@@ -116,7 +122,10 @@ function grupAyam(): ClientScenario {
       lines.push({ bankKey: "pt-bca", date: d(y, m, dd), description: bcaDesc("DB", y, m, dd, `PEMBAYARAN MITRA PETERNAK ${name}`), amount: -jt(35, 70), truth: T("5110") });
     }
     // --- opex (firm rules + AI-learnt vendors)
-    lines.push({ bankKey: "pt-bca", date: d(y, m, 25), description: "PAYROLL KARYAWAN BULANAN", amount: -jt(165, 175), truth: T("6100") });
+    {
+      const pay = jt(165, 175);
+      lines.push({ bankKey: "pt-bca", date: d(y, m, 25), description: "PAYROLL KARYAWAN BULANAN", amount: -pay, truth: payroll(pay) });
+    }
     lines.push({ bankKey: "pt-bca", date: d(y, m, 10), description: bcaDesc("DB", y, m, 10, "BPJS KETENAGAKERJAAN"), amount: -jt(9, 10), truth: T("6110") });
     lines.push({ bankKey: "pt-bca", date: d(y, m, 12), description: "PEMBAYARAN PLN POSTPAID GUDANG", amount: -jt(4, 7), truth: T("6130") });
     lines.push({ bankKey: "pt-bca", date: d(y, m, 14), description: "TELKOM INDIHOME BISNIS", amount: -jt(1, 1.5), truth: T("6130") });
@@ -141,8 +150,8 @@ function grupAyam(): ClientScenario {
     }
     lines.push({ bankKey: "pt-bca", date: d(y, m, 18), description: "META PLATFORMS IRELAND ADS", amount: -jt(6, 12), truth: T("6150"), ai: AI("6150", "Iklan digital", 0.9) });
     // taxes
-    lines.push({ bankKey: "pt-bca", date: d(y, m, 15), description: "SETORAN PPN MASA DJP", amount: -jt(40, 60), truth: T("2130", "PPN_KELUARAN") });
-    lines.push({ bankKey: "pt-bca", date: d(y, m, 10), description: "SETORAN PAJAK PPH 21 DJP", amount: -jt(7, 9), truth: T("2140", "PPH_21") });
+    lines.push({ bankKey: "pt-bca", date: d(y, m, 15), description: "SETORAN PPN MASA DJP", amount: -jt(40, 60), truth: T("2130", "PPN_KELUARAN"), remit: "PPN" });
+    lines.push({ bankKey: "pt-bca", date: d(y, m, 10), description: "SETORAN PAJAK PPH 21 DJP", amount: -jt(7, 9), truth: T("2140", "PPH_21"), remit: "PPH_21" });
     // bank items
     lines.push({ bankKey: "pt-bca", date: d(y, m, 28), description: "BIAYA ADM", amount: -30_000n, truth: T("7100") });
     lines.push({ bankKey: "pt-bca", date: d(y, m, 28), description: "BUNGA JASA GIRO", amount: 850_000n, truth: T("4900") });
@@ -239,7 +248,7 @@ function grupAyam(): ClientScenario {
     }
   }
 
-  return {
+  return remitTaxes({
     key: "grup-ayam",
     spec: {
       name: "Grup Ayam Nusantara",
@@ -268,8 +277,9 @@ function grupAyam(): ClientScenario {
         { code: "1210", amount: 1_150_000_000n },
         { code: "1219", amount: -310_000_000n },
         { code: "2110", amount: -240_000_000n },
-        // PPh 21 withheld from payroll and not yet paid in (the remittances file to this liability, not to salary expense).
-        { code: "2140", amount: -60_000_000n },
+        // February's PPN and the PPh 21 withheld from February's payroll, remitted in March.
+        { code: "2130", amount: -48_500_000n },
+        { code: "2140", amount: -8_700_000n },
         { code: "2210", amount: -600_000_000n },
         { code: "3100", amount: -2_000_000_000n },
       ],
@@ -278,7 +288,7 @@ function grupAyam(): ClientScenario {
     lines,
     closedThrough: { year: 2026, month: 7 },
     liveUpload: { bankKey: "own-bri", year: 2026, month: 8 },
-  };
+  });
 }
 
 // =====================================================================================
@@ -329,14 +339,18 @@ function jasaKreatif(): ClientScenario {
     for (const c of clients.slice(0, 2 + (m % 2))) {
       lines.push({ bankKey: "mdr", date: d(y, m, day(5, 25)), description: `TRANSFER DARI ${c} RETAINER`, amount: jt(55, 90), truth: T("4110", "PPN_KELUARAN"), ai: AI("4110", "Pendapatan jasa agensi", 0.9, "PPN_KELUARAN") });
     }
-    lines.push({ bankKey: "mdr", date: d(y, m, 25), description: "PAYROLL TIM KREATIF", amount: -jt(78, 82), truth: T("6100") });
+    {
+      const pay = jt(78, 82);
+      lines.push({ bankKey: "mdr", date: d(y, m, 25), description: "PAYROLL TIM KREATIF", amount: -pay, truth: payroll(pay) });
+    }
     lines.push({ bankKey: "mdr", date: d(y, m, 3), description: "TRANSFER KE ADOBE SYSTEMS LANGGANAN", amount: -3_900_000n, truth: T("6160"), ai: AI("6160", "Langganan software desain", 0.88) });
     lines.push({ bankKey: "mdr", date: d(y, m, 8), description: `TRANSFER KE HONOR FREELANCE ${ref()}`, amount: -jt(10, 18), truth: T("6170"), ai: AI("6170", "Honor tenaga lepas", 0.85) });
     lines.push({ bankKey: "mdr", date: d(y, m, 1), description: "TRANSFER KE CO-WORKING SPACE SEWA", amount: -9_000_000n, truth: T("6120"), ai: AI("6120", "Sewa ruang kerja", 0.9) });
-    lines.push({ bankKey: "mdr", date: d(y, m, 15), description: "SETORAN PPN MASA", amount: -jt(12, 16), truth: T("2130", "PPN_KELUARAN") });
+    lines.push({ bankKey: "mdr", date: d(y, m, 15), description: "SETORAN PPN MASA", amount: -jt(12, 16), truth: T("2130", "PPN_KELUARAN"), remit: "PPN" });
+    lines.push({ bankKey: "mdr", date: d(y, m, 10), description: "SETORAN PAJAK PPH 21 DJP", amount: 0n, truth: T("2140", "PPH_21"), remit: "PPH_21" });
     lines.push({ bankKey: "mdr", date: d(y, m, 28), description: "BIAYA ADM BULANAN", amount: -12_500n, truth: T("7100") });
   }
-  return {
+  return remitTaxes({
     key: "jasa",
     spec: {
       name: "PT Jasa Kreatif Digital",
@@ -344,10 +358,48 @@ function jasaKreatif(): ClientScenario {
       entities: [{ name: "PT Jasa Kreatif Digital", shortName: "PT Jasa Kreatif", kind: "PT", banks: [{ bank: "MANDIRI", number: "1570033221100", label: "Mandiri Giro" }] }],
     },
     banks: { mdr: { entity: 0, bank: 0, opening: 320_000_000n } },
-    openings: [[{ code: "1130", amount: 140_000_000n }, { code: "3100", amount: -250_000_000n }]],
+    openings: [[{ code: "1130", amount: 140_000_000n }, { code: "2130", amount: -21_300_000n }, { code: "2140", amount: -4_100_000n }, { code: "3100", amount: -250_000_000n }]],
     lines,
     closedThrough: { year: 2026, month: 8 },
-  };
+  });
+}
+
+/**
+ * Tax remittances pay exactly what the previous masa left owed, as a tidy client does, so Pajak Masa ties on the demo:
+ * - PPN: keluaran − masukan, a lebih bayar carried to the next masa;
+ * - PPh 21: what payroll withheld.
+ * The first month pays the opening liability. A remittance with nothing owed is dropped. Amounts only change after generation, so the
+ * random stream (every other amount) is untouched.
+ */
+function remitTaxes(sc: ClientScenario): ClientScenario {
+  const monthKey = (dt: Date) => dt.getUTCFullYear() * 12 + dt.getUTCMonth();
+  const first = monthKey(dateOnly(DEMO_MONTHS[0].year, DEMO_MONTHS[0].month, 1));
+  const owed = new Map<string, bigint>();
+  const at = (entity: number, tax: string, k: number) => owed.get(`${entity}:${tax}:${k}`) ?? 0n;
+  sc.spec.entities.forEach((_, e) => {
+    const own = sc.lines.filter((l) => sc.banks[l.bankKey].entity === e);
+    let carry = 0n;
+    for (const { year, month } of DEMO_MONTHS) {
+      const k = monthKey(dateOnly(year, month, 1));
+      const inMonth = own.filter((l) => monthKey(l.date) === k);
+      const keluaran = inMonth.filter((l) => l.amount > 0n && l.truth.taxTag === "PPN_KELUARAN").reduce((s, l) => s + splitPpn(l.amount).ppn, 0n);
+      const masukan = inMonth.filter((l) => l.amount < 0n && l.truth.taxTag === "PPN_MASUKAN").reduce((s, l) => s + splitPpn(-l.amount).ppn, 0n);
+      const net = keluaran - masukan - carry;
+      owed.set(`${e}:PPN:${k}`, net > 0n ? net : 0n);
+      carry = net < 0n ? -net : 0n;
+      owed.set(`${e}:PPH_21:${k}`, inMonth.reduce((s, l) => s + (l.truth.withholding?.kind === "PPH_21" ? l.truth.withholding.amount : 0n), 0n));
+    }
+    for (const [tax, code] of [["PPN", "2130"], ["PPH_21", "2140"]] as const) {
+      owed.set(`${e}:${tax}:${first - 1}`, -(sc.openings[e] ?? []).filter((o) => o.code === code).reduce((s, o) => s + o.amount, 0n));
+    }
+  });
+  const lines: DemoLine[] = [];
+  for (const l of sc.lines) {
+    if (!l.remit) { lines.push(l); continue; }
+    const due = at(sc.banks[l.bankKey].entity, l.remit, monthKey(l.date) - 1);
+    if (due > 0n) lines.push({ ...l, amount: -due });
+  }
+  return { ...sc, lines };
 }
 
 let cached: ClientScenario[] | null = null;

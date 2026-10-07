@@ -5,6 +5,7 @@ import { verifyBooks } from "@/lib/demo/verify";
 import { importStatement } from "@/lib/import/pipeline";
 import { runControls } from "@/lib/controls";
 import { MockProvider } from "@/lib/ai/provider";
+import { masaReport } from "@/lib/tax/masa-report";
 
 /** Layer 2: the seeded demo (built through the real pipeline) matches generator ground truth. */
 describe("demo seed vs ground truth", () => {
@@ -13,6 +14,13 @@ describe("demo seed vs ground truth", () => {
     const before = await verifyBooks(db);
     expect(before.failures).toEqual([]);
     expect(before.checks).toBeGreaterThan(900);
+
+    // A tidy client remits what the previous masa owed: Pajak Masa ties on every demo company, from the opening on.
+    const companies = await db.entity.findMany({ where: { kind: { not: "PERORANGAN" } }, select: { id: true, clientId: true } });
+    for (const e of companies) for (const month of [3, 4, 5, 6, 7, 8]) {
+      const r = await masaReport(db, { clientId: e.clientId, entityId: e.id, year: 2026, month, now: new Date(Date.UTC(2026, 8, 20)) });
+      expect(r!.rows.filter((x) => x.status !== "PASS").map((x) => `${month}:${x.key}`)).toEqual([]);
+    }
 
     const client = await db.client.findFirstOrThrow({ where: { name: "Grup Ayam Nusantara" } });
     const c0 = Object.fromEntries((await runControls(db, client.id, 2026, 8)).map((c) => [c.key, c.status]));

@@ -123,6 +123,9 @@ export async function masaReport(db: Db, input: { clientId: string; entityId: st
     return (b?._sum.credit ?? 0n) - (b?._sum.debit ?? 0n);
   };
   const inMasa = (d: Date, m: Masa) => d.getUTCFullYear() === m.year && d.getUTCMonth() + 1 === m.month;
+  // An opening balance is what was owed as the books start: it belongs to the masa before its date (an opening "per 28 Februari" or
+  // "per 1 Maret" is February's tax), so the first remittance reads as paying it.
+  const owedIn = (l: Line, m: Masa) => inMasa(l.opening ? new Date(+l.date - 86_400_000) : l.date, m);
   const sum = (xs: bigint[]) => xs.reduce((s, v) => s + v, 0n);
 
   const rows: MasaRow[] = TAXES.map((t) => {
@@ -135,8 +138,8 @@ export async function masaReport(db: Db, input: { clientId: string; entityId: st
       const owed = new Map<number, { keluaran: bigint; masukan: bigint; carryIn: bigint; carryOut: bigint; owed: bigint }>();
       let carry = 0n;
       for (let m: Masa = { year: prev.year, month: 1 }; keyOf(m) <= keyOf(masa); m = shift(m, 1)) {
-        const k = sum(own.filter((l) => !l.opening && inMasa(l.date, m)).map((l) => l.credit));
-        const mk = sum(masukan.filter((l) => !l.opening && inMasa(l.date, m)).map((l) => l.debit));
+        const k = sum(own.filter((l) => owedIn(l, m)).map((l) => l.credit));
+        const mk = sum(masukan.filter((l) => owedIn(l, m)).map((l) => l.debit));
         const net = k - mk - carry;
         owed.set(keyOf(m), { keluaran: k, masukan: mk, carryIn: carry, carryOut: net < 0n ? -net : 0n, owed: net > 0n ? net : 0n });
         carry = net < 0n ? -net : 0n;
@@ -145,7 +148,7 @@ export async function masaReport(db: Db, input: { clientId: string; entityId: st
       const cur = owed.get(keyOf(masa))!;
       ppn = { keluaran: cur.keluaran, masukan: cur.masukan, carryIn: cur.carryIn, carryOut: cur.carryOut };
     } else {
-      owedOf = (m) => sum(own.filter((l) => !l.opening && !l.payment && inMasa(l.date, m)).map((l) => l.credit - l.debit));
+      owedOf = (m) => sum(own.filter((l) => !l.payment && owedIn(l, m)).map((l) => l.credit - l.debit));
     }
     const payments = own.filter((l) => l.payment).map((l) => ({ date: l.date, amount: l.debit }));
     const prevDue = dueDate(t.key, prev);

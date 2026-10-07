@@ -33,6 +33,15 @@ Stage: across all three (**Sumber**, **Pembukuan**, **Laporan**).
   *Terima semua yang yakin* skips hinted lines and says how many are left to check one by one.
 - [x] **Data request carries the upload link**: *Sisipkan tautan unggah* on the import page creates a 14-day link and puts it in
   the WhatsApp/email message (when evidence storage is on).
+- [x] **The demo pays its taxes like a tidy client** (the sweep found *Perlu dicek* on Pajak Masa for both demo PTs: PPN payments were
+  random and PPh 21 was paid with nothing withheld):
+  - payroll is paid net with PPh 21 (5 % of gross) withheld to 2140;
+  - every PPN and PPh 21 remittance pays exactly what the previous masa owed (`remitTaxes`, computed after generation so the random stream
+    and every other amount stay put);
+  - the openings carry February's PPN and PPh 21, which the March remittances pay;
+  - PT Jasa Kreatif gets its missing PPh 21 remittance.
+- [x] **Pajak Masa reads an opening tax balance as the masa before its date** (the books start owing it). The first remittance then reads
+  *Lunas*, not *lebih dari yang dicatat terutang*.
 - [x] **Combined Laporan Keuangan** says the management report, its note and the bank credit pack are made per company.
 - [x] **Sweep tooling**: `npm run ux:sweep` (skipped by `test:e2e` unless `UX_SWEEP=1`) writes `findings.json` and screenshots to
   `UX_OUT`.
@@ -40,10 +49,7 @@ Stage: across all three (**Sumber**, **Pembukuan**, **Laporan**).
   - `npm run auth:local` boots the local Supabase stack and writes its URL and keys into `.env`;
   - README, AGENTS.md, the ship skill, `.env.example`, `docs/real-data.md` and ADRs 0008/0010/0011 no longer send anyone to staging.
 
-**Non-goals:**
-- making the demo's tax payments coherent (its PPN and PPh 21 payments are random, so Pajak Masa shows *Perlu dicek* for the demo
-  PKP companies);
-- a Pajak Masa close control.
+**Non-goals:** a Pajak Masa close control.
 
 **Gate-reopeners:** none (no migration, no dependency).
 
@@ -52,7 +58,8 @@ Stage: across all three (**Sumber**, **Pembukuan**, **Laporan**).
   `e2e/accountant-hints.spec.ts`.
 - [x] T2 The sweep as a script (`e2e/ux-sweep.spec.ts`, `npm run ux:sweep`).
 - [x] T3 ADR 0015, `scripts/local-auth.sh` and the docs.
-- [x] T4 Gates, including the full e2e on the local stack.
+- [x] T4 Demo taxes and the opening rule, with a masa test and a demo assertion (every PT month *Lolos*).
+- [x] T5 Gates, including the full e2e on the local stack.
 
 ## Implementation
 - T1:
@@ -66,11 +73,20 @@ Stage: across all three (**Sumber**, **Pembukuan**, **Laporan**).
 
   Hint false positives found while testing were fixed: "SEWA MOBIL" is not a vehicle purchase, and "MESIN … TEKNIK" is goods, not a
   service. HPP (*pokok*) accounts get no service hint.
+- T4:
+  - `lib/demo/scenario.ts`: `payroll()` truth with a PPH_21 withholding, `remit` lines and `remitTaxes`, openings 2130 / 2140;
+  - `lib/demo/seed.ts` adds the withholding to rule-posted payroll lines;
+  - `lib/tax/masa-report.ts` `owedIn`;
+  - accounting-rules 5j and the demo-data skill.
+
+  `verify:books` stays ALL PASS (truth carries the withholding through `classificationNets`).
 - T2: `e2e/ux-sweep.spec.ts`, `playwright.config.ts` `testIgnore`, and the `ux:sweep` script.
 - T3: `docs/adrs/0015-production-only.md`, `scripts/local-auth.sh` (Docker check, `supabase start` without the unused services,
   `.env` update) and the `auth:local` script.
 
 ## Verification
+- Demo taxes: `tests/db/demo.test.ts` asserts every PT month Mar–Aug is *Lolos* on Pajak Masa; `tests/db/masa-report.test.ts` covers the
+  opening read as the previous masa. After T4: tests 178 files / 1160 passed, `verify:books` ALL PASS (1765), e2e 51 passed (4.8m).
 - Sweep: no HTTP 5xx, no console errors and no page overflow at 390 px after the fixes.
 - `npm run lint` exit 0; `npm run typecheck` exit 0; `npm test`: Test Files 178 passed (178), Tests 1159 passed (1159); `npm run build` exit 0;
   `npm run verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`; `npm run test:e2e` on the local stack: 51
