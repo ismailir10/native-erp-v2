@@ -6,6 +6,7 @@ import { packApplies } from "@/lib/tax/pack";
 import { masaReport } from "@/lib/tax/masa-report";
 import { masaWorkbook } from "@/lib/tax/masa-workbook";
 import { fakturRecon } from "@/lib/tax/faktur";
+import { bupotRecon } from "@/lib/tax/bupot";
 
 /** GET ?entity=<id>&period=YYYY-MM — Kertas kerja pajak masa for one company in Rupiah (I4c). */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -17,7 +18,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const report = await masaReport(prisma, { clientId: ctx.client.id, entityId: entity.id, year: ctx.period.year, month: ctx.period.month });
   if (!report) return new Response("Entitas tidak ditemukan", { status: 404 });
   const faktur = await fakturRecon(prisma, { clientId: ctx.client.id, entityId: entity.id, year: ctx.period.year, month: ctx.period.month });
-  const body = await masaWorkbook(report, ctx.meta, faktur);
+  const bupot = await bupotRecon(prisma, { clientId: ctx.client.id, entityId: entity.id, year: ctx.period.year, month: ctx.period.month });
+  const body = await masaWorkbook(report, ctx.meta, faktur, bupot);
   await recordExport(prisma, { clientId: ctx.client.id, entityId: entity.id, scope: entity.name, year: ctx.period.year, month: ctx.period.month, file: "Kertas kerja pajak masa", final: !ctx.meta.draft });
   const name = `pajak-masa-${entity.shortName.replace(/[^\w-]+/g, "_")}-${formatPeriod(ctx.period.year, ctx.period.month).replace(/\s+/g, "-")}.xlsx`;
   return new Response(new Uint8Array(body), {

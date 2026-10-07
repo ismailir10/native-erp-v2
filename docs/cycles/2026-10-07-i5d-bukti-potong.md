@@ -65,7 +65,7 @@ Stage: **Laporan** (Pajak Masa).
   - a kind mismatch;
   - a re-import cancelling a slip;
   - refusals.
-- [ ] T3 UI in the Bukti potong card, actions, the Excel part. E2e.
+- [x] T3 UI in the Bukti potong card, actions, the Excel part. E2e.
 - [ ] T4 Gates.
 
 ## Implementation
@@ -90,5 +90,15 @@ Stage: **Laporan** (Pajak Masa).
   - Control `bupot:<entity>`.
   - Audit kind `BUKTI_POTONG`; client delete; actions with `BupotError`; accounting-rules 5k.
   - Test: `tests/db/bupot.test.ts`.
+- T3: the UI and the export.
+  - `components/app/bupot-recon.tsx` (*Cocokkan dengan Coretax*) inside the Bukti potong card (`#bukti-potong`):
+    - upload;
+    - per direction: PPh slips, PPh di buku and Selisih;
+    - *Jenis PPh berbeda*;
+    - both unmatched lists, each withholding linked to the account it sits on (2141 / 2145 / 1180 / 8200);
+    - *Hapus … masa ini*.
+  - The banner names a slip gap after a faktur gap.
+  - The Excel *Bukti Potong* sheet gets *Cocokkan dengan Coretax* when slips exist.
+  - E2e: `e2e/bukti-potong.spec.ts`. The withholding is booked with the Review hint's *Potong PPh 23 2%*.
 ## Verification
 ## Ship Notes

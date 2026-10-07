@@ -4,6 +4,9 @@ import { importStatement } from "@/lib/import/pipeline";
 import { reviewTransaction } from "@/lib/review";
 import { bupotNotes, bupotRecon, deleteBupot, importBupot } from "@/lib/tax/bupot";
 import { runControls } from "@/lib/controls";
+import { masaReport } from "@/lib/tax/masa-report";
+import { masaWorkbook } from "@/lib/tax/masa-workbook";
+import ExcelJS from "exceljs";
 
 // Bukti potong Unifikasi (I5d): Coretax slips against the withholding on bank lines of the masa, matched one to one on the exact PPh.
 type G = Awaited<ReturnType<typeof makeGroup>>;
@@ -59,6 +62,13 @@ describe("bukti potong Unifikasi", () => {
     expect(bupotNotes(await recon())).toEqual([
       "Bukti potong dibuat: PPh Rp 4.850.000 vs buku Rp 4.820.000; 1 bukti potong tanpa pemotongan di buku, 1 pemotongan di buku tanpa bukti potong, 1 beda jenis (2600000124: PPh 23 vs PPh 4(2)).",
     ]);
+
+    // The masa workbook's Bukti Potong sheet carries the comparison.
+    const rep = (await masaReport(db, { clientId: g.client.id, entityId: g.pt.entity.id, year: 2026, month: 8 }))!;
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load((await masaWorkbook(rep, { firm: "KJA Uji", title: "PT Uji" }, undefined, await recon())) as unknown as ArrayBuffer);
+    const cells = wb.getWorksheet("Bukti Potong")!.getSheetValues().flat().map(String);
+    expect(cells).toEqual(expect.arrayContaining(["Cocokkan dengan Coretax", "Bukti potong 2600000125 tanpa pemotongan di buku", "JASA KEBERSIHAN CEMERLANG: pemotongan di buku tanpa bukti potong", "Bukti potong 2600000124: PPh 23, di buku PPh 4(2)"]));
 
     // A customer's slip ties to the receipt it withheld from.
     expect(await imp(DITERIMA)).toMatchObject({ direction: "DITERIMA", created: 1 });
