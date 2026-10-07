@@ -10,6 +10,7 @@
     "typecheck": "prisma generate && tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "ux:sweep": "UX_SWEEP=1 playwright test e2e/ux-sweep.spec.ts",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
     "demo:reset": "tsx scripts/seed.ts",
