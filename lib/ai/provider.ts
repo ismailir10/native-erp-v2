@@ -270,10 +270,11 @@ export const ACCOUNT_MAPPING_PROMPT_VERSION = "account-mapping-v2";
 export const DEMO_AI_MODEL = "demo-seed";
 
 /**
- * Output budget per request. Reasoning models (GLM, Kimi, DeepSeek…) spend tokens thinking before the JSON; a tight
- * budget truncates the answer. Billing is on tokens used, and the monthly budget still caps the total.
+ * Output budget per request. Reasoning models (GLM, Kimi, DeepSeek, MiniMax…) spend thousands of tokens thinking before the JSON;
+ * 1 500 + 60 per item truncated minimax-m3 at 19 real bank lines (2 640). Billing is on tokens used, the reservation settles to
+ * actual usage, and the monthly budget still caps the total.
  */
-export const maxTokensFor = (items: number) => Math.min(8000, 1500 + 60 * items);
+export const maxTokensFor = (items: number) => Math.min(12_000, 6_000 + 150 * items);
 
 /**
  * OpenCode Zen serves some model families on other endpoints (GPT/Grok/Muse → /responses, Claude/Qwen → /messages,
