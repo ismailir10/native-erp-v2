@@ -248,6 +248,12 @@ function grupAyam(): ClientScenario {
     }
   }
 
+  // The opening receivables and payables settle in March, so the Neraca's piutang and utang move like a real business's. Fixed
+  // descriptions and amounts (no rand()), so nothing else in the scenario shifts.
+  lines.push({ bankKey: "pt-bca", date: d(2026, 3, 6), description: "TRSF E-BANKING CR 0603/FTSCY/WS951204 CV SUMBER PANGAN NUSANTARA", amount: 250_000_000n, truth: T("1130") });
+  lines.push({ bankKey: "pt-mdr", date: d(2026, 3, 13), description: "TRANSFER DARI UD RIZKI POULTRY PELUNASAN INV FEB", amount: 170_000_000n, truth: T("1130") });
+  lines.push({ bankKey: "pt-bca", date: d(2026, 3, 10), description: "TRSF E-BANKING DB 1003/FTSCY/WS961877 PT SINAR OBAT HEWAN PELUNASAN TAGIHAN FEB", amount: -240_000_000n, truth: T("2110") });
+
   return remitTaxes({
     key: "grup-ayam",
     spec: {
