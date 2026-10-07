@@ -138,8 +138,10 @@ export async function masaReport(db: Db, input: { clientId: string; entityId: st
       const owed = new Map<number, { keluaran: bigint; masukan: bigint; carryIn: bigint; carryOut: bigint; owed: bigint }>();
       let carry = 0n;
       for (let m: Masa = { year: prev.year, month: 1 }; keyOf(m) <= keyOf(masa); m = shift(m, 1)) {
-        const k = sum(own.filter((l) => owedIn(l, m)).map((l) => l.credit));
-        const mk = sum(masukan.filter((l) => owedIn(l, m)).map((l) => l.debit));
+        // Net of corrections: a reclass that takes PPN back off (Dr 2130, Cr 1150) lowers the masa; a remittance to 2130 is a payment, not
+        // keluaran. On 1150 a purchase's own bank credit is not a payment, so masukan nets every line of the month.
+        const k = sum(own.filter((l) => !l.payment && owedIn(l, m)).map((l) => l.credit - l.debit));
+        const mk = sum(masukan.filter((l) => owedIn(l, m)).map((l) => l.debit - l.credit));
         const net = k - mk - carry;
         owed.set(keyOf(m), { keluaran: k, masukan: mk, carryIn: carry, carryOut: net < 0n ? -net : 0n, owed: net > 0n ? net : 0n });
         carry = net < 0n ? -net : 0n;

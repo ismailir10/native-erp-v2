@@ -56,6 +56,19 @@ describe("masaReport — PPN", () => {
   });
 });
 
+describe("masaReport — corrections", () => {
+  it("nets a correction that takes PPN back off: keluaran and masukan follow the books, not the first posting", async () => {
+    // A receipt first booked with PPN keluaran, then corrected to no tax (RECLASS: Dr 2130 / Cr 4100); a purchase the other way round.
+    await post(d(8, 5), [{ code: "BANK", debit: 11_100n }, { code: "4100", credit: 10_000n }, { code: "2130", credit: 1_100n }]);
+    await post(d(8, 6), [{ code: "2130", debit: 1_100n }, { code: "4100", credit: 1_100n }]);
+    await post(d(8, 9), [{ code: "5100", debit: 4_000n }, { code: "1150", debit: 400n }, { code: "BANK", credit: 4_400n }]);
+    await post(d(8, 10), [{ code: "5100", debit: 400n }, { code: "1150", credit: 400n }]);
+    const r = await row(8, "PPN");
+    expect(r.ppn).toEqual({ keluaran: 0n, masukan: 0n, carryIn: 0n, carryOut: 0n });
+    expect(r).toMatchObject({ owed: 0n, balance: 0n, other: 0n, status: "PASS" });
+  });
+});
+
 describe("masaReport — PPh 21, 23", () => {
   it("passes PPh 21 withheld from payroll and paid by the 15th, and checks it against TER", async () => {
     for (const m of [7, 8]) await post(d(m, 25), [{ code: "6100", debit: 10_000_000n }, { code: "BANK", credit: 9_800_000n }, { code: "2140", credit: 200_000n }]);
