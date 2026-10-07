@@ -37,6 +37,7 @@ export async function masaWorkbook(r: MasaReport, meta: WorkbookMeta): Promise<B
   };
   list("Dipotong oleh perusahaan: buat bukti potong di Coretax", r.withheldByUs, "Tidak ada pemotongan oleh perusahaan masa ini.");
   list("Dipotong oleh pelanggan: minta bukti potongnya", r.withheldFromUs, "Tidak ada pemotongan oleh pelanggan masa ini.");
+  bp.addRow(["PPh 21 tidak masuk Unifikasi: bukti potongnya dibuat per penerima di e-Bupot 21/26."]);
 
   const ter = sheet("PPh 21 TER", "PPh 21 dengan tarif efektif rata-rata (PP 58/2023)", `${sub} · estimasi dari upah sensus`, [32, 14, 10, 10, 18, 10, 18]);
   ter.addRow([terNote(r.ter)]);

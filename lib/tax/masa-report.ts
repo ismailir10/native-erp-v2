@@ -196,7 +196,8 @@ export async function masaReport(db: Db, input: { clientId: string; entityId: st
   });
 
   const txs = await db.bankTransaction.findMany({
-    where: { entityId, date: { gte: start, lte: end }, whtKind: { not: null }, whtAmount: { gt: 0n } },
+    // Unifikasi only: PPh 21 (employees and other individuals) is reported per recipient in e-Bupot 21/26, and the PPh 21 row covers it.
+    where: { entityId, date: { gte: start, lte: end }, whtKind: { not: null, notIn: ["PPH_21"] }, whtAmount: { gt: 0n } },
     include: { contact: { select: { name: true, npwp: true } } },
     orderBy: [{ date: "asc" }, { rowNumber: "asc" }],
   });

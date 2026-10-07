@@ -18,6 +18,9 @@ Stage: **Pembukuan** (close).
   - **PASS** otherwise. The detail says the previous masa was paid in full, or that it is not yet due.
   - The link goes to Pajak Masa for that month and company.
 - [x] A REVIEW is cleared by a note, as any control.
+- [x] **PPh 21 leaves the Unifikasi list.** Payroll now carries PPh 21 withholding, so payroll lines appeared under *Bukti potong
+  (Unifikasi)*. PPh 21 slips (BPMP / BP21) are made per recipient in e-Bupot 21/26, not in Unifikasi. The list and the Excel sheet now
+  hold PPh 22, 23 and 4(2) only, and say where PPh 21 goes.
 
 **Non-goals:**
 - blocking the close (FAIL);
@@ -27,7 +30,9 @@ Stage: **Pembukuan** (close).
 
 ## Tasks
 - [x] T1 The control in `lib/controls/index.ts`, accounting-rules 5j, and a DB test (absent, REVIEW when short, PASS once paid).
-- [x] T2 Gates.
+- [x] T2 PPh 21 out of the Unifikasi list (`masaReport` query, page, workbook) + the bukti-potong test asserts a payroll line is not
+  listed.
+- [x] T3 Gates.
 
 ## Implementation
 - T1: `collectControls` runs `masaReport` per company after the tax pack. "Active" means owed, a balance or a previous masa with something

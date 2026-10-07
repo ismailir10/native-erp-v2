@@ -129,6 +129,8 @@ describe("masaReport — bukti potong and TER states", () => {
     const base = { firmId: g.firm.id, importId: imp.id, bankAccountId: bank.id, entityId: g.pt.entity.id, merchantKey: "x", rawRow: "x", method: "MANUAL" as const, confidence: 1, reason: "uji" };
     await db.bankTransaction.create({ data: { ...base, date: d(8, 12), description: "JASA KONSULTAN", direction: "OUT", amount: -4_900_000n, rowNumber: 1, hash: "a", status: "REVIEWED", accountCode: "6200", whtKind: "PPH_23", whtAmount: 100_000n, contactId: vendor.id } });
     await db.bankTransaction.create({ data: { ...base, date: d(8, 14), description: "PELUNASAN PT PELANGGAN", direction: "IN", amount: 9_800_000n, rowNumber: 2, hash: "b", status: "NEEDS_REVIEW", accountCode: "1130", whtKind: "PPH_23", whtAmount: 200_000n } });
+    // Payroll PPh 21 is not Unifikasi: e-Bupot 21/26, per employee.
+    await db.bankTransaction.create({ data: { ...base, date: d(8, 25), description: "PAYROLL", direction: "OUT", amount: -9_800_000n, rowNumber: 3, hash: "c", status: "REVIEWED", accountCode: "6100", whtKind: "PPH_21", whtAmount: 200_000n } });
     const rep = await report(8);
     expect(rep.withheldByUs).toMatchObject([{ kind: "PPH_23", cash: 4_900_000n, withheld: 100_000n, gross: 5_000_000n, contact: { name: "CV Konsultan", npwp: "01.234.567.8-901.000" }, inReview: false }]);
     expect(rep.withheldFromUs).toMatchObject([{ kind: "PPH_23", cash: 9_800_000n, withheld: 200_000n, gross: 10_000_000n, contact: null, inReview: true }]);

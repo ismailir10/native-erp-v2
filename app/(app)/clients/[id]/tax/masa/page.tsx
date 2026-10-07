@@ -95,7 +95,8 @@ export default async function TaxMasaPage({ params, searchParams }: { params: Pr
         <CardHeader>
           <CardTitle>Bukti potong (Unifikasi)</CardTitle>
           <CardDescription>
-            Dari mutasi bank dengan potongan PPh masa ini. Bruto = yang dibayar atau diterima + yang dipotong.{reviewInWht ? ` ${reviewInWht} baris belum direview.` : ""}
+            Dari mutasi bank dengan potongan PPh 22, 23 atau 4(2) masa ini. Bruto = yang dibayar atau diterima + yang dipotong. PPh 21 tidak masuk
+            Unifikasi: bukti potongnya dibuat per penerima di e-Bupot 21/26.{reviewInWht ? ` ${reviewInWht} baris belum direview.` : ""}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
