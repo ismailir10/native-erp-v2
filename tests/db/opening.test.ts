@@ -28,6 +28,9 @@ describe("Saldo awal", () => {
     const pt = (await openingContext(db, g.client.id)).find((c) => c.entity.id === g.pt.entity.id)!;
     expect(pt.existing).toBeFalsy();
     expect(pt.suggestedDate.toISOString().slice(0, 10)).toBe("2026-07-31");
+    // The owner has no statement yet: its Saldo Awal starts with the group's, not at the end of last calendar month.
+    const owner = (await openingContext(db, g.client.id)).find((c) => c.entity.id === g.owner.entity.id)!;
+    expect(owner.suggestedDate.toISOString().slice(0, 10)).toBe("2026-07-31");
     const line = pt.banks.find((b) => b.accountCode === "1102")!;
     expect(line.statementOpening).toBe(50_000_000n);
 

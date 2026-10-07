@@ -432,8 +432,14 @@ async function collectControls(db: Db, clientId: string, year: number, month: nu
           ...active.filter((r) => r.previous.state === "BELUM_JATUH_TEMPO").map((r) => ({ label: r.label, due: r.previous.due })),
           ...(pph25?.previous.state === "BELUM_JATUH_TEMPO" ? [{ label: "PPh 25", due: pph25.previous.due }] : []),
         ];
-        const prev = formatPeriod(masa.rows[0].previous.masa.year, masa.rows[0].previous.masa.month);
+        const prevMasa = masa.rows[0].previous.masa;
+        const prev = formatPeriod(prevMasa.year, prevMasa.month);
         const names = [...active.map((r) => r.label), ...(pph25 ? ["PPh 25"] : [])];
+        // A masa that ended before the Saldo Awal or imported Neraca is not in Buku: "disetor penuh" would be a claim about months Buku
+        // never saw. (An opening dated the masa's last day is that masa's payable and is judged as usual.)
+        const first = await db.journalEntry.findFirst({ where: { entityId: e.id, kind: { in: ["OPENING", "IMPORTED"] } }, orderBy: { date: "asc" }, select: { date: true } });
+        const paidSeen = active.some((r) => r.previous.paid.length || r.previous.late.length) || !!pph25?.previous.paid.length || !!pph25?.previous.late.length;
+        const beforeBooks = !!first && !paidSeen && +periodBounds(prevMasa.year, prevMasa.month).end < +first.date;
         controls.push({
           key: mKey,
           title: "Pajak masa disetor",
@@ -441,9 +447,11 @@ async function collectControls(db: Db, clientId: string, year: number, month: nu
           status: flagged.length ? "REVIEW" : "PASS",
           detail: flagged.length
             ? flagged.join(" · ")
-            : pending.length
-              ? `${pending.map((x) => x.label).join(", ")} masa ${prev} jatuh tempo ${formatDate(pending[0].due)} dan belum disetor penuh; saldo akun pajak sesuai yang terutang`
-              : `Masa ${prev} disetor penuh sampai jatuh tempo; saldo ${names.join(", ")} sesuai yang masih terutang`,
+            : beforeBooks
+              ? `Masa ${prev} sebelum pembukuan di Buku (mulai ${formatDate(first!.date)}): setorannya tidak bisa dicek di sini; saldo ${names.join(", ")} dari saldo awal`
+              : pending.length
+                ? `${pending.map((x) => x.label).join(", ")} masa ${prev} jatuh tempo ${formatDate(pending[0].due)} dan belum disetor penuh; saldo akun pajak sesuai yang terutang`
+                : `Masa ${prev} disetor penuh sampai jatuh tempo; saldo ${names.join(", ")} sesuai yang masih terutang`,
           href: `${base}/tax/masa?period=${year}-${String(month).padStart(2, "0")}&entity=${e.id}`,
           ack: acks.get(mKey),
         });

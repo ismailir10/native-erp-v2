@@ -41,12 +41,19 @@ export async function openingContext(db: Db, clientId: string) {
     orderBy: { createdAt: "asc" },
   });
 
+  // An entity without statements of its own (the owner, a company kept from a ledger file) starts with the group: the earliest Saldo Awal
+  // or first statement of its siblings, so a combined report never holds one entity's opening months after the others'.
+  const groupStart = [
+    ...openings.map((o) => o.date),
+    ...entities.flatMap((e) => e.bankAccounts.flatMap((b) => b.imports)).map((i) => new Date(+i.periodStart - 86_400_000)),
+  ].sort((x, y) => +x - +y)[0];
+
   return entities
     .sort((a, b) => Number(a.kind === "PERORANGAN") - Number(b.kind === "PERORANGAN")) // companies first
     .map((e) => {
       const firstImport = e.bankAccounts.flatMap((b) => b.imports).sort((x, y) => +x.periodStart - +y.periodStart)[0];
       const firstDate = firstTx.find((t) => t.entityId === e.id)?._min.date ?? null;
-      const suggested = firstImport ? new Date(+firstImport.periodStart - 86_400_000) : lastDayOfPreviousMonth();
+      const suggested = firstImport ? new Date(+firstImport.periodStart - 86_400_000) : (groupStart ?? lastDayOfPreviousMonth());
       const existing = openings.find((o) => o.entityId === e.id);
       return {
         entity: { id: e.id, name: e.name, shortName: e.shortName },

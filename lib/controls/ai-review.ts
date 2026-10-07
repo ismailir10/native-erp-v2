@@ -5,6 +5,7 @@ import { runControls, type Control } from "@/lib/controls";
 import { byPart, flaggedBankRows } from "@/lib/controls/sanity";
 import { scanLedger, sourceLabel } from "@/lib/controls/anomaly";
 import { formatMonthShort, formatPeriod, periodBounds } from "@/lib/format";
+import { financialYear } from "@/lib/fiscal";
 import { formatMoney } from "@/lib/money";
 import { runBudgetedAi } from "@/lib/ai/budget";
 import { AiAnswerError, CLOSE_REVIEW_MAX_ROWS, CLOSE_REVIEW_MAX_TOKENS, CLOSE_REVIEW_PROMPT_VERSION, buildCloseReviewPrompt, parseCloseReview, type AiProvider, type CloseReviewControl, type CloseReviewInput, type CloseReviewItem, type CloseReviewRow } from "@/lib/ai/provider";
@@ -147,6 +148,36 @@ export async function gather(db: Db, clientId: string, year: number, month: numb
           }),
         );
       }
+    } else if (e && kind === "going-concern") {
+      // What the deficit is made of (ADR 0009: rows that explain the flag): each equity account at the month's end, the client's own
+      // accounts behind it (an imported Neraca's accumulated loss and current-period earnings), and the year's result so far.
+      const fmt = (v: bigint) => formatMoney(v, e.functionalCurrency);
+      const fy = financialYear(client.fiscalYearEndMonth, year, month);
+      const pl = await db.journalLine.aggregate({ where: { entityId: e.id, date: { gte: fy.start, lte: end }, account: { clientId, type: { in: ["PENDAPATAN", "BEBAN"] } } }, _sum: { debit: true, credit: true } });
+      const result = (pl._sum.credit ?? 0n) - (pl._sum.debit ?? 0n);
+      const id = `laba:${e.id}`;
+      links.set(id, { id, label: "Laba (rugi) tahun berjalan", href: `${base}/reports?period=${pk}&entity=${e.id}&tab=pl` });
+      rows.push(...take([{ id, date: "", text: `Laba (rugi) tahun berjalan di buku Buku sejak ${fy.start.toISOString().slice(0, 10)}`, amount: fmt(result), account: "", how: "laba rugi, bukan saldo akun" }]));
+      const equity = await db.account.findMany({ where: { clientId, type: "EKUITAS" } });
+      const sums = await db.journalLine.groupBy({ by: ["accountId"], where: { entityId: e.id, date: { lte: end }, accountId: { in: equity.map((a) => a.id) } }, _sum: { debit: true, credit: true } });
+      const balances = sums.map((x) => ({ account: equity.find((a) => a.id === x.accountId)!, amount: (x._sum.credit ?? 0n) - (x._sum.debit ?? 0n) })).filter((x) => x.amount !== 0n);
+      rows.push(
+        ...take(bySize(balances)).map((x) => {
+          const id = `akun:${e.id}:${x.account.code}`;
+          links.set(id, { id, label: `${x.account.code} ${x.account.name}`, href: `${base}/ledger/${x.account.code}?period=${pk}&entity=${e.id}` });
+          return { id, date: "", text: `Akun ekuitas ${x.account.code} ${x.account.name}`.slice(0, DESCRIPTION), amount: fmt(x.amount), account: x.account.code, how: "saldo akhir, kredit positif" };
+        }),
+      );
+      const parts = await db.journalLine.groupBy({ by: ["sourceAccountId"], where: { entityId: e.id, date: { lte: end }, sourceAccountId: { not: null }, accountId: { in: equity.map((a) => a.id) } }, _sum: { debit: true, credit: true } });
+      const sources = new Map((await db.sourceAccount.findMany({ where: { id: { in: parts.map((x) => x.sourceAccountId!) } }, include: { account: true } })).map((x) => [x.id, x]));
+      rows.push(
+        ...take(bySize(parts.map((x) => ({ id: x.sourceAccountId!, amount: (x._sum.credit ?? 0n) - (x._sum.debit ?? 0n) })).filter((x) => x.amount !== 0n))).map((x) => {
+          const src = sources.get(x.id)!;
+          const id = `src:${x.id}`;
+          links.set(id, { id, label: sourceAccountLabel({ code: src.code, name: src.name.slice(0, 40) }), href: `${base}/trial-balance?view=source&entity=${e.id}&period=${pk}` });
+          return { id, date: "", text: `Akun sumber ${sourceAccountLabel(src)}`.slice(0, DESCRIPTION), amount: fmt(x.amount), account: src.account?.code ?? "", how: "saldo akhir, kredit positif" };
+        }),
+      );
     } else if (kind === "suspense") {
       const txs = await db.bankTransaction.findMany({ where: { bankAccount: { entity: { clientId } }, status: "NEEDS_REVIEW", date: { lte: end } }, include: { bankAccount: { include: { entity: true } } } });
       rows = take(bySize(txs)).map((t) => bankRow(t, t.bankAccount.entity.functionalCurrency, t.entityId));

@@ -113,7 +113,10 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
   const entryBy = async (to: Date, from?: Date) => !!(await prisma.journalLine.findFirst({ where: { entityId: { in: scope.entityIds }, date: { gte: from, lte: to } }, select: { id: true } }));
   const firstOpening = await prisma.journalEntry.findFirst({ where: { entityId: { in: scope.entityIds }, kind: "OPENING", date: { gte: lastYearEnd, lte: period.end } }, orderBy: { date: "asc" }, select: { date: true } });
   const booksStart = firstOpening && +firstOpening.date >= +yearStart && !(await entryBy(new Date(+firstOpening.date - 86_400_000))) ? new Date(+firstOpening.date + 86_400_000) : yearStart;
-  const ytdLabel = `${formatDateLong(booksStart).replace(` ${period.year}`, "")} – akhir ${formatPeriod(period.year, period.month)}`;
+  // A month at or before the Saldo Awal (the Neraca imported per 31 Mei, opened on Mei): no income yet, not "1 Juni – akhir Mei".
+  const ytdLabel = +booksStart > +period.end
+    ? `pembukuan di Buku dimulai ${formatDateLong(booksStart)}`
+    : `${formatDateLong(booksStart).replace(` ${period.year}`, "")} – akhir ${formatPeriod(period.year, period.month)}`;
   const openingAt = firstOpening?.date;
   const labelFor = (d: Date) => (openingAt && +d === +openingAt ? `Saldo awal ${formatDateLong(d)}` : undefined);
   const compareDates: { date: Date; label?: string }[] = [];

@@ -89,3 +89,50 @@ describe("transfer matcher safety", () => {
     expect(r.has("o")).toBe(false);
   });
 });
+
+describe("transfers to the group's owner as banks print them", () => {
+  // PT + its owner in one client, the owner without a bank account in Buku: the PT's side is all there is.
+  const group = [
+    { entityId: "pt", names: ["PT SINARLA MAHAJAYA NUSANTARA", "PT SINARLA"] },
+    { entityId: "owner", names: ["BUDI HARTONO"] },
+  ];
+  const names = group.flatMap((e) => e.names);
+
+  it("reads the company name without its legal form, and channel words, as no third party", () => {
+    expect(thirdPartyName("TRSF E-BANKING DB 2506/FTSCY/WS95051 152000000.00 Sinarla BUDI HARTONO", names)).toBeNull();
+    expect(thirdPartyName("BI-FAST DB BIF TRANSFER KE 002 BUDI HARTONO", names)).toBeNull();
+    // A customer paying the company still names the customer.
+    expect(thirdPartyName("TRSF E-BANKING CR 0706/FTSCY/WS95271 70475000.00 bayar nota Sinarla DINA PUSPITA", names)).toBe("NOTA DINA PUSPITA");
+  });
+
+  it("an own-name transfer to the owner goes to 1190, a short code beside the owner's name waits in Review on 1190", () => {
+    const r = matchTransfers(
+      [
+        line("a", "bca", "2026-06-25", "TRSF E-BANKING DB 2506/FTSCY/WS95051 152000000.00 Sinarla BUDI HARTONO", -152_000_000n),
+        line("b", "bca", "2026-06-03", "BI-FAST DB BIF TRANSFER KE 002 BUDI HARTONO KBB", -105_000_000n),
+        line("c", "bca", "2026-06-03", "BI-FAST DB BIF BIAYA TXN KE 002 BUDI HARTONO KBB", -2_500n),
+        line("d", "bca", "2026-06-07", "TRSF E-BANKING CR 0706/FTSCY/WS95271 70475000.00 bayar nota Sinarla DINA PUSPITA", 70_475_000n),
+      ],
+      group,
+    );
+    expect(r.get("a")).toMatchObject({ accountCode: "1190", confidence: 0.92 });
+    expect(r.get("b")).toMatchObject({ accountCode: "1190", confidence: 0.8 });
+    expect(r.get("b")?.reason).toMatch(/BUDI HARTONO.*"KBB"/);
+    // The fee is the bank's (a firm rule), the customer's payment is a sale: neither is the matcher's.
+    expect(r.has("c")).toBe(false);
+    expect(r.has("d")).toBe(false);
+  });
+
+  it("finds the entity by its name without the legal form when only the full name was kept (short names under 8 letters are dropped)", () => {
+    const full = [{ entityId: "pt", names: ["PT SINARLA MAHAJAYA NUSANTARA"] }, { entityId: "owner", names: ["BUDI HARTONO"] }];
+    const r = matchTransfers([line("o", "bri", "2026-06-25", "TRSF KE SINARLA MAHAJAYA NUSANTARA", -10_000_000n, "owner")], full);
+    expect(r.get("o")).toMatchObject({ accountCode: "1190", confidence: 0.92 });
+    // A whole word only: another company whose name starts the same way is not the group.
+    expect(matchTransfers([line("x", "bri", "2026-06-25", "TRSF KE SINARLA MAHAJAYA NUSANTARAKU", -10_000_000n, "owner")], full).get("x")?.accountCode).not.toBe("1190");
+  });
+
+  it("a real person's name beside the owner's is a payment, not a transfer", () => {
+    const r = matchTransfers([line("x", "bca", "2026-06-03", "BI-FAST DB BIF TRANSFER KE 002 BUDI HARTONO UNTUK SUPPLIER KAIN", -5_000_000n)], group);
+    expect(r.has("x")).toBe(false);
+  });
+});

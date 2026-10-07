@@ -7,6 +7,7 @@ import { closeReadiness, runControls } from "@/lib/controls";
 import { setupProgress } from "@/lib/setup-progress";
 import { askEvidence } from "@/lib/evidence/answers";
 import { completenessMatrix } from "@/lib/controls/completeness";
+import { financialYear, fiscalEndMonth } from "@/lib/fiscal";
 
 export type WorkspaceInput = { scope?: string; period?: string };
 export class WorkspaceInputError extends Error {}
@@ -135,10 +136,12 @@ export function workspaceQuestionIntent(question: string) {
   if (/\b(tutup buku|close|kesiapan|siap|hambatan|penghambat)\b/.test(q)) return "readiness";
   // "transfer ke ALFI YANDRA", "pembayaran dari DINA", "mutasi dengan \"PT PAKAN\"": bank lines by counterparty.
   if (/\b(transfer|transaksi|mutasi|pembayaran|bayar|dibayar|penerimaan|terima|diterima|kiriman|dikirim|setoran)\b/.test(q) && counterpartyOf(question)) return "transactions";
+  // "Utang usaha" / "piutang usaha" are accounts, not the business profile the word "usaha" otherwise asks about.
+  if (/\b(utang|hutang|piutang|uang muka|persediaan|liabilitas|payables?|receivables?)\b/.test(q) && !/\b(dokumen|file|laporan unggahan)\b/.test(q)) return "balances";
   if (/\b(profil|profile|usaha|industry|industri|konteks)\b/.test(q)) return "context";
   if (/\b(dokumen|file|sumber|rekening koran|laporan unggahan)\b/.test(q)) return "evidence";
   if (/\b(laba|profit|pendapatan|revenue)\b/.test(q)) return "profit";
-  if (/\b(saldo|kas|bank|balance)\b/.test(q)) return "balances";
+  if (/\b(saldo|kas|bank|balance|utang|hutang|piutang|modal|ekuitas|uang muka|persediaan|liabilitas|payables?|receivables?)\b/.test(q)) return "balances";
   return "unsupported";
 }
 
@@ -162,6 +165,44 @@ export function counterpartyOf(question: string): string | null {
   // "ke akun apa", "dari bank" name no one.
   if (!name || /^(akun|rekening|bank|mana|siapa|apa)\b/i.test(name) || name.replace(/[^\p{L}]/gu, "").length < 3) return null;
   return name;
+}
+
+/** Words of a balance question that name no account. */
+const NAME_STOP = new Set(
+  ("berapa saldo akhir awal bulan tahun total nilai jumlah sampai posisi untuk dengan yang adalah pada dari bagaimana apakah akun account balance " +
+    "januari februari maret april juni juli agustus september oktober november desember").split(" "),
+);
+const CASH_WORDS = /\b(kas|bank|cash)\b/;
+/** The client's books mix Indonesian and English names (Jurnal, Accurate exports): a question in one finds an account in the other. */
+const NAME_SYNONYMS: [string, string][] = [
+  ["utang", "payable"], ["hutang", "payable"], ["piutang", "receivable"], ["berelasi", "related"], ["afiliasi", "related"], ["pihak", "part"],
+  ["pemegang saham", "shareholder"], ["modal", "capital"], ["persediaan", "inventory"], ["uang muka", "advance"], ["dibayar di muka", "prepaid"],
+  ["pajak", "tax"], ["karyawan", "employee"], ["imbalan kerja", "employee benefit"], ["sewa", "rent"], ["aset tetap", "fixed asset"],
+  ["penyusutan", "depreciation"], ["akumulasi", "accumulated"], ["saldo laba", "retained"], ["pinjaman", "loan"], ["jangka panjang", "long term"],
+];
+function nameWords(text: string): string[] {
+  let t = ` ${text.toLowerCase().replace(/[^\p{L}]+/gu, " ")} `;
+  for (const [id, en] of NAME_SYNONYMS) {
+    if (t.includes(` ${id}`)) t += ` ${en}`;
+    if (t.includes(` ${en}`)) t += ` ${id}`;
+  }
+  return [...new Set(t.split(" ").filter((w) => w.length >= 4))];
+}
+const sameWord = (a: string, b: string) => a === b || (Math.min(a.length, b.length) >= 4 && (a.startsWith(b) || b.startsWith(a)));
+
+/**
+ * The accounts a balance question names ("utang ke pihak berelasi", "piutang karyawan"), best match first: Buku's chart and the client's own
+ * accounts from an imported ledger, either language. Only the best-scoring names, and only when at least two of the question's words match.
+ */
+export function accountsNamed<T extends { name: string }>(question: string, accounts: T[], max = 5): T[] {
+  const q = nameWords(question.replace(CASH_WORDS, " ")).filter((w) => !NAME_STOP.has(w));
+  if (!q.length) return [];
+  const scored = accounts.map((a) => {
+    const n = nameWords(a.name);
+    return { a, score: q.filter((w) => n.some((x) => sameWord(w, x))).length };
+  });
+  const best = Math.max(0, ...scored.map((x) => x.score));
+  return best < 2 ? [] : scored.filter((x) => x.score === best).slice(0, max).map((x) => x.a);
 }
 
 export async function askWorkspace(db: Db, firmId: string, input: WorkspaceInput & { question: string }): Promise<WorkspaceAnswer> {
@@ -289,8 +330,36 @@ export async function askWorkspace(db: Db, firmId: string, input: WorkspaceInput
       }
       if (resolved.kind === "entity") answer.limitations.push("Kesiapan mencakup seluruh klien induk, termasuk perusahaan lain di dalamnya.");
     } else {
-      answer.text = intent === "profit" ? `Laba dan pendapatan ${periodLabel}, dihitung dari jurnal Buku.` : accountCode ? `Saldo akun ${accountCode} pada akhir ${periodLabel}, dihitung dari jurnal Buku.` : `Saldo kas dan bank aset pada akhir ${periodLabel}, dihitung dari jurnal Buku.`;
-      for (const e of data.entities) {
+      // A balance asked by name: Buku's accounts and the client's own (imported) accounts at the month's end.
+      const named: { label: string; value: string; source: string }[] = [];
+      if (intent === "balances" && !accountCode) {
+        const { end } = periodBounds(resolved.year, resolved.month);
+        for (const e of data.entities) {
+          // Every account is a candidate, a cleared one included: "utang usaha" asked after it was paid off answers Rp 0, not cash.
+          const tb = new Map((await trialBalance(db, { clientId: e.clientId, entityIds: [e.id] }, end)).map((r) => [r.account.code, r.net]));
+          const chart = await db.account.findMany({ where: { clientId: e.clientId, isSuspense: false, isClearing: false }, select: { code: true, name: true } });
+          // A client's own income or expense account counts from the start of the tahun buku, like Buku's (trialBalance).
+          const yearStart = financialYear(await fiscalEndMonth(db, e.clientId), resolved.year, resolved.month).start;
+          const sources = await db.sourceAccount.findMany({ where: { entityId: e.id }, select: { id: true, code: true, name: true, account: { select: { type: true } } } });
+          const sum = async (from?: Date) => new Map((await db.journalLine.groupBy({ by: ["sourceAccountId"], where: { entityId: e.id, date: { gte: from, lte: end }, sourceAccountId: { not: null } }, _sum: { debit: true, credit: true } })).map((x) => [x.sourceAccountId!, (x._sum.debit ?? 0n) - (x._sum.credit ?? 0n)]));
+          const [lifetime, ytd] = await Promise.all([sum(), sum(yearStart)]);
+          const candidates = [
+            ...chart.map((a) => ({ name: a.name, label: `${a.code} ${a.name}`, net: tb.get(a.code) ?? 0n, href: workspaceHref(`/clients/${e.clientId}/ledger/${encodeURIComponent(a.code)}`, resolved, { entity: e.id }) })),
+            ...sources.map((x) => {
+              const pl = x.account?.type === "PENDAPATAN" || x.account?.type === "BEBAN";
+              return { name: x.name, label: `${x.code} ${x.name} (akun klien)`, net: (pl ? ytd : lifetime).get(x.id) ?? 0n, href: workspaceHref(`/clients/${e.clientId}/ledger/akun/${x.id}`, resolved, { entity: e.id }) };
+            }),
+          ];
+          for (const c of accountsNamed(question, candidates)) {
+            named.push({ label: `${e.name} · ${c.label}`, value: c.net === 0n ? formatMoney(0n, e.currency) : `${formatMoney(c.net < 0n ? -c.net : c.net, e.currency)} ${c.net < 0n ? "Kredit" : "Debit"}`, source: c.href });
+            answer.citations.push({ label: `${e.name} · buku besar ${c.label}`, href: c.href });
+          }
+        }
+      }
+      const cashToo = !named.length || CASH_WORDS.test(question.toLowerCase());
+      answer.text = intent === "profit" ? `Laba dan pendapatan ${periodLabel}, dihitung dari jurnal Buku.` : accountCode ? `Saldo akun ${accountCode} pada akhir ${periodLabel}, dihitung dari jurnal Buku.` : named.length && !cashToo ? `Saldo akun yang disebut pada akhir ${periodLabel}, dihitung dari jurnal Buku.` : named.length ? `Saldo kas dan bank aset, dan akun yang disebut, pada akhir ${periodLabel}, dihitung dari jurnal Buku.` : `Saldo kas dan bank aset pada akhir ${periodLabel}, dihitung dari jurnal Buku.`;
+      answer.rows.push(...named);
+      for (const e of cashToo ? data.entities : []) {
         if (intent === "balances" && accountCode) {
           const tb = await trialBalance(db, { clientId: e.clientId, entityIds: [e.id] }, periodBounds(resolved.year, resolved.month).end);
           const row = tb.find(r => r.account.code === accountCode);
@@ -304,7 +373,7 @@ export async function askWorkspace(db: Db, firmId: string, input: WorkspaceInput
         answer.citations.push({ label: `${e.name} · ${intent === "profit" ? "laporan dari buku besar" : "neraca saldo"}`, href });
       }
       answer.limitations.push("Setiap perusahaan dalam mata uangnya sendiri; perbandingan ini bukan konsolidasi. Dokumen laporan unggahan tidak dihitung sebagai jurnal.");
-      if (intent === "balances") answer.limitations.push(accountCode ? "Saldo neraca kumulatif sampai akhir bulan; akun laba rugi dihitung sejak awal tahun buku klien." : "Saldo kumulatif sampai akhir bulan; rekening utang/cerukan tidak termasuk kas aset. Untuk akun lain, sebutkan kode akun.");
+      if (intent === "balances") answer.limitations.push(accountCode || named.length ? "Saldo neraca kumulatif sampai akhir bulan; akun laba rugi dihitung sejak awal tahun buku klien." : "Saldo kumulatif sampai akhir bulan; rekening utang/cerukan tidak termasuk kas aset. Untuk akun lain, sebutkan nama atau kode akunnya.");
       if (/kenapa|mengapa|why|penyebab|banding|compare|perubahan|naik|turun/.test(question.toLowerCase())) answer.limitations.push("Jawaban menampilkan periode terpilih saja; perbandingan antarperiode dan penyebab perubahan belum didukung di Tanya Buku.");
     }
   }

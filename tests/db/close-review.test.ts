@@ -97,6 +97,26 @@ describe("AI close review", () => {
     expect(r.items.find((i) => i.controlKey === nature.key)!.links[0].href).toBe(`/clients/${g.client.id}/trial-balance?view=source&entity=${g.pt.entity.id}&period=2026-08`);
   });
 
+  it("explains a capital deficiency with the equity it is made of and the year's result", async () => {
+    const g = await makeGroup();
+    const id = async (code: string) => (await db.account.findFirstOrThrow({ where: { clientId: g.client.id, code } })).id;
+    const line = async (code: string, debit: bigint, credit: bigint) => ({ accountId: code === "BANK" ? g.pt.banks[0].accountId : await id(code), debit, credit });
+    // Opening: capital 100, accumulated loss 400, debt 500 against cash 200; August loses another 50.
+    await db.$transaction(async (tx) => postJournal(tx, { entityId: g.pt.entity.id, date: dateOnly(2026, 7, 31), kind: "OPENING", memo: "Saldo awal", lines: [await line("BANK", 200n, 0n), await line("3200", 400n, 0n), await line("2300", 0n, 500n), await line("3100", 0n, 100n)] }));
+    await db.$transaction(async (tx) => postJournal(tx, { entityId: g.pt.entity.id, date: dateOnly(2026, 8, 10), kind: "ADJUSTMENT", memo: "Beban", lines: [await line("6190", 50n, 0n), await line("BANK", 0n, 50n)] }));
+
+    let seen: CloseReviewInput | null = null;
+    const provider = new MockProvider();
+    const spy: AiProvider = { model: "mock", classify: provider.classify.bind(provider), mapAccounts: provider.mapAccounts.bind(provider), reviewClose: async (input) => ((seen = input), provider.reviewClose(input)) };
+    await reviewClose(db, g.firm.id, g.client.id, 2026, 8, spy);
+    const gc = seen!.controls.find((c) => c.key === `going-concern:${g.pt.entity.id}`)!;
+    expect(gc.rows.map((x) => [x.id.split(":")[0], x.account, x.amount])).toEqual([
+      ["laba", "", "-Rp 50"],
+      ["akun", "3200", "-Rp 400"],
+      ["akun", "3100", "Rp 100"],
+    ]);
+  });
+
   it("sends only the bank lines behind the flagged accounts", async () => {
     const g = await makeGroup();
     const pdf = makePdf([

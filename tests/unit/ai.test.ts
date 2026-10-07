@@ -61,7 +61,9 @@ describe("OpenAiCompatibleProvider — answers that can't be used", () => {
     await new OpenAiCompatibleProvider(cfg, f).mapAccounts(mapItems, chart, "x");
     expect(body.max_tokens).toBe(maxTokensFor(1));
     expect(maxTokensFor(1)).toBeGreaterThanOrEqual(1500);
-    expect(maxTokensFor(1000)).toBe(8000);
+    // minimax-m3 truncated a 19-line batch at 2 640: a batch must leave room for several thousand reasoning tokens.
+    expect(maxTokensFor(19)).toBeGreaterThanOrEqual(8000);
+    expect(maxTokensFor(1000)).toBe(12_000);
   });
 
   it("a truncated answer is an error that carries the billed tokens", async () => {
