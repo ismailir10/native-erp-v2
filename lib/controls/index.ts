@@ -19,6 +19,7 @@ import { openingDate, statementCoverage } from "@/lib/controls/coverage";
 import { packApplies, taxPack } from "@/lib/tax/pack";
 import { masaReport, rowNotes } from "@/lib/tax/masa-report";
 import { DIRECTION_LABEL, fakturNotes, fakturRecon } from "@/lib/tax/faktur";
+import { bupotNotes, bupotRecon } from "@/lib/tax/bupot";
 import { findingLabel } from "@/lib/findings";
 import { compareSubledger } from "@/lib/reconcile/subledger";
 
@@ -455,6 +456,21 @@ async function collectControls(db: Db, clientId: string, year: number, month: nu
           detail: notes.length ? notes.join(" ") : `${done.map((d) => `${DIRECTION_LABEL[d.direction]} ${fmt(d.fakturPpn)}`).join(" dan ")} sama dengan PPN di buku`,
           href: `${base}/tax/masa?period=${year}-${String(month).padStart(2, "0")}&entity=${e.id}#ekualisasi`,
           ack: acks.get(fKey),
+        });
+      }
+      // Bukti potong Unifikasi (I5d): the same, once slips of the masa were imported.
+      const br = await bupotRecon(db, { clientId, entityId: e.id, year, month });
+      if (br.any) {
+        const bKey = `bupot:${e.id}`;
+        const notes = bupotNotes(br);
+        controls.push({
+          key: bKey,
+          title: "Bukti potong Coretax = buku",
+          scope: e.shortName,
+          status: notes.length ? "REVIEW" : "PASS",
+          detail: notes.length ? notes.join(" ") : `${br.directions.filter((d) => d.status === "MATCH").reduce((s, d) => s + d.matched.length, 0)} bukti potong sama dengan pemotongan di buku`,
+          href: `${base}/tax/masa?period=${year}-${String(month).padStart(2, "0")}&entity=${e.id}#bukti-potong`,
+          ack: acks.get(bKey),
         });
       }
     }

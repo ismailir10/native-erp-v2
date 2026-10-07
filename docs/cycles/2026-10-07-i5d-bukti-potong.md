@@ -59,7 +59,7 @@ Stage: **Laporan** (Pajak Masa).
   - kind by KOP and by words;
   - a cancelled slip;
   - the refusals.
-- [ ] T2 Migration, `lib/tax/bupot.ts` (import, delete, recon) and the control. DB tests:
+- [x] T2 Migration, `lib/tax/bupot.ts` (import, delete, recon) and the control. DB tests:
   - a dibuat month with one slip matched, one withholding without a slip and one slip not booked;
   - a diterima month that ties;
   - a kind mismatch;
@@ -80,5 +80,15 @@ Stage: **Laporan** (Pajak Masa).
   - `kindOf` reads the KOP group (24/28/22/27), then the *Jenis Pajak* words.
   - Rate columns are never read as the tax.
   - Test: `tests/unit/bupot-read.test.ts`.
+- T2: migration `20261007120000_coretax_bupot` with CHECKs on direction, kind and month, and `lib/tax/bupot.ts`: `importBupot`,
+  `deleteBupot`, `bupotRecon` and `bupotNotes`.
+  - The books' side is the masa's bank lines with PPh 23, 4(2) or 22 withheld, outgoing for dibuat and incoming for diterima.
+  - `kindDiffers`.
+  - MATCH only when the totals are equal and nothing is left unmatched or of another kind.
+
+  Around it:
+  - Control `bupot:<entity>`.
+  - Audit kind `BUKTI_POTONG`; client delete; actions with `BupotError`; accounting-rules 5k.
+  - Test: `tests/db/bupot.test.ts`.
 ## Verification
 ## Ship Notes
