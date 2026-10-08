@@ -97,5 +97,18 @@ leftovers (normal per-import caps and the monthly budget apply); companies keep 
 - T4: lint + typecheck clean; `npm test` → Test Files 183 passed (183), Tests 1207 passed (1207).
 - T5: lint + typecheck clean; `npm test` → Test Files 183 passed (183), Tests 1208 passed (1208).
 - T6: lint + typecheck clean; `npm test` → Test Files 184 passed (184), Tests 1210 passed (1210).
+- End of cycle (local): lint + typecheck clean; `npm test` → Test Files 184 passed (184), Tests 1210 passed (1210); `npm run build` ✓;
+  `npm run verify:books` → ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth. `npm run test:e2e` not run locally (no Docker on
+  this machine for the local Supabase auth stack) → CI runs it on the PR.
+- Real file, local: `04_HC_2022_FOUNDATION` → NERACA, 11 rows, Debit | Credit (was 11 BLOCK).
+- Production, after deploy: Laporan Keuangan for SKP; the Chickin opening sheet; Belifi review (owner transfer on 1190, owner lines without
+  1130/2110); Beranda default month; client form.
 
 ## Ship Notes
+- No migration, no env var, no new dependency.
+- Behaviour changes for existing data: none posted. Suggestions only — mappings already accepted stay; review lines keep their current
+  suggestion until re-imported or *Minta saran AI* is used.
+- AI: a Perorangan's leftover lines get a new prompt (one fresh call per unique key on the next import / *Minta saran AI*); companies keep their cache.
+- Rollback: revert the merge; nothing to undo in data.
+- Follow-up (not built): closing many historical months at once for clients migrated with years of history (rule 23 per month today).
+- Production test clients created by this run: *Kopi Nusa (uji E2E)*, *Chickin Group (uji E2E 8 Okt)*, *Belifi (uji bank 8 Okt)* — delete on the owner's word.
