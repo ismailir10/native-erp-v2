@@ -185,7 +185,7 @@ export function ClientForm({ initial, evidenceIntakeId, onCreated }: { initial?:
                 <SelectTrigger className="w-full sm:w-64" aria-label="Kerangka pelaporan"><SelectValue>{FRAMEWORK_OPTIONS.find((o) => o.value === e.reportingFramework)?.label}</SelectValue></SelectTrigger>
                 <SelectContent>{FRAMEWORK_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
               </Select>
-              <FieldDescription>{FRAMEWORK_OPTIONS.find((o) => o.value === e.reportingFramework)?.help} Menentukan bunyi CALK dan nama laporan, bukan angkanya. Bisa diubah nanti di Aturan klasifikasi.</FieldDescription>
+              <FieldDescription>{FRAMEWORK_OPTIONS.find((o) => o.value === e.reportingFramework)?.help} Menentukan bunyi CALK dan nama laporan, bukan angkanya. Bisa diubah nanti di Pengaturan klien.</FieldDescription>
               <FieldError>{err(`entities.${i}.reportingFramework`)}</FieldError>
             </Field>
 

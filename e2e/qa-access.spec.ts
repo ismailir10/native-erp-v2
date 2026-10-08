@@ -67,7 +67,7 @@ test("an AKUNTAN cannot delete a client, change AI settings, or reopen a closed 
   await akuntan.goto(`/settings`);
   await expect(akuntan.getByText(/Hanya admin kantor yang dapat mengubah/)).toBeVisible();
   await akuntan.goto(`/clients/${sinar}/settings`);
-  await expect(akuntan.getByRole("heading", { name: "Aturan klasifikasi" })).toBeVisible();
+  await expect(akuntan.getByRole("heading", { name: "Pengaturan klien" })).toBeVisible();
   await expect(akuntan.getByText("Hapus klien")).toHaveCount(0);
   await akuntan.goto(`/clients/${jasa}/close?period=2026-08`);
   await expect(akuntan.getByRole("heading", { name: "Tutup Buku" })).toBeVisible();

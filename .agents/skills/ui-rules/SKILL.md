@@ -66,6 +66,8 @@ Motion is information, not decoration: it says *you arrived*, *this changed* or 
 11. No hidden affordances — nothing that only appears on hover. Rows link via their name + a visible chevron.
 12. A card that only says "X isn't set up" doesn't render (AI review without a key). Empty states say what's true ("Tidak ada transaksi pajak terdeteksi bulan ini"), never a column of dashes.
 13. Companies before individuals (PT/CV, then the owner) everywhere entities are listed.
+13a. A page that holds unrelated groups of settings splits into sections with `LinkTabs` (`?tab=`, server-rendered, one section on screen, an unknown
+    tab falls back to the first). Name the page for what it holds ("Pengaturan klien"), not for its last section.
 14. **One first-run order, computed once:** Unggah data → Saldo awal → Review → Tutup buku (`lib/setup-progress.ts`). Every page that says
     what to do next reads it — never a hand-rolled if/else chain. Setup pages (client Ringkasan, Impor, Saldo Awal) show `SetupSteps`
     ("Langkah n dari 4"); the client menu lists the steps in that order and never hides them in a collapsed group.
