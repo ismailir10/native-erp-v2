@@ -15,7 +15,7 @@ export function StatusPill({ status, label, className, iconOnly = false }: { sta
   // `iconOnly`: inside a list whose header already says the state, the shape carries it and the word is for screen readers.
   if (iconOnly) return <Icon className={cn("size-4 shrink-0", s.text, className)} role="img" aria-label={label ?? s.label} />;
   return (
-    <span className={cn("inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-sm py-0.5 text-xs font-medium", s.text, s.fill, className)}>
+    <span className={cn("inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-sm py-0.5 font-sans text-xs font-medium", s.text, s.fill, className)}>
       <Icon className="size-3.5" aria-hidden />
       {label ?? s.label}
     </span>

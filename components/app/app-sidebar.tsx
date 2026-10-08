@@ -45,7 +45,7 @@ function stages(modules: string[]): { label: string; items: Item[] }[] {
 }
 const SETUP = [
   { href: "/rates", label: "Kurs", icon: Coins },
-  { href: "/settings", label: "Aturan klasifikasi", icon: ListFilter },
+  { href: "/settings", label: "Perusahaan & aturan", icon: ListFilter },
   { href: "/history", label: "Riwayat perubahan", icon: History },
 ];
 

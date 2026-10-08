@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { loadClientPage } from "@/lib/client-page";
-import type { SearchParams } from "@/lib/scope";
+import { withParams, type SearchParams } from "@/lib/scope";
 import { resolveAiConfig } from "@/lib/settings/ai";
 import { automationByMonth } from "@/lib/queries";
 import { TAX_TAG_LABEL } from "@/lib/coa/template";
@@ -13,6 +13,7 @@ import { ChevronRight } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { isGenericKey } from "@/lib/import/normalize";
+import { LinkTabs } from "@/components/app/link-tabs";
 import { EntitiesCard } from "@/components/app/entities-card";
 import { requireWorkspaceSession } from "@/lib/auth/session";
 import { DeleteClientCard } from "@/components/app/delete-client";
@@ -24,10 +25,15 @@ import { formatUniverse } from "@/lib/reports/format-settings";
 import { ModulesCard } from "@/components/app/modules-card";
 import { clientModules, MODULES } from "@/lib/clients/modules";
 
-export const metadata = { title: "Aturan klasifikasi" };
+export const metadata = { title: "Pengaturan klien" };
+
+const TABS = [
+  { key: "perusahaan", label: "Perusahaan & laporan", next: "Pastikan perusahaan, rekening bank dan kerangka pelaporan sudah benar sebelum menutup buku." },
+  { key: "klasifikasi", label: "Klasifikasi & AI", next: "Tambahkan aturan untuk transaksi yang selalu masuk ke akun yang sama. Aturan dipakai sebelum AI." },
+] as const;
 
 export default async function SettingsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
-  const { client } = await loadClientPage(params, searchParams);
+  const { client, sp } = await loadClientPage(params, searchParams);
   const { member } = await requireWorkspaceSession();
   const [rules, memories, auto, usage, cacheSize, cfg, reportFormat, lockedPeriod] = await Promise.all([
     prisma.rule.findMany({ where: { firmId: client.firmId, OR: [{ clientId: client.id }, { clientId: null }] }, orderBy: [{ clientId: "asc" }, { priority: "asc" }] }),
@@ -44,6 +50,7 @@ export default async function SettingsPage({ params, searchParams }: { params: P
   const accounts = new Map((await prisma.account.findMany({ where: { clientId: client.id } })).map((a) => [a.code, a.name]));
   const clientRules = rules.filter((r) => r.clientId);
   const firmRules = rules.filter((r) => !r.clientId);
+  const tab = TABS.find((t) => t.key === sp.tab) ?? TABS[0];
   const live = Boolean(cfg.apiKey && cfg.model);
   const lastMonth = auto[auto.length - 1];
   const aiLines = auto.reduce((s, a) => s + a.ai, 0);
@@ -51,80 +58,88 @@ export default async function SettingsPage({ params, searchParams }: { params: P
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Aturan klasifikasi" description="Urutan: transfer antar rekening sendiri, aturan, pilihan yang diingat, lalu usulan AI untuk yang belum pernah dilihat." />
-      <NextStep>Tambahkan aturan untuk transaksi yang selalu masuk ke akun yang sama. Aturan dipakai sebelum AI.</NextStep>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Status AI" value={<StatusPill status={live ? "PASS" : "REVIEW"} label={live ? "Aktif" : "Aturan saja"} />} hint={live ? `Model ${cfg.model}` : member.role === "ADMIN" ? <>Atur kunci & model di <Link href="/settings" className="text-primary hover:underline">Pengaturan</Link></> : "Minta admin kantor mengatur kunci & model"} />
-        <Stat label="Dikode tanpa AI" value={`${total ? Math.round(((total - aiLines) / total) * 100) : 0}%`} hint={`${total} baris sejak awal`} />
-        <Stat label="Panggilan AI (total)" value={usage._sum.calls ?? 0} hint={`${((usage._sum.promptTokens ?? 0) + (usage._sum.completionTokens ?? 0)).toLocaleString("id-ID")} token`} />
-        <Stat label="Jawaban AI tersimpan" value={cacheSize} hint="Penerima atau pengirim yang sama tidak ditanyakan lagi" />
-      </div>
-      <EntitiesCard clientId={client.id} entities={client.entities.map((e) => ({ id: e.id, name: e.name, kind: e.kind, banks: e.bankAccounts.map((b) => ({ id: b.id, label: b.label, number: b.number, code: b.account.code, isOverdraft: b.isOverdraft })) }))} />
-      <FrameworkCard clientId={client.id} entities={client.entities.map((e) => ({ id: e.id, name: e.name, framework: e.reportingFramework }))} />
-      <FiscalYearCard clientId={client.id} endMonth={client.fiscalYearEndMonth} locked={Boolean(lockedPeriod)} />
-      <ModulesCard
-        clientId={client.id}
-        modules={MODULES.map(({ key, label, description }) => ({ key, label, description }))}
-        enabled={mods.enabled}
-        inUse={mods.inUse}
-        defaults={mods.visible.filter((k) => !mods.enabled.includes(k) && !mods.inUse.includes(k))}
-      />
-      {/* Keyed on what's saved: after a save or a reset the editor starts again from the server's format. */}
-      <ReportFormatCard key={JSON.stringify(reportFormat)} clientId={client.id} initial={formatValue} custom={customFormat} stale={staleFormat} universe={formatUniverse()} />
-      <Card>
-        <CardHeader>
-          <CardTitle>Batas pemakaian</CardTitle>
-          <CardDescription>
-            Maks. {cfg.maxCallsPerImport} panggilan per impor · {cfg.monthlyTokenBudget.toLocaleString("id-ID")} token per bulan.
-            {lastMonth && ` Bulan terakhir: ${lastMonth.pct}% dikode otomatis (${formatMonthShort(Number(lastMonth.ym.slice(0, 4)), Number(lastMonth.ym.slice(5)))}).`}
-          </CardDescription>
-        </CardHeader>
-      </Card>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Aturan klien</CardTitle>
-            <CardDescription>Didahulukan dari aturan kantor. Tambah dari halaman Review dengan “Selalu gunakan akun ini”.</CardDescription>
-          </CardHeader>
-          <CardContent className="px-0">
-            <RuleTable rules={clientRules} accounts={accounts} />
-            <Collapsible className="border-t">
-              <CollapsibleTrigger className="group flex w-full items-center gap-1 px-6 py-3 text-left text-sm font-medium text-primary hover:underline">
-                <ChevronRight className="size-4 transition-transform group-data-[panel-open]:rotate-90" aria-hidden />
-                Aturan kantor ({firmRules.length})
-                <span className="font-normal text-muted-foreground">· berlaku untuk semua klien</span>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <RuleTable rules={firmRules} accounts={accounts} />
-              </CollapsibleContent>
-            </Collapsible>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Pilihan yang diingat</CardTitle>
-            <CardDescription>Dipelajari dari keputusan reviewer dan dipakai sebelum AI.</CardDescription>
-          </CardHeader>
-          <CardContent className="px-0">
-            <Table>
-              <TableHeader>
-                <TableRow><TableHead className="pl-6">Penerima / pengirim</TableHead><TableHead>Akun</TableHead><TableHead className="pr-6 text-right">Dikonfirmasi</TableHead></TableRow>
-              </TableHeader>
-              <TableBody>
-                {memories.map((m) => (
-                  <TableRow key={m.id}>
-                    <TableCell className="pl-6 font-mono text-xs whitespace-normal">{m.merchantKey}</TableCell>
-                    <TableCell className="whitespace-normal">{m.accountCode} {accounts.get(m.accountCode)}</TableCell>
-                    <TableCell className="num pr-6 text-right">{m.hits}×</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-            {memories.length === 0 && <p className="px-6 py-4 text-sm text-muted-foreground">Belum ada pilihan yang diingat. Buku mengingat akun yang Anda pilih saat mereview transaksi.</p>}
-          </CardContent>
-        </Card>
-      </div>
-      {member.role === "ADMIN" && <DeleteClientCard clientId={client.id} name={client.name} />}
+      <PageHeader title="Pengaturan klien" description={`${client.name} · perusahaan dan rekening, kerangka pelaporan, lalu aturan klasifikasi.`} />
+      <LinkTabs label="Bagian pengaturan" items={TABS.map((t) => ({ href: withParams(`/clients/${client.id}/settings`, t.key === TABS[0].key ? {} : { tab: t.key }), label: t.label, active: t.key === tab.key }))} />
+      <NextStep>{tab.next}</NextStep>
+      {tab.key === "perusahaan" ? (
+        <>
+          <EntitiesCard clientId={client.id} entities={client.entities.map((e) => ({ id: e.id, name: e.name, kind: e.kind, banks: e.bankAccounts.map((b) => ({ id: b.id, label: b.label, number: b.number, code: b.account.code, isOverdraft: b.isOverdraft })) }))} />
+          <FrameworkCard clientId={client.id} entities={client.entities.map((e) => ({ id: e.id, name: e.name, framework: e.reportingFramework }))} />
+          <FiscalYearCard clientId={client.id} endMonth={client.fiscalYearEndMonth} locked={Boolean(lockedPeriod)} />
+          <ModulesCard
+            clientId={client.id}
+            modules={MODULES.map(({ key, label, description }) => ({ key, label, description }))}
+            enabled={mods.enabled}
+            inUse={mods.inUse}
+            defaults={mods.visible.filter((k) => !mods.enabled.includes(k) && !mods.inUse.includes(k))}
+          />
+          {/* Keyed on what's saved: after a save or a reset the editor starts again from the server's format. */}
+          <ReportFormatCard key={JSON.stringify(reportFormat)} clientId={client.id} initial={formatValue} custom={customFormat} stale={staleFormat} universe={formatUniverse()} />
+          {member.role === "ADMIN" && <DeleteClientCard clientId={client.id} name={client.name} />}
+        </>
+      ) : (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Stat label="Status AI" value={<StatusPill status={live ? "PASS" : "REVIEW"} label={live ? "Aktif" : "Aturan saja"} />} hint={live ? `Model ${cfg.model}` : member.role === "ADMIN" ? <>Atur kunci & model di <Link href="/settings" className="text-primary hover:underline">Pengaturan</Link></> : "Minta admin kantor mengatur kunci & model"} />
+            <Stat label="Dikode tanpa AI" value={`${total ? Math.round(((total - aiLines) / total) * 100) : 0}%`} hint={`${total} baris sejak awal`} />
+            <Stat label="Panggilan AI (total)" value={usage._sum.calls ?? 0} hint={`${((usage._sum.promptTokens ?? 0) + (usage._sum.completionTokens ?? 0)).toLocaleString("id-ID")} token`} />
+            <Stat label="Jawaban AI tersimpan" value={cacheSize} hint="Penerima atau pengirim yang sama tidak ditanyakan lagi" />
+          </div>
+          <Card>
+            <CardHeader>
+              <CardTitle>Batas pemakaian</CardTitle>
+              <CardDescription>
+                Maks. {cfg.maxCallsPerImport} panggilan per impor · {cfg.monthlyTokenBudget.toLocaleString("id-ID")} token per bulan.
+                {lastMonth && ` Bulan terakhir: ${lastMonth.pct}% dikode otomatis (${formatMonthShort(Number(lastMonth.ym.slice(0, 4)), Number(lastMonth.ym.slice(5)))}).`}
+              </CardDescription>
+            </CardHeader>
+          </Card>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Aturan klien</CardTitle>
+                <CardDescription>Didahulukan dari aturan kantor. Tambah dari halaman Review dengan “Selalu gunakan akun ini”.</CardDescription>
+              </CardHeader>
+              <CardContent className="px-0">
+                <RuleTable rules={clientRules} accounts={accounts} />
+                <Collapsible className="border-t">
+                  <CollapsibleTrigger className="group flex w-full items-center gap-1 px-6 py-3 text-left text-sm font-medium text-primary hover:underline">
+                    <ChevronRight className="size-4 transition-transform group-data-[panel-open]:rotate-90" aria-hidden />
+                    Aturan kantor ({firmRules.length})
+                    <span className="font-normal text-muted-foreground">· berlaku untuk semua klien</span>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <RuleTable rules={firmRules} accounts={accounts} />
+                  </CollapsibleContent>
+                </Collapsible>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Pilihan yang diingat</CardTitle>
+                <CardDescription>Dipelajari dari keputusan reviewer dan dipakai sebelum AI.</CardDescription>
+              </CardHeader>
+              <CardContent className="px-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow><TableHead className="pl-6">Penerima / pengirim</TableHead><TableHead>Akun</TableHead><TableHead className="pr-6 text-right">Dikonfirmasi</TableHead></TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {memories.map((m) => (
+                      <TableRow key={m.id}>
+                        <TableCell className="pl-6 font-mono text-xs whitespace-normal">{m.merchantKey}</TableCell>
+                        <TableCell className="whitespace-normal">{m.accountCode} {accounts.get(m.accountCode)}</TableCell>
+                        <TableCell className="num pr-6 text-right">{m.hits}×</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                {memories.length === 0 && <p className="px-6 py-4 text-sm text-muted-foreground">Belum ada pilihan yang diingat. Buku mengingat akun yang Anda pilih saat mereview transaksi.</p>}
+              </CardContent>
+            </Card>
+          </div>
+        </>
+      )}
     </div>
   );
 }

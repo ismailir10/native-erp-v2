@@ -12,7 +12,7 @@ test("add a bank account and an owner to an existing client", async ({ page }) =
 
   // Impor says how it differs from Dokumen, and where a missing account is added.
   await expect(page.getByText("Yang diimpor di sini langsung menjadi jurnal.")).toBeVisible();
-  await page.getByRole("link", { name: "Tambahkan di Aturan klasifikasi" }).click();
+  await page.getByRole("link", { name: "Tambahkan di Pengaturan klien" }).click();
   const card = page.getByTestId("entities-card");
   await expect(card).toContainText("PT Tambah Rekening");
   await expect(card).toContainText("5550009999 · 1101");
