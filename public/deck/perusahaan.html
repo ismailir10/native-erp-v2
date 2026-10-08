@@ -27,6 +27,7 @@
     <symbol id="i-lock" viewBox="0 0 16 16"><rect x="3.3" y="7" width="9.4" height="6.6" rx="1.6"/><path d="M5.5 7V5.4a2.5 2.5 0 0 1 5 0V7"/></symbol>
     <symbol id="i-open" viewBox="0 0 16 16"><rect x="3.3" y="7" width="9.4" height="6.6" rx="1.6"/><path d="M5.5 7V5.4a2.5 2.5 0 0 1 4.8-1"/></symbol>
     <symbol id="i-link" viewBox="0 0 16 16"><path d="M6.6 9.4l2.8-2.8M7.2 4.6l1-1a2.7 2.7 0 0 1 3.8 3.8l-1 1M8.8 11.4l-1 1A2.7 2.7 0 0 1 4 8.6l1-1"/></symbol>
+    <symbol id="i-dash" viewBox="0 0 16 16"><path d="M4.5 8h7"/></symbol>
     <symbol id="i-arrow" viewBox="0 0 16 16"><path d="M3 8h10M9 4l4 4-4 4"/></symbol>
     <symbol id="i-up" viewBox="0 0 16 16"><path d="M8 13V3M4 7l4-4 4 4"/></symbol>
     <symbol id="i-file" viewBox="0 0 16 16"><path d="M4 2.5h5l3 3v8H4z"/><path d="M9 2.5v3h3"/></symbol>
@@ -43,7 +44,7 @@
   <div class="s-body">
     <div class="split lw">
       <div>
-        <h1 data-a>Laporan keuangan bulanan, langsung dari rekening koran <em>Anda.</em></h1>
+        <h1 data-a>Laporan keuangan bulanan, <em>langsung dari rekening koran</em> Anda.</h1>
         <p class="lead" data-a>Buku membaca rekening koran perusahaan, akuntan Anda memutuskan yang meragukan, dan setiap bulan Anda menerima laba rugi, neraca, dan arus kas yang setiap angkanya bisa ditelusuri.</p>
       </div>
       <div class="viz">
@@ -85,22 +86,22 @@
     <div class="split">
       <div>
         <h2 data-a>Pertanyaan pemilik yang jawabannya selalu “nanti dulu”.</h2>
-        <ul class="pts">
-          <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Pembukuan menunggu ketikan.</b> Transaksi baru terlihat setelah seseorang memindahkannya dari rekening koran.</div></li>
-          <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Laporan hidup di satu file Excel.</b> Milik satu orang, dengan rumus yang tidak dipahami orang lain.</div></li>
-          <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Uang perusahaan dan pemilik bercampur.</b> Transfer di antaranya ikut menggeser laba.</div></li>
+        <ul class="pts pain">
+          <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-dash"/></svg></i><div><b>Pembukuan menunggu ketikan.</b> Transaksi baru terlihat setelah seseorang memindahkannya dari rekening koran.</div></li>
+          <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-dash"/></svg></i><div><b>Laporan tersimpan di satu file Excel.</b> Milik satu orang, dengan rumus yang tidak dipahami orang lain.</div></li>
+          <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-dash"/></svg></i><div><b>Uang perusahaan dan pemilik bercampur.</b> Transfer di antaranya ikut menggeser laba.</div></li>
         </ul>
       </div>
       <div class="viz">
         <div class="phone wide" data-a>
           <div class="ph-top"><span class="av">K</span><div><b>Keuangan PT Ayam</b><small>3 anggota</small></div></div>
           <div class="ph-body">
-            <div class="bub them"><small>Pemilik · 08.12</small>Laba Agustus berapa?</div>
-            <div class="bub me"><small>Keuangan · 08.40</small>Belum bisa, Pak. Mutasi BRI belum masuk.</div>
-            <div class="bub them"><small>Pemilik · 09.05</small>Kenapa saldo BCA turun jauh dari bulan lalu?</div>
-            <div class="bub me"><small>Keuangan · 09.31</small>Saya cek dulu di Excel ya.</div>
-            <div class="bub them"><small>Pemilik · 10.02</small>Bank minta laporan 12 bulan dan umur piutang.</div>
-            <div class="bub me"><small>Keuangan · 10.20</small>Kami susun dulu, Pak.</div>
+            <div class="bub out"><small>Pemilik · 08.12</small>Laba Agustus berapa?</div>
+            <div class="bub in"><small>Keuangan · 08.40</small>Belum bisa, Pak. Mutasi BRI belum masuk.</div>
+            <div class="bub out"><small>Pemilik · 09.05</small>Kenapa saldo BCA turun jauh dari bulan lalu?</div>
+            <div class="bub in"><small>Keuangan · 09.31</small>Saya cek dulu di Excel ya.</div>
+            <div class="bub out"><small>Pemilik · 10.02</small>Bank minta laporan 12 bulan dan umur piutang.</div>
+            <div class="bub in"><small>Keuangan · 10.20</small>Kami susun dulu, Pak.</div>
           </div>
         </div>
       </div>
@@ -125,7 +126,7 @@
       <div class="tk">
         <span class="who b">Buku</span>
         <span class="tile"><svg><use href="#i-check"/></svg></span>
-        <h3>Membaca dan membuktikan</h3>
+        <h3>Membaca dan mencocokkan saldo</h3>
         <p>Saldo dicocokkan di setiap baris; transfer antar rekening sendiri dipasangkan.</p>
         <div class="tk-m"><span class="st pass"><svg><use href="#i-check"/></svg>Saldo nyambung, 182 baris</span></div>
       </div>
@@ -156,7 +157,7 @@
         <ul class="pts">
           <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Tautan unggah.</b> Berlaku 7, 14, atau 30 hari, bisa dicabut. Hanya mengunggah; tidak ada yang dibukukan.</div></li>
           <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>PDF, CSV, atau Excel dari bank.</b> BCA, Mandiri, BRI, SMBC, juga PDF bersandi.</div></li>
-          <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Yang kurang ketahuan.</b> Rekening dan bulan yang bolong, atau baris yang hilang di tengah bulan.</div></li>
+          <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Yang kurang langsung terlihat.</b> Rekening dan bulan yang bolong, atau baris yang hilang di tengah bulan.</div></li>
         </ul>
       </div>
       <div class="viz">
@@ -164,7 +165,7 @@
           <div class="phone" data-a>
             <div class="ph-up">
               <span class="lbl">right-jet.com/kirim/…</span>
-              <b>Kirim dokumen ke KJA Demo &amp; Rekan</b>
+              <b>Kirim dokumen ke KJA Demo&nbsp;&amp;&nbsp;Rekan</b>
               <p>Untuk PT Ayam Nusantara Digital. Kirim rekening koran, buku besar atau neraca saldo.</p>
               <div class="drop"><svg><use href="#i-up"/></svg>Pilih file</div>
               <div class="sent-f"><svg><use href="#i-file"/></svg><span>bca-giro-agustus.pdf</span><svg class="ok"><use href="#i-check"/></svg></div>
@@ -173,7 +174,7 @@
             </div>
           </div>
           <div class="c inbox" data-a>
-            <div class="c-h"><span>Diterima · Agustus 2026</span><span class="sub">PT Ayam</span></div>
+            <div class="c-h"><span>Setelah diimpor akuntan</span><span class="sub">Agustus 2026</span></div>
             <div class="row in-grid"><span><b>BCA Giro</b><small class="sub">bca-giro-agustus.pdf</small></span><span class="st pass"><svg><use href="#i-check"/></svg>Saldo nyambung</span></div>
             <div class="row in-grid"><span><b>Mandiri Giro</b><small class="sub">mandiri-agustus.xlsx</small></span><span class="st pass"><svg><use href="#i-check"/></svg>Saldo nyambung</span></div>
             <div class="row in-grid warn"><span><b>BRI Simpedes</b><small class="sub">rekening pemilik</small></span><span class="st rev"><svg><use href="#i-warn"/></svg>Belum ada</span></div>
@@ -184,54 +185,19 @@
   </div>
 </section>
 
-<!-- 05 · Memori -->
-<section class="slide" aria-label="Review dan memori" data-note="Data demo sintetis">
-  <div class="s-body">
-    <div class="split">
-      <div>
-        <h2 data-a>Yang ragu diputuskan sekali. Bulan berikutnya, Buku ingat.</h2>
-        <ul class="pts">
-          <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Yang pasti dibukukan langsung.</b> Listrik, gaji, BPJS, setoran pajak per kodenya, transfer antar rekening sendiri.</div></li>
-          <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Yang baru, AI mengusulkan.</b> Akun dan alasannya, menunggu akuntan. AI tidak pernah membukukan sendiri.</div></li>
-          <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Keputusan menjadi memori.</b> Penerima yang sama dikenali lagi tanpa AI.</div></li>
-        </ul>
-      </div>
-      <div class="viz months">
-        <div class="mo" data-a>
-          <span class="lbl">Agustus · pertama kali</span>
-          <div class="c">
-            <div class="mo-line"><b class="mono">TRSF DB CV KEMASAN JAYA</b><span class="num">(22.500.000)</span></div>
-            <div class="mo-step"><span class="tag">AI</span><div><b>6190 Beban lain-lain</b><span class="sub">keyakinan rendah 58%, cek lagi</span></div></div>
-            <div class="mo-step me"><span class="tag me">Akuntan</span><div><b>5100 Pembelian Bahan &amp; Barang Dagang</b><span class="sub">pemasok kemasan</span></div><span class="st pass"><svg><use href="#i-check"/></svg>Simpan</span></div>
-          </div>
-        </div>
-        <svg class="mo-arrow" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-arrow"/></svg>
-        <div class="mo" data-a>
-          <span class="lbl">September · bulan berikutnya</span>
-          <div class="c">
-            <div class="mo-line"><b class="mono">TRSF DB CV KEMASAN JAYA</b><span class="num">(19.800.000)</span></div>
-            <div class="mo-step"><span class="tag mem">Memori</span><div><b>5100 Pembelian Bahan &amp; Barang Dagang</b><span class="sub">Pernah dikonfirmasi 1× untuk “KEMASAN JAYA”</span></div></div>
-            <div class="mo-step done"><span class="st pass"><svg><use href="#i-check"/></svg>Dibukukan langsung, tanpa AI</span></div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- 06 · Laporan manajemen -->
+<!-- 05 · Laporan manajemen -->
 <section class="slide" aria-label="Laporan manajemen" data-note="Data demo sintetis">
   <div class="s-body">
     <div class="split rw">
       <div>
-        <h2 data-a>Laba, margin, dan kas setiap bulan, dalam kalimat yang bisa dibaca pemilik.</h2>
-        <p class="lead" data-a>Laporan manajemen membandingkan bulan ini dengan bulan lalu dan awal tahun. Kalimatnya dihitung dari angka; catatannya ditulis dan disetujui akuntan.</p>
+        <h2 data-a>Laba, margin, dan kas, dijelaskan setiap bulan.</h2>
+        <p class="lead" data-a>Jawaban untuk “laba Agustus berapa?” dan “kenapa saldo turun?”: bulan ini dibanding bulan lalu dan sejak awal tahun. Kalimatnya disusun dari angka; catatannya ditulis dan disetujui akuntan.</p>
       </div>
       <div class="viz" data-a>
         <div class="c mgmt">
           <div class="c-h"><span>Laporan manajemen · Agustus 2026</span><span class="sub">PT Ayam Nusantara Digital</span></div>
           <div class="kpis">
-            <div><span class="lbl">Penjualan</span><span class="big">2,18 M</span><span class="st pass"><svg><use href="#i-up"/></svg>7,0% dari Juli</span></div>
+            <div><span class="lbl">Laba sebelum pajak</span><span class="big">274,2 jt</span><span class="st pass"><svg><use href="#i-up"/></svg>13,4% dari Juli</span></div>
             <div><span class="lbl">Margin kotor</span><span class="big">36,0%</span><span class="st mut">Juli 35,2%</span></div>
             <div><span class="lbl">Kas dan bank</span><span class="big">842 jt</span><span class="st mut">turun 69,5 jt</span></div>
           </div>
@@ -257,9 +223,10 @@
             </div>
             <div class="mg-text">
               <p>Penjualan Agustus Rp 2,18 miliar, naik 7,0% dari Juli.</p>
+              <p>Laba sebelum pajak Rp 274,2 juta, naik 13,4%.</p>
               <p>Margin kotor 36,0%, naik dari 35,2%.</p>
               <p>Kas dan bank turun Rp 69,5 juta menjadi Rp 842,0 juta.</p>
-              <div class="mg-note"><span class="st pass"><svg><use href="#i-check"/></svg>Catatan akuntan, disetujui</span><p>Kas turun karena pembelian mesin pakan Rp 185 juta, dicatat sebagai aset tetap.</p></div>
+              <div class="mg-note"><span class="st pass"><svg><use href="#i-check"/></svg>Catatan akuntan, disetujui</span><p>Kas turun karena pembelian mesin pakan Rp 185 juta (dicatat sebagai aset tetap) dan transfer ke pemilik Rp 197 juta.</p></div>
             </div>
           </div>
         </div>
@@ -268,7 +235,105 @@
   </div>
 </section>
 
-<!-- 07 · Telusuri -->
+<!-- 06 · Pemilik -->
+<section class="slide" aria-label="Uang perusahaan dan pemilik" data-note="Data demo sintetis">
+  <div class="s-body">
+    <div class="split">
+      <div>
+        <h2 data-a>Uang perusahaan dan uang pemilik tidak lagi bercampur.</h2>
+        <ul class="pts">
+          <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Pemilik sebagai entitas sendiri.</b> Rekening pribadinya dibukukan terpisah dari PT.</div></li>
+          <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Transfer di antaranya dikenali dari kedua sisi.</b> Dipasangkan sebagai antar entitas, tidak menggeser laba.</div></li>
+          <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Satu kertas kerja gabungan.</b> PT dan pemilik dalam satu tampilan, transfer di antaranya dieliminasi. Untuk manajemen, bukan konsolidasi SAK.</div></li>
+        </ul>
+      </div>
+      <div class="viz">
+        <svg class="art" viewBox="0 0 640 470" role="img" aria-label="Lima baris rekening koran PT dan pemilik dipilah: dua ke laba rugi PT, dua dipasangkan sebagai antar entitas, satu pindah rekening sendiri">
+<text x="10" y="22" class="t-s">Baris dari rekening PT dan rekening pemilik</text><text x="630" y="22" text-anchor="end" class="t-s">Dibukukan ke</text>
+<g class="pop" style="--d:6"><rect x="416" y="60" width="218" height="96" rx="14" fill="#fff" stroke="#0c0a08" stroke-width="1.4"/><text x="434" y="104" style="font-size:14px;font-weight:650;fill:#0c0a08">Laba rugi PT</text><text x="434" y="114" style="font-size:14px;font-weight:650;fill:#0c0a08"></text><text x="434" y="126" style="font-size:11.5px;fill:#5f5b58">penjualan dan beban</text></g>
+<g class="pop" style="--d:7"><rect x="416" y="205" width="218" height="96" rx="14" fill="#e6ecfd" stroke="#2152e8" stroke-width="1.4"/><text x="434" y="241" style="font-size:14px;font-weight:650;fill:#1638a8">1190 Piutang/Utang</text><text x="434" y="259" style="font-size:14px;font-weight:650;fill:#1638a8">Antar Entitas</text><text x="434" y="281" style="font-size:11.5px;fill:#1638a8">dipasangkan, laba tetap</text></g>
+<g class="pop" style="--d:8"><rect x="416" y="350" width="218" height="96" rx="14" fill="#fff" stroke="#0c0a08" stroke-width="1.4"/><text x="434" y="386" style="font-size:14px;font-weight:650;fill:#0c0a08">1199 Kliring Transfer</text><text x="434" y="404" style="font-size:14px;font-weight:650;fill:#0c0a08">Antar Rekening</text><text x="434" y="426" style="font-size:11.5px;fill:#5f5b58">selesai di nol</text></g>
+<g class="pop" style="--d:0"><rect x="10" y="40" width="330" height="68" rx="12" class="p"/><text x="28" y="66" class="t-s">BCA Giro · PT</text><text x="28" y="90" style="font-size:12.5px;font-weight:600;letter-spacing:.02em">TRSF CR PT TOKO MAKMUR JAYA</text><text x="324" y="66" text-anchor="end" style="font-size:12.5px;font-weight:600">12.500.000</text></g>
+<path d="M340 74C380 74 378 108 416 108" fill="none" stroke="#8f8a85" stroke-width="1.6"/>
+<g class="pop" style="--d:1"><rect x="10" y="124" width="330" height="68" rx="12" class="p"/><text x="28" y="150" class="t-s">BCA Giro · PT</text><text x="28" y="174" style="font-size:12.5px;font-weight:600;letter-spacing:.02em">BYR LISTRIK PLN</text><text x="324" y="150" text-anchor="end" style="font-size:12.5px;font-weight:600">(3.250.000)</text></g>
+<path d="M340 158C380 158 378 108 416 108" fill="none" stroke="#8f8a85" stroke-width="1.6"/>
+<g class="pop" style="--d:2"><rect x="10" y="208" width="330" height="68" rx="12" class="p"/><text x="28" y="234" class="t-s">Mandiri Giro · PT</text><text x="28" y="258" style="font-size:12.5px;font-weight:600;letter-spacing:.02em">TRSF DB BUDI SANTOSO</text><text x="324" y="234" text-anchor="end" style="font-size:12.5px;font-weight:600">(97.000.000)</text></g>
+<path d="M340 242C380 242 378 253 416 253" fill="none" stroke="#2152e8" stroke-width="1.6"/>
+<g class="pop" style="--d:3"><rect x="10" y="292" width="330" height="68" rx="12" class="p"/><text x="28" y="318" class="t-s">BCA Tahapan · Budi</text><text x="28" y="342" style="font-size:12.5px;font-weight:600;letter-spacing:.02em">TRSF CR PT AYAM NUSANTARA</text><text x="324" y="318" text-anchor="end" style="font-size:12.5px;font-weight:600">97.000.000</text></g>
+<path d="M340 326C380 326 378 253 416 253" fill="none" stroke="#2152e8" stroke-width="1.6"/>
+<g class="pop" style="--d:4"><rect x="10" y="376" width="330" height="68" rx="12" class="p"/><text x="28" y="402" class="t-s">Mandiri Giro · PT</text><text x="28" y="426" style="font-size:12.5px;font-weight:600;letter-spacing:.02em">PINDAH BUKU KE BCA GIRO PT</text><text x="324" y="402" text-anchor="end" style="font-size:12.5px;font-weight:600">(25.000.000)</text></g>
+<path d="M340 410C380 410 378 398 416 398" fill="none" stroke="#8f8a85" stroke-width="1.6"/>
+</svg>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 07 · Bank -->
+<section class="slide" aria-label="Paket kredit bank" data-note="Data demo sintetis">
+  <div class="s-body">
+    <div class="split rw">
+      <div>
+        <h2 data-a>Bank minta laporan 12 bulan? Satu file, dari pembukuan yang sama.</h2>
+        <p class="lead" data-a>Termasuk umur piutang yang biasanya diminta. Satu file Excel: laporan keuangan, mutasi dibanding omzet selama 12 bulan, umur piutang dan utang, aset tetap, dan Jejak Sumber, asal setiap angka per akun.</p>
+      </div>
+      <div class="viz" data-a>
+        <div class="c bank">
+          <div class="c-h"><span>Mutasi vs Omzet · Sep 2025–Agu 2026</span><span class="sub">miliar Rupiah</span></div>
+          <div class="legend"><span><i style="background:#2152e8"></i>Uang masuk bersih di bank</span><span><i style="background:#e0592a"></i>Penjualan di buku</span></div>
+          <svg class="art" viewBox="0 0 600 230" role="img" aria-label="Uang masuk bersih dan penjualan, September 2025 sampai Agustus 2026, bergerak bersama di kisaran 1,6 sampai 2,2 miliar Rupiah per bulan">
+<path class="hair" d="M30 200.0H600"/>
+<text x="22" y="204.0" text-anchor="end" class="t-s">0</text>
+<path class="hair" d="M30 129.2H600"/>
+<text x="22" y="133.2" text-anchor="end" class="t-s">1</text>
+<path class="hair" d="M30 58.3H600"/>
+<text x="22" y="62.3" text-anchor="end" class="t-s">2</text>
+<path d="M40 200V92.8a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#2152e8"><title>Sep: uang masuk bersih Rp 1,57 miliar</title></path>
+<path d="M59 200V89.2a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#e0592a"><title>Sep: penjualan Rp 1,62 miliar</title></path>
+<text x="58" y="220" text-anchor="middle" class="t-s">Sep</text>
+<path d="M87 200V81.5a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#2152e8"><title>Okt: uang masuk bersih Rp 1,73 miliar</title></path>
+<path d="M106 200V83.6a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#e0592a"><title>Okt: penjualan Rp 1,70 miliar</title></path>
+<text x="105" y="220" text-anchor="middle" class="t-s">Okt</text>
+<path d="M134 200V90.0a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#2152e8"><title>Nov: uang masuk bersih Rp 1,61 miliar</title></path>
+<path d="M153 200V86.4a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#e0592a"><title>Nov: penjualan Rp 1,66 miliar</title></path>
+<text x="152" y="220" text-anchor="middle" class="t-s">Nov</text>
+<path d="M181 200V70.8a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#2152e8"><title>Des: uang masuk bersih Rp 1,88 miliar</title></path>
+<path d="M200 200V66.6a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#e0592a"><title>Des: penjualan Rp 1,94 miliar</title></path>
+<text x="199" y="220" text-anchor="middle" class="t-s">Des</text>
+<path d="M228 200V89.2a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#2152e8"><title>Jan: uang masuk bersih Rp 1,62 miliar</title></path>
+<path d="M247 200V92.1a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#e0592a"><title>Jan: penjualan Rp 1,58 miliar</title></path>
+<text x="246" y="220" text-anchor="middle" class="t-s">Jan</text>
+<path d="M275 200V90.7a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#2152e8"><title>Feb: uang masuk bersih Rp 1,60 miliar</title></path>
+<path d="M294 200V87.8a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#e0592a"><title>Feb: penjualan Rp 1,64 miliar</title></path>
+<text x="293" y="220" text-anchor="middle" class="t-s">Feb</text>
+<path d="M322 200V78.6a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#2152e8"><title>Mar: uang masuk bersih Rp 1,77 miliar</title></path>
+<path d="M341 200V75.8a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#e0592a"><title>Mar: penjualan Rp 1,81 miliar</title></path>
+<text x="340" y="220" text-anchor="middle" class="t-s">Mar</text>
+<path d="M369 200V65.9a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#2152e8"><title>Apr: uang masuk bersih Rp 1,95 miliar</title></path>
+<path d="M388 200V68.7a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#e0592a"><title>Apr: penjualan Rp 1,91 miliar</title></path>
+<text x="387" y="220" text-anchor="middle" class="t-s">Apr</text>
+<path d="M416 200V74.4a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#2152e8"><title>Mei: uang masuk bersih Rp 1,83 miliar</title></path>
+<path d="M435 200V70.8a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#e0592a"><title>Mei: penjualan Rp 1,88 miliar</title></path>
+<text x="434" y="220" text-anchor="middle" class="t-s">Mei</text>
+<path d="M463 200V60.9a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#2152e8"><title>Jun: uang masuk bersih Rp 2,02 miliar</title></path>
+<path d="M482 200V63.0a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#e0592a"><title>Jun: penjualan Rp 1,99 miliar</title></path>
+<text x="481" y="220" text-anchor="middle" class="t-s">Jun</text>
+<path d="M510 200V63.0a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#2152e8"><title>Jul: uang masuk bersih Rp 1,99 miliar</title></path>
+<path d="M529 200V59.5a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#e0592a"><title>Jul: penjualan Rp 2,04 miliar</title></path>
+<text x="528" y="220" text-anchor="middle" class="t-s">Jul</text>
+<path d="M557 200V47.5a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#2152e8"><title>Agu: uang masuk bersih Rp 2,21 miliar</title></path>
+<path d="M576 200V49.6a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#e0592a"><title>Agu: penjualan Rp 2,18 miliar</title></path>
+<text x="575" y="220" text-anchor="middle" class="t-s">Agu</text>
+</svg>
+          <p class="bank-n">Uang masuk bersih = uang masuk dikurangi transfer antar rekening sendiri dan antar entitas grup, pinjaman dan setoran modal, serta baris yang belum diklasifikasi.</p>
+          <div class="sheets"><span>Ringkasan</span><span>Laporan keuangan</span><span class="on">Mutasi vs Omzet</span><span>Umur piutang</span><span>Umur utang</span><span>Aset tetap</span><span>Jejak Sumber</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 08 · Telusuri -->
 <section class="slide" aria-label="Penelusuran" data-note="Data demo sintetis">
   <div class="s-body">
     <div class="head">
@@ -278,9 +343,9 @@
     <div class="hchain fl-1">
       <div class="c" data-a>
         <div class="c-h"><span>Laba Rugi · Agustus</span><span class="sub">1</span></div>
-        <div class="row t-grid muted"><span>6110 Beban Gaji</span><span class="r num">96.400.000</span></div>
-        <div class="row t-grid hl"><span>6130 Listrik, Air &amp; Internet</span><span class="r num drill">14.820.000</span></div>
-        <div class="row t-grid muted"><span>6140 Beban Sewa</span><span class="r num">35.000.000</span></div>
+        <div class="row t-grid muted"><span>6100 Beban Gaji &amp; Tunjangan</span><span class="r num">96.400.000</span></div>
+        <div class="row t-grid hl"><span>6130 Beban Listrik, Air &amp; Internet</span><span class="r num drill">14.820.000</span></div>
+        <div class="row t-grid muted"><span>6120 Beban Sewa</span><span class="r num">35.000.000</span></div>
       </div>
       <svg class="stage-arrow" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-arrow"/></svg>
       <div class="c" data-a>
@@ -302,45 +367,14 @@
   </div>
 </section>
 
-<!-- 08 · Tanya Buku -->
-<section class="slide" aria-label="Tanya Buku" data-note="Data demo sintetis">
-  <div class="s-body">
-    <div class="split">
-      <div>
-        <h2 data-a>Tanya dengan kalimat biasa. Angkanya dihitung dari jurnal.</h2>
-        <ul class="pts">
-          <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Laba, saldo, transfer ke pihak tertentu.</b> Dihitung dari pembukuan, bukan dari ingatan model.</div></li>
-          <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Setiap jawaban membawa sumber.</b> Tautan ke laporan atau buku besarnya.</div></li>
-          <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Yang belum bisa dijawab, dikatakan.</b> Hanya membaca; tidak ada yang berubah karena pertanyaan.</div></li>
-        </ul>
-        <p class="note" data-a>Dipakai dari akun Admin atau Akuntan; belum ada akses khusus pemilik</p>
-      </div>
-      <div class="viz" data-a>
-        <div class="c ask">
-          <div class="c-h"><span>Tanya Buku</span><span class="sub">PT Ayam Nusantara Digital · Agustus 2026</span></div>
-          <div class="ask-b">
-            <div class="ask-q">Berapa laba sebelum pajak bulan ini?</div>
-            <div class="ask-a"><span class="big">Rp 274.200.000</span><span class="sub">dari jurnal yang sudah dibukukan, naik dari Rp 241.900.000 di Juli</span><span class="src-l"><svg><use href="#i-link"/></svg>Laba Rugi · Agustus 2026</span></div>
-            <div class="ask-q">Transfer ke Budi Santoso bulan ini?</div>
-            <div class="ask-a"><b>3 transfer, Rp 197.000.000</b><span class="sub">dari BCA Giro dan Mandiri Giro</span><span class="src-l"><svg><use href="#i-link"/></svg>Buku Besar · 1190 Antar entitas</span></div>
-            <div class="ask-q">Berapa laba bulan depan?</div>
-            <div class="ask-a"><span class="st mut">Belum didukung. Tanya Buku menjawab dari pembukuan yang sudah ada.</span></div>
-          </div>
-          <div class="ask-in"><span>Tanyakan sesuatu tentang pembukuan…</span><span class="btn sm">Tanya</span></div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
 <!-- 09 · Pajak -->
 <section class="slide" aria-label="Pajak" data-note="Data demo sintetis">
   <div class="s-body">
     <div class="split rw">
       <div>
-        <h2 data-a>Setoran pajak dicocokkan dengan pembukuan, setiap masa.</h2>
+        <h2 data-a>Kurang setor pajak terlihat dari pembukuan, setiap masa.</h2>
         <ul class="pts">
-          <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Dibukukan dibanding disetor.</b> Setoran yang kurang atau lewat jatuh tempo ditandai sebagai temuan.</div></li>
+          <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Terutang di buku dibanding yang disetor.</b> Setoran yang kurang atau lewat jatuh tempo ditandai sebagai temuan.</div></li>
           <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Faktur Coretax dicocokkan dengan buku.</b> Yang belum tercatat ketahuan sebelum SPT disusun.</div></li>
           <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Kertas kerja, bukan SPT.</b> Buku bukan PJAP; PPh badan berupa estimasi untuk kertas kerja.</div></li>
         </ul>
@@ -392,122 +426,59 @@
         <div class="c masa">
           <div class="c-h"><span>Pajak Masa · Agustus 2026</span></div>
           <div class="row hd mt-grid"><span>Pajak</span><span class="r">Dibukukan</span><span class="r">Disetor</span><span></span></div>
-          <div class="row mt-grid warn"><span><b>PPh 23</b><small class="sub">15 Sep</small></span><span class="r num">1.240.000</span><span class="r num">830.000</span><span class="st chip rev"><svg><use href="#i-warn"/></svg>Kurang 410.000</span></div>
-          <div class="row mt-grid"><span><b>PPh 21</b><small class="sub">15 Sep</small></span><span class="r num">8.350.000</span><span class="r num">8.350.000</span><span class="st pass"><svg><use href="#i-check"/></svg>Lolos</span></div>
-          <div class="row mt-grid"><span><b>PPh 25</b><small class="sub">15 Sep</small></span><span class="r num">3.500.000</span><span class="r num">3.500.000</span><span class="st pass"><svg><use href="#i-check"/></svg>Lolos</span></div>
-          <div class="row mt-grid"><span><b>PPN</b><small class="sub">30 Sep</small></span><span class="r num">54.200.000</span><span class="r num">54.200.000</span><span class="st pass"><svg><use href="#i-check"/></svg>Lolos</span></div>
+          <div class="row mt-grid warn"><span><b>PPh 23</b><small class="sub">15 Sep</small></span><span class="r num">1.240.000</span><span class="r num">830.000</span><span class="st chip rev"><svg><use href="#i-warn"/></svg>Kurang setor 410.000</span></div>
+          <div class="row mt-grid"><span><b>PPh 21</b><small class="sub">15 Sep</small></span><span class="r num">8.350.000</span><span class="r num">8.350.000</span><span class="st pass"><svg><use href="#i-check"/></svg>Lunas</span></div>
+          <div class="row mt-grid"><span><b>PPh 25</b><small class="sub">15 Sep</small></span><span class="r num">3.500.000</span><span class="r num">3.500.000</span><span class="st pass"><svg><use href="#i-check"/></svg>Lunas</span></div>
+          <div class="row mt-grid"><span><b>PPN</b><small class="sub">30 Sep</small></span><span class="r num">54.200.000</span><span class="r num">54.200.000</span><span class="st pass"><svg><use href="#i-check"/></svg>Lunas</span></div>
         </div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- 10 · Bank -->
-<section class="slide" aria-label="Paket kredit bank" data-note="Data demo sintetis">
-  <div class="s-body">
-    <div class="split rw">
-      <div>
-        <h2 data-a>Bank minta laporan 12 bulan? Paketnya dari pembukuan yang sama.</h2>
-        <p class="lead" data-a>Satu file Excel: laporan keuangan, mutasi dibanding omzet selama 12 bulan, umur piutang dan utang, aset tetap, dan Jejak Sumber, asal setiap angka per akun.</p>
-      </div>
-      <div class="viz" data-a>
-        <div class="c bank">
-          <div class="c-h"><span>Mutasi vs Omzet · Sep 2025–Agu 2026</span><span class="sub">miliar Rupiah</span></div>
-          <div class="legend"><span><i style="background:#2152e8"></i>Uang masuk bersih di bank</span><span><i style="background:#e0592a"></i>Penjualan di buku</span></div>
-          <svg class="art" viewBox="0 0 600 230" role="img" aria-label="Uang masuk bersih dan penjualan, September 2025 sampai Agustus 2026, bergerak bersama di kisaran 1,6 sampai 2,2 miliar Rupiah per bulan">
-<path class="hair" d="M30 200.0H600"/>
-<text x="22" y="204.0" text-anchor="end" class="t-s">0</text>
-<path class="hair" d="M30 129.2H600"/>
-<text x="22" y="133.2" text-anchor="end" class="t-s">1</text>
-<path class="hair" d="M30 58.3H600"/>
-<text x="22" y="62.3" text-anchor="end" class="t-s">2</text>
-<path d="M40 200V92.8a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#2152e8"><title>Sep: uang masuk bersih Rp 1,57 miliar</title></path>
-<path d="M59 200V89.2a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#e0592a"><title>Sep: penjualan Rp 1,62 miliar</title></path>
-<text x="58" y="220" text-anchor="middle" class="t-s">Sep</text>
-<path d="M87 200V81.5a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#2152e8"><title>Okt: uang masuk bersih Rp 1,73 miliar</title></path>
-<path d="M106 200V83.6a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#e0592a"><title>Okt: penjualan Rp 1,70 miliar</title></path>
-<text x="105" y="220" text-anchor="middle" class="t-s">Okt</text>
-<path d="M134 200V90.0a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#2152e8"><title>Nov: uang masuk bersih Rp 1,61 miliar</title></path>
-<path d="M153 200V86.4a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#e0592a"><title>Nov: penjualan Rp 1,66 miliar</title></path>
-<text x="152" y="220" text-anchor="middle" class="t-s">Nov</text>
-<path d="M181 200V70.8a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#2152e8"><title>Des: uang masuk bersih Rp 1,88 miliar</title></path>
-<path d="M200 200V66.6a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#e0592a"><title>Des: penjualan Rp 1,94 miliar</title></path>
-<text x="199" y="220" text-anchor="middle" class="t-s">Des</text>
-<path d="M228 200V89.2a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#2152e8"><title>Jan: uang masuk bersih Rp 1,62 miliar</title></path>
-<path d="M247 200V92.1a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#e0592a"><title>Jan: penjualan Rp 1,58 miliar</title></path>
-<text x="246" y="220" text-anchor="middle" class="t-s">Jan</text>
-<path d="M275 200V90.7a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#2152e8"><title>Feb: uang masuk bersih Rp 1,60 miliar</title></path>
-<path d="M294 200V87.8a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#e0592a"><title>Feb: penjualan Rp 1,64 miliar</title></path>
-<text x="293" y="220" text-anchor="middle" class="t-s">Feb</text>
-<path d="M322 200V78.6a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#2152e8"><title>Mar: uang masuk bersih Rp 1,77 miliar</title></path>
-<path d="M341 200V75.8a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#e0592a"><title>Mar: penjualan Rp 1,81 miliar</title></path>
-<text x="340" y="220" text-anchor="middle" class="t-s">Mar</text>
-<path d="M369 200V65.9a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#2152e8"><title>Apr: uang masuk bersih Rp 1,95 miliar</title></path>
-<path d="M388 200V68.7a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#e0592a"><title>Apr: penjualan Rp 1,91 miliar</title></path>
-<text x="387" y="220" text-anchor="middle" class="t-s">Apr</text>
-<path d="M416 200V74.4a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#2152e8"><title>Mei: uang masuk bersih Rp 1,83 miliar</title></path>
-<path d="M435 200V70.8a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#e0592a"><title>Mei: penjualan Rp 1,88 miliar</title></path>
-<text x="434" y="220" text-anchor="middle" class="t-s">Mei</text>
-<path d="M463 200V60.9a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#2152e8"><title>Jun: uang masuk bersih Rp 2,02 miliar</title></path>
-<path d="M482 200V63.0a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#e0592a"><title>Jun: penjualan Rp 1,99 miliar</title></path>
-<text x="481" y="220" text-anchor="middle" class="t-s">Jun</text>
-<path d="M510 200V63.0a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#2152e8"><title>Jul: uang masuk bersih Rp 1,99 miliar</title></path>
-<path d="M529 200V59.5a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#e0592a"><title>Jul: penjualan Rp 2,04 miliar</title></path>
-<text x="528" y="220" text-anchor="middle" class="t-s">Jul</text>
-<path d="M557 200V47.5a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#2152e8"><title>Agu: uang masuk bersih Rp 2,21 miliar</title></path>
-<path d="M576 200V49.6a4 4 0 0 1 4-4h9a4 4 0 0 1 4 4V200Z" fill="#e0592a"><title>Agu: penjualan Rp 2,18 miliar</title></path>
-<text x="575" y="220" text-anchor="middle" class="t-s">Agu</text>
-</svg>
-          <p class="bank-n">Uang masuk bersih = uang masuk dikurangi transfer antar rekening sendiri, pinjaman, setoran modal, dan baris yang belum diklasifikasi.</p>
-          <div class="sheets"><span>Ringkasan</span><span>Laporan keuangan</span><span class="on">Mutasi vs Omzet</span><span>Umur piutang</span><span>Umur utang</span><span>Aset tetap</span><span>Jejak Sumber</span></div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- 11 · Pemilik -->
-<section class="slide" aria-label="Uang perusahaan dan pemilik" data-note="Data demo sintetis">
+<!-- 10 · Memori -->
+<section class="slide" aria-label="Review dan memori" data-note="Data demo sintetis">
   <div class="s-body">
     <div class="split">
       <div>
-        <h2 data-a>Uang perusahaan dan uang pemilik tidak lagi bercampur.</h2>
+        <h2 data-a>Yang ragu diputuskan sekali. Bulan berikutnya, Buku ingat.</h2>
         <ul class="pts">
-          <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Pemilik sebagai entitas sendiri.</b> Rekening pribadinya dibukukan terpisah dari PT.</div></li>
-          <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Transfer di antaranya dikenali dari kedua sisi.</b> Dipasangkan sebagai antar entitas, tidak menggeser laba.</div></li>
-          <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Satu kertas kerja gabungan.</b> Termasuk entitas dengan mata uang lain, dijabarkan ke Rupiah. Untuk manajemen, bukan konsolidasi SAK.</div></li>
+          <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Yang sudah pasti dibukukan langsung.</b> Listrik, gaji, BPJS, setoran pajak menurut kode setorannya, transfer antar rekening sendiri.</div></li>
+          <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Yang baru, AI mengusulkan.</b> Akun dan alasannya, menunggu akuntan. AI tidak pernah membukukan sendiri.</div></li>
+          <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Keputusan menjadi memori.</b> Penerima yang sama dikenali lagi tanpa AI.</div></li>
         </ul>
       </div>
-      <div class="viz">
-        <svg class="art" viewBox="0 0 640 470" role="img" aria-label="Lima baris rekening koran PT dan pemilik dipilah: dua ke laba rugi PT, dua dipasangkan sebagai antar entitas, satu pindah rekening sendiri">
-<text x="10" y="22" class="t-s">Baris dari rekening PT dan rekening pemilik</text><text x="630" y="22" text-anchor="end" class="t-s">Dibukukan ke</text>
-<g class="pop" style="--d:6"><rect x="416" y="60" width="218" height="96" rx="14" fill="#fff" stroke="#0c0a08" stroke-width="1.4"/><text x="434" y="102" style="font-size:14px;font-weight:650;fill:#0c0a08">Laba rugi PT</text><text x="434" y="124" style="font-size:11.5px;fill:#5f5b58">penjualan dan beban</text></g>
-<g class="pop" style="--d:7"><rect x="416" y="205" width="218" height="96" rx="14" fill="#e6ecfd" stroke="#2152e8" stroke-width="1.4"/><text x="434" y="247" style="font-size:14px;font-weight:650;fill:#1638a8">1190 Antar entitas</text><text x="434" y="269" style="font-size:11.5px;fill:#1638a8">dipasangkan, tidak menggeser laba</text></g>
-<g class="pop" style="--d:8"><rect x="416" y="350" width="218" height="96" rx="14" fill="#fff" stroke="#0c0a08" stroke-width="1.4"/><text x="434" y="392" style="font-size:14px;font-weight:650;fill:#0c0a08">1199 Pindah rekening</text><text x="434" y="414" style="font-size:11.5px;fill:#5f5b58">antar rekening sendiri, selesai di nol</text></g>
-<g class="pop" style="--d:0"><rect x="10" y="40" width="330" height="68" rx="12" class="p"/><text x="28" y="66" class="t-s">BCA Giro · PT</text><text x="28" y="90" style="font-size:12.5px;font-weight:600;letter-spacing:.02em">TRSF CR PT TOKO MAKMUR JAYA</text><text x="324" y="66" text-anchor="end" style="font-size:12.5px;font-weight:600">12.500.000</text></g>
-<path d="M340 74C380 74 378 108 416 108" fill="none" stroke="#8f8a85" stroke-width="1.6"/>
-<g class="pop" style="--d:1"><rect x="10" y="124" width="330" height="68" rx="12" class="p"/><text x="28" y="150" class="t-s">BCA Giro · PT</text><text x="28" y="174" style="font-size:12.5px;font-weight:600;letter-spacing:.02em">BYR LISTRIK PLN</text><text x="324" y="150" text-anchor="end" style="font-size:12.5px;font-weight:600">(3.250.000)</text></g>
-<path d="M340 158C380 158 378 108 416 108" fill="none" stroke="#8f8a85" stroke-width="1.6"/>
-<g class="pop" style="--d:2"><rect x="10" y="208" width="330" height="68" rx="12" class="p"/><text x="28" y="234" class="t-s">Mandiri Giro · PT</text><text x="28" y="258" style="font-size:12.5px;font-weight:600;letter-spacing:.02em">TRSF DB BUDI SANTOSO</text><text x="324" y="234" text-anchor="end" style="font-size:12.5px;font-weight:600">(97.000.000)</text></g>
-<path d="M340 242C380 242 378 253 416 253" fill="none" stroke="#2152e8" stroke-width="1.6"/>
-<g class="pop" style="--d:3"><rect x="10" y="292" width="330" height="68" rx="12" class="p"/><text x="28" y="318" class="t-s">BCA Tahapan · Budi</text><text x="28" y="342" style="font-size:12.5px;font-weight:600;letter-spacing:.02em">TRSF CR PT AYAM NUSANTARA</text><text x="324" y="318" text-anchor="end" style="font-size:12.5px;font-weight:600">97.000.000</text></g>
-<path d="M340 326C380 326 378 253 416 253" fill="none" stroke="#2152e8" stroke-width="1.6"/>
-<g class="pop" style="--d:4"><rect x="10" y="376" width="330" height="68" rx="12" class="p"/><text x="28" y="402" class="t-s">BCA Tahapan · Budi</text><text x="28" y="426" style="font-size:12.5px;font-weight:600;letter-spacing:.02em">TRSF KE BRI SIMPEDES SENDIRI</text><text x="324" y="402" text-anchor="end" style="font-size:12.5px;font-weight:600">(15.000.000)</text></g>
-<path d="M340 410C380 410 378 398 416 398" fill="none" stroke="#8f8a85" stroke-width="1.6"/>
-</svg>
+      <div class="viz months">
+        <div class="mo" data-a>
+          <span class="lbl">Agustus · pertama kali</span>
+          <div class="c">
+            <div class="mo-line"><b class="mono">TRSF DB CV KEMASAN JAYA</b><span class="num">(22.500.000)</span></div>
+            <div class="mo-step"><span class="tag">AI</span><div><b>6190 Beban Umum Lain-lain</b><span class="sub">keyakinan rendah, cek lagi 58%</span></div></div>
+            <div class="mo-step me"><span class="tag me">Akuntan</span><div><b>5100 Pembelian Bahan &amp; Barang Dagang</b><span class="sub">pemasok kemasan</span></div><span class="st pass"><svg><use href="#i-check"/></svg>Simpan</span></div>
+          </div>
+        </div>
+        <svg class="mo-arrow" viewBox="0 0 16 16" aria-hidden="true"><use href="#i-arrow"/></svg>
+        <div class="mo" data-a>
+          <span class="lbl">September · bulan berikutnya</span>
+          <div class="c">
+            <div class="mo-line"><b class="mono">TRSF DB CV KEMASAN JAYA</b><span class="num">(19.800.000)</span></div>
+            <div class="mo-step"><span class="tag mem">Memori</span><div><b>5100 Pembelian Bahan &amp; Barang Dagang</b><span class="sub">Pernah dikonfirmasi 1× untuk “CV KEMASAN JAYA”</span></div></div>
+            <div class="mo-step done"><span class="st pass"><svg><use href="#i-check"/></svg>Dibukukan langsung, tanpa AI</span></div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- 12 · Kunci -->
+<!-- 11 · Kunci -->
 <section class="slide" aria-label="Tutup buku" data-note="Data demo sintetis">
   <div class="s-body">
-    <div class="split rw">
+    <div class="split">
       <div>
         <h2 data-a>Angka yang sudah dikirim tidak berubah diam-diam.</h2>
         <ul class="pts">
-          <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Dikunci setelah kontrol.</b> Saldo bank, neraca seimbang, semua mutasi terklasifikasi; selisih dijelaskan, tidak ditutup diam-diam.</div></li>
+          <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Dikunci setelah semua kontrol beres.</b> Yang gagal diperbaiki, yang janggal dijelaskan; selisih tidak ditutup diam-diam.</div></li>
           <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Setelah dikunci, bulan itu tetap.</b> Impor dan jurnal ke bulan itu ditolak.</div></li>
           <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Membuka kembali tercatat.</b> Hanya admin, dengan alasan yang disimpan.</div></li>
         </ul>
@@ -528,7 +499,7 @@
           </div>
           <div class="log">
             <span class="lbl">Riwayat</span>
-            <div class="row log-grid"><span class="muted">4 Sep 16.05</span><span>Agustus dikunci · semua kontrol lolos atau dijelaskan</span></div>
+            <div class="row log-grid"><span class="muted">4 Sep 16.05</span><span>Agustus dikunci · semua kontrol beres, tiga pemeriksaan akhir dicentang</span></div>
             <div class="row log-grid"><span class="muted">14 Jul 10.12</span><span>Juni dikunci lagi</span></div>
             <div class="row log-grid"><span class="muted">13 Jul 09.40</span><span>Juni dibuka kembali oleh Admin · alasan: “Faktur pemasok Juni baru diterima.”</span></div>
           </div>
@@ -538,17 +509,18 @@
   </div>
 </section>
 
-<!-- 13 · Data dan AI -->
+<!-- 12 · Data dan AI -->
 <section class="slide" aria-label="Data dan AI" data-note="Data demo sintetis">
   <div class="s-body">
-    <div class="split">
+    <div class="split lw">
       <div>
-        <h2 data-a>Apa yang dikirim ke AI, dan siapa yang bisa membuka pembukuan Anda.</h2>
+        <h2 data-a>Siapa yang bisa membuka pembukuan Anda, dan apa yang dikirim ke AI.</h2>
         <ul class="pts">
           <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Hanya orang yang diundang.</b> Peran Admin atau Akuntan; akses dicabut seketika.</div></li>
           <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>AI dipakai seperlunya.</b> Batas per impor dan per bulan. Tanpa kunci AI, Buku tetap berjalan dengan aturan dan memori.</div></li>
-          <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Pembaca scan nonaktif secara bawaan.</b> Kata sandi PDF hanya membuka file, tidak disimpan.</div></li>
+          <li data-a><i><svg viewBox="0 0 16 16"><use href="#i-check"/></svg></i><div><b>Baca scan dengan AI nonaktif secara bawaan.</b> Kata sandi PDF hanya membuka file, tidak disimpan.</div></li>
         </ul>
+        <p class="note" data-a>Basis data dan server aplikasi di region Singapura</p>
       </div>
       <div class="viz">
         <svg class="art" viewBox="0 0 640 470" role="img" aria-label="Dari empat baris rekening koran, hanya satu yang belum dikenali yang dikirim ke penyedia AI, berupa nama penerima, 80 karakter keterangan, serta nama dan jenis usaha; jawabannya masuk review">
@@ -557,10 +529,10 @@
 <g class="pop" style="--d:1"><rect x="30" y="148" width="310" height="60" rx="12" fill="#fff" stroke="none" stroke-width="1.4"/><text x="48" y="174" style="font-size:12px;font-weight:600;letter-spacing:.02em">BYR LISTRIK PLN</text><text x="48" y="193" style="font-size:11.5px;fill:#5f5b58">Aturan · tidak dikirim</text></g>
 <g class="pop" style="--d:2"><rect x="30" y="222" width="310" height="60" rx="12" fill="#fff" stroke="none" stroke-width="1.4"/><text x="48" y="248" style="font-size:12px;font-weight:600;letter-spacing:.02em">TRSF CR PT TOKO MAKMUR JAYA</text><text x="48" y="267" style="font-size:11.5px;fill:#5f5b58">Memori · tidak dikirim</text></g>
 <g class="pop" style="--d:3"><rect x="30" y="296" width="310" height="60" rx="12" fill="#e6ecfd" stroke="#2152e8" stroke-width="1.4"/><text x="48" y="322" style="font-size:12px;font-weight:600;letter-spacing:.02em">TRSF DB PT MESIN PAKAN OTOMATIS</text><text x="48" y="341" style="font-size:11.5px;fill:#1638a8">Belum dikenali · dikirim ke AI</text></g>
-<text x="32" y="400" class="t-s">Saldo, nomor rekening, dan baris lain</text><text x="32" y="418" class="t-s">tetap di Buku.</text>
+<text x="32" y="400" class="t-s">Nominal, saldo, dan baris yang sudah</text><text x="32" y="418" class="t-s">dikenali tetap di Buku.</text>
 <path class="lb" d="M340 326C380 326 384 210 430 210"/><path class="lb" d="M422 203l9 7-9 7"/>
 <circle class="packet" r="4.5" fill="#2152e8"><animateMotion dur="2.2s" repeatCount="indefinite" path="M340 326C380 326 384 210 430 210"/></circle>
-<g class="pop" style="--d:6"><rect x="430" y="110" width="200" height="214" rx="16" class="p"/><text x="450" y="142" style="font-size:13px;font-weight:620">Penyedia AI</text><text x="450" y="160" class="t-s">pihak ketiga, kunci dari Admin</text><path class="hair" d="M450 176h160"/><text x="450" y="198" class="t-s">Penerima</text><text x="450" y="216" style="font-size:11.5px;font-weight:600;letter-spacing:.02em">MESIN PAKAN OTOMATIS</text><text x="450" y="242" class="t-s">Keterangan</text><text x="450" y="260" style="font-size:12px;font-weight:600">80 karakter pertama</text><text x="450" y="286" class="t-s">Klien</text><text x="450" y="304" style="font-size:12px;font-weight:600">nama dan jenis usaha</text></g>
+<g class="pop" style="--d:6"><rect x="430" y="110" width="200" height="214" rx="16" class="p"/><text x="450" y="142" style="font-size:13px;font-weight:620">Penyedia AI</text><text x="450" y="160" class="t-s">pihak ketiga, kunci dari Admin</text><path class="hair" d="M450 176h160"/><text x="450" y="196" class="t-s">Penerima</text><text x="450" y="212" style="font-size:11px;font-weight:600;letter-spacing:.02em">PT MESIN PAKAN OTOMATIS</text><text x="450" y="234" class="t-s">Keterangan dan arah</text><text x="450" y="250" style="font-size:11.5px;font-weight:600">80 karakter, keluar</text><text x="450" y="272" class="t-s">Klien</text><text x="450" y="288" style="font-size:11.5px;font-weight:600">nama, jenis usaha, daftar akun</text></g>
 <path class="l" d="M530 324V380C530 400 520 410 500 410H368"/><path class="l" d="M376 403l-9 7 9 7"/>
 <g class="pop" style="--d:8"><rect x="430" y="362" width="200" height="34" rx="17" fill="#fbefd0"/><text x="530" y="383.5" text-anchor="middle" style="font-size:11.5px;font-weight:650;fill:#7a4a00">usulan akun, masuk review</text></g>
 </svg>
@@ -569,7 +541,7 @@
   </div>
 </section>
 
-<!-- 14 · Cocok -->
+<!-- 13 · Cocok -->
 <section class="slide" aria-label="Cocok atau belum" data-note="Per Oktober 2026">
   <div class="s-body">
     <div class="head">
@@ -582,30 +554,31 @@
           <li><b>Pembukuan berangkat dari rekening koran</b><span>Bank yang dikenali, atau file dengan kolom tanggal, keterangan, debet/kredit, saldo.</span></li>
           <li><b>Ada akuntan yang meninjau dan menutup bulan</b><span>Di tim Anda sendiri, atau di kantor akuntan Anda.</span></li>
           <li><b>PT dan pemilik, atau beberapa entitas, harus dipisahkan</b><span>Termasuk entitas dengan mata uang lain.</span></li>
-          <li><b>Bank, pajak, atau auditor meminta laporan yang bisa ditelusuri</b><span>Paket kredit bank, kertas kerja pajak, laporan SAK dengan CALK.</span></li>
+          <li><b>Bank, pajak, atau auditor meminta laporan yang bisa ditelusuri</b><span>Paket kredit bank, kertas kerja pajak, laporan SAK dengan catatannya (CALK).</span></li>
         </ul>
       </div>
       <div class="c" data-a>
         <div class="c-h"><span class="st mut">Belum cocok bila Anda butuh</span></div>
         <ul class="no">
-          <li><b>Kasir, stok harian, atau marketplace</b><span>Pakai alat itu; hasilnya masuk lewat rekening koran.</span></li>
+          <li><b>Kasir, stok harian, atau marketplace</b><span>Tetap pakai aplikasi Anda; hasilnya masuk lewat rekening koran.</span></li>
           <li><b>Menerbitkan faktur atau menjalankan penggajian</b><span>Buku mencocokkan faktur dan PPh 21 dengan buku; tidak membuatnya.</span></li>
           <li><b>Umpan bank langsung setiap hari</b><span>Yang masuk adalah rekening koran yang diunggah.</span></li>
-          <li><b>Penyampaian SPT atau akses khusus pemilik</b><span>Buku menyiapkan kertas kerja; peran hanya Admin dan Akuntan.</span></li>
+          <li><b>Penyampaian SPT</b><span>Buku menyiapkan kertas kerja untuk Coretax; Buku bukan PJAP.</span></li>
+          <li><b>Akses khusus pemilik</b><span>Peran hanya Admin dan Akuntan; pemilik menerima laporan.</span></li>
         </ul>
       </div>
     </div>
   </div>
 </section>
 
-<!-- 15 · Mulai -->
+<!-- 14 · Mulai -->
 <section class="slide dark" aria-label="Cara memulai" data-note="right-jet.com">
   <div class="s-body">
     <div class="split">
       <div>
-        <h2 data-a>Uji dengan satu bulan pembukuan Anda sendiri.</h2>
-        <p class="lead" data-a>Bandingkan dengan cara Anda sekarang: angkanya, waktunya, dan pertanyaan pemilik yang sebelumnya tidak bisa dijawab.</p>
-        <div class="cta" data-a><a class="btn" href="https://right-jet.com" target="_blank" rel="noopener noreferrer">Minta undangan di right-jet.com</a></div>
+        <h2 data-a>Coba satu bulan bersama akuntan Anda.</h2>
+        <p class="lead" data-a>Pakai pembukuan Anda sendiri, lalu bandingkan dengan cara sekarang: angkanya, waktunya, dan pertanyaan pemilik yang sebelumnya tidak bisa dijawab.</p>
+        <div class="cta" data-a><a class="btn" href="https://right-jet.com" target="_blank" rel="noopener noreferrer">Hubungi kami di right-jet.com</a></div>
       </div>
       <div class="viz end">
         <div class="c prep" data-a>
@@ -613,7 +586,7 @@
           <ol>
             <li><span class="dotn">1</span><div><b>Rekening koran satu bulan</b><small>Dan daftar rekening bank setiap entitas, termasuk rekening pemilik bila dipakai untuk usaha.</small></div></li>
             <li><span class="dotn">2</span><div><b>Saldo awal</b><small>Dari neraca terakhir Anda; saldo bank terisi dari rekening koran.</small></div></li>
-            <li><span class="dotn">3</span><div><b>Akuntan Anda</b><small>Dialah yang meninjau usulan dan menutup bulan.</small></div></li>
+            <li><span class="dotn">3</span><div><b>Akuntan Anda</b><small>Tim keuangan Anda atau kantor akuntan Anda: yang meninjau usulan dan menutup bulan.</small></div></li>
           </ol>
         </div>
         <p class="note" data-a>Buku mencatat sendiri waktunya: file pertama masuk, bulan dikunci, laporan diunduh</p>
