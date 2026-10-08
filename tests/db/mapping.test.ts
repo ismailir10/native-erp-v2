@@ -99,6 +99,8 @@ describe("deterministic mapping", () => {
     expect(expense("64052", "DOKU Admin Expense")).toBe("7100");
     expect(expense("60001", "Platform Fee - Gofood")).not.toBe("7100"); // a marketplace commission is not a payment fee
     expect(expense("63008", "Low Value Asset")).toBe("6160");
+    expect(deterministicSuggestion({ code: "CSP-DTP-01", name: "Penghasilan Pajak Tangguhan (laba rugi)", typeHint: null }, { accounts: chart, priorByName: new Map() })?.accountCode).toBe("8110");
+    expect(deterministicSuggestion({ code: "X", name: "Deferred Tax Benefit", typeHint: "PENDAPATAN" }, { accounts: chart, priorByName: new Map() })?.accountCode).toBe("8110");
     // A chart made before the template account existed: suggested anyway, created on accept (as 1135).
     const old = chart.filter((a) => a.code !== "1270");
     expect(deterministicSuggestion({ code: "X", name: "Deferred Tax Asset", typeHint: "ASET" }, { accounts: old, priorByName: new Map() })?.accountCode).toBe("1270");

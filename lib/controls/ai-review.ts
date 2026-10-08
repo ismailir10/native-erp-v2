@@ -8,7 +8,7 @@ import { formatMonthShort, formatPeriod, periodBounds } from "@/lib/format";
 import { financialYear } from "@/lib/fiscal";
 import { formatMoney } from "@/lib/money";
 import { runBudgetedAi } from "@/lib/ai/budget";
-import { AiAnswerError, CLOSE_REVIEW_MAX_ROWS, CLOSE_REVIEW_MAX_TOKENS, CLOSE_REVIEW_PROMPT_VERSION, buildCloseReviewPrompt, parseCloseReview, type AiProvider, type CloseReviewControl, type CloseReviewInput, type CloseReviewItem, type CloseReviewRow } from "@/lib/ai/provider";
+import { AiAnswerError, CLOSE_REVIEW_MAX_ROWS, CLOSE_REVIEW_MAX_TOKENS, CLOSE_REVIEW_PROMPT_VERSION, buildCloseReviewPrompt, parseCloseReview, type AiProvider, type CloseReviewControl, type CloseReviewEntity, type CloseReviewInput, type CloseReviewItem, type CloseReviewRow } from "@/lib/ai/provider";
 import { sourceAccountLabel } from "@/lib/ledger-import/code";
 
 /**
@@ -17,7 +17,8 @@ import { sourceAccountLabel } from "@/lib/ledger-import/code";
  */
 
 /** Per client-month: room for a few reviews as the accountant fixes things (reservations are conservative). */
-export const CLOSE_REVIEW_TOKEN_LIMIT = 40_000;
+/** Per client-month, review and explanations together; reasoning models need room (each call reserves its output cap). */
+export const CLOSE_REVIEW_TOKEN_LIMIT = 100_000;
 const ROWS_PER_CONTROL = 10;
 const DESCRIPTION = 80;
 
@@ -194,7 +195,13 @@ export async function gather(db: Db, clientId: string, year: number, month: numb
     reviewed.push({ key: c.key, title: c.title, scope: c.scope, status: c.status as "REVIEW" | "FAIL", detail: c.detail, rows });
   }
   const accounts = aiAccounts(await db.account.findMany({ where: { clientId }, select: { code: true, name: true }, orderBy: { code: "asc" } }));
-  return { input: { client: client.name, period: formatPeriod(year, month), accounts, controls: reviewed }, links, flagged };
+  return { input: { client: client.name, period: formatPeriod(year, month), accounts, controls: reviewed, entities: await reviewEntities(db, clientId) }, links, flagged };
+}
+
+/** Each entity as the controls name it (scope = short name), its kind and currency, and the GL codes of its own bank accounts. */
+export async function reviewEntities(db: Db, clientId: string): Promise<CloseReviewEntity[]> {
+  const entities = await db.entity.findMany({ where: { clientId }, include: { bankAccounts: { include: { account: { select: { code: true } } } } }, orderBy: { name: "asc" } });
+  return entities.map((e) => ({ scope: e.shortName, name: e.name, kind: e.kind, currency: e.functionalCurrency, banks: e.bankAccounts.map((b) => b.account.code) }));
 }
 
 /** What a reviewer can change on a bank line a draft moves (account, tax tag), or null for a draft that moves none. */

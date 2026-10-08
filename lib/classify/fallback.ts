@@ -7,8 +7,10 @@ import { financingSuggestion, taxPaymentSuggestion } from "@/lib/classify/financ
  * A company's money in is most often a sale and money out an expense. A person's own books aren't a business: money in is
  * other income until its source is known (from the PT, a loan, a salary), money out is the owner's own use (Prive).
  */
-export function simpleGuess(direction: Direction, kind: EntityKind): Classification {
-  const guess = (accountCode: string, reason: string): Classification => ({ method: "HEURISTIC", accountCode, taxTag: null, confidence: 0.3, reason });
+export function simpleGuess(direction: Direction, kind: EntityKind, nameless = false): Classification {
+  // A line that names no counterparty ("BI Fast Incoming") is a question for the client, not for a model.
+  const ask = nameless ? "Keterangan bank tidak menyebut pihak lawan, tanyakan ke klien. " : "";
+  const guess = (accountCode: string, reason: string): Classification => ({ method: "HEURISTIC", accountCode, taxTag: null, confidence: 0.3, reason: `${ask}${reason}` });
   if (kind === "PERORANGAN") {
     return direction === "IN"
       ? guess("4910", "Tebakan sederhana: uang masuk pribadi — pastikan sumbernya (dari PT, pinjaman, atau penghasilan)")

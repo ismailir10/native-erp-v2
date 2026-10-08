@@ -215,7 +215,8 @@ export async function importStatement(
       // Loans, capital, own-money moves and tax payments: a balance-sheet suggestion for review, no AI call (rules 13–14).
       (financing && codes.has(financing.accountCode) ? financing : null);
     if (c) result.set(it.id, c);
-    else pendingAi.push({ key: it.merchantKey, direction: it.direction, sample: it.description });
+    // A description that names no one (only channel words) tells a model nothing: it would only guess (rule 17, credit).
+    else if (!isGenericKey(it.merchantKey)) pendingAi.push({ key: it.merchantKey, direction: it.direction, sample: it.description });
   }
 
   const scope = aiScope(client, entity.kind, accounts.filter(isClassifiable));
@@ -230,7 +231,7 @@ export async function importStatement(
   });
   for (const it of items) {
     if (result.has(it.id)) continue;
-    result.set(it.id, ai.suggestions.get(`${it.merchantKey}|${it.direction}`) ?? simpleGuess(it.direction, entity.kind));
+    result.set(it.id, ai.suggestions.get(`${it.merchantKey}|${it.direction}`) ?? simpleGuess(it.direction, entity.kind, isGenericKey(it.merchantKey)));
   }
 
   // ---- write: import + transactions + journals, all-or-nothing ----
