@@ -40,3 +40,28 @@ describe("AI never proposes a transfer account", () => {
     expect(cached.suggestions.size).toBe(0);
   });
 });
+
+describe("AI never guesses a line that names no one", () => {
+  beforeEach(resetDb);
+
+  it("keeps a counterparty-less line on the simple guess with the client question, and asks only about named lines", async () => {
+    const { importStatement } = await import("@/lib/import/pipeline");
+    const { toBriCsv } = await import("@/lib/demo/writers");
+    const g = await makeGroup();
+    const bank = g.owner.banks[0];
+    const d = (day: number) => new Date(Date.UTC(2026, 4, day));
+    const csv = toBriCsv({ bank: "BRI", accountNumber: "3333333333", holder: "Andi Wijaya", year: 2026, month: 5, opening: 10_000_000n, rows: [
+      { date: d(18), description: "Cr BI fast Incoming - BI Fast Incoming", amount: 2_500_000n },
+      { date: d(19), description: "DEBIT TOKO EMAS ANTAM", amount: -1_300_000n },
+    ] });
+    const asked: string[] = [];
+    const provider = new MockProvider({ "DEBIT TOKO EMAS ANTAM": { accountCode: "3300", confidence: 0.6, taxTag: null, reason: "pemakaian pribadi" } });
+    const classify = provider.classify.bind(provider);
+    provider.classify = async (items: AiItem[]) => { asked.push(...items.map((i) => i.key)); return classify(items); };
+    await importStatement(db, { bankAccountId: bank.id, fileName: "bri.csv", data: Buffer.from(csv), provider });
+    expect(asked).toEqual(["DEBIT TOKO EMAS ANTAM"]); // the nameless line is never sent
+    const nameless = await db.bankTransaction.findFirstOrThrow({ where: { bankAccountId: bank.id, description: { contains: "Incoming" } } });
+    expect(nameless).toMatchObject({ method: "HEURISTIC", status: "NEEDS_REVIEW" });
+    expect(nameless.reason).toMatch(/^Keterangan bank tidak menyebut pihak lawan, tanyakan ke klien\./);
+  });
+});

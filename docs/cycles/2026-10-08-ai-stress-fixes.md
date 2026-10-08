@@ -47,6 +47,11 @@ Controls and mapping
 - [ ] "PPh badan belum dijurnal" detail shows Buku's proposal lines (e.g. "D 8100 …; K 1180 …; K 2146 …").
 - [ ] Deferred tax named with laba rugi / penghasilan / manfaat / benefit / income / expense / beban → 8110, whatever the type.
 
+Classification (found verifying #114 on production)
+- [ ] A bank line whose description names no counterparty (generic key: only channel words, e.g. SMBC "Cr BI fast Incoming - BI Fast
+  Incoming") is never sent to AI, at import or by *Minta saran AI*; it keeps the simple guess with the reason "keterangan bank tidak menyebut
+  pihak lawan — tanyakan ke klien". (The owner's such lines had gone 5100 → 1140 "piutang pelanggan" / 2120 "utang usaha": guesses.)
+
 **Non-goals:** a free-form LLM Tanya Buku; cross-period comparisons; English replies; historical bulk close.
 
 **Gate-reopeners:** none of migration or dependency. AI: larger output caps raise the worst-case tokens per Jelaskan/review call (the
@@ -62,16 +67,20 @@ SAK EP / PSAK and Indonesian tax practice for this firm's clients. 3. Approved u
 - [x] T3 AI explain/review: budget, sentence-end, no lettered types, script cleanup, entity context + house rules, entry guard — accept: unit tests on prompt building, `parseControlExplain`/`parseCloseReview` cleanup and the entry guard; `tests/db/close-explain.test.ts` green.
 - [x] T4 PPh badan control shows the proposal; deferred-tax P&L mapping — accept: DB test on the control detail; mapping test.
 
+- [x] T5 No AI for lines that name no counterparty (`lib/import/pipeline.ts`, `lib/ai/retry.ts`, `lib/classify/fallback.ts`) — accept: DB test (import with a generic line: no AI call, simple guess with the ask-the-client reason); `tests/db/ai-retry.test.ts`.
+
 ## Implementation
 - Plan: T1–T4 sequential, inline. T1 and T2 share `askWorkspace` and land as one commit.
 - T1+T2: `lib/workspace/index.ts` — `periodIn` (month/year named → the period answered; a month without journals says so), `entitiesNamed` (short/full/bare name, longest span wins: "Chickin" inside "Chickin Ayam Hidup" is CAH), entity narrowing (first named is the subject of a related-party question), `akun <code>` over client codes too, one distinctive non-generic word (≤ 3 accounts) is enough, entity names never count as account words, `RELATED` questions take accounts naming another group entity (subject's own name words excluded) + 1190 + related-party names on the asked side, balances listed before zero accounts; readiness lists the open findings (failed first, 10); transactions totals per account; piutang karyawan ↔ advance / uang muka. Tests: `tests/unit/workspace.test.ts`, `tests/db/workspace.test.ts` (Chickin-shaped related party, client code, distinctive word, named month).- T3: `lib/ai/provider.ts` — `HOUSE_RULES` (entity's own banks, no Prive for PT/CV/foreign — owner money on 1190, FX on own transactions 7200 not 3900, overpaid PPh 21/23/4(2) to 2140/2141/2145 or 1180 not 1181, directors' loans as related-party receivables, PPh badan journal per Buku's proposal, wrong-currency suspicion before equity, Latin-script whole sentences) in both prompts; prompts get `entities` (scope, name, kind, currency, own bank GL codes; no amounts); explanation lettered types removed; `tidyAiText` strips other scripts and ends on a sentence within the cap; output caps 12 000 (review and Jelaskan), prompt versions bumped; `lib/controls/ai-review.ts` `reviewEntities`, scope limit 100 000 tokens per client-month; `lib/controls/explain.ts` passes the entities. Drafted entries already exclude bank accounts (isBank) and Prive for PT/foreign companies (existing guard), so no new entry guard was needed. Tests: `tests/unit/ai-text.test.ts`; existing close-explain/close-review tests green.
 - T4: `lib/controls/index.ts` — the PPh badan control's detail ends with "Usulan Buku: D 8100 …; K 1180 …; K 2146 …" from `pack.proposals.CURRENT`; `lib/ledger-import/mapping.ts` — deferred tax named with laba rugi / penghasilan / manfaat / benefit / income / expense / beban → 8110 (template) before the asset rule. Tests: `tests/db/tax-post.test.ts`, `tests/db/mapping.test.ts`.
+- T5: `lib/import/pipeline.ts` — a generic merchant key (`isGenericKey`, channel words only) is not queued for AI; `lib/classify/fallback.ts` — `simpleGuess(…, nameless)` prefixes "Keterangan bank tidak menyebut pihak lawan, tanyakan ke klien."; `lib/ai/retry.ts` — *Minta saran AI* skips them too. Found after #114 deployed: the owner's SMBC lines went 5100 → 1140 "piutang pelanggan" / 2120 "utang usaha". Tests: `tests/db/ai-no-transfer.test.ts` (import: only the named line is asked), `tests/db/ai-retry.test.ts`.
 
 ## Verification
 - T1+T2: lint + typecheck clean; `npm test` → Test Files 184 passed (184), Tests 1213 passed (1213).- T3: lint + typecheck clean; `npm test` → Test Files 185 passed (185), Tests 1216 passed (1216).
 - T4: lint + typecheck clean; `npm test` → Test Files 185 passed (185), Tests 1216 passed (1216).
 - End of cycle (local): `npm run build` ✓; `npm run verify:books` → ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth; e2e → CI.
 - Production after deploy: Tanya Buku on the Chickin retest ("utang SKP ke pihak berelasi", "saldo akun 10005 PT SKP" at group scope, "laba SKP Maret 2027", "apa yang menghambat tutup buku"); one Jelaskan on Belifi.
+- T5: lint + typecheck clean; `npm test` → Test Files 185 passed (185), Tests 1217 passed (1217); `npm run verify:books` → ALL PASS.
 
 ## Ship Notes
 - No migration, env var or dependency.

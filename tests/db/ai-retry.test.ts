@@ -48,8 +48,10 @@ describe("Minta saran AI on Review", () => {
     const imp = await db.statementImport.create({ data: { firmId: g.firm.id, bankAccountId: bank.id, fileName: "smbc.pdf", format: "SMBC", periodStart: date, periodEnd: date, openingBalance: 0n, closingBalance: 0n, rowCount: 2, continuityOk: true } });
     const tx = (hash: string, description: string, merchantKey: string, direction: "IN" | "OUT", amount: bigint) =>
       db.bankTransaction.create({ data: { firmId: g.firm.id, entityId: g.owner.entity.id, bankAccountId: bank.id, importId: imp.id, date, description, merchantKey, direction, amount, rowNumber: 1, rawRow: "synthetic", hash, status: "NEEDS_REVIEW", method: "HEURISTIC", confidence: 0.3, reason: "Tebakan sederhana", suggestedCode: direction === "IN" ? "4910" : "3300", accountCode: "1999" } });
-    const incoming = await tx("i", "Cr BI fast Incoming - BI Fast Incoming", "BI FAST INCOMING", "IN", 250_000_000n);
-    const outgoing = await tx("o", "Db BI Fast Outgoing - BI Fast Outgoing", "BI FAST OUTGOING", "OUT", -13_000_000n);
+    const incoming = await tx("i", "TRANSFER DARI RINA KUSUMA", "RINA KUSUMA", "IN", 250_000_000n);
+    const outgoing = await tx("o", "DEBIT TOKO EMAS ANTAM", "TOKO EMAS ANTAM", "OUT", -13_000_000n);
+    // Names no one: stays with the client question, never sent.
+    const nameless = await tx("n", "Cr BI fast Incoming - BI Fast Incoming", "INCOMING INCOMING", "IN", 135_000_000n);
 
     const seen: { accounts: string[]; context: string }[] = [];
     class Recording extends MockProvider {
@@ -59,8 +61,9 @@ describe("Minta saran AI on Review", () => {
       }
     }
     const provider = new Recording({
-      "BI FAST INCOMING": { accountCode: "1130", confidence: 0.55, taxTag: null, reason: "pelunasan piutang" },
-      "BI FAST OUTGOING": { accountCode: "3300", confidence: 0.6, taxTag: null, reason: "pemakaian pribadi" },
+      "RINA KUSUMA": { accountCode: "1130", confidence: 0.55, taxTag: null, reason: "pelunasan piutang" },
+      "TOKO EMAS ANTAM": { accountCode: "3300", confidence: 0.6, taxTag: null, reason: "pemakaian pribadi" },
+      "INCOMING INCOMING": { accountCode: "4100", confidence: 0.6, taxTag: null, reason: "penjualan" },
     });
     await suggestAgainWithAi(db, { clientId: g.client.id, entityIds: [g.owner.entity.id], through: dateOnly(2026, 5, 31), provider });
     expect(seen).toHaveLength(1);
@@ -70,6 +73,8 @@ describe("Minta saran AI on Review", () => {
     // An answer outside the list is dropped (rule 19): the line keeps its simple guess.
     expect((await db.bankTransaction.findUniqueOrThrow({ where: { id: incoming.id } })).suggestedCode).toBe("4910");
     expect((await db.bankTransaction.findUniqueOrThrow({ where: { id: outgoing.id } })).suggestedCode).toBe("3300");
+    expect(provider.calls).toBe(1);
+    expect((await db.bankTransaction.findUniqueOrThrow({ where: { id: nameless.id } })).method).toBe("HEURISTIC");
 
     // A company's scope is unchanged (cached answers stay valid).
     const accounts = await db.account.findMany({ where: { clientId: g.client.id } });

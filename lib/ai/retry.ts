@@ -3,6 +3,7 @@ import type { Db } from "@/lib/db";
 import type { AiProvider } from "@/lib/ai/provider";
 import { aiScope, suggestWithAi } from "@/lib/ai/classify";
 import { isSimpleGuess } from "@/lib/classify/fallback";
+import { isGenericKey } from "@/lib/import/normalize";
 
 /**
  * Lines still in review that only got the simple guess (the AI call failed, was capped or off at import). Financing text and tax payments are
@@ -13,7 +14,8 @@ export async function simpleGuessRows(db: Db, args: { clientId: string; entityId
     where: { entityId: { in: args.entityIds }, bankAccount: { entity: { clientId: args.clientId } }, status: "NEEDS_REVIEW", method: "HEURISTIC", date: { lte: args.through } },
     orderBy: [{ date: "asc" }, { rowNumber: "asc" }],
   });
-  return rows.filter(isSimpleGuess);
+  // Lines that name no counterparty stay with the client question; a model can only guess them.
+  return rows.filter((r) => isSimpleGuess(r) && !isGenericKey(r.merchantKey));
 }
 
 /**
