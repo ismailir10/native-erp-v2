@@ -75,12 +75,12 @@ the login/auth card layout (already minimal); redoing charts beyond colour.
 ## Tasks
 - [x] T1 Tokens: warm paper palette, ink blue, 2px radius, contrast table in the cycle doc — accept: `npm run lint && typecheck && test`; contrast ≥ 4.5:1 text / 3:1 UI computed in the doc; chart palette passes the validator.
 - [x] T2 Quiet status + ink drill-down links (`StatusPill`, `MethodBadge`, `Money` links, `FsTable` account links) — accept: no tinted fill except FAIL; link affordance still visible without hover; unit/e2e green.
-- [ ] T3 Display serif for `PageHeader` title and `Stat` value (depends on gate approval) — accept: lighthouse-free check: font self-hosted, no layout shift at 390 px.
+- [ ] T3 (HELD: needs the font dependency approved) Display serif for `PageHeader` title and `Stat` value (depends on gate approval) — accept: lighthouse-free check: font self-hosted, no layout shift at 390 px.
 - [x] T4 Sections by rule: `Card` default + the "boxes in boxes" places (Beranda finance, Ringkasan) — accept: screenshots; no nested bordered boxes.
 - [x] T5 Beranda: reorder *Tanya Buku*, de-duplicate NextStep vs list, finance table — accept: sweep shows 1 NextStep, no duplicate sentence; e2e investor walk green.
 - [x] T6 Ringkasan + Laporan: full control text, drop duplicate chart table, Draf banner as counted links — accept: no "…" in control sentences at 1440/390.
 - [x] T7 Review + Tutup Buku: one-sentence NextStep, note only when it adds something, collapse passed controls, hide unconfigured AI card — accept: `e2e/review-safety`, `e2e/investor-demo` green.
-- [ ] T8 `ui-rules` skill + `ux:sweep` re-run + before/after screenshots — accept: sweep 0 new findings; Verification filled.
+- [x] T8 `ui-rules` skill + `ux:sweep` re-run + before/after screenshots — accept: sweep 0 new findings; Verification filled.
 
 ## Implementation
 - Plan: T1–T2, T4–T8 sequential, inline (shared tokens and components, nothing independent enough to delegate). T3 held until the font dependency is approved.
@@ -92,6 +92,7 @@ Contrast (WCAG, computed): ink on paper 16.0 · ink on white 17.7 · muted on pa
 - T5: `app/(app)/page.tsx`, `components/app/workspace-overview.tsx`, `components/app/workspace-ask.tsx` — the NextStep is the first job in one sentence ("Lengkapi 1 rekening koran. 5 pekerjaan lain menunggu."); the list below is "Setelah itu" and starts at the second job (the expanded `?tugas=semua` view still lists all, first included); *Tanya Buku* sits after the jobs, one-row input, no tinted border; Kemajuan and Keuangan follow. Page height 1940 → 1586 px at 1440 px, 2928 → 2625 px at 390 px.
 - T6: `app/(app)/clients/[id]/page.tsx` (control sentences wrap in full; the revenue/expense table is `sr-only`: screen readers keep the numbers, sighted users see the chart once), `components/app/report-status.tsx` (Draf banner = one heading line + one linked blocker per line on a white card with an amber left rule, instead of a yellow slab with six run-on links).
 - T7: `components/app/close-panel.tsx` (open controls first; passed controls fold into a "N kontrol lolos" disclosure per entity, still in the DOM), `app/(app)/clients/[id]/close/page.tsx` (the AI-review card renders only when AI is configured), `app/(app)/clients/[id]/review/page.tsx` + `components/app/review-queue.tsx` (NextStep = "Periksa 4 usulan akun di bawah: terima yang benar, ganti yang salah."; the Tebakan/Enter rule moves to the hint row and shows only when a guess exists), `e2e/investor-demo.spec.ts` (first-visible "Lolos" → "N kontrol lolos"). *Deviation from the Spec:* the per-card accountant hints (capex, down payment, withholding) are real rule-based checks, so they stay; they changed from a yellow filled block to a quiet amber left-rule note with the same text and one-click action, rather than appearing "only when different".
+- T8: `.agents/skills/ui-rules/SKILL.md` — ledger-paper tokens, `.drill`, status without fills, no boxes in boxes, one-sentence NextStep, passed items fold, no `line-clamp` on explanatory text, no card that only says "not set up".
 
 ## Verification
 - Environment: `xlsx` is a stub here (cdn.sheetjs.com blocked), so 7 spreadsheet-reading test files fail locally; they fail identically on untouched `main` (27 failed | 48 passed in those 7 files, both runs). CI has the real package.
@@ -99,5 +100,13 @@ Contrast (WCAG, computed): ink on paper 16.0 · ink on white 17.7 · muted on pa
 - T2: lint + typecheck clean. No unit/e2e file references the changed classes or imports the touched components, so no test is affected; visual check follows in T8.
 - T4/T5: lint + typecheck clean; `npm run build` ✓; `e2e/workspace.spec.ts` + `e2e/early-input.spec.ts` → 4 passed (the first run caught a duplicated hidden DOM copy of the finance rows at 390 px; fixed by rendering them once). Screenshots at 1440 and 390 read: no duplicate sentence, no nested boxes, no horizontal scroll.
 - T6/T7: lint + typecheck clean; `npm run build` ✓; screenshots read at 1440 px (Ringkasan, Review, Tutup Buku, Laporan). Tutup Buku 2000 → 1530 px tall; Laporan banner capitalised after the first look. Full e2e runs once at the end of the cycle.
+- **End of cycle (local):** `npm run build` ✓ (exit 0); `npm run verify:books` → ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth; e2e: 28 of the 37 specs → 39 passed (3.2 m), exit 0. The other 9 specs (`evidence-workspace`, `import-xls`, `ledger-import`, `management-note`, `qa-import-edge-cases`, `qa-tax-split`, `qa-urls-and-layout`, `statements`, `tax-pack`) build real spreadsheets and cannot load with the sandbox's `xlsx` stub: **CI is the check for those** (and for the 27 spreadsheet unit tests).
+- **`ux:sweep` re-run:** 222 inner-scroll leads vs 220 before; still 0 HTTP errors, 0 console errors, 0 `undefined`/`NaN`, 0 broken links, 0 page-level horizontal scroll. The 2 new leads are the visually hidden (`sr-only`) question label on Beranda, clipped by design.
+- **Before → after page height (full-page screenshot, px):** Beranda 1942 → 1586 (1440) and 2928 → 2625 (390); Tutup Buku 2414 → 1532 (1440) and 3943 → 2849 (390); Review 1390 → 1346; Ringkasan 1313 → 1339 and Laporan 1422 → 1524: these two grew on purpose (control sentences no longer cut with "…"; each Draf blocker on its own line).
+- Not done here: T3 (display serif). Dark mode, new pages and accounting copy untouched, as specced.
 
 ## Ship Notes
+- No migration, env var or dependency. Presentation only: no number, control or accounting copy changed (`verify:books` ALL PASS).
+- Rollback: revert the merge.
+- Follow-up waiting on a decision: T3, one self-hosted variable serif (`@fontsource-variable/…`) for page titles and stat values.
+
