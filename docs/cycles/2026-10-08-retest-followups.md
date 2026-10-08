@@ -29,9 +29,12 @@ Left for an accountant:
 **Assumptions:** 1. No personal books carry cost of sales or selling expenses. 2. Payment fees belong with bank charges (7100) in this chart.
 
 ## Tasks
-- [ ] T1 Person scope without HPP / selling expenses (`lib/ai/classify.ts`) — accept: `tests/db/ai-retry.test.ts` asserts 5100 / 6150 absent for a person, present for a PT.
+- [x] T1 Person scope without HPP / selling expenses (`lib/ai/classify.ts`) — accept: `tests/db/ai-retry.test.ts` asserts 5100 / 6150 absent for a person, present for a PT.
 - [ ] T2 Payment-fee and low-value-asset rules (`lib/ledger-import/mapping.ts`) — accept: `tests/db/mapping.test.ts` cases; prior expectations kept.
 
 ## Implementation
+- Plan: T1, T2 sequential, inline (two small edits in different files).
+- T1: `lib/ai/classify.ts` — `NOT_FOR_PERSON` adds HPP and BEBAN_PENJUALAN. Test: `tests/db/ai-retry.test.ts` (5100 / 5110 / 6150 absent for a person, present for a PT).
 ## Verification
+- T1: lint + typecheck clean; `npm test` → Test Files 184 passed (184), Tests 1210 passed (1210).
 ## Ship Notes

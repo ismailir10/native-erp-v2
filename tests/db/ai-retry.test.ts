@@ -65,7 +65,7 @@ describe("Minta saran AI on Review", () => {
     await suggestAgainWithAi(db, { clientId: g.client.id, entityIds: [g.owner.entity.id], through: dateOnly(2026, 5, 31), provider });
     expect(seen).toHaveLength(1);
     expect(seen[0].context).toMatch(/perorangan/);
-    for (const code of ["1130", "2110", "4100", "4110"]) expect(seen[0].accounts).not.toContain(code);
+    for (const code of ["1130", "2110", "4100", "4110", "5100", "5110", "6150"]) expect(seen[0].accounts).not.toContain(code);
     expect(seen[0].accounts).toEqual(expect.arrayContaining(["3300", "4910", "6190"]));
     // An answer outside the list is dropped (rule 19): the line keeps its simple guess.
     expect((await db.bankTransaction.findUniqueOrThrow({ where: { id: incoming.id } })).suggestedCode).toBe("4910");
@@ -75,7 +75,7 @@ describe("Minta saran AI on Review", () => {
     const accounts = await db.account.findMany({ where: { clientId: g.client.id } });
     const pt = aiScope(g.client, "PT", accounts);
     expect(pt.clientName).toBe(`${g.client.name} (${g.client.industry ?? "umum"})`);
-    expect(pt.accounts.map((a) => a.code)).toContain("1130");
+    expect(pt.accounts.map((a) => a.code)).toEqual(expect.arrayContaining(["1130", "5100", "6150"]));
   });
 
   it("says in Bahasa that the AI timed out", () => {

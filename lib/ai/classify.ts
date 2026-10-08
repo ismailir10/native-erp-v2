@@ -10,8 +10,11 @@ import { ACCOUNT_CODES } from "@/lib/coa/template";
 const NOT_FOR_AI = new Set<string>([ACCOUNT_CODES.CLEARING, ACCOUNT_CODES.INTERCOMPANY]);
 export const aiAccounts = <T extends { code: string }>(accounts: T[]) => accounts.filter((a) => !NOT_FOR_AI.has(a.code));
 
-/** A person's own bank lines (the owner beside the PT) are not a business: no trade receivables or payables, no sales or service income. */
-const NOT_FOR_PERSON = new Set<string>(["PIUTANG_USAHA", "UTANG_USAHA", "PENDAPATAN_USAHA"]);
+/**
+ * A person's own bank lines (the owner beside the PT) are not a business: no trade receivables or payables, no sales or service income,
+ * no cost of sales or selling expenses (left with those, the model files a personal transfer as "bayar supplier barang dagang").
+ */
+const NOT_FOR_PERSON = new Set<string>(["PIUTANG_USAHA", "UTANG_USAHA", "PENDAPATAN_USAHA", "HPP", "BEBAN_PENJUALAN"]);
 
 /** What the model is told about the books a line belongs to, and the accounts it may answer with (rule 19 still drops anything else). */
 export function aiScope(client: { name: string; industry: string | null }, kind: EntityKind, accounts: { code: string; name: string; fsLine: string }[]) {
