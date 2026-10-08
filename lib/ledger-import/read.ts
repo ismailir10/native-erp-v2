@@ -488,6 +488,17 @@ function tbLayout(rows: RawCell[][], r: number): { headerRow: number; columns: C
     if (!groups.OPENING) [groups.OPENING, dates.OPENING] = [{ balance: early.column }, early.date];
     if (!groups.CLOSING) [groups.CLOSING, dates.CLOSING] = [{ balance: late.column }, late.date];
   }
+  // A group is amounts: a column with no number under it (blank, or a yes/no note like "Pooling Adj Integrated?") is not one (Chickin
+  // foundation sheet: "Net Movement", "Closing … Impact" empty beside the Debit | Credit balances).
+  const data = rows.slice((twoRow ? r + 1 : r) + 1);
+  const numeric = (c: number | undefined) => c !== undefined && data.some((row) => !isBlank(row?.[c]) && typeof cellCents(row?.[c]) === "bigint");
+  for (const g of Object.keys(groups) as TbGroup[]) {
+    const slot = groups[g]!;
+    if (![slot.debit, slot.credit, slot.balance].some(numeric)) {
+      delete groups[g];
+      delete dates[g];
+    }
+  }
   if (!twoRow && !groups.MOVEMENT && bare.debit !== undefined && bare.credit !== undefined && Object.keys(groups).length) groups.MOVEMENT = { debit: bare.debit, credit: bare.credit };
   const complete = (Object.entries(groups) as [TbGroup, TbLayout["groups"][TbGroup]][]).filter(([, s]) => s && ((s.debit !== undefined && s.credit !== undefined) || s.balance !== undefined));
   if (complete.length < 2) return null;

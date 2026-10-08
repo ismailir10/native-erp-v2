@@ -78,7 +78,7 @@ leftovers (normal per-import caps and the monthly budget apply); companies keep 
 - [x] T2 Entity kind in AI classification (`lib/ai/provider.ts`, `lib/ai/classify.ts`, caller in `lib/import`) — accept: unit test on `buildPrompt` / account filter; MockProvider DB test for a Perorangan line.
 - [x] T3 Entity reports independent of group rates (`app/(app)/clients/[id]/reports/page.tsx`) — accept: DB/e2e-free check by rendering helper or manual local run with an SGD entity lacking rates; typecheck.
 - [x] T4 Mapping rules (`lib/ledger-import/mapping.ts`, posting of template accounts) — accept: `tests/db/mapping.test.ts` cases for the seven Chickin names above; prior expectations kept.
-- [ ] T5 TB groups need numbers (`lib/ledger-import/read.ts`) — accept: synthetic fixture of the foundation-sheet shape reads as NERACA with 0 BLOCK; existing TB tests green.
+- [x] T5 TB groups need numbers (`lib/ledger-import/read.ts`) — accept: synthetic fixture of the foundation-sheet shape reads as NERACA with 0 BLOCK; existing TB tests green.
 - [ ] T6 Small things (`lib/periods.ts`, client form, ledger draft page, scope picker, rounding copy) — accept: unit test for the period cap; browser check.
 
 ## Implementation
@@ -87,11 +87,13 @@ leftovers (normal per-import caps and the monthly budget apply); companies keep 
 - T2: `lib/ai/classify.ts` (`aiScope`: context names a person's own account; accounts on PIUTANG_USAHA / UTANG_USAHA / PENDAPATAN_USAHA left out for PERORANGAN), `lib/import/pipeline.ts`, `lib/ai/retry.ts` (one pass per entity kind, stops after a cap/budget note), `lib/demo/seed.ts` (pre-cache key built the same way). Test: `tests/db/ai-retry.test.ts`.
 - T3: `app/(app)/clients/[id]/reports/page.tsx` — the combined worksheet runs under its own `withFx`; a missing rate shows the compact card in the *Kertas Kerja Gabungan* tab only, the entity's statements render. Export routes already use the entity scope only. Page check: on production after deploy (no Docker here for the local Supabase stack).
 - T4: `lib/ledger-import/mapping.ts` — `intern` word-bounded; deferred tax → 1270 / 2320 / 8110 and right-of-use → 1230 / 1239 / 6181 as template accounts (created on accept); non-income taxes → 6190; biologis/biological → 1160; production-cost words → `new:HPP`. Spec reworded: the HPP rule goes by words (a 5-code is not always cost of sales). Test: `tests/db/mapping.test.ts` (Chickin names; "Aset Hak Guna" now 1230).
+- T5: `lib/ledger-import/read.ts` (`tbLayout`) — a TB group whose columns hold no number under the header is dropped before the two-group test. The real Chickin `04_HC_2022_FOUNDATION` now reads as NERACA (11 rows, Debit | Credit); the formula-only engine sheets (14_HC_TB_ENGINE, 21/22_OPCO_*) are no longer offered as tables. Test: `tests/unit/neraca-k2.test.ts` (fails without the change).
 
 ## Verification
 - T1: lint + typecheck clean; `npm test` → Test Files 183 passed (183), Tests 1205 passed (1205).
 - T2: lint + typecheck clean; `npm test` → Test Files 183 passed (183), Tests 1206 passed (1206).
 - T3: lint + typecheck clean; `npm test` → Test Files 183 passed (183), Tests 1206 passed (1206).
 - T4: lint + typecheck clean; `npm test` → Test Files 183 passed (183), Tests 1207 passed (1207).
+- T5: lint + typecheck clean; `npm test` → Test Files 183 passed (183), Tests 1208 passed (1208).
 
 ## Ship Notes

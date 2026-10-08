@@ -66,3 +66,23 @@ describe("Neraca checks (UC-K2)", () => {
     );
   });
 });
+
+describe("trial balance column groups need numbers", () => {
+  it("reads a closing-balance sheet with empty and yes/no 'group' columns as a Neraca from its Debit | Credit columns", async () => {
+    // The shape of a reconstruction workbook's opening sheet (invented names and figures).
+    const sheets = await sheet([
+      ["FOUNDATION & OPENING BRIDGE"],
+      [],
+      ["Foundation ID", "Source Type", "Account Code", "Account Name", "Debit", "Credit", "Net Movement", "Pooling Adj Integrated?", "Closing 31 Dec 2022 Impact", "Opening 1 Jan 2023 Impact"],
+      ["F-1", "KORAN", "10000", "Bank Sentosa - SGD", 8583.5, 0, null, "YES (dalam koran rekonstruksi)", null, null],
+      ["F-2", "KORAN", "12000", "Investment on Subsidiary", 3433738.28, 0, null, "YES (dalam koran rekonstruksi)", null, null],
+      ["F-3", "KORAN", "30000", "Ordinary Shares", 0, 3442321.78, null, "YES (dalam koran rekonstruksi)", null, null],
+    ]);
+    const t = detectTables(sheets)[0];
+    expect(t.mode).toBe("NERACA");
+    expect(t.tb).toBeUndefined();
+    const read = readTable(sheets, t);
+    if (read.mode !== "NERACA") throw new Error("mode");
+    expect(read.rows.map((r) => [r.code, r.amount])).toEqual([["10000", 858350n], ["12000", 343373828n], ["30000", -344232178n]]);
+  });
+});
