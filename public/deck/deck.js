@@ -95,7 +95,6 @@
   slides.forEach(function (s) {
     var n = 0;
     s.querySelectorAll(STAGGER).forEach(function (el) {
-      if (el.closest(".mesh")) return;
       el.setAttribute("data-s", "");
       el.style.setProperty("--d", Math.min(n, 18) * 65);
       n++;
@@ -136,7 +135,7 @@
     if (!s.classList.contains("navy")) return;
     var c = document.createElement("canvas");
     c.className = "dots"; c.setAttribute("aria-hidden", "true");
-    s.insertBefore(c, s.firstChild.nextSibling);
+    s.insertBefore(c, s.firstChild);
     var ctx = c.getContext("2d"), px = { x: -1e4, y: -1e4 }, raf = 0, W = 0, H = 0, dots = [];
     function build() {
       var r = s.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
@@ -165,13 +164,6 @@
     build();
   });
 
-  // SpotlightCard: a soft light that follows the pointer over cards marked .spot
-  document.addEventListener("mousemove", function (e) {
-    var el = e.target.closest && e.target.closest(".spot");
-    if (!el) return;
-    var r = el.getBoundingClientRect();
-    el.style.setProperty("--mx", e.clientX - r.left + "px"); el.style.setProperty("--my", e.clientY - r.top + "px");
-  });
   // print / PDF always shows the final numbers, even if a count-up is mid-flight
   window.addEventListener("beforeprint", function () {
     document.querySelectorAll("[data-final]").forEach(function (el) { el.textContent = el.getAttribute("data-final"); });
