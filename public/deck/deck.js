@@ -1,23 +1,40 @@
 /* Buku decks — slide engine. No dependencies, no network.
    Stage mode: one slide at a time (arrows, space, PageUp/PageDown, Home/End, swipe, #n, F for fullscreen).
-   Flow mode (narrow or portrait): plain scroll, nothing paginated. */
+   Flow mode (narrow or portrait): plain scroll, nothing paginated, nothing animated.
+   Each <section class="slide"> holds <div class="s-body">; the brand bar and footer are added here so every slide (and printed page) has them. */
 (function () {
   "use strict";
   var slides = Array.prototype.slice.call(document.querySelectorAll(".slide"));
   if (!slides.length) return;
   var total = slides.length;
+  var audience = document.body.getAttribute("data-audience") || "";
   var flow = window.matchMedia("(max-width: 899px), (max-aspect-ratio: 5/4)");
-  var prev = document.getElementById("prev");
-  var next = document.getElementById("next");
-  var bar = document.getElementById("bar");
+  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
   var cur = 0;
 
   function pad(n) { return n < 10 ? "0" + n : String(n); }
+  function el(tag, cls, html) { var e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
+
   slides.forEach(function (s, i) {
     s.id = "s" + (i + 1);
-    var n = s.querySelector(".s-foot .n");
-    if (n) n.textContent = pad(i + 1) + " / " + pad(total);
+    var body = s.querySelector(".s-body");
+    var frame = el("div", "frame");
+    var top = el("div", "s-top", '<a class="brand" href="/deck" aria-label="Buku by Right Jet, semua presentasi"><i>B</i>Buku <small>by Right Jet</small></a><span>' + audience + "</span>");
+    var foot = el("div", "s-foot", "<span>" + (s.getAttribute("data-note") || "") + '</span><span class="n">' + pad(i + 1) + " / " + pad(total) + "</span>");
+    s.insertBefore(frame, body);
+    frame.appendChild(top); frame.appendChild(body); frame.appendChild(foot);
+    // stagger order for [data-a] children that do not set their own delay
+    var k = 0;
+    s.querySelectorAll("[data-a]").forEach(function (x) { if (!x.style.getPropertyValue("--d")) x.style.setProperty("--d", k); k++; });
   });
+
+  var ctrl = el("div", "ctrl", '<span class="cnt" aria-hidden="true"></span><button type="button" id="prev" aria-label="Slide sebelumnya"><svg viewBox="0 0 16 16"><path d="M10 3L5 8l5 5"/></svg></button><button type="button" id="next" aria-label="Slide berikutnya"><svg viewBox="0 0 16 16"><path d="M6 3l5 5-5 5"/></svg></button>');
+  var bar = el("div", "bar");
+  document.body.appendChild(ctrl); document.body.appendChild(bar);
+  // inside the /deck chooser thumbnail: no controls
+  var framed = false; try { framed = window.self !== window.top; } catch (e) { framed = true; }
+  if (framed) { ctrl.style.display = "none"; bar.style.display = "none"; }
+  var cnt = ctrl.children[0], prev = ctrl.children[1], next = ctrl.children[2];
 
   function fromHash() {
     var m = /^#(\d+)$/.exec(location.hash);
@@ -25,19 +42,23 @@
     return Math.max(0, Math.min(total - 1, i));
   }
 
-  var show = function (i, push) {
+  function show(i, push) {
+    var was = cur;
     cur = Math.max(0, Math.min(total - 1, i));
-    slides.forEach(function (s, k) { s.classList.toggle("on", k === cur); });
-    if (prev) prev.disabled = cur === 0;
-    if (next) next.disabled = cur === total - 1;
-    if (bar) bar.style.width = ((cur + 1) / total) * 100 + "%";
+    slides.forEach(function (s, k) { s.classList.toggle("on", k === cur); s.setAttribute("aria-hidden", k === cur ? "false" : "true"); });
+    document.body.classList.toggle("on-dark", slides[cur].classList.contains("dark"));
+    prev.disabled = cur === 0; next.disabled = cur === total - 1;
+    bar.style.width = ((cur + 1) / total) * 100 + "%";
+    cnt.textContent = pad(cur + 1) + " / " + pad(total);
     if (push !== false && location.hash !== "#" + (cur + 1)) history.replaceState(null, "", "#" + (cur + 1));
-  };
+    if (was !== cur || push === false) enter(cur);
+  }
 
   function apply() {
     if (flow.matches) {
-      slides.forEach(function (s) { s.classList.add("on"); });
       document.documentElement.classList.add("flow");
+      slides.forEach(function (s) { s.classList.add("on"); s.removeAttribute("aria-hidden"); });
+      finalNumbers();
       // Slide ids are assigned after the browser's own fragment navigation, so honour #n here.
       if (/^#\d+$/.test(location.hash)) slides[fromHash()].scrollIntoView();
     } else {
@@ -60,9 +81,8 @@
       else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
     }
   });
-
-  if (prev) prev.addEventListener("click", function () { go(-1); });
-  if (next) next.addEventListener("click", function () { go(1); });
+  prev.addEventListener("click", function () { go(-1); });
+  next.addEventListener("click", function () { go(1); });
 
   var sx = null, sy = null;
   document.addEventListener("touchstart", function (e) { var t = e.changedTouches[0]; sx = t.clientX; sy = t.clientY; }, { passive: true });
@@ -76,7 +96,6 @@
   window.addEventListener("hashchange", function () { if (!flow.matches) show(fromHash(), false); });
   if (flow.addEventListener) flow.addEventListener("change", apply); else flow.addListener(apply);
 
-  // in-deck links like <a href="#3">
   document.addEventListener("click", function (e) {
     var a = e.target.closest && e.target.closest('a[href^="#"]');
     if (!a || flow.matches) return;
@@ -84,40 +103,25 @@
     if (m) { e.preventDefault(); show(parseInt(m[1], 10) - 1); }
   });
 
-  apply();
+  // phone layout: a wide table scrolls inside its card; tell the reader
+  document.querySelectorAll(".fl-scroll").forEach(function (x) { var n = el("p", "swipe", "Geser tabel ke samping untuk melihat semua kolom"); x.parentNode.insertBefore(n, x.nextSibling); });
 
-  /* ---- motion: vanilla ports in the manner of React Bits (CountUp, AnimatedList, DotGrid, SpotlightCard) ----
-     Everything is skipped under prefers-reduced-motion and in flow mode; print shows the final state. */
-  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
-  var STAGGER = ".c, .file, .bubble, .mini, .reader, .tool, .chain li, .cascade li, .pts li, .qa, .tn, .msg-r, .tags span, .ans li, .kinds li, .how3 li, .calcbig, .paper, .bridge, .src2 > div, .out2 > div, .gate, .side3 .pk, table.seq tr";
-  var DRAW = ".pill svg, .so i svg, .dc svg";
-
-  slides.forEach(function (s) {
-    var n = 0;
-    s.querySelectorAll(STAGGER).forEach(function (el) {
-      el.setAttribute("data-s", "");
-      el.style.setProperty("--d", Math.min(n, 18) * 65);
-      n++;
-    });
-    var k = 0;
-    s.querySelectorAll(DRAW).forEach(function (el) { el.style.setProperty("--k", Math.min(k, 14) * 110); k++; });
-  });
-
+  /* ---- motion: CountUp in the manner of React Bits; entrances are CSS (deck.css). ---- */
   function ease(t) { return 1 - Math.pow(1 - t, 3); }
-  function countUp(el) {
-    var full = el.getAttribute("data-final") || el.textContent;
-    el.setAttribute("data-final", full);
-    var m = /^(\D*?)([\d][\d.]*)(\D*)$/.exec(full.trim());
+  function countUp(x) {
+    var full = x.getAttribute("data-final") || x.textContent;
+    x.setAttribute("data-final", full);
+    var m = /^(\D*?)(\d[\d.]*)(\D*)$/.exec(full.trim());
     if (!m) return;
     var to = parseInt(m[2].replace(/\./g, ""), 10);
-    if (!isFinite(to) || to < 10) { el.textContent = full; return; }
-    var t0 = null, dur = 1100, delay = 450;
+    if (!isFinite(to) || to < 10) { x.textContent = full; return; }
+    var t0 = null, dur = 1000, delay = parseInt(x.getAttribute("data-delay") || "450", 10);
     function frame(ts) {
       if (t0 === null) t0 = ts;
       var t = (ts - t0 - delay) / dur;
-      if (t < 0) { el.textContent = m[1] + "0" + m[3]; requestAnimationFrame(frame); return; }
-      if (t >= 1) { el.textContent = full; return; }
-      el.textContent = m[1] + Math.round(to * ease(t)).toLocaleString("id-ID") + m[3];
+      if (t < 0) { x.textContent = m[1] + "0" + m[3]; requestAnimationFrame(frame); return; }
+      if (t >= 1) { x.textContent = full; return; }
+      x.textContent = m[1] + Math.round(to * ease(t)).toLocaleString("id-ID") + m[3];
       requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
@@ -127,46 +131,10 @@
     if (!s || reduce.matches || flow.matches) return;
     s.querySelectorAll("[data-count]").forEach(countUp);
   }
-  var baseShow = show;
-  show = function (i, push) { baseShow(i, push); enter(cur); };
-
-  // DotGrid (navy slides): quiet dots that brighten near the pointer; redraws only when the pointer moves.
-  slides.forEach(function (s) {
-    if (!s.classList.contains("navy")) return;
-    var c = document.createElement("canvas");
-    c.className = "dots"; c.setAttribute("aria-hidden", "true");
-    s.insertBefore(c, s.firstChild);
-    var ctx = c.getContext("2d"), px = { x: -1e4, y: -1e4 }, raf = 0, W = 0, H = 0, dots = [];
-    function build() {
-      var r = s.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
-      W = r.width; H = r.height; if (!W) return;
-      c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      var gap = W / 64; dots = [];
-      for (var y = gap / 2; y < H; y += gap) for (var x = gap / 2; x < W; x += gap) dots.push([x, y]);
-      draw();
-    }
-    function draw() {
-      raf = 0; ctx.clearRect(0, 0, W, H);
-      var prox = W * 0.09, p2 = prox * prox, r0 = W / 900;
-      for (var i = 0; i < dots.length; i++) {
-        var d = dots[i], dx = d[0] - px.x, dy = d[1] - px.y, dd = dx * dx + dy * dy, t = dd < p2 ? 1 - Math.sqrt(dd) / prox : 0;
-        ctx.fillStyle = "rgba(" + (160 + 60 * t) + "," + (190 + 50 * t) + ",255," + (0.10 + 0.7 * t) + ")";
-        ctx.beginPath(); ctx.arc(d[0], d[1], r0 * (1 + 1.2 * t), 0, 6.2832); ctx.fill();
-      }
-    }
-    s.addEventListener("mousemove", function (e) {
-      if (reduce.matches) return;
-      var r = s.getBoundingClientRect(); px.x = e.clientX - r.left; px.y = e.clientY - r.top;
-      if (!raf) raf = requestAnimationFrame(draw);
-    });
-    s.addEventListener("mouseleave", function () { px.x = px.y = -1e4; if (!raf) raf = requestAnimationFrame(draw); });
-    window.addEventListener("resize", build);
-    build();
-  });
+  function finalNumbers() { document.querySelectorAll("[data-final]").forEach(function (x) { x.textContent = x.getAttribute("data-final"); }); }
+  if (reduce.matches) document.querySelectorAll(".packet").forEach(function (p) { p.parentNode.removeChild(p); });
 
   // print / PDF always shows the final numbers, even if a count-up is mid-flight
-  window.addEventListener("beforeprint", function () {
-    document.querySelectorAll("[data-final]").forEach(function (el) { el.textContent = el.getAttribute("data-final"); });
-  });
-  enter(cur);
+  window.addEventListener("beforeprint", finalNumbers);
+  apply();
 })();
