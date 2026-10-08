@@ -119,7 +119,7 @@ it("answers who was paid: bank lines by counterparty in the month, totals, accou
   await line("c", 25, "TRSF E-BANKING DB 2506/FTSCY/WS95051 152000000.00 Belifi ALFI YANDRA", -152_000_000n, "NEEDS_REVIEW", "1999");
   await line("d", 7, "TRSF E-BANKING CR bayar nota DINA PUSPITA", 70_475_000n, "REVIEWED", "4100");
   const a = await askWorkspace(db, g.firm.id, { scope: `client:${g.client.id}`, period: "2026-06", question: "Berapa total transfer BCA PT ke ALFI YANDRA bulan Juni dan dicatat ke akun apa?" });
-  expect(a.text).toBe('3 mutasi bank dengan "ALFI YANDRA" pada Juni 2026: keluar Rp 467.000.000. Dicatat ke 1190 (2×), 1999 (1×).');
+  expect(a.text).toBe('3 mutasi bank dengan "ALFI YANDRA" pada Juni 2026. Per akun: 1190 (2×): keluar Rp 315.000.000; 1999 (1×): keluar Rp 152.000.000.');
   expect(a.rows).toHaveLength(3);
   expect(a.rows[2].value).toBe("Keluar Rp 152.000.000 → menunggu review (usulan 6190)");
   expect(a.citations.map((c) => c.href.split("?")[0])).toEqual([`/clients/${g.client.id}/ledger/1190`, `/clients/${g.client.id}/ledger/1999`]);
@@ -246,4 +246,40 @@ it("answers a balance asked by name, a cleared account at Rp 0 rather than the c
   const payable = await askWorkspace(db, g.firm.id, { scope, period: "2026-08", question: "Berapa utang usaha?" });
   expect(payable.rows.map(r => [r.label.split(" · ").at(-1), r.value])).toEqual([["2110 Utang Usaha", "Rp 0"]]);
   expect(payable.text).toContain("akun yang disebut");
+});
+
+it("answers a related-party balance from the client's accounts that name the group's other entity, never an unused zero account", async () => {
+  const g = await makeGroup();
+  const id = async (code: string) => (await db.account.findUniqueOrThrow({ where: { clientId_code: { clientId: g.client.id, code } } })).id;
+  const bank = g.pt.banks[0].accountId;
+  // Buku's own catch-all name (unused) and the client's accounts as an imported ledger names them.
+  await db.account.create({ data: { firmId: g.firm.id, clientId: g.client.id, code: "212008", name: "Related Party Payable", type: "LIABILITAS", fsLine: "UTANG_LAIN", normalBalance: "CREDIT" } });
+  const source = (code: string, name: string, accountId: string) => db.sourceAccount.create({ data: { firmId: g.firm.id, clientId: g.client.id, entityId: g.pt.entity.id, code, name, accountId } });
+  const other = await source("21003", "Other Payable - Andi Wijaya", await id("2120"));
+  const loan = await source("27003", "Long Term Non-Bank - Andi Wijaya", await id("2300"));
+  const rawasari = await source("10005", "Bank BCA - A/C 579 - Rawasari", await id("1110"));
+  await db.$transaction(async (tx) => postJournal(tx, { entityId: g.pt.entity.id, date: dateOnly(2026, 8, 20), kind: "ADJUSTMENT", memo: "Pinjaman pemilik", lines: [
+    { accountId: bank, debit: 8_000_000n }, { accountId: await id("1110"), debit: 2_000_000n, sourceAccountId: rawasari.id },
+    { accountId: await id("2120"), credit: 7_000_000n, sourceAccountId: other.id }, { accountId: await id("2300"), credit: 3_000_000n, sourceAccountId: loan.id },
+  ] }));
+  const scope = `client:${g.client.id}`;
+
+  const rp = await askWorkspace(db, g.firm.id, { scope, period: "2026-08", question: "Berapa utang PT Uji ke pihak berelasi (Andi Wijaya) per Agustus 2026?" });
+  expect(rp.rows.map((r) => [r.label, r.value])).toEqual([
+    ["PT Uji Sejahtera · 21003 Other Payable - Andi Wijaya (akun klien)", "Rp 7.000.000 Kredit"],
+    ["PT Uji Sejahtera · 27003 Long Term Non-Bank - Andi Wijaya (akun klien)", "Rp 3.000.000 Kredit"],
+  ]);
+  expect(rp.text).toContain("pihak berelasi");
+
+  // The entity named narrows a group scope; a client's own code and one distinctive word find the client's account.
+  const code = await askWorkspace(db, g.firm.id, { scope, period: "2026-08", question: "Saldo akun 10005 PT Uji Sejahtera?" });
+  expect(code.rows.map((r) => [r.label, r.value])).toEqual([["PT Uji Sejahtera · 10005 Bank BCA - A/C 579 - Rawasari (akun klien)", "Rp 2.000.000 Debit"]]);
+  const word = await askWorkspace(db, g.firm.id, { scope, period: "2026-08", question: "Berapa saldo BCA Rawasari PT Uji per akhir Agustus 2026?" });
+  expect(word.rows.map((r) => r.label)).toContain("PT Uji Sejahtera · 10005 Bank BCA - A/C 579 - Rawasari (akun klien)");
+  expect(word.rows.every((r) => r.label.startsWith("PT Uji Sejahtera"))).toBe(true);
+
+  // The month named in the question is the month answered.
+  const later = await askWorkspace(db, g.firm.id, { scope, period: "2026-08", question: "Berapa laba PT Uji bulan Desember 2026?" });
+  expect(later.scope.period).toBe("2026-12");
+  expect(later.limitations.join(" ")).toContain("belum ada jurnal pada Desember 2026");
 });

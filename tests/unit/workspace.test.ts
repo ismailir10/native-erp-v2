@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { accountsNamed, counterpartyOf, parseWorkspacePeriod, workspaceHref, workspaceQuestionIntent } from "@/lib/workspace";
+import { accountsNamed, counterpartyOf, entitiesNamed, parseWorkspacePeriod, periodIn, workspaceHref, workspaceQuestionIntent } from "@/lib/workspace";
 
 describe("shared workspace context", () => {
   it.each(["2026-00", "2026-13", "2026-8", "26-08", "2026-08-01", "0000-08", "2999-01"])("rejects invalid period %s instead of silently changing it", value => {
@@ -59,5 +59,27 @@ describe("balances asked by account name", () => {
   it("names nothing for a question about cash alone or a single vague word", () => {
     expect(names("Berapa saldo kas dan bank?")).toEqual([]);
     expect(names("Berapa saldo akhir bulan ini?")).toEqual([]);
+  });
+});
+
+describe("period and entity named in a question", () => {
+  it("reads the month or the year a question names", () => {
+    expect(periodIn("Berapa laba bersih PT SKP bulan Maret 2027?")).toBe("2027-03");
+    expect(periodIn("saldo per akhir Desember 2025")).toBe("2025-12");
+    expect(periodIn("What was the net profit for full-year 2025?")).toBe("2025-12");
+    expect(periodIn("laba tahun 2024")).toBe("2024-12");
+    expect(periodIn("Berapa saldo kas?")).toBeNull();
+    expect(periodIn("Bank BCA 5790444754")).toBeNull();
+  });
+  it("finds the entities a question names, in order, by short name, full name or the name without its legal form", () => {
+    const es = [
+      { name: "PT Sinergi Ketahanan Pangan", shortName: "SKP" },
+      { name: "Chickin Pte. Ltd.", shortName: "HOLDCO" },
+      { name: "PT Chickin Ayam Hidup", shortName: "CAH" },
+    ];
+    expect(entitiesNamed("Berapa utang SKP ke pihak berelasi (Chickin Pte Ltd)?", es).map((e) => e.shortName)).toEqual(["SKP", "HOLDCO"]);
+    expect(entitiesNamed("saldo BCA Rawasari PT Sinergi Ketahanan Pangan", es).map((e) => e.shortName)).toEqual(["SKP"]);
+    expect(entitiesNamed("laba Chickin Ayam Hidup", es).map((e) => e.shortName)).toEqual(["CAH"]);
+    expect(entitiesNamed("Berapa saldo kas?", es)).toEqual([]);
   });
 });

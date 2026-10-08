@@ -57,11 +57,14 @@ SAK EP / PSAK and Indonesian tax practice for this firm's clients. 3. Approved u
 ("work until you are proud"), after the retest cycle.
 
 ## Tasks
-- [ ] T1 Tanya Buku: period and entity named in the question; client account codes and a distinctive word — accept: `tests/unit/workspace.test.ts` + `tests/db` case with a group of two entities and a client account.
-- [ ] T2 Tanya Buku: related party, piutang karyawan, balance-first; readiness findings; per-account totals — accept: DB test with the Chickin-shaped related-party accounts.
+- [x] T1 Tanya Buku: period and entity named in the question; client account codes and a distinctive word — accept: `tests/unit/workspace.test.ts` + `tests/db` case with a group of two entities and a client account.
+- [x] T2 Tanya Buku: related party, piutang karyawan, balance-first; readiness findings; per-account totals — accept: DB test with the Chickin-shaped related-party accounts.
 - [ ] T3 AI explain/review: budget, sentence-end, no lettered types, script cleanup, entity context + house rules, entry guard — accept: unit tests on prompt building, `parseControlExplain`/`parseCloseReview` cleanup and the entry guard; `tests/db/close-explain.test.ts` green.
 - [ ] T4 PPh badan control shows the proposal; deferred-tax P&L mapping — accept: DB test on the control detail; mapping test.
 
 ## Implementation
+- Plan: T1–T4 sequential, inline. T1 and T2 share `askWorkspace` and land as one commit.
+- T1+T2: `lib/workspace/index.ts` — `periodIn` (month/year named → the period answered; a month without journals says so), `entitiesNamed` (short/full/bare name, longest span wins: "Chickin" inside "Chickin Ayam Hidup" is CAH), entity narrowing (first named is the subject of a related-party question), `akun <code>` over client codes too, one distinctive non-generic word (≤ 3 accounts) is enough, entity names never count as account words, `RELATED` questions take accounts naming another group entity (subject's own name words excluded) + 1190 + related-party names on the asked side, balances listed before zero accounts; readiness lists the open findings (failed first, 10); transactions totals per account; piutang karyawan ↔ advance / uang muka. Tests: `tests/unit/workspace.test.ts`, `tests/db/workspace.test.ts` (Chickin-shaped related party, client code, distinctive word, named month).
 ## Verification
+- T1+T2: lint + typecheck clean; `npm test` → Test Files 184 passed (184), Tests 1213 passed (1213).
 ## Ship Notes

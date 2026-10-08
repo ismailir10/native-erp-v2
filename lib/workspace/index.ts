@@ -97,7 +97,9 @@ export async function getWorkspaceOverview(db: Db, firmId: string, input: Worksp
     // A masa paid short or late is a penalty in waiting (accounting-rules 5j): its own task, until fixed or explained in a note.
     const taxIssues = controls.filter(control => control.key.startsWith("masa:") && control.status === "REVIEW" && !control.ack).map(control => ({ key: control.key, scope: control.scope, detail: control.detail, href: workspaceHref(control.href ?? `/clients/${c.id}/tax/masa`, scope) }));
     const setup = await setupProgress(db, c.id, { period: { year: scope.year, month: scope.month }, missingStatements: missingStatements.map(m => m.title) });
-    return { id: c.id, name: c.name, state, label: labels[state], sumber, sentAt: sent?.createdAt ?? null, importHref: workspaceHref(`/clients/${c.id}/import`, scope), reviewHref: workspaceHref(`/clients/${c.id}/review`, scope), hasActivity: activity > 0, openReview: entities.filter(e => e.clientId === c.id).reduce((n, e) => n + e.openReview, 0), failCount: readiness.fails.length, reviewCount: readiness.unacked.length, missingSignoffs: readiness.missing.length, missingStatements, taxIssues, setup: { step: setup.current, hasData: setup.hasData, hasBanks: setup.hasBanks, next: setup.next, opening: setup.needsOpening.map(e => e.shortName) }, closeHref: workspaceHref(`/clients/${c.id}/close`, scope) };
+    // The findings that hold the close, failed first: what Tanya Buku names when asked what blocks the books.
+    const open = [...readiness.fails, ...readiness.unacked].map((control) => ({ title: control.title, scope: control.scope, status: control.status, href: workspaceHref(control.href ?? `/clients/${c.id}/close`, scope) }));
+    return { id: c.id, name: c.name, state, label: labels[state], sumber, open, sentAt: sent?.createdAt ?? null, importHref: workspaceHref(`/clients/${c.id}/import`, scope), reviewHref: workspaceHref(`/clients/${c.id}/review`, scope), hasActivity: activity > 0, openReview: entities.filter(e => e.clientId === c.id).reduce((n, e) => n + e.openReview, 0), failCount: readiness.fails.length, reviewCount: readiness.unacked.length, missingSignoffs: readiness.missing.length, missingStatements, taxIssues, setup: { step: setup.current, hasData: setup.hasData, hasBanks: setup.hasBanks, next: setup.next, opening: setup.needsOpening.map(e => e.shortName) }, closeHref: workspaceHref(`/clients/${c.id}/close`, scope) };
   }));
   // The detail names the client when the company's own name doesn't (an owner "Budi Santoso" can belong to two clients).
   const tasks: WorkspaceTask[] = entities.filter(e => e.openReview > 0).map(e => ({ id: `review:${e.id}`, title: `Periksa ${e.openReview} transaksi`, detail: `${e.name === e.clientName ? e.name : `${e.clientName} · ${e.name}`} · sampai ${scope.periodLabel}`, href: e.reviewHref, priority: "high", clientId: e.clientId, entityId: e.id }));
@@ -174,6 +176,43 @@ export function counterpartyOf(question: string): string | null {
   return name;
 }
 
+const MONTHS: [RegExp, number][] = [
+  [/^(januari|january|jan)$/, 1], [/^(februari|pebruari|february|feb|peb)$/, 2], [/^(maret|march|mar)$/, 3], [/^(april|apr)$/, 4], [/^(mei|may)$/, 5],
+  [/^(juni|june|jun)$/, 6], [/^(juli|july|jul)$/, 7], [/^(agustus|august|agu|agt|aug)$/, 8], [/^(september|sept|sep)$/, 9],
+  [/^(oktober|october|okt|oct)$/, 10], [/^(november|nopember|nov|nop)$/, 11], [/^(desember|december|des|dec)$/, 12],
+];
+/** The month a question names ("laba Maret 2027", "per akhir Desember 2025", "tahun 2025" → December), as YYYY-MM; null when none. */
+export function periodIn(question: string): string | null {
+  const q = question.toLowerCase();
+  for (const m of q.matchAll(/\b([a-z]{3,9})\.?\s+(\d{4})\b/g)) {
+    const month = MONTHS.find(([re]) => re.test(m[1]))?.[1];
+    if (month) return `${m[2]}-${String(month).padStart(2, "0")}`;
+  }
+  const year = q.match(/\b(?:tahun|year|full[- ]?year|fy|setahun|sepanjang)\s*(\d{4})\b/)?.[1];
+  return year ? `${year}-12` : null;
+}
+
+const LEGAL = /\b(pt|cv|ud|tbk|pte|ltd|limited|inc|llc|persero)\b\.?/gi;
+const bareName = (n: string) => n.replace(LEGAL, " ").replace(/[^\p{L}\p{N}]+/gu, " ").trim().toLowerCase();
+/** The scope's entities a question names (short name, full name, or the name without its legal form), in the order they appear. */
+export function entitiesNamed<T extends { name: string; shortName: string }>(question: string, entities: T[]): T[] {
+  const q = ` ${question.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ")} `;
+  // Every place a spelling occurs, as a span: "Chickin" (Chickin Pte. Ltd. without its legal form) inside "Chickin Ayam Hidup" is the other entity.
+  const spans = entities.flatMap((e) =>
+    [e.shortName, e.name, bareName(e.name), bareName(e.shortName)]
+      .map((x) => x.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim())
+      .filter((x) => x.length >= 3)
+      .flatMap((x) => [...q.matchAll(new RegExp(` ${x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} `, "g"))].map((m) => ({ e, start: m.index!, end: m.index! + x.length + 2 }))),
+  );
+  const kept = spans.filter((a) => !spans.some((b) => b.e !== a.e && b.start <= a.start && b.end >= a.end && b.end - b.start > a.end - a.start));
+  const first = new Map<T, number>();
+  for (const x of kept) first.set(x.e, Math.min(first.get(x.e) ?? Infinity, x.start));
+  return [...first].sort((a, b) => a[1] - b[1]).map(([e]) => e);
+}
+
+/** A related-party question: the group's own entities (and 1190) are the related parties Buku knows. */
+export const RELATED = /pihak (ber)?elasi|berelasi|related part|afiliasi|affiliat|antar ?entitas|intercompany|inter-company|perusahaan grup|perusahaan induk|induk perusahaan|anak perusahaan/i;
+
 /** Words of a balance question that name no account. */
 const NAME_STOP = new Set(
   ("berapa saldo akhir awal bulan tahun total nilai jumlah sampai posisi untuk dengan yang adalah pada dari bagaimana apakah akun account balance " +
@@ -186,7 +225,15 @@ const NAME_SYNONYMS: [string, string][] = [
   ["pemegang saham", "shareholder"], ["modal", "capital"], ["persediaan", "inventory"], ["uang muka", "advance"], ["dibayar di muka", "prepaid"],
   ["pajak", "tax"], ["karyawan", "employee"], ["imbalan kerja", "employee benefit"], ["sewa", "rent"], ["aset tetap", "fixed asset"],
   ["penyusutan", "depreciation"], ["akumulasi", "accumulated"], ["saldo laba", "retained"], ["pinjaman", "loan"], ["jangka panjang", "long term"],
+  // A loan to staff is often kept as an advance ("Advanced - Employee", "Uang Muka Karyawan").
+  ["piutang karyawan", "advance"], ["piutang karyawan", "uang muka"],
 ];
+/** Accounting words common to many accounts: one of them alone names no particular account. */
+const GENERIC = new Set(
+  ("utang hutang payable payables piutang receivable receivables lain lainnya other others beban biaya expense expenses pendapatan revenue income " +
+    "pajak tax aset asset assets kas bank cash modal capital saldo account akun usaha trade jangka panjang pendek long term short current " +
+    "uang muka advance advanced prepaid dibayar karyawan employee pinjaman loan loans").split(" "),
+);
 function nameWords(text: string): string[] {
   let t = ` ${text.toLowerCase().replace(/[^\p{L}]+/gu, " ")} `;
   for (const [id, en] of NAME_SYNONYMS) {
@@ -201,21 +248,29 @@ const sameWord = (a: string, b: string) => a === b || (Math.min(a.length, b.leng
  * The accounts a balance question names ("utang ke pihak berelasi", "piutang karyawan"), best match first: Buku's chart and the client's own
  * accounts from an imported ledger, either language. Only the best-scoring names, and only when at least two of the question's words match.
  */
-export function accountsNamed<T extends { name: string }>(question: string, accounts: T[], max = 5): T[] {
-  const q = nameWords(question.replace(CASH_WORDS, " ")).filter((w) => !NAME_STOP.has(w));
+export function accountsNamed<T extends { name: string }>(question: string, accounts: T[], max = 5, ignore: string[] = []): T[] {
+  // The entities' own names ("PT Sinergi Ketahanan Pangan") say whose books, not which account.
+  const skip = new Set(ignore.flatMap((n) => nameWords(n)));
+  const q = nameWords(question.replace(CASH_WORDS, " ")).filter((w) => !NAME_STOP.has(w) && !skip.has(w));
   if (!q.length) return [];
   const scored = accounts.map((a) => {
     const n = nameWords(a.name);
-    return { a, score: q.filter((w) => n.some((x) => sameWord(w, x))).length };
+    const hits = q.filter((w) => n.some((x) => sameWord(w, x)));
+    return { a, score: hits.length, hits };
   });
   const best = Math.max(0, ...scored.map((x) => x.score));
-  return best < 2 ? [] : scored.filter((x) => x.score === best).slice(0, max).map((x) => x.a);
+  const top = scored.filter((x) => x.score === best);
+  // One word is enough when it is distinctive ("Rawasari", "Smartfarm") and names only a few accounts.
+  if (best === 1 && (top.length > 3 || top.some((x) => GENERIC.has(x.hits[0]) || x.hits[0].length < 5))) return [];
+  return best < 1 ? [] : top.slice(0, max).map((x) => x.a);
 }
 
 export async function askWorkspace(db: Db, firmId: string, input: WorkspaceInput & { question: string }): Promise<WorkspaceAnswer> {
   const question = input.question.trim();
   if (!question || question.length > 2000) throw new WorkspaceInputError("Tulis pertanyaan antara 1 dan 2.000 karakter.");
-  const resolved = await resolveWorkspaceScope(db, firmId, input);
+  // A month named in the question is the month answered ("laba SKP Maret 2027"), never silently another one.
+  const asked = periodIn(question);
+  const resolved = await resolveWorkspaceScope(db, firmId, asked ? { ...input, period: asked } : input);
   const { key, label, period, periodLabel } = resolved;
   const answer: WorkspaceAnswer = { id: randomUUID(), question, scope: { key, label, period, periodLabel }, text: "", rows: [], citations: [], limitations: [], preliminary: null };
   const intent = workspaceQuestionIntent(question);
@@ -281,21 +336,23 @@ export async function askWorkspace(db: Db, firmId: string, input: WorkspaceInput
     });
     const shown = lines.slice(0, 200);
     const names = new Map((await db.account.findMany({ where: { clientId: { in: resolved.clientIds } }, select: { clientId: true, code: true, name: true } })).map((a) => [`${a.clientId}|${a.code}`, a.name]));
-    const byCurrency = new Map<string, { inn: bigint; out: bigint }>();
-    const byAccount = new Map<string, number>();
+    // Totals per account: the transfer itself and the bank's fee on it are different things (1190 vs 7100).
+    const byAccount = new Map<string, { n: number; cur: string; inn: bigint; out: bigint }>();
     for (const t of shown) {
-      const cur = t.bankAccount.currency;
-      const sum = byCurrency.get(cur) ?? { inn: 0n, out: 0n };
+      const code = t.status === "NEEDS_REVIEW" ? "1999" : (t.accountCode ?? "1999");
+      const k = `${code}|${t.bankAccount.currency}`;
+      const sum = byAccount.get(k) ?? { n: 0, cur: t.bankAccount.currency, inn: 0n, out: 0n };
+      sum.n++;
       if (t.amount > 0n) sum.inn += t.amount;
       else sum.out += -t.amount;
-      byCurrency.set(cur, sum);
-      const code = t.status === "NEEDS_REVIEW" ? "1999" : (t.accountCode ?? "1999");
-      byAccount.set(code, (byAccount.get(code) ?? 0) + 1);
+      byAccount.set(k, sum);
     }
-    const totals = [...byCurrency].map(([cur, v]) => [v.inn ? `masuk ${formatMoney(v.inn, cur)}` : "", v.out ? `keluar ${formatMoney(v.out, cur)}` : ""].filter(Boolean).join(", ")).join("; ");
-    const accounts = [...byAccount].sort((a, b) => b[1] - a[1]).map(([code, n]) => `${code} (${n}×)`).join(", ");
+    const accounts = [...byAccount]
+      .sort((a, b) => b[1].n - a[1].n)
+      .map(([k, v]) => `${k.split("|")[0]} (${v.n}×): ${[v.inn ? `masuk ${formatMoney(v.inn, v.cur)}` : "", v.out ? `keluar ${formatMoney(v.out, v.cur)}` : ""].filter(Boolean).join(", ")}`)
+      .join("; ");
     answer.text = shown.length
-      ? `${shown.length} mutasi bank dengan "${who}" pada ${periodLabel}: ${totals}. Dicatat ke ${accounts}.`
+      ? `${shown.length} mutasi bank dengan "${who}" pada ${periodLabel}. Per akun: ${accounts}.`
       : `Tidak ada mutasi bank dengan "${who}" pada ${periodLabel} di cakupan ini.`;
     for (const t of shown.slice(0, 30)) {
       const clientId = t.bankAccount.entity.clientId;
@@ -333,48 +390,81 @@ export async function askWorkspace(db: Db, firmId: string, input: WorkspaceInput
       answer.text = `Kesiapan tutup buku untuk ${periodLabel}. Penutupan berlaku untuk seluruh grup/klien.`;
       for (const c of data.clients) {
         answer.rows.push({ label: c.name, value: `${c.label} · ${c.failCount} kontrol gagal · ${c.reviewCount} temuan belum diakui · ${c.missingSignoffs} pemeriksaan akhir`, source: c.closeHref });
+        // Name what to do, failed controls first: a count alone tells the accountant nothing to start on.
+        for (const f of c.open.slice(0, 10)) answer.rows.push({ label: `${c.name} · ${f.scope}`, value: `${f.status === "FAIL" ? "Gagal" : "Perlu dicek"}: ${f.title}`, source: f.href });
+        if (c.open.length > 10) answer.limitations.push(`${c.name}: menampilkan 10 dari ${c.open.length} temuan; daftar lengkap di Tutup Buku.`);
         answer.citations.push({ label: `${c.name} · kontrol tutup buku`, href: c.closeHref });
       }
       if (resolved.kind === "entity") answer.limitations.push("Kesiapan mencakup seluruh klien induk, termasuk perusahaan lain di dalamnya.");
     } else {
+      // The entity a question names answers for itself ("saldo BCA Rawasari PT SKP"); in a related-party question the first one named is
+      // whose books, the others are the counterparties.
+      const mentioned = entitiesNamed(question, data.entities);
+      const related = intent === "balances" && RELATED.test(question);
+      const subjects = mentioned.length ? (related ? [mentioned[0]] : mentioned) : data.entities;
+      if (mentioned.length && subjects.length < data.entities.length) answer.limitations.push(`Dijawab untuk ${subjects.map((e) => e.name).join(", ")}, yang disebut di pertanyaan.`);
+      const ownNames = data.entities.flatMap((e) => [e.name, e.shortName]);
       // A balance asked by name: Buku's accounts and the client's own (imported) accounts at the month's end.
-      const named: { label: string; value: string; source: string }[] = [];
-      if (intent === "balances" && !accountCode) {
-        const { end } = periodBounds(resolved.year, resolved.month);
-        for (const e of data.entities) {
-          // Every account is a candidate, a cleared one included: "utang usaha" asked after it was paid off answers Rp 0, not cash.
-          const tb = new Map((await trialBalance(db, { clientId: e.clientId, entityIds: [e.id] }, end)).map((r) => [r.account.code, r.net]));
-          const chart = await db.account.findMany({ where: { clientId: e.clientId, isSuspense: false, isClearing: false }, select: { code: true, name: true } });
-          // A client's own income or expense account counts from the start of the tahun buku, like Buku's (trialBalance).
-          const yearStart = financialYear(await fiscalEndMonth(db, e.clientId), resolved.year, resolved.month).start;
-          const sources = await db.sourceAccount.findMany({ where: { entityId: e.id }, select: { id: true, code: true, name: true, account: { select: { type: true } } } });
-          const sum = async (from?: Date) => new Map((await db.journalLine.groupBy({ by: ["sourceAccountId"], where: { entityId: e.id, date: { gte: from, lte: end }, sourceAccountId: { not: null } }, _sum: { debit: true, credit: true } })).map((x) => [x.sourceAccountId!, (x._sum.debit ?? 0n) - (x._sum.credit ?? 0n)]));
-          const [lifetime, ytd] = await Promise.all([sum(), sum(yearStart)]);
-          const candidates = [
-            ...chart.map((a) => ({ name: a.name, label: `${a.code} ${a.name}`, net: tb.get(a.code) ?? 0n, href: workspaceHref(`/clients/${e.clientId}/ledger/${encodeURIComponent(a.code)}`, resolved, { entity: e.id }) })),
-            ...sources.map((x) => {
-              const pl = x.account?.type === "PENDAPATAN" || x.account?.type === "BEBAN";
-              return { name: x.name, label: `${x.code} ${x.name} (akun klien)`, net: (pl ? ytd : lifetime).get(x.id) ?? 0n, href: workspaceHref(`/clients/${e.clientId}/ledger/akun/${x.id}`, resolved, { entity: e.id }) };
-            }),
-          ];
-          for (const c of accountsNamed(question, candidates)) {
-            named.push({ label: `${e.name} · ${c.label}`, value: c.net === 0n ? formatMoney(0n, e.currency) : `${formatMoney(c.net < 0n ? -c.net : c.net, e.currency)} ${c.net < 0n ? "Kredit" : "Debit"}`, source: c.href });
-            answer.citations.push({ label: `${e.name} · buku besar ${c.label}`, href: c.href });
+      const named: { label: string; value: string; source: string; net: bigint }[] = [];
+      const { end } = periodBounds(resolved.year, resolved.month);
+      const candidatesOf = async (e: (typeof data.entities)[number]) => {
+        const tb = new Map((await trialBalance(db, { clientId: e.clientId, entityIds: [e.id] }, end)).map((r) => [r.account.code, r.net]));
+        const chart = await db.account.findMany({ where: { clientId: e.clientId, isSuspense: false, isClearing: false }, select: { code: true, name: true, type: true } });
+        // A client's own income or expense account counts from the start of the tahun buku, like Buku's (trialBalance).
+        const yearStart = financialYear(await fiscalEndMonth(db, e.clientId), resolved.year, resolved.month).start;
+        const sources = await db.sourceAccount.findMany({ where: { entityId: e.id }, select: { id: true, code: true, name: true, account: { select: { type: true } } } });
+        const sum = async (from?: Date) => new Map((await db.journalLine.groupBy({ by: ["sourceAccountId"], where: { entityId: e.id, date: { gte: from, lte: end }, sourceAccountId: { not: null } }, _sum: { debit: true, credit: true } })).map((x) => [x.sourceAccountId!, (x._sum.debit ?? 0n) - (x._sum.credit ?? 0n)]));
+        const [lifetime, ytd] = await Promise.all([sum(), sum(yearStart)]);
+        return [
+          ...chart.map((a) => ({ code: a.code, name: a.name, type: a.type as string | null, label: `${a.code} ${a.name}`, net: tb.get(a.code) ?? 0n, href: workspaceHref(`/clients/${e.clientId}/ledger/${encodeURIComponent(a.code)}`, resolved, { entity: e.id }) })),
+          ...sources.map((x) => {
+            const pl = x.account?.type === "PENDAPATAN" || x.account?.type === "BEBAN";
+            return { code: x.code, name: x.name, type: (x.account?.type ?? null) as string | null, label: `${x.code} ${x.name} (akun klien)`, net: (pl ? ytd : lifetime).get(x.id) ?? 0n, href: workspaceHref(`/clients/${e.clientId}/ledger/akun/${x.id}`, resolved, { entity: e.id }) };
+          }),
+        ];
+      };
+      const push = (e: (typeof data.entities)[number], c: { label: string; net: bigint; href: string }) => {
+        named.push({ label: `${e.name} · ${c.label}`, value: c.net === 0n ? formatMoney(0n, e.currency) : `${formatMoney(c.net < 0n ? -c.net : c.net, e.currency)} ${c.net < 0n ? "Kredit" : "Debit"}`, source: c.href, net: c.net });
+        answer.citations.push({ label: `${e.name} · buku besar ${c.label}`, href: c.href });
+      };
+      if (intent === "balances") {
+        for (const e of subjects) {
+          const candidates = await candidatesOf(e);
+          let found: typeof candidates;
+          if (accountCode) {
+            // A code is Buku's or the client's own ("akun 10005" from an imported ledger).
+            found = candidates.filter((c) => c.code.toLowerCase() === accountCode.toLowerCase());
+          } else if (related) {
+            // Related parties Buku knows: the group's other entities (by a distinctive word of their name), 1190, and accounts named as such.
+            const siblings = (await db.entity.findMany({ where: { clientId: e.clientId, id: { not: e.id } }, select: { name: true, shortName: true } }))
+              .flatMap((x) => [bareName(x.name), bareName(x.shortName)]).flatMap((n) => n.split(" ")).filter((w) => w.length >= 4 && !GENERIC.has(w) && !` ${bareName(e.name)} `.includes(` ${w} `));
+            const q = question.toLowerCase();
+            const side = /\b(utang|hutang|payables?|liabilitas|kewajiban)\b/.test(q) && !/\bpiutang\b/.test(q) ? "LIABILITAS" : /\b(piutang|receivables?|tagihan)\b/.test(q) ? "ASET" : null;
+            const words = (n: string) => n.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").split(" ");
+            found = candidates.filter((c) =>
+              (c.code === "1190" || /related|berelasi|afiliasi|affiliat|pemegang saham|shareholder|direksi|director|induk|subsidiar|anak perusahaan/i.test(c.name) || words(c.name).some((w) => siblings.includes(w))) &&
+              (!side || !c.type || c.type === side));
+          } else {
+            found = accountsNamed(question, candidates, 5, ownNames);
           }
+          // Balances first; a zero account only when nothing that matched holds a balance (an unused "Related Party Payable" is not the answer).
+          const held = found.filter((c) => c.net !== 0n);
+          for (const c of (held.length ? held : found).slice(0, 12)) push(e, c);
         }
       }
-      const cashToo = !named.length || CASH_WORDS.test(question.toLowerCase());
-      answer.text = intent === "profit" ? `Laba dan pendapatan ${periodLabel}, dihitung dari jurnal Buku.` : accountCode ? `Saldo akun ${accountCode} pada akhir ${periodLabel}, dihitung dari jurnal Buku.` : named.length && !cashToo ? `Saldo akun yang disebut pada akhir ${periodLabel}, dihitung dari jurnal Buku.` : named.length ? `Saldo kas dan bank aset, dan akun yang disebut, pada akhir ${periodLabel}, dihitung dari jurnal Buku.` : `Saldo kas dan bank aset pada akhir ${periodLabel}, dihitung dari jurnal Buku.`;
-      answer.rows.push(...named);
-      for (const e of cashToo ? data.entities : []) {
-        if (intent === "balances" && accountCode) {
-          const tb = await trialBalance(db, { clientId: e.clientId, entityIds: [e.id] }, periodBounds(resolved.year, resolved.month).end);
-          const row = tb.find(r => r.account.code === accountCode);
-          const href = workspaceHref(`/clients/${e.clientId}/ledger/${encodeURIComponent(accountCode)}`, resolved, { entity: e.id });
-          answer.rows.push({ label: `${e.name} · ${accountCode}${row ? ` ${row.account.name}` : ""}`, value: !row ? "Akun tidak ditemukan" : !e.hasBooks ? "Belum ada jurnal" : `${formatMoney(row.net < 0n ? -row.net : row.net, e.currency)} ${row.net < 0n ? "Kredit" : "Debit"}`, source: row ? href : e.reportHref });
-          if (row) answer.citations.push({ label: `${e.name} · buku besar ${accountCode}`, href });
-          continue;
-        }
+      const cashToo = (!named.length && !related && !accountCode) || (CASH_WORDS.test(question.toLowerCase()) && !accountCode);
+      answer.text =
+        intent === "profit" ? `Laba dan pendapatan ${periodLabel}, dihitung dari jurnal Buku.`
+        : accountCode ? `Saldo akun ${accountCode} pada akhir ${periodLabel}, dihitung dari jurnal Buku.`
+        : related && !named.length ? `Tidak ada akun pihak berelasi dengan saldo pada akhir ${periodLabel}. Buku mengenali pihak berelasi dari nama perusahaan lain di grup dan akun 1190; sebutkan nama akunnya bila berbeda.`
+        : related ? `Saldo pihak berelasi pada akhir ${periodLabel}: akun yang menyebut perusahaan lain di grup, 1190, dan akun bernama pihak berelasi, dihitung dari jurnal Buku.`
+        : named.length && !cashToo ? `Saldo akun yang disebut pada akhir ${periodLabel}, dihitung dari jurnal Buku.`
+        : named.length ? `Saldo kas dan bank aset, dan akun yang disebut, pada akhir ${periodLabel}, dihitung dari jurnal Buku.`
+        : `Saldo kas dan bank aset pada akhir ${periodLabel}, dihitung dari jurnal Buku.`;
+      answer.rows.push(...named.map((r) => ({ label: r.label, value: r.value, source: r.source })));
+      if (accountCode && !named.length) for (const e of subjects) answer.rows.push({ label: `${e.name} · ${accountCode}`, value: "Akun tidak ditemukan", source: e.reportHref });
+      if (intent === "profit" || cashToo) for (const e of subjects) {
+        if (!e.hasBooks || (intent === "profit" && !e.hasActivity)) answer.limitations.push(`${e.name}: belum ada jurnal pada ${periodLabel}.`);
         const href = intent === "profit" ? e.reportHref : workspaceHref(`/clients/${e.clientId}/trial-balance`, resolved, { entity: e.id });
         answer.rows.push({ label: `${e.name} · ${e.currency}`, value: intent === "profit" ? `Pendapatan ${e.revenueFormatted}; laba bersih ${e.profitFormatted}` : e.cashFormatted, source: href });
         answer.citations.push({ label: `${e.name} · ${intent === "profit" ? "laporan dari buku besar" : "neraca saldo"}`, href });
