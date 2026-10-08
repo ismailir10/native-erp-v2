@@ -2,14 +2,7 @@
    Stage mode: 1rem = 1/160 of a 16:9 slide, so every size below scales with the window.
    Flow mode (narrow or portrait): 1rem = 9px and slides stack as one scroll. */
 
-@font-face { font-family: "Newsreader"; src: url("/deck/fonts/newsreader-latin-opsz-normal.woff2") format("woff2"); font-weight: 200 800; font-style: normal; font-display: swap; }
-@font-face { font-family: "Newsreader"; src: url("/deck/fonts/newsreader-latin-opsz-italic.woff2") format("woff2"); font-weight: 200 800; font-style: italic; font-display: swap; }
-@font-face { font-family: "IBM Plex Sans"; src: url("/deck/fonts/ibm-plex-sans-latin-400-normal.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
-@font-face { font-family: "IBM Plex Sans"; src: url("/deck/fonts/ibm-plex-sans-latin-500-normal.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
-@font-face { font-family: "IBM Plex Sans"; src: url("/deck/fonts/ibm-plex-sans-latin-600-normal.woff2") format("woff2"); font-weight: 600 700; font-style: normal; font-display: swap; }
-@font-face { font-family: "IBM Plex Mono"; src: url("/deck/fonts/ibm-plex-mono-latin-400-normal.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
-@font-face { font-family: "IBM Plex Mono"; src: url("/deck/fonts/ibm-plex-mono-latin-500-normal.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
-@font-face { font-family: "IBM Plex Mono"; src: url("/deck/fonts/ibm-plex-mono-latin-600-normal.woff2") format("woff2"); font-weight: 600 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Plus Jakarta Sans"; src: url("/deck/fonts/plus-jakarta-sans-latin-wght-normal.woff2") format("woff2"); font-weight: 200 800; font-style: normal; font-display: swap; }
 
 :root {
   --bg: #f5f7fa;
@@ -33,9 +26,9 @@
   --on-navy: #f5f7fa;
   --on-navy-2: #a9b6c8;
   --navy-line: #27395a;
-  --sans: "IBM Plex Sans", ui-sans-serif, system-ui, "Segoe UI", Arial, sans-serif;
-  --serif: "Newsreader", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
-  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, "Segoe UI", Arial, sans-serif;
+  --serif: var(--sans);
+  --mono: var(--sans);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -715,3 +708,244 @@ table.mx td { padding: 1.5rem 1.2rem; }
 
 .aiflow table.t td { padding: 0.9rem 1.4rem; }
 .payload { padding: 1.4rem 2rem; }
+
+
+/* ======================================================================
+   v3 — Stripe-like restraint: one sans, soft cards, little chrome, quiet motion.
+   Animated pieces are vanilla ports in the manner of React Bits (CountUp, AnimatedList, Stack,
+   DotGrid, SpotlightCard, BorderBeam, CheckDraw); see REACT-BITS-LICENSE.txt. Nothing animates in print or under reduced motion.
+   ====================================================================== */
+:root {
+  --bg: #f6f9fc;
+  --ink: #0a2540;
+  --muted: #425466;
+  --faint: #5b6b80;
+  --line: #e3e8ee;
+  --line-2: #d3dbe6;
+  --tint: #eef2f7;
+  --blue: #1d5bd8;
+  --blue-s: #eef3fe;
+  --g1: #1d5bd8; --g2: #6d5dfc; --g3: #00b4ff;
+  --radius: 1.2rem;
+  --shadow: 0 0 0 1px rgba(10, 37, 64, 0.05), 0 1px 2px rgba(10, 37, 64, 0.04), 0 14px 34px -14px rgba(10, 37, 64, 0.18);
+  --navy: #0a2540;
+}
+body { font-weight: 400; letter-spacing: 0; }
+.slide { background: var(--bg); background-image: radial-gradient(70rem 46rem at 108% -8%, rgba(109, 93, 252, 0.08), transparent 70%), radial-gradient(60rem 44rem at -8% 108%, rgba(0, 180, 255, 0.07), transparent 70%); }
+.slide.navy { background: var(--navy); background-image: none; }
+
+/* type */
+h1, h2, h3 { font-family: var(--sans); font-weight: 700; letter-spacing: -0.035em; }
+h1 { font-size: 9.4rem; line-height: 1.0; letter-spacing: -0.045em; }
+h1 em, h2 em { font-style: normal; background: linear-gradient(100deg, #7da7ff, #a99bff 55%, #6fd6ff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+h2, .head h2 { font-size: 5.2rem; line-height: 1.06; letter-spacing: -0.04em; }
+h3 { font-weight: 650; letter-spacing: -0.02em; }
+.lead { font-size: 2.2rem; line-height: 1.55; color: var(--muted); font-weight: 400; }
+.eyebrow { font-size: 1.8rem; font-weight: 650; color: var(--blue); gap: 1.1rem; letter-spacing: -0.005em; margin-bottom: 2rem; }
+.eyebrow::before { width: 1rem; height: 1rem; border-radius: 50%; background: linear-gradient(135deg, var(--g1), var(--g3)); }
+.navy .eyebrow { color: #9ec0ff; }
+.navy .eyebrow::before { background: linear-gradient(135deg, #7da7ff, #6fd6ff); }
+.mono, .c .mono, .c-h .mono, .doc .mono { font-family: var(--sans); font-size: 1.55rem; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--faint); }
+.s-top, .s-foot { font-size: 1.5rem; font-weight: 500; color: var(--faint); }
+.brand { font-family: var(--sans); font-size: 2.6rem; font-weight: 750; letter-spacing: -0.035em; }
+.brand small { font-weight: 500; font-size: 1.5rem; letter-spacing: 0; }
+.brand i { border-radius: 0.9rem; background: linear-gradient(135deg, var(--g1), #4a74f0); }
+.pts li::before { font-family: var(--sans); font-style: normal; font-weight: 650; font-size: 1.6rem; padding-top: 0.45rem; }
+.pts { border-top-color: var(--line-2); }
+
+/* cards, rows, pills */
+.c { border: 0; border-radius: var(--radius); box-shadow: var(--shadow); background: #fff; }
+.c-h { border-bottom: 1px solid var(--line); padding: 1.7rem 2.4rem; font-size: 1.8rem; font-weight: 650; letter-spacing: -0.01em; }
+.c-b { padding: 2.2rem 2.4rem; }
+table.t { font-size: 1.6rem; }
+table.t th { font-family: var(--sans); font-size: 1.35rem; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--faint); background: transparent; padding: 1.3rem 1.6rem 0.9rem; }
+table.t td { padding: 1.25rem 1.6rem; border-bottom-color: #eef1f6; }
+table.t .hl td { background: var(--blue-s); }
+table.t .hl td:first-child { box-shadow: inset 3px 0 0 var(--blue); }
+.pill { font-family: var(--sans); font-size: 1.4rem; font-weight: 650; letter-spacing: 0; text-transform: none; border-radius: 99rem; padding: 0.45rem 1.2rem; }
+.pill.pass { background: #e3f6ec; color: #0b6b43; } .pill.review { background: #fdf0cf; color: #7d4a00; } .pill.fail { background: #fde6ea; color: #b11c34; } .pill.info { background: #e6edfd; color: #1b4fc0; } .pill.plain { background: #eaeef4; color: #425466; }
+.hl .pill.info { background: #fff; border-color: transparent; }
+.btn { border-radius: 0.9rem; font-weight: 650; border-color: var(--line-2); box-shadow: 0 1px 2px rgba(10,37,64,.06); }
+.btn.p { background: linear-gradient(135deg, #1d5bd8, #3f6ff0); border-color: transparent; box-shadow: 0 6px 16px -6px rgba(29,91,216,.6); }
+.btn.off { box-shadow: none; background: var(--tint); }
+.file, .bubble, .mini, .sug, .tool, .reader, .tags span, .url, .src2 > div, .out2 > div { border-radius: 1rem; }
+.file { box-shadow: var(--shadow); border: 0; }
+.file .ext { font-family: var(--sans); font-weight: 700; letter-spacing: 0; border-radius: 0.7rem; background: linear-gradient(135deg, #e7eefe, #efeaff); color: #3b4fd6; }
+.mini { background: #f6f9fc; border-color: transparent; }
+.bubble { box-shadow: var(--shadow); border: 0; }
+.bubble.q { background: #fde9ed; }
+.ask-in { border-radius: 1rem; box-shadow: var(--shadow); border: 0; }
+.ask-in b { border-radius: 0.7rem; background: linear-gradient(135deg, #1d5bd8, #3f6ff0); }
+.calcbig { border-radius: var(--radius); background: linear-gradient(160deg, #0a2540, #12376b); }
+.calcbig .eqn { font-weight: 650; letter-spacing: -0.035em; font-family: var(--sans); }
+.msg-r p { border: 0; box-shadow: var(--shadow); }
+.msg-r.o p { background: linear-gradient(135deg, #1d5bd8, #3f6ff0); color: #fff; }
+.gate { border: 0; border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
+.gate-h { font-family: var(--sans); font-size: 1.5rem; font-weight: 650; letter-spacing: 0; text-transform: none; }
+.flow2 > div { font-family: var(--sans); font-size: 1.45rem; font-weight: 600; letter-spacing: 0; text-transform: none; }
+.tool small, .payload dt, .kv dt, .cite, .actor, .src { font-family: var(--sans); letter-spacing: 0; text-transform: none; font-weight: 600; }
+.tool small { font-size: 1.35rem; } .kv dt { font-size: 1.4rem; font-weight: 500; } .cite { font-size: 1.35rem; } .actor { font-size: 1.4rem; } .payload dt { font-size: 1.35rem; }
+.reader { border: 0; box-shadow: var(--shadow); border-radius: 1rem; }
+.tool { border: 0; background: #edf1f7; }
+.paper { border-radius: 0.8rem; box-shadow: 0 0 0 1px var(--line), 0 18px 40px -22px rgba(10,37,64,.35); }
+.paper-h b { font-family: var(--sans); font-weight: 700; letter-spacing: -0.02em; }
+.doc { border-radius: 0.9rem; overflow: hidden; background: #f6f9fc; border-color: transparent; }
+.dc { border-radius: 0.8rem; }
+.sk { border-radius: 0.5rem; }
+.bridge .amt { font-family: var(--sans); font-weight: 700; letter-spacing: -0.04em; }
+.bigans { font-family: var(--sans); font-weight: 700; letter-spacing: -0.045em; }
+.metric { font-family: var(--sans); font-weight: 500; letter-spacing: -0.02em; font-size: 2.4rem; }
+.cta .big { font-family: var(--sans); font-weight: 750; letter-spacing: -0.045em; }
+.pbar { border-radius: 99rem; overflow: hidden; background: #e8edf4; height: 1rem; } .pbar i { border-radius: 99rem; background: linear-gradient(90deg, var(--g1), var(--g3)); }
+.cascade li::before, .how3 li::before { border-radius: 0.7rem; font-family: var(--sans); font-weight: 650; }
+.cascade, .how3 ol, .chain { border-left-width: 2px; border-left-color: #c9d6f2; }
+.chain li::before { border-radius: 50%; }
+.tn i { border-radius: 0.7rem; }
+.pipe-buku, .pipe-rep { color: var(--ink); }
+.pipe-trace { border-color: #6f9cf5; } .pipe-trace .mono { color: #9ec0ff; }
+.legend .dc, .dc { }
+.eco-lab span { font-weight: 650; }
+.rule { border-top: 0; gap: 0; }
+.rule b { font-weight: 700; }
+.rule > div { border-top: 2px solid; border-image: linear-gradient(90deg, var(--g1), var(--g3)) 1; }
+.sent { border-top-color: var(--line-2); }
+.tags span { border: 0; background: #fff; box-shadow: var(--shadow); font-weight: 500; }
+.so i { border-radius: 0.6rem; background: linear-gradient(135deg, #1d5bd8, #3f6ff0); }
+
+/* navy slides: mesh + dots */
+.slide.navy > * { position: relative; z-index: 2; }
+.slide.navy > .mesh, .slide.navy > .dots { position: absolute; z-index: 0; inset: 0; }
+.slide.navy > .dots { z-index: 1; width: 100%; height: 100%; }
+.mesh { overflow: hidden; pointer-events: none; }
+.mesh i { position: absolute; border-radius: 50%; width: 110rem; height: 110rem; background: radial-gradient(closest-side, var(--c), transparent 72%); opacity: 0.6; }
+.mesh i:nth-child(1) { --c: #1d5bd8; left: -35rem; top: -55rem; }
+.mesh i:nth-child(2) { --c: #6d5dfc; right: -40rem; top: -45rem; opacity: 0.5; }
+.mesh i:nth-child(3) { --c: #00a7ff; right: -10rem; bottom: -80rem; opacity: 0.42; }
+.navy .c { box-shadow: 0 0 0 1px rgba(255,255,255,.08), 0 24px 60px -20px rgba(0,0,0,.5); }
+.navy .tl { border-top-color: rgba(255,255,255,.28); }
+.navy .tn i { background: linear-gradient(135deg, #1d5bd8, #4f7bf2); }
+.navy .tl-b { border-left-color: #6fd6ff; }
+.navy .pts li::before { color: #7da7ff; }
+.navy .pts, .navy .pts li { border-color: rgba(255,255,255,.14); }
+.navy .metric { color: #e3edff; }
+.navy .btn { border-color: rgba(255,255,255,.22); }
+.navy .s-top, .navy .s-foot { color: #9fb2cc; }
+.navy .brand small { color: #9fb2cc; }
+
+/* spotlight + beam (React Bits SpotlightCard / BorderBeam, vanilla) */
+.spot { position: relative; overflow: hidden; }
+.spot::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.3s; background: radial-gradient(28rem circle at var(--mx, 50%) var(--my, 50%), rgba(109, 93, 252, 0.10), transparent 65%); }
+.spot:hover::after { opacity: 1; }
+@property --a { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+.beam { position: relative; }
+.beam::before { content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1.5px; pointer-events: none; background: conic-gradient(from var(--a), transparent 0 62%, #7da7ff 80%, #6fd6ff 92%, transparent); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); z-index: 3; }
+
+/* illustration pieces */
+.fan { position: relative; height: 46rem; }
+.fan .file { position: absolute; left: 0; width: 40rem; margin: 0; }
+.fan .file:nth-child(1) { top: 0; --r: -5deg; }
+.fan .file:nth-child(2) { top: 8rem; --r: -1.5deg; left: 3rem; }
+.fan .file:nth-child(3) { top: 16rem; --r: 2deg; left: 1rem; }
+.fan .file:nth-child(4) { top: 24rem; --r: 4.5deg; left: 4rem; }
+.fan .file { transform: rotate(var(--r)); }
+.fan .bubble { position: absolute; left: 1rem; top: 34rem; width: 40rem; margin: 0; }
+.packet { position: absolute; width: 1.4rem; height: 1.4rem; border-radius: 50%; background: linear-gradient(135deg, var(--g3), var(--g2)); box-shadow: 0 0 1.6rem 0.2rem rgba(0, 180, 255, 0.55); }
+.bridge { position: relative; }
+.bridge .packet { left: 3.3rem; top: 3.2rem; }
+.gatebox { position: relative; }
+
+@keyframes rise { from { opacity: 0; transform: translateY(1.8rem); } to { opacity: 1; transform: none; } }
+@keyframes pop { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: none; } }
+@keyframes draw { from { stroke-dashoffset: 70; } to { stroke-dashoffset: 0; } }
+@keyframes grow { from { width: 0; } }
+@keyframes nudge { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(0.9rem); } }
+@keyframes fanin { from { opacity: 0; transform: translateY(2rem) rotate(0deg); } to { opacity: 1; transform: rotate(var(--r)); } }
+@keyframes drift1 { to { transform: translate(14rem, 10rem) scale(1.08); } }
+@keyframes drift2 { to { transform: translate(-16rem, 12rem) scale(0.94); } }
+@keyframes drift3 { to { transform: translate(-12rem, -10rem) scale(1.1); } }
+@keyframes spin { to { --a: 360deg; } }
+@keyframes fall { 0% { transform: translateY(0); opacity: 0; } 12% { opacity: 1; } 88% { opacity: 1; } 100% { transform: translateY(5.4rem); opacity: 0; } }
+@keyframes pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+
+@media screen and (prefers-reduced-motion: no-preference) {
+  html:not(.flow) .slide.on [data-s] { animation: rise 0.75s cubic-bezier(0.2, 0.7, 0.2, 1) both; animation-delay: calc(var(--d, 0) * 1ms + 140ms); }
+  html:not(.flow) .slide.on .fan .file { animation: fanin 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) both; animation-delay: calc(var(--d, 0) * 1ms + 140ms); }
+  html:not(.flow) .slide.on .pill svg, html:not(.flow) .slide.on .so i svg, html:not(.flow) .slide.on .dc svg { stroke-dasharray: 70; animation: draw 0.7s ease-out both; animation-delay: calc(var(--k, 0) * 1ms + 520ms); }
+  html:not(.flow) .slide.on .pbar i { animation: grow 1.2s cubic-bezier(0.2, 0.7, 0.2, 1) 0.4s both; }
+  html:not(.flow) .slide.on .arr { animation: nudge 2.2s ease-in-out 1.2s infinite; }
+  html:not(.flow) .slide.on .beam::before { animation: spin 4.5s linear infinite; }
+  html:not(.flow) .slide.on .mesh i:nth-child(1) { animation: drift1 16s ease-in-out infinite alternate; }
+  html:not(.flow) .slide.on .mesh i:nth-child(2) { animation: drift2 19s ease-in-out infinite alternate; }
+  html:not(.flow) .slide.on .mesh i:nth-child(3) { animation: drift3 22s ease-in-out infinite alternate; }
+  html:not(.flow) .slide.on .bridge .packet { animation: fall 2.4s ease-in-out 1.2s infinite; }
+  html:not(.flow) .slide.on .gatebox .packet { animation: fall 3.2s ease-in-out 1.2s infinite; }
+  html:not(.flow) .slide.on .pipe-trace svg { animation: pulse 2s ease-in-out infinite; }
+}
+@media print { .dots, .packet { display: none; } .beam::before { display: none; } }
+@media (max-width: 899px), (max-aspect-ratio: 5/4) {
+  html { font-size: 9px; }
+  h1 { font-size: 3.9rem !important; } h2, .head h2 { font-size: 3.2rem !important; }
+  .fan { height: auto; } .fan .file, .fan .bubble { position: relative; left: 0 !important; top: 0 !important; width: auto; transform: none; margin-bottom: 1rem; }
+  .packet, .dots { display: none; }
+}
+
+.flow2 { position: relative; }
+
+/* v3 sizes: fewer words, bigger */
+.m { font-size: 1.9rem; }
+table.t { font-size: 1.8rem; }
+table.t th { font-size: 1.5rem; }
+.c-h { font-size: 2rem; padding: 1.8rem 2.6rem; }
+.pill { font-size: 1.5rem; }
+.mono, .c .mono, .c-h .mono, .doc .mono { font-size: 1.65rem; }
+.lead { font-size: 2.4rem; }
+.pts li { font-size: 2.1rem; }
+.s-top, .s-foot { font-size: 1.6rem; }
+.file .fn { font-size: 1.9rem; } .file .fs { font-size: 1.55rem; }
+.mini { font-size: 1.7rem; }
+.lst b { font-size: 1.95rem; } .lst span { font-size: 1.6rem; }
+.fine2, .pk-f, .st-f, .s4-f { font-size: 1.6rem; }
+.chain li b { font-size: 2.2rem; } .chain li span { font-size: 1.7rem; }
+.cascade b { font-size: 2rem; } .cascade span { font-size: 1.65rem; }
+.rule b { font-size: 2.5rem; } .rule span { font-size: 1.75rem; }
+.kinds b { font-size: 2rem; } .kinds span { font-size: 1.65rem; }
+.ans b { font-size: 1.9rem; } .ans span { font-size: 1.7rem; }
+.ask .q { font-size: 2.1rem; }
+.qq { font-size: 1.95rem; } .aa { font-size: 1.75rem; }
+.tn b { font-size: 2.2rem; } .tn span { font-size: 1.7rem; }
+.reader { font-size: 1.9rem; } .reader span { font-size: 1.55rem; }
+.tool { font-size: 1.85rem; }
+.bk li { font-size: 1.95rem; } .bk li span { font-size: 1.6rem; }
+.calc { font-size: 1.7rem; }
+.sent { font-size: 1.75rem; }
+.note-b { font-size: 1.8rem; }
+.eco-n { font-size: 1.85rem; }
+.how3 b { font-size: 2.2rem; } .how3 span { font-size: 1.75rem; }
+.msg-r p { font-size: 1.9rem; }
+.kv { font-size: 1.8rem; }
+.so li { font-size: 1.75rem; }
+.after { font-size: 1.6rem; }
+.ctl small { font-size: 1.55rem; }
+.tags span { font-size: 1.6rem; }
+.url { font-size: 1.7rem; } .facts { font-size: 1.65rem; }
+.msg p { font-size: 1.75rem; }
+.legend { font-size: 1.6rem; }
+
+.m .mono, .m .eyebrow { font-size: 1.65rem; }
+.doc .ln { font-size: 1.7rem; padding: 0.8rem 1.4rem; } .doc .ln b { font-size: 1.5rem; }
+.side3 .doc .ln { padding: 0.7rem 1.3rem; }
+.kv dd { font-size: 1.8rem; } .cite { font-size: 1.5rem; }
+.paper-h span { font-size: 1.6rem; }
+.pk-h h3 { font-size: 2.3rem; } .side3 .pk-h h3 { font-size: 2.2rem; }
+.legend { font-size: 1.7rem; }
+table.mx td small, .ctl small { font-size: 1.5rem; }
+.eco-lab span { font-size: 1.7rem; }
+.bridge span { font-size: 1.7rem; }
+.xfer p, .acc-n { font-size: 1.7rem; }
+.ent .acc { font-size: 1.8rem; }
+.gate li { font-size: 1.7rem; } .src2 > div, .out2 > div { font-size: 1.65rem; }
+.payload dd, .payload dl { font-size: 1.7rem; }
+.bk li span { font-size: 1.65rem; }
+
+.aiflow .mono-l { font-size: 1.55rem; }
+.flow2 .packet:first-child { left: 4% !important; } .flow2 .packet:nth-child(2) { left: 54% !important; }
