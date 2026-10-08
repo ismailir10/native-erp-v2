@@ -103,6 +103,9 @@
     if (m) { e.preventDefault(); show(parseInt(m[1], 10) - 1); }
   });
 
+  // phone layout: a wide table scrolls inside its card; tell the reader
+  document.querySelectorAll(".fl-scroll").forEach(function (x) { var n = el("p", "swipe", "Geser tabel ke samping untuk melihat semua kolom"); x.parentNode.insertBefore(n, x.nextSibling); });
+
   /* ---- motion: CountUp in the manner of React Bits; entrances are CSS (deck.css). ---- */
   function ease(t) { return 1 - Math.pow(1 - t, 3); }
   function countUp(x) {
