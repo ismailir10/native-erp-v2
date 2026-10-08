@@ -132,6 +132,7 @@ export default async function ClientOverview({ params, searchParams }: { params:
           <CardHeader>
             <CardTitle>Kontrol {formatPeriod(period.year, period.month)}</CardTitle>
             <CardDescription>
+              {counts.FAIL + counts.REVIEW > 0 ? `${counts.FAIL + counts.REVIEW} perlu dicek · ` : ""}
               <Link className="inline-flex items-center gap-1 text-primary hover:underline" href={withParams(`${base}/close`, { period: period.key })}>Buka Tutup Buku <ArrowRight className="size-3.5" /></Link>
             </CardDescription>
           </CardHeader>
@@ -142,7 +143,7 @@ export default async function ClientOverview({ params, searchParams }: { params:
                   <div className="break-words font-medium">{c.title}</div>
                   <div className="break-words text-xs text-muted-foreground">{c.scope} · {c.detail}</div>
                 </div>
-                <StatusPill status={c.status} className="shrink-0" />
+                <StatusPill status={c.status} iconOnly className="mt-0.5" />
               </div>
             ))}
             {counts.REVIEW + counts.FAIL === 0 && <div className="text-sm text-muted-foreground">Semua {controls.length} kontrol lolos.</div>}

@@ -20,7 +20,8 @@ description: Buku UI standard — 9fin look on a light background (navy ink, one
 - **No boxes in boxes.** A card holding a list shows divided rows, not a bordered card per row. Same page, same fact: shown once.
 - Chart series colours are their own tokens (`--chart-1…5`, validated with the `dataviz` validator); `--chart-1` is a lighter blue than
   `--primary` because the ink blue is too dark for a data series.
-- Type: Inter (self-hosted), `.num` = tabular numerals on every amount. **Micro-labels** (table headers, sidebar group
+- Type: Inter (self-hosted) for body, tables and forms; **Newsreader** (`font-display`, self-hosted variable serif) only for page titles,
+  the login heading and `Stat` values. `.num` = tabular numerals on every amount. **Micro-labels** (table headers, sidebar group
   labels, stat labels, eyebrows) use `.eyebrow`: system monospace, 11px, uppercase, tracked.
 
 ## Components

@@ -155,7 +155,7 @@
     text-decoration-style: dotted;
     text-decoration-thickness: 1px;
     text-underline-offset: 4px;
-    text-decoration-color: color-mix(in oklab, var(--muted-foreground) 70%, transparent);
+    text-decoration-color: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
   }
   .drill:hover,
   .drill:focus-visible {

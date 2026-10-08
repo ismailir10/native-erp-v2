@@ -9,9 +9,11 @@ const MAP: Record<ControlStatus, { label: string; icon: typeof CircleCheck; cls:
 };
 
 /** Status always carries icon + label — never colour alone. Only a failure gets a fill: it blocks, the rest just reads. */
-export function StatusPill({ status, label, className }: { status: ControlStatus; label?: string; className?: string }) {
+export function StatusPill({ status, label, className, iconOnly = false }: { status: ControlStatus; label?: string; className?: string; iconOnly?: boolean }) {
   const s = MAP[status];
   const Icon = s.icon;
+  // `iconOnly`: inside a list whose header already says the state, the shape carries it and the word is for screen readers.
+  if (iconOnly) return <Icon className={cn("size-4 shrink-0", s.cls, className)} role="img" aria-label={label ?? s.label} />;
   return (
     <span className={cn("inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-sm py-0.5 text-xs font-medium", s.cls, className)}>
       <Icon className="size-3.5" aria-hidden />

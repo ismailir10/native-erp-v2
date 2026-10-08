@@ -75,7 +75,7 @@ the login/auth card layout (already minimal); redoing charts beyond colour.
 ## Tasks
 - [x] T1 Tokens: warm paper palette, ink blue, 2px radius, contrast table in the cycle doc — accept: `npm run lint && typecheck && test`; contrast ≥ 4.5:1 text / 3:1 UI computed in the doc; chart palette passes the validator.
 - [x] T2 Quiet status + ink drill-down links (`StatusPill`, `MethodBadge`, `Money` links, `FsTable` account links) — accept: no tinted fill except FAIL; link affordance still visible without hover; unit/e2e green.
-- [ ] T3 (HELD: needs the font dependency approved) Display serif for `PageHeader` title and `Stat` value (depends on gate approval) — accept: lighthouse-free check: font self-hosted, no layout shift at 390 px.
+- [x] T3 Display serif for `PageHeader` title and `Stat` value (depends on gate approval) — accept: lighthouse-free check: font self-hosted, no layout shift at 390 px.
 - [x] T4 Sections by rule: `Card` default + the "boxes in boxes" places (Beranda finance, Ringkasan) — accept: screenshots; no nested bordered boxes.
 - [x] T5 Beranda: reorder *Tanya Buku*, de-duplicate NextStep vs list, finance table — accept: sweep shows 1 NextStep, no duplicate sentence; e2e investor walk green.
 - [x] T6 Ringkasan + Laporan: full control text, drop duplicate chart table, Draf banner as counted links — accept: no "…" in control sentences at 1440/390.
@@ -93,6 +93,14 @@ Contrast (WCAG, computed): ink on paper 16.0 · ink on white 17.7 · muted on pa
 - T6: `app/(app)/clients/[id]/page.tsx` (control sentences wrap in full; the revenue/expense table is `sr-only`: screen readers keep the numbers, sighted users see the chart once), `components/app/report-status.tsx` (Draf banner = one heading line + one linked blocker per line on a white card with an amber left rule, instead of a yellow slab with six run-on links).
 - T7: `components/app/close-panel.tsx` (open controls first; passed controls fold into a "N kontrol lolos" disclosure per entity, still in the DOM), `app/(app)/clients/[id]/close/page.tsx` (the AI-review card renders only when AI is configured), `app/(app)/clients/[id]/review/page.tsx` + `components/app/review-queue.tsx` (NextStep = "Periksa 4 usulan akun di bawah: terima yang benar, ganti yang salah."; the Tebakan/Enter rule moves to the hint row and shows only when a guess exists), `e2e/investor-demo.spec.ts` (first-visible "Lolos" → "N kontrol lolos"). *Deviation from the Spec:* the per-card accountant hints (capex, down payment, withholding) are real rule-based checks, so they stay; they changed from a yellow filled block to a quiet amber left-rule note with the same text and one-click action, rather than appearing "only when different".
 - T8: `.agents/skills/ui-rules/SKILL.md` — ledger-paper tokens, `.drill`, status without fills, no boxes in boxes, one-sentence NextStep, passed items fold, no `line-clamp` on explanatory text, no card that only says "not set up".
+- T3 (approved by the owner: "get them done"): `@fontsource-variable/newsreader@5.3.0` (new dependency, lockfile +10 lines, `xlsx` entry untouched), `app/globals.css` (`--font-display`), `components/app/page-header.tsx` (page title, `Stat` value), `app/(app)/not-found.tsx`, `app/login/shell.tsx`. Newsreader chosen over Source Serif 4 by rendering both at heading and figure size: narrower, more editorial, lining + tabular figures (`tnum` present).
+- Polish round after reading the pages the first pass skipped (Impor, Buku Besar, Saldo Awal, Pengaturan, Dokumen, Laporan, Tambah klien, login):
+  - `app/(app)/clients/[id]/import/page.tsx`: the upload form moves up under Kelengkapan data (it was ~1100 px down, below a drafted WhatsApp message and two cards); the import history shows 6 rows with "Tampilkan semua (N)" (`?riwayat=semua`); "Minta data ke klien", "Tautan unggah" and the Dokumen hint follow the form; on a phone the history hides Periode / Baris / Diimpor so "Hapus" is no longer off-screen.
+  - `components/ui/card.tsx`: card titles are semibold (they were the same weight as body text).
+  - `components/app/status.tsx` + `app/(app)/clients/[id]/page.tsx`: the Kontrol card says "7 perlu dicek" once in its header and marks rows with an icon (labelled for screen readers) instead of repeating the "Perlu dicek" pill five times.
+  - `components/app/app-sidebar.tsx`: the client section label is the client name, truncated with a tooltip (was "AKUNTANSI · GRUP AYAM / NUSANTARA", wrapping onto two lines).
+  - `components/app/client-form.tsx`, `entities-card.tsx`: the NPWP placeholder was cut off in its own field; the label now says "NPWP, 16 digit (opsional)" and the placeholder is just the example.
+  - `app/globals.css`: `.drill` underline 70% → 55% so lists made entirely of links (Buku Besar, Neraca Saldo) stay calm.
 
 ## Verification
 - Environment: `xlsx` is a stub here (cdn.sheetjs.com blocked), so 7 spreadsheet-reading test files fail locally; they fail identically on untouched `main` (27 failed | 48 passed in those 7 files, both runs). CI has the real package.
@@ -104,9 +112,9 @@ Contrast (WCAG, computed): ink on paper 16.0 · ink on white 17.7 · muted on pa
 - **`ux:sweep` re-run:** 222 inner-scroll leads vs 220 before; still 0 HTTP errors, 0 console errors, 0 `undefined`/`NaN`, 0 broken links, 0 page-level horizontal scroll. The 2 new leads are the visually hidden (`sr-only`) question label on Beranda, clipped by design.
 - **Before → after page height (full-page screenshot, px):** Beranda 1942 → 1586 (1440) and 2928 → 2625 (390); Tutup Buku 2414 → 1532 (1440) and 3943 → 2849 (390); Review 1390 → 1346; Ringkasan 1313 → 1339 and Laporan 1422 → 1524: these two grew on purpose (control sentences no longer cut with "…"; each Draf blocker on its own line).
 - Not done here: T3 (display serif). Dark mode, new pages and accounting copy untouched, as specced.
+- **T3 + polish round (local):** lint + typecheck clean; `npm run build` ✓; the same 28 e2e specs → 39 passed (3.3 m), exit 0. Impor Mutasi 3307 → 2439 px at 1440 px, upload form ~1100 px → ~720 px from the top. Screenshots read: Beranda, Ringkasan, Impor (1440 + 390), Buku Besar, Saldo Awal, Pengaturan, Dokumen, Laporan, Tambah klien, login.
 
 ## Ship Notes
-- No migration, env var or dependency. Presentation only: no number, control or accounting copy changed (`verify:books` ALL PASS).
+- One new dependency, approved by the owner: `@fontsource-variable/newsreader` (self-hosted, no network at runtime). No migration or env var. Presentation only: no number, control or accounting copy changed (`verify:books` ALL PASS).
 - Rollback: revert the merge.
-- Follow-up waiting on a decision: T3, one self-hosted variable serif (`@fontsource-variable/…`) for page titles and stat values.
 

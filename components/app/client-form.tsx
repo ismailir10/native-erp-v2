@@ -172,8 +172,8 @@ export function ClientForm({ initial, evidenceIntakeId, onCreated }: { initial?:
               {/* A foreign company has no Indonesian NPWP. */}
               {e.kind !== "BADAN_USAHA_ASING" && (
                 <Field>
-                  <FieldLabel htmlFor={`e-npwp-${i}`}>NPWP (opsional)</FieldLabel>
-                  <Input id={`e-npwp-${i}`} value={e.npwp} aria-invalid={!!err(`entities.${i}.npwp`)} onChange={(ev) => setEntity(i, { npwp: ev.target.value })} placeholder="16 digit, mis. 0012 3456 7801 5000" />
+                  <FieldLabel htmlFor={`e-npwp-${i}`}>NPWP, 16 digit (opsional)</FieldLabel>
+                  <Input id={`e-npwp-${i}`} value={e.npwp} aria-invalid={!!err(`entities.${i}.npwp`)} onChange={(ev) => setEntity(i, { npwp: ev.target.value })} placeholder="mis. 0012 3456 7801 5000" />
                   <FieldError>{err(`entities.${i}.npwp`)}</FieldError>
                 </Field>
               )}
