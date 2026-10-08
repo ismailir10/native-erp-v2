@@ -77,7 +77,7 @@ export function WorkspaceAsk({ scope }: { scope: Answer["scope"] }) {
       <CardContent className="space-y-4">
         <form onSubmit={(event) => { event.preventDefault(); void submit(); }} className="space-y-3">
           <Label htmlFor="workspace-question" className="sr-only">Apa yang ingin Anda periksa?</Label>
-          <Textarea ref={inputRef} id="workspace-question" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Contoh: Klien mana yang belum siap tutup buku?" maxLength={2000} aria-describedby="workspace-ask-help" aria-invalid={Boolean(error)} rows={1} className="min-h-9 sm:flex-1" />
+          <Textarea ref={inputRef} id="workspace-question" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Contoh: Klien mana yang belum siap tutup buku?" maxLength={2000} aria-describedby="workspace-ask-help" aria-invalid={Boolean(error)} rows={1} className="min-h-9" />
           <div className="flex flex-wrap items-center justify-between gap-3"><p id="workspace-ask-help" className="max-w-md text-xs text-muted-foreground">Jawaban menyertakan sumber. Usulan akuntansi tetap perlu diperiksa.</p><Button type="submit" disabled={busy || !question.trim()}>{busy ? <LoaderCircle className="animate-spin" aria-hidden /> : <ArrowUp aria-hidden />}{busy ? "Memeriksa…" : "Tanya Buku"}</Button></div>
           {error && <p role="alert" className="text-sm text-fail">{error}</p>}
         </form>
