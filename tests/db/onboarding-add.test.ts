@@ -40,7 +40,7 @@ describe("adding to an existing client", () => {
     const g = await makeGroup();
     const before = await db.account.count({ where: { clientId: g.client.id } });
     const e = await addEntity(db, g.firm.id, g.client.id, owner([bank("9990001234", { bank: "SMBC", label: "Jenius Budi" })]));
-    expect(e).toMatchObject({ clientId: g.client.id, kind: "PERORANGAN", shortName: "Budi", functionalCurrency: "IDR", reportingFramework: "SAK_EP" });
+    expect(e).toMatchObject({ clientId: g.client.id, kind: "PERORANGAN", shortName: "Budi", functionalCurrency: "IDR", reportingFramework: "SAK_EMKM" }); // a person's own books default to SAK EMKM; the group still reports on its highest framework
     const acct = await db.bankAccount.findFirstOrThrow({ where: { entityId: e.id }, include: { account: true } });
     expect(acct.account).toMatchObject({ code: "1104", name: "Jenius Budi (Budi)" });
     expect(await db.account.count({ where: { clientId: g.client.id } })).toBe(before + 1);

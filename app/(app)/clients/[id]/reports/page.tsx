@@ -67,9 +67,12 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
       incomeStatement(prisma, s, yearStart, period.end),
       balanceSheet(prisma, s, period.end),
     ]);
-    const ws = multi ? await combinedWorksheet(prisma, client.id, period.end) : null;
-    return { isMonth, isYtd, bs, ws };
+    return { isMonth, isYtd, bs };
   });
+  // The group's worksheet needs every entity's translation rates; one entity's own statements never wait for another's (rule 11).
+  const wsResult = multi ? await withFx(() => combinedWorksheet(prisma, client.id, period.end)) : null;
+  const ws = wsResult instanceof FxMissingError ? null : wsResult;
+  const wsFx = wsResult instanceof FxMissingError ? wsResult : null;
   if (data instanceof FxMissingError) {
     return (
       <div className="space-y-6">
@@ -78,7 +81,7 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
       </div>
     );
   }
-  const { isMonth, isYtd, bs, ws } = data;
+  const { isMonth, isYtd, bs } = data;
   // Client COA first: for one entity with its own accounts, each Buku account opens into the client accounts behind it.
   const view = await clientAccountsView(scope, sp);
   const q = { period: period.key, entity: scope.value };
@@ -316,6 +319,11 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
           </Card>
         </TabsContent>
 
+        {wsFx && (
+          <TabsContent value="ws">
+            <FxMissing error={wsFx} base={base} compact />
+          </TabsContent>
+        )}
         {ws && (
           <TabsContent value="ws">
             <Card>

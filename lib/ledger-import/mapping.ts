@@ -106,13 +106,16 @@ const CATCH_ALL_NAME = /(lain ?lain|lainnya|\bother\b|others|misc|sundry|\bumum\
 
 /** `strict`: the name alone is ambiguous ("Bahan Baku" is stock or a purchase), so the rule needs the account's type to be known and in `types`. */
 const KEYWORDS: { re: RegExp; code: string; types?: AccountType[]; not?: RegExp; generic?: FsLine; template?: boolean; strict?: boolean }[] = [
+  // Right-of-use assets (PSAK 116) have their own template accounts, before the general fixed-asset and depreciation words.
+  { re: /((akumulasi|accumulated|accumulation).*(right of use|hak guna|\brou\b))|((right of use|hak guna|\brou\b).*(akumulasi|accumulated|accumulation))/, code: ACCOUNT_CODES.ROU_ACCUMULATED, template: true },
+  { re: /(penyusutan|depreciation|amorti[sz]ation|amortisasi).*(right of use|hak guna|\brou\b)/, code: ACCOUNT_CODES.ROU_DEPRECIATION, types: ["BEBAN"], template: true },
   { re: /(akumulasi|accumulated|accumulation).*(penyusutan|depreciation|amortization|amortisasi)/, code: "1219" },
   { re: /(penyusutan|depreciation|amortisasi|amortization)/, code: "6180", types: ["BEBAN"] },
   { re: /(rounding|pembulatan)/, code: ACCOUNT_CODES.ROUNDING },
   { re: /(selisih kurs|foreign exchange|exchange (gain|loss)|forex|\bfx\b|revaluation|revaluasi)/, code: ACCOUNT_CODES.FX_GAIN_LOSS },
-  { re: /(pajak tangguhan|deferred tax)/, code: "1260", types: ["ASET"] },
-  { re: /(pajak tangguhan|deferred tax)/, code: "2300", types: ["LIABILITAS"] },
-  { re: /(pajak tangguhan|deferred tax)/, code: "8100", types: ["BEBAN"] },
+  { re: /(pajak tangguhan|deferred tax)/, code: ACCOUNT_CODES.DEFERRED_TAX_ASSET, types: ["ASET"], template: true },
+  { re: /(pajak tangguhan|deferred tax)/, code: ACCOUNT_CODES.DEFERRED_TAX_LIABILITY, types: ["LIABILITAS"], template: true },
+  { re: /(pajak tangguhan|deferred tax)/, code: ACCOUNT_CODES.DEFERRED_TAX, types: ["BEBAN"], template: true },
   { re: /(tax.*interest|pajak bunga|interest tax)/, code: "8200", types: ["BEBAN"] },
   { re: /(interest income|pendapatan bunga|jasa giro|bank interest|bunga bank|bunga tabungan|revenue interest|interest revenue)/, code: "4900", types: ["PENDAPATAN"] },
   { re: /(interest expense|beban bunga|bunga pinjaman|interest p2p)/, code: "7110", types: ["BEBAN"] },
@@ -128,10 +131,13 @@ const KEYWORDS: { re: RegExp; code: string; types?: AccountType[]; not?: RegExp;
   // Loans to staff and related parties are other receivables, not trade (1140 below).
   { re: /(trade receivable|piutang usaha|accounts? receivable)/, code: "1130", types: ["ASET"], not: /(employee|karyawan|pegawai|staff|related|berelasi|afiliasi|affiliat|\bloan\b|pinjaman)/ },
   { re: /(persediaan|inventory|supplies|perlengkapan|finished goods|barang jadi|raw material)/, code: "1160", types: ["ASET"] },
+  // Biological assets (live birds, livestock) are stock in trade here, never "inventaris" (office equipment) below.
+  { re: /(biologis|biological)/, code: "1160", types: ["ASET"] },
   { re: /(bahan baku|bahan kemasan|bahan pendukung|bahan habis pakai|barang dagang|merchandise|seragam|apparel)/, code: "1160", types: ["ASET"], strict: true, not: /(pemakaian|penggunaan|pembelian|usage|consumption|purchase|hpp|beban|biaya)/ },
   { re: /(prepaid|dibayar di ?muka|uang muka|advance|deposit|jaminan|guarantee|deferred (expense|charge|cost)|(beban|biaya) ditangguhkan)/, code: "1170", types: ["ASET"] },
   { re: /(piutang|receivable|loan to)/, code: "1140", types: ["ASET"], generic: "PIUTANG_LAIN" },
-  { re: /(intangible|tak berwujud|tidak berwujud|lisensi|licen[cs]e|merk\b|trademark|software|right of use|hak guna|goodwill)/, code: "1250", types: ["ASET"] },
+  { re: /(right of use|\baset hak guna|\brou\b)/, code: ACCOUNT_CODES.ROU_ASSET, types: ["ASET"], template: true },
+  { re: /(intangible|tak berwujud|tidak berwujud|lisensi|licen[cs]e|merk\b|trademark|software|hak guna|goodwill)/, code: "1250", types: ["ASET"] },
   { re: /(investment|investasi|penyertaan|placement|penempatan)/, code: "1260", types: ["ASET"] },
   { re: /(fixed asset|asset in progress|aset dalam penyelesaian|construction in progress|aset tetap|equipment|peralatan|kendaraan|vehicle|building|bangunan|renovation|renovasi|furniture|machine|mesin|\bland\b|tanah|inventaris|\bppe\b|\biot\b)/, code: "1210", types: ["ASET"] },
   // After fixed assets and intangibles: "Kendaraan Sewa" is equipment and "Software Subscription" an intangible; a bare asset-side "Sewa …" / "Asuransi …" is a prepayment.
@@ -158,6 +164,8 @@ const KEYWORDS: { re: RegExp; code: string; types?: AccountType[]; not?: RegExp;
   { re: /(prive|dividen|dividend|drawing|penarikan (modal|pemilik))/, code: "3300", types: ["EKUITAS"] },
   // "Modal - <pemegang saham>", "Setoran Modal": paid-in capital, unless the words say otherwise.
   { re: /(\bmodal\b|setoran modal)/, code: "3100", types: ["EKUITAS"], strict: true, not: /(kerja|penyertaan|prive|dividen|drawing|penarikan|ditahan)/ },
+  // Taxes that are not on income (vehicle tax, land and building tax, stamp duty, regional levies) are operating expenses.
+  { re: /((tax|pajak).*(vehicle|kendaraan|pbb|bumi|bangunan|property|properti|stamp|meterai|materai|retribusi|daerah|reklame|parkir))|\b(pkb|pbb|bphtb)\b/, code: "6190", types: ["BEBAN"] },
   { re: /(income tax expense|beban pajak|pph badan|tax expense|corporate tax)/, code: "8100", types: ["BEBAN"], not: /final/ },
   { re: /(final tax|pph final|4\(2\))/, code: "8200", types: ["BEBAN"] },
   { re: /(other income|pendapatan lain|other revenue|\bgain\b|miscellaneous income)/, code: "4910", types: ["PENDAPATAN"], generic: "PENDAPATAN_LAIN" },
@@ -165,7 +173,9 @@ const KEYWORDS: { re: RegExp; code: string; types?: AccountType[]; not?: RegExp;
   { re: /(revenue|pendapatan|service income|fee income|income)/, code: "4110", types: ["PENDAPATAN"], generic: "PENDAPATAN_USAHA" },
   { re: /(purchase|pembelian|material|bahan baku|raw material)/, code: "5100", types: ["BEBAN"] },
   { re: /(cost of|hpp|harga pokok|beban pokok)/, code: "5110", types: ["BEBAN"] },
-  { re: /(salary|salaries|gaji|wages|upah|tunjangan|\bthr\b|bonus|payroll|intern)/, code: "6100", types: ["BEBAN"] },
+  // A production cost is cost of sales whatever else the name says; its own account under HPP keeps the client's detail.
+  { re: /(production cost|biaya produksi|beban produksi|makloon|maklon|overhead pabrik|factory overhead|direct labou?r|tenaga kerja langsung)/, code: "5110", types: ["BEBAN"], generic: "HPP" },
+  { re: /(salary|salaries|gaji|wages|upah|tunjangan|\bthr\b|bonus|payroll|\binterns?(hip)?\b)/, code: "6100", types: ["BEBAN"] },
   { re: /(bpjs|insurance|asuransi|medication|kesehatan|medical)/, code: "6110", types: ["BEBAN"] },
   { re: /(\brent\b|\bsewa\b|lease expense)/, code: "6120", types: ["BEBAN"] },
   { re: /(electric|listrik|water|pdam|internet|telepon|telecommunication|telephone|utilit)/, code: "6130", types: ["BEBAN"] },

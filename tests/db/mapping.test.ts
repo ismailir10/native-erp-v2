@@ -78,6 +78,27 @@ describe("deterministic mapping", () => {
     expect(sugWith("62015", "Religious Festivity Allowance (THR)")).toBe("6100");
   });
 
+  it("reads the Chickin names an accountant corrected on 8 Oct 2026", () => {
+    const typed = (code: string, name: string) => deterministicSuggestion({ code, name, typeHint: inferType(code, name) }, { accounts: chart, priorByName: new Map() })?.accountCode ?? null;
+    expect(typed("60031", "Communication and Internet Expense - Home Office (Pejaten)")).toBe("6130"); // not salaries
+    expect(typed("63006", "Shipment Expense - Shipment to Internal Expense (Frieght-in)")).not.toBe("6100");
+    expect(deterministicSuggestion({ code: "62099", name: "Uang Saku Intern", typeHint: "BEBAN" }, { accounts: chart, priorByName: new Map() })?.accountCode).toBe("6100");
+    expect(typed("SKP-AUD-2", "[AUDIT] Pajak Tangguhan (Deferred Tax Asset)")).toBe("1270");
+    expect(deterministicSuggestion({ code: "X", name: "Liabilitas Pajak Tangguhan", typeHint: "LIABILITAS" }, { accounts: chart, priorByName: new Map() })?.accountCode).toBe("2320");
+    expect(typed("69001", "Deferred Tax Expense")).toBe("8110");
+    expect(typed("12106", "Right of Use Asset (Aset Hak-Guna)")).toBe("1230");
+    expect(typed("17041", "Accumulated Depreciation Right of Use Asset")).toBe("1239");
+    expect(typed("64032", "Tax Expense - Vehicle")).toBe("6190");
+    expect(typed("64034", "Tax Expenses - Interest")).toBe("8200");
+    expect(typed("64033", "Income Tax Expense")).toBe("8100");
+    expect(deterministicSuggestion({ code: "SKP-UNM-05", name: "[UNMAPPED] Inventarisasi Biologis", typeHint: "ASET" }, { accounts: chart, priorByName: new Map() })?.accountCode).toBe("1160");
+    expect(typed("50017", "Production Cost - Makloon and Blasting Expense")).toBe("new:HPP");
+    expect(typed("51001", "Shipment Expense - Shipment to Client Expense (Frieght-out)")).not.toBe("new:HPP");
+    // A chart made before the template account existed: suggested anyway, created on accept (as 1135).
+    const old = chart.filter((a) => a.code !== "1270");
+    expect(deterministicSuggestion({ code: "X", name: "Deferred Tax Asset", typeHint: "ASET" }, { accounts: old, priorByName: new Map() })?.accountCode).toBe("1270");
+  });
+
   it("proposes a new account for generic matches, keeps catch-alls for catch-all names and specific rules as they are", () => {
     expect(sug("Platform Subscription Expense")).toBe("new:BEBAN_UMUM_ADM");
     expect(sug("Beban Penyisihan Piutang CKP")).toBe("6185"); // the impairment expense has its own account
@@ -97,7 +118,7 @@ describe("deterministic mapping", () => {
     expect(at("Bahan Kemasan", "ASET")).toBe("1160");
     expect(at("Sewa Kedai", "ASET")).toBe("1170"); // asset side: prepaid rent
     expect(at("Sewa Kedai", "LIABILITAS")).not.toBe("1170");
-    expect(at("Aset Hak Guna - Sewa Kedai", "ASET")).toBe("1250");
+    expect(at("Aset Hak Guna - Sewa Kedai", "ASET")).toBe("1230"); // PSAK 116 right-of-use asset, not an intangible
     expect(at("Aset Lisensi", "ASET")).toBe("1250");
     expect(at("Aset Tidak Berwujud (Merk)", "ASET")).toBe("1250");
     expect(at("QRIS BJB", "ASET")).toBe("1120");

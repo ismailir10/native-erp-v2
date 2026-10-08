@@ -514,7 +514,7 @@ async function collectControls(db: Db, clientId: string, year: number, month: nu
     const parts = [
       open ? `${open} selisih dari file sumber masih di 1999, koreksi lewat Usulan jurnal koreksi di Tutup Buku` : accepted.length ? `${accepted.length} selisih sumber sudah dikoreksi` : "",
       reviews.length ? `${reviews.length} temuan perlu dicek` : "",
-      imp.roundingTotal ? `pembulatan sen ke 7190 total ${formatMoney(imp.roundingTotal, "IDR")}` : "",
+      imp.roundingTotal ? await roundingNote(db, imp.id, imp.roundingTotal) : "",
     ].filter(Boolean);
     controls.push({
       key,
@@ -601,6 +601,12 @@ export function closeReadiness(controls: Control[], signoffs: string[]) {
   const unacked = controls.filter((c) => c.status === "REVIEW" && !c.ack);
   const missing = CLOSE_SIGNOFFS.filter((s) => !signoffs.includes(s.key));
   return { ready: fails.length === 0 && unacked.length === 0 && missing.length === 0, fails, unacked, missing };
+}
+
+/** The rounding a ledger import posted to 7190, in its entities' currency (a SGD ledger rounds to cents, not to Rupiah). */
+async function roundingNote(db: Db, importId: string, total: bigint) {
+  const currencies = new Set((await db.journalEntry.findMany({ where: { ledgerImportId: importId }, select: { entity: { select: { functionalCurrency: true } } }, distinct: ["entityId"] })).map((e) => e.entity.functionalCurrency));
+  return currencies.size === 1 ? `pembulatan ke 7190 total ${formatMoney(total, [...currencies][0])}` : "pembulatan ke 7190";
 }
 
 /**

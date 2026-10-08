@@ -155,7 +155,7 @@ export default async function LedgerImportPage({ params, searchParams }: { param
             <CardTitle>3. Catat ke buku</CardTitle>
             <CardDescription>
               Semua jurnal dicatat sekaligus lewat buku besar Buku, atau tidak sama sekali. Periode yang sudah ditutup menolak impor.
-              {imp.roundingTotal ? ` Pembulatan sen ke Rupiah dicatat terpisah di 7190 Selisih Pembulatan.` : ""}
+              {imp.roundingTotal ? ` Pembulatan ke satuan terkecil mata uang perusahaan (Rupiah utuh, sen untuk valas) dicatat terpisah di 7190 Selisih Pembulatan.` : ""}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap items-center gap-2">

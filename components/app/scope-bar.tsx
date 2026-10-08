@@ -29,7 +29,8 @@ export function ScopeBar({ entities, periods, entity, period, allowCombined = tr
           <SelectTrigger className="min-w-48 bg-card" aria-label="Entitas">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          {/* Wide enough for the longest entity name ("PT Chickin Sahabat Peternak"), never narrower than the trigger. */}
+          <SelectContent className="w-auto min-w-(--anchor-width)">
             {entityOptions.map((o) => (
               <SelectItem key={o.value} value={o.value}>
                 {o.label}

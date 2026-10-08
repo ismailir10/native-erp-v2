@@ -163,9 +163,13 @@ export function matchTransfers(
 
   // Names another group entity, and all that is left is a short code printed beside the name (BCA BI-FAST "… KE 002 ALFI YANDRA KBB"):
   // too unsure to post, too likely the group's own money to leave on the simple guess (an expense). It waits in Review on 1190.
+  // A remark may also repeat one word of the payer's own name ("… Belifi ALFI YANDRA" from PT Belifi Mahajaya Nusantara): that word is the
+  // payer, not a third party. Only here, where the result waits in Review; one word never makes a line clean enough to post.
+  const ownWords = new Map(ownNames.map((e) => [e.entityId, new Set(e.names.flatMap((n) => merchantKey(n).split(" ")).filter((w) => w.length >= 4 && !LEGAL_FORMS.has(w)))]));
   for (const i of naming) {
     if (result.has(i.id) || !TRANSFER_HINT.test(i.description)) continue;
-    const rest = thirdPartyName(i.description, allNames)?.split(" ") ?? [];
+    const self = ownWords.get(i.entityId);
+    const rest = (thirdPartyName(i.description, allNames)?.split(" ") ?? []).filter((w) => !self?.has(w));
     if (rest.some((w) => w.length > 3)) continue;
     const d = i.description.toUpperCase();
     const other = ownNames.find((e) => e.entityId !== i.entityId && e.names.some((n) => says(d, n)));
@@ -176,7 +180,9 @@ export function matchTransfers(
       accountCode: ACCOUNT_CODES.INTERCOMPANY,
       taxTag: null,
       confidence: AMBIGUOUS_CONFIDENCE,
-      reason: `Menyebut entitas grup ${name}, ditambah "${rest.join(" ")}" yang bukan nama dikenal: periksa sebelum dicatat antar entitas`,
+      reason: rest.length
+        ? `Menyebut entitas grup ${name}, ditambah "${rest.join(" ")}" yang bukan nama dikenal: periksa sebelum dicatat antar entitas`
+        : `Menyebut entitas grup ${name} dan nama perusahaan pengirim sendiri: periksa sebelum dicatat antar entitas`,
     });
   }
   return result;

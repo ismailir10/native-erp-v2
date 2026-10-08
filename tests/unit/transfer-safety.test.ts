@@ -123,6 +123,24 @@ describe("transfers to the group's owner as banks print them", () => {
     expect(r.has("d")).toBe(false);
   });
 
+  it("a remark repeating one word of the payer's own name still waits in Review on 1190 (never left to AI as a supplier)", () => {
+    const full = [{ entityId: "pt", names: ["PT SINARLA MAHAJAYA NUSANTARA"] }, { entityId: "owner", names: ["BUDI HARTONO"] }];
+    const r = matchTransfers(
+      [
+        line("a", "bca", "2026-06-25", "TRSF E-BANKING DB 2506/FTSCY/WS95051 152000000.00 Sinarla BUDI HARTONO", -152_000_000n),
+        line("d", "bca", "2026-06-07", "TRSF E-BANKING CR 0706/FTSCY/WS95271 70475000.00 bayar nota Sinarla DINA PUSPITA", 70_475_000n),
+        // The word belongs to the payer, not to the receiving owner: from the owner's account it is still a name to check.
+        line("o", "jenius", "2026-06-25", "TRSF KE BUDI HARTONO MAHAJAYA", -1_000_000n, "owner"),
+      ],
+      full,
+    );
+    expect(r.get("a")).toMatchObject({ accountCode: "1190", confidence: 0.8 });
+    expect(r.get("a")?.reason).toMatch(/BUDI HARTONO/);
+    expect(r.get("a")?.reason).not.toMatch(/""/);
+    expect(r.has("d")).toBe(false);
+    expect(r.has("o")).toBe(false);
+  });
+
   it("finds the entity by its name without the legal form when only the full name was kept (short names under 8 letters are dropped)", () => {
     const full = [{ entityId: "pt", names: ["PT SINARLA MAHAJAYA NUSANTARA"] }, { entityId: "owner", names: ["BUDI HARTONO"] }];
     const r = matchTransfers([line("o", "bri", "2026-06-25", "TRSF KE SINARLA MAHAJAYA NUSANTARA", -10_000_000n, "owner")], full);

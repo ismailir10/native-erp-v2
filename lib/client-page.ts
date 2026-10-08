@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { getClientForFirm } from "@/lib/tenant";
 import { formatPeriod } from "@/lib/format";
 import { parsePeriod, resolveEntityScope, type SearchParams } from "@/lib/scope";
-import { dataMonths } from "@/lib/periods";
+import { dataMonths, pickWorkingMonth } from "@/lib/periods";
 import { scopeCurrency, isMixed } from "@/lib/reports/fx";
 
 /** Everything a client page needs from URL params, resolved + tenant-checked once. */
@@ -13,7 +13,7 @@ export async function loadClientPage(params: Promise<{ id: string }>, searchPara
   // Unknown or other-firm client → 404 page, not a 500.
   const client = await getClientForFirm(id).catch(() => notFound());
   const months = await dataMonths([id]);
-  const period = parsePeriod(sp.period, months[0] ?? { year: new Date().getUTCFullYear(), month: new Date().getUTCMonth() + 1 });
+  const period = parsePeriod(sp.period, pickWorkingMonth(months));
   const scope = resolveEntityScope(sp.entity, client.entities, opts.defaultCombined ?? true);
   const locked = new Set(
     (await prisma.period.findMany({ where: { clientId: id, status: "LOCKED" } })).map((p) => `${p.year}-${p.month}`),

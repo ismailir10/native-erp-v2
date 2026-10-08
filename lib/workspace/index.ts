@@ -30,7 +30,14 @@ export async function resolveWorkspaceScope(db: Db, firmId: string, input: Works
   const entities = kind === "entity" ? [entity!] : kind === "client" ? client!.entities : allEntities;
   const clientIds = kind === "client" ? [client!.id] : kind === "entity" ? [entity!.clientId] : clients.map(c => c.id);
   const entityIds = entities.map(e => e.id);
-  const latest = input.period ? null : await db.journalEntry.findFirst({ where: { firmId, entityId: { in: entityIds }, kind: { not: "OPENING" } }, orderBy: { date: "desc" }, select: { date: true } });
+  // The latest month with entries up to this month (lib/periods.ts pickWorkingMonth): a reversal dated next January is not today's work.
+  const now = new Date();
+  const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0));
+  const where = { firmId, entityId: { in: entityIds }, kind: { not: "OPENING" as const } };
+  const latest = input.period
+    ? null
+    : ((await db.journalEntry.findFirst({ where: { ...where, date: { lte: monthEnd } }, orderBy: { date: "desc" }, select: { date: true } })) ??
+      (await db.journalEntry.findFirst({ where, orderBy: { date: "asc" }, select: { date: true } })));
   const period = input.period ?? (latest?.date ?? new Date()).toISOString().slice(0, 7);
   const { year, month } = parseWorkspacePeriod(period);
   // The current month in WIB, computed once on the server so every render lists the same periods.

@@ -20,10 +20,13 @@ export async function dataMonths(clientIds: string[]): Promise<{ year: number; m
   return rows.map((r) => ({ year: r.y, month: r.m }));
 }
 
-/** The month an accountant is working on: latest month with data (falls back to today). */
-export async function workingMonth(clientIds: string[]) {
-  const [latest] = await dataMonths(clientIds);
-  if (latest) return latest;
-  const now = new Date();
-  return { year: now.getUTCFullYear(), month: now.getUTCMonth() + 1 };
+/**
+ * The month an accountant is working on: the latest month with data up to this month (falls back to today). A month still ahead
+ * (a scheduled reversal, next year's instalment) holds entries but is not where the work is. `months` newest first, as `dataMonths`
+ * returns them.
+ */
+export function pickWorkingMonth(months: { year: number; month: number }[], now = new Date()) {
+  const current = { year: now.getUTCFullYear(), month: now.getUTCMonth() + 1 };
+  const due = months.find((m) => m.year < current.year || (m.year === current.year && m.month <= current.month));
+  return due ?? months.at(-1) ?? current;
 }

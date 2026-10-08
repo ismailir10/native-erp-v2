@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Db } from "@/lib/db";
-import type { Direction } from "@/lib/generated/prisma/enums";
+import type { Direction, EntityKind } from "@/lib/generated/prisma/enums";
 import { AI_BATCH_SIZE, AI_TIMEOUT_MS, CLASSIFICATION_PROMPT_VERSION, DEMO_AI_MODEL, aiConfig, buildPrompt, maxTokensFor, type AiItem, type AiProvider } from "@/lib/ai/provider";
 import { AiBudgetError, runBudgetedAi } from "@/lib/ai/budget";
 import type { Classification } from "@/lib/classify/types";
@@ -9,6 +9,19 @@ import { ACCOUNT_CODES } from "@/lib/coa/template";
 /** Transfers are paired by the matcher or decided by the reviewer, never guessed (use-case feedback UC-B2): 1199 and 1190 never reach the model. */
 const NOT_FOR_AI = new Set<string>([ACCOUNT_CODES.CLEARING, ACCOUNT_CODES.INTERCOMPANY]);
 export const aiAccounts = <T extends { code: string }>(accounts: T[]) => accounts.filter((a) => !NOT_FOR_AI.has(a.code));
+
+/** A person's own bank lines (the owner beside the PT) are not a business: no trade receivables or payables, no sales or service income. */
+const NOT_FOR_PERSON = new Set<string>(["PIUTANG_USAHA", "UTANG_USAHA", "PENDAPATAN_USAHA"]);
+
+/** What the model is told about the books a line belongs to, and the accounts it may answer with (rule 19 still drops anything else). */
+export function aiScope(client: { name: string; industry: string | null }, kind: EntityKind, accounts: { code: string; name: string; fsLine: string }[]) {
+  const person = kind === "PERORANGAN";
+  const base = `${client.name} (${client.industry ?? "umum"})`;
+  return {
+    clientName: person ? `${base}; mutasi ini dari rekening pribadi pemilik (perorangan, bukan badan usaha)` : base,
+    accounts: accounts.filter((a) => !person || !NOT_FOR_PERSON.has(a.fsLine)).map((a) => ({ code: a.code, name: a.name })),
+  };
+}
 
 export type ClassificationCacheContext = { firmId: string; clientId: string; model: string; clientName: string; accounts: { code: string; name: string }[]; sample: string };
 export function aiCacheKey(merchantKey: string, direction: Direction, coaVersion: number, scope: ClassificationCacheContext) {
