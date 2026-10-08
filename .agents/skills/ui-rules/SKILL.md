@@ -5,14 +5,21 @@ description: Buku UI standard — 9fin look on a light background (navy ink, one
 
 # UI rules
 
-## Look — 9fin on a light background (tokens in `app/globals.css`; never hard-code hex in components)
-- Light everywhere: canvas `--background #F5F7FA`, white cards and a **white sidebar**, 1px hairline `--border #E3E7ED`,
-  navy ink `--foreground #0B1B32`, secondary text `--muted-foreground #4B5768`.
-- **One strong blue `--primary #1D5BD8`** (5.9:1 on white): links, focus rings, selected states. `--brand` is the same
-  blue as a fill with white text: the primary button, the logo, the `NextStep` marker. No green in the chrome.
-- Sidebar: active item = blue tint (`sidebar-primary`) with dark-blue text, hover = cool grey; text uses `sidebar-*` tokens.
+## Look — ledger paper (tokens in `app/globals.css`; never hard-code hex in components)
+- Warm paper canvas `--background #F6F3EC`; **white is for working surfaces** (cards holding tables and forms) and the sidebar is a lighter
+  paper `#FBFAF6`. 1px warm hairline `--border #DDD8CC`, warm ink `--foreground #17181C`, secondary text `--muted-foreground #58554D`.
+- **One deep ink-blue `--primary #1F3A8A`** (10:1 on white): actions, focus rings, selected states. `--brand` is the same blue as a fill
+  with white text: the primary button, the logo, the `NextStep` marker. **Blue is for things you can do, never for a figure.**
+  No green in the chrome.
+- Sidebar: active item = blue tint (`sidebar-primary`) with dark-blue text, hover = warm grey; text uses `sidebar-*` tokens.
 - Status tokens `pass / review / fail` (+ `-subtle`) are reserved for control & state — never chart series.
-- Sharp corners: `--radius` 4px. Cards are hairline-bordered, no shadow. No gradients.
+- Near-square corners: `--radius` 2px. Cards are hairline-bordered (`ring-border`), no shadow. No gradients.
+- **Drill-down = `.drill`**: a figure or account name you can open is ink with a dotted underline at rest (visible without hover), solid blue
+  on hover/focus. Never a blue underlined number; never hand-copy underline classes.
+- **Status is icon + label in the status colour, no fill** (`StatusPill`); only a failure keeps a subtle fill. Don't box every cell.
+- **No boxes in boxes.** A card holding a list shows divided rows, not a bordered card per row. Same page, same fact: shown once.
+- Chart series colours are their own tokens (`--chart-1…5`, validated with the `dataviz` validator); `--chart-1` is a lighter blue than
+  `--primary` because the ink blue is too dark for a data series.
 - Type: Inter (self-hosted), `.num` = tabular numerals on every amount. **Micro-labels** (table headers, sidebar group
   labels, stat labels, eyebrows) use `.eyebrow`: system monospace, 11px, uppercase, tracked.
 
@@ -40,8 +47,9 @@ Motion is information, not decoration: it says *you arrived*, *this changed* or 
   gradient/shiny/glitch/decrypt/scramble text, glass, glow/star borders, spotlight/tilt/magnet cards, cursor effects, 3D, click sparks.
 
 ## "Don't make me think"
-1. **Every page says what to do next** — a `NextStep` banner: one plain sentence (the instruction itself, no
-   "Langkah berikutnya:" prefix, no icon except the check on completed states) and at most one CTA.
+1. **Every page says what to do next** — a `NextStep` banner: **one** plain sentence (the instruction itself, no
+   "Langkah berikutnya:" prefix, no icon except the check on completed states) and at most one CTA. Key-binding and how-to hints
+   go in a hint row, not in the banner. A list under the banner starts *after* the job the banner names.
 2. One primary button per view; everything else `outline`/`ghost`.
 3. State lives in the URL (`?period=2026-08&entity=<id>|combined`) so every view is linkable; pickers via `ScopeBar`.
 4. Numbers right-aligned, accounting parentheses for negatives, `–` for zero.
@@ -52,8 +60,10 @@ Motion is information, not decoration: it says *you arrived*, *this changed* or 
    (`hidden md:table-cell`); report comparison columns hide below `sm` (`FsTable`).
 9. Show each fact once. Don't repeat a value in a badge *and* a field (e.g. suggested account lives only in the select).
 10. Problems first: sort FAIL → REVIEW → PASS inside lists; summarise blockers as counts, the detail is already on screen.
+    **Passed items fold** into a "N … lolos" disclosure (still in the DOM); never give them the same weight as the problems.
+    Text that explains a problem **wraps in full** — no `line-clamp` on a sentence the accountant has to act on.
 11. No hidden affordances — nothing that only appears on hover. Rows link via their name + a visible chevron.
-12. Empty states say what's true ("Tidak ada transaksi pajak terdeteksi bulan ini"), never a column of dashes.
+12. A card that only says "X isn't set up" doesn't render (AI review without a key). Empty states say what's true ("Tidak ada transaksi pajak terdeteksi bulan ini"), never a column of dashes.
 13. Companies before individuals (PT/CV, then the owner) everywhere entities are listed.
 14. **One first-run order, computed once:** Unggah data → Saldo awal → Review → Tutup buku (`lib/setup-progress.ts`). Every page that says
     what to do next reads it — never a hand-rolled if/else chain. Setup pages (client Ringkasan, Impor, Saldo Awal) show `SetupSteps`
