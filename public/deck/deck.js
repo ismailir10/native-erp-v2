@@ -38,6 +38,8 @@
     if (flow.matches) {
       slides.forEach(function (s) { s.classList.add("on"); });
       document.documentElement.classList.add("flow");
+      // Slide ids are assigned after the browser's own fragment navigation, so honour #n here.
+      if (/^#\d+$/.test(location.hash)) slides[fromHash()].scrollIntoView();
     } else {
       document.documentElement.classList.remove("flow");
       show(fromHash(), false);
