@@ -449,7 +449,8 @@ html.flow .track::before { display: none; }
 html.flow .send { height: auto; display: grid; gap: 3rem; }
 html.flow .send .phone, html.flow .inbox { position: static; width: auto; max-width: 52rem; }
 
-.months { display: grid; grid-template-columns: 1fr 3.2rem 1fr; gap: 1.6rem; align-items: center; }
+.months { display: grid; grid-template-columns: 1fr 3.2rem 1fr; gap: 1.6rem; align-items: start; }
+.months .mo-arrow { align-self: center; }
 .mo .lbl { display: block; margin-bottom: 1.2rem; }
 .mo-line { display: flex; justify-content: space-between; gap: 1rem; padding: 1.8rem 2rem; border-bottom: 1px solid var(--line); font-size: 1.55rem; }
 .mo-line .mono { font-size: 1.45rem; }
