@@ -134,7 +134,7 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
       )}
       {drafts.length > 0 && <ProposalsCard clientId={client.id} periodLabel={label} items={drafts} accounts={chart} locked={locked} />}
       {scheduled.length > 0 && <ScheduleProposals clientId={client.id} year={period.year} month={period.month} periodLabel={label} items={scheduled} locked={locked} />}
-      {!locked && flagged > 0 && <CloseReviewCard key={`${period.key}:${reviewKey}`} clientId={client.id} year={period.year} month={period.month} flagged={flagged} aiReady={aiModel !== null} initial={review} />}
+      {!locked && flagged > 0 && aiModel !== null && <CloseReviewCard key={`${period.key}:${reviewKey}`} clientId={client.id} year={period.year} month={period.month} flagged={flagged} aiReady={aiModel !== null} initial={review} />}
       <ClosePanel
         clientId={client.id}
         year={period.year}

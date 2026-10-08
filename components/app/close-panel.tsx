@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, Lock, LockOpen, MessageSquare } from "lucide-react";
+import { ChevronRight, Loader2, Lock, LockOpen, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
@@ -70,19 +70,12 @@ export function ClosePanel(props: {
   const worst = (g: string) => Math.min(...props.controls.filter((c) => c.scope === g).map((c) => ORDER[c.status]));
   const groups = [...new Set(props.controls.map((c) => c.scope))].sort((a, b) => worst(a) - worst(b));
 
-  return (
-    <div className="grid gap-4 lg:grid-cols-3">
-      <div className="space-y-4 lg:col-span-2">
-        {groups.map((g) => (
-          <Card key={g}>
-            <CardHeader>
-              <CardTitle>{g}</CardTitle>
-            </CardHeader>
-            <CardContent className="divide-y px-0">
-              {props.controls
-                .filter((c) => c.scope === g)
-                .sort((a, b) => ORDER[a.status] - ORDER[b.status])
-                .map((c) => (
+  const rowsOf = (g: string) => {
+    const rows = props.controls.filter((c) => c.scope === g).sort((a, b) => ORDER[a.status] - ORDER[b.status]);
+    return { open: rows.filter((c) => c.status !== "PASS"), passed: rows.filter((c) => c.status === "PASS") };
+  };
+  const controlRow = (c: (typeof props.controls)[number]) => (
+
                 <div key={c.key} className="flex flex-wrap items-center gap-3 px-6 py-2.5" data-testid={`control-${c.key.split(":")[0]}`}>
                   <StatusPill status={c.status} />
                   <div className="min-w-0 flex-1 basis-56">
@@ -128,7 +121,27 @@ export function ClosePanel(props: {
                     </div>
                   )}
                 </div>
-              ))}
+  );
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-3">
+      <div className="space-y-4 lg:col-span-2">
+        {groups.map((g) => (
+          <Card key={g}>
+            <CardHeader>
+              <CardTitle>{g}</CardTitle>
+            </CardHeader>
+            <CardContent className="divide-y px-0">
+              {rowsOf(g).open.map(controlRow)}
+              {rowsOf(g).passed.length > 0 && (
+                <details className="group/passed" data-testid="passed-controls">
+                  <summary className="flex cursor-pointer list-none items-center gap-2 px-6 py-2.5 text-sm text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
+                    <ChevronRight className="size-4 transition-transform group-open/passed:rotate-90" aria-hidden />
+                    {rowsOf(g).passed.length} kontrol lolos
+                  </summary>
+                  <div className="divide-y border-t">{rowsOf(g).passed.map(controlRow)}</div>
+                </details>
+              )}
             </CardContent>
           </Card>
         ))}
