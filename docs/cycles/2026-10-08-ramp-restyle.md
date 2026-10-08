@@ -63,6 +63,8 @@ What Ramp actually does (measured on the live site, 2026-10-08):
 - T2: `components/ui/{button,input,select,textarea,tabs}.tsx` — controls 36px (sm 32, xs 28, lg 40), fields on `bg-card`, outline button on card white, new `ink` button variant. Other primitives (badge, card, dialog, sheet, popover, dropdown, table, sidebar) already read radius/colour tokens and needed no change.
 - T3: `brand-mark`, `page-header` (NextStep → borderless pale-blue panel with round marker, `rounded-xl`; titles `md:text-4xl`), `status` (StatusPill failure fill and MethodBadge are full-round chips), `app/login/{page,shell}.tsx` (icon-tile step numbers, `rounded-2xl` card).
 
+- Review fix (PR #121, Codex P2 — real): `components/app/account-picker.tsx` trigger was still `h-8`/transparent next to the new 36px `SelectTrigger` in the review queue and journal/split forms; now `h-9`, `bg-card`, same padding. Deliberate compact `h-7`/`h-8` overrides (filters, PPh 25, tax pack) are unchanged.
+
 ## Verification
 - T1: `npm run lint` clean, `npm run typecheck` clean, `npm test` 185 files / 1217 tests passed.
 - T2/T3: lint + typecheck clean. Looked at login, Beranda, client Ringkasan, Impor, Review, Neraca Saldo, Laporan, Tutup buku at 1200px and Ringkasan + Review at 390px on the local stack (signed in as the demo admin): no clipping, no horizontal scroll.
