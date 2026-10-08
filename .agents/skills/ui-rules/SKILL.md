@@ -1,6 +1,6 @@
 ---
 name: ui-rules
-description: Buku UI standard — 9fin look on a light background (navy ink, one strong blue, hairlines, sharp corners, mono micro-labels), shadcn-first, "Don't Make Me Think" rules and Bahasa copy. Load before touching app/ or components/.
+description: Buku UI standard — 9fin look on a light background (navy ink, one strong blue, hairlines, sharp corners, sans micro-labels), shadcn-first, "Don't Make Me Think" rules and Bahasa copy. Load before touching app/ or components/.
 ---
 
 # UI rules
@@ -22,7 +22,7 @@ description: Buku UI standard — 9fin look on a light background (navy ink, one
   `--primary` because the ink blue is too dark for a data series.
 - Type: Inter (self-hosted) for body, tables and forms; **Newsreader** (`font-display`, self-hosted variable serif) only for page titles,
   the login heading and `Stat` values. `.num` = tabular numerals on every amount. **Micro-labels** (table headers, sidebar group
-  labels, stat labels, eyebrows) use `.eyebrow`: system monospace, 11px, uppercase, tracked.
+  labels, stat labels, eyebrows) use `.eyebrow`: the UI sans, 12px, medium, sentence case, muted. Never monospace or uppercase-tracked (it reads as generic AI chrome).
 
 ## Components
 - **shadcn first** (`components/ui/*`, base-nova on `@base-ui/react` — composition uses `render={<Link/>}`, not `asChild`).
