@@ -164,9 +164,10 @@
     text-decoration-color: var(--primary);
   }
 
-  /* 9fin micro-label: monospace, uppercase, tracked. Table headers, group labels, stat labels, eyebrows. */
+  /* Micro-label: the UI sans at 12px, medium, sentence case. Table headers, group labels, stat labels, eyebrows.
+     (Monospace + uppercase + tracking read as generic; hierarchy comes from size, weight and the muted colour.) */
   .eyebrow {
-    @apply font-mono text-[11px] font-medium tracking-[0.08em] uppercase text-muted-foreground;
+    @apply text-xs font-medium tracking-[0.01em] text-muted-foreground;
   }
 }
 
