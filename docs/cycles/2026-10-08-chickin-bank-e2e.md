@@ -74,7 +74,7 @@ What an accountant would not accept:
 4. The six small items ship in one task.
 
 ## Tasks
-- [ ] T1 Own-entity words in the 1190 review branch (`lib/classify/transfer.ts`) — accept: unit test with the Belifi line → 1190 review; customer receipt unchanged; existing transfer tests green.
+- [x] T1 Own-entity words in the 1190 review branch (`lib/classify/transfer.ts`) — accept: unit test with the Belifi line → 1190 review; customer receipt unchanged; existing transfer tests green.
 - [ ] T2 Entity kind in AI classification (`lib/ai/provider.ts`, `lib/ai/classify.ts`, caller in `lib/import`) — accept: unit test on `buildPrompt` / account filter; MockProvider DB test for a Perorangan import; prompt version bumped.
 - [ ] T3 Entity reports independent of group rates (`app/(app)/clients/[id]/reports/page.tsx`) — accept: DB/e2e-free check by rendering helper or manual local run with an SGD entity lacking rates; typecheck.
 - [ ] T4 Mapping rules (`lib/ledger-import/mapping.ts`, posting of template accounts) — accept: `tests/db/mapping.test.ts` cases for the seven Chickin names above; prior expectations kept.
@@ -83,5 +83,9 @@ What an accountant would not accept:
 
 ## Implementation
 - Plan: tasks T1–T6 sequential, done inline (each is small and touches a different area; one driver keeps the review tight).
+- T1: `lib/classify/transfer.ts` — the 1190 review branch also takes out words (≥ 4 letters) of the line's own entity names; an empty remainder gets its own reason. Test: `tests/unit/transfer-safety.test.ts` (Belifi-shaped line with only the full PT name → 1190 at 0.8; customer receipt untouched).
+
 ## Verification
+- T1: lint + typecheck clean; `npm test` → Test Files 183 passed (183), Tests 1205 passed (1205).
+
 ## Ship Notes
