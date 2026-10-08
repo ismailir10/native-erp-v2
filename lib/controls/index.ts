@@ -408,7 +408,8 @@ async function collectControls(db: Db, clientId: string, year: number, month: nu
           title: final ? `PPh final ${year} belum dijurnal` : `PPh badan ${year} belum dijurnal`,
           scope: e.shortName,
           status: "REVIEW",
-          detail: `Estimasi PPh terutang ${fmt(pack.tax.due)}; jurnal pajak kini yang belum dicatat ${expense >= 0n ? "" : "mengurangi beban "}${fmt(expense < 0n ? -expense : expense)}`,
+          // Buku's own proposal, so the accountant (and the AI review) sees the credits leave 1180 and only PPh 29 go to 2146.
+          detail: `Estimasi PPh terutang ${fmt(pack.tax.due)}; jurnal pajak kini yang belum dicatat ${expense >= 0n ? "" : "mengurangi beban "}${fmt(expense < 0n ? -expense : expense)}. Usulan Buku: ${pack.proposals.CURRENT.map((l) => `${l.amount >= 0n ? "D" : "K"} ${l.code} ${fmt(l.amount < 0n ? -l.amount : l.amount)}`).join("; ")}`,
           href: `${base}/tax?period=${year}-12&entity=${e.id}`,
           ack: acks.get(tKey),
         });

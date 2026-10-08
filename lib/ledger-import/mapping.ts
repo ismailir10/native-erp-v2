@@ -113,6 +113,8 @@ const KEYWORDS: { re: RegExp; code: string; types?: AccountType[]; not?: RegExp;
   { re: /(penyusutan|depreciation|amortisasi|amortization)/, code: "6180", types: ["BEBAN"] },
   { re: /(rounding|pembulatan)/, code: ACCOUNT_CODES.ROUNDING },
   { re: /(selisih kurs|foreign exchange|exchange (gain|loss)|forex|\bfx\b|revaluation|revaluasi)/, code: ACCOUNT_CODES.FX_GAIN_LOSS },
+  // The P&L side of deferred tax ("Penghasilan Pajak Tangguhan (laba rugi)", "Deferred tax expense/benefit") whatever type the file suggests.
+  { re: /^(?=.*(pajak tangguhan|deferred tax))(?=.*(laba rugi|penghasilan|manfaat|benefit|income|expense|beban))/, code: ACCOUNT_CODES.DEFERRED_TAX, template: true },
   { re: /(pajak tangguhan|deferred tax)/, code: ACCOUNT_CODES.DEFERRED_TAX_ASSET, types: ["ASET"], template: true },
   { re: /(pajak tangguhan|deferred tax)/, code: ACCOUNT_CODES.DEFERRED_TAX_LIABILITY, types: ["LIABILITAS"], template: true },
   { re: /(pajak tangguhan|deferred tax)/, code: ACCOUNT_CODES.DEFERRED_TAX, types: ["BEBAN"], template: true },

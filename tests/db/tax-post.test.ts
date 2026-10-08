@@ -85,6 +85,10 @@ describe("tax postings", () => {
     const control = async () => (await runControls(db, g.client.id, 2026, 12)).find((c) => c.key === `tax:${g.pt.entity.id}`);
     expect((await runControls(db, g.client.id, 2026, 9)).some((c) => c.key.startsWith("tax:"))).toBe(false);
     expect(await control()).toMatchObject({ status: "REVIEW", title: "PPh badan 2026 belum dijurnal" });
+    // Buku's own journal is in the detail: credits out of 1180, only the remainder to 2146 (the AI review quotes it, never invents one).
+    const lines = (await pack(g, 12)).proposals.CURRENT;
+    expect((await control())!.detail).toContain("Usulan Buku: ");
+    for (const l of lines) expect((await control())!.detail).toContain(`${l.amount >= 0n ? "D" : "K"} ${l.code} Rp`);
     await post(g, 12, "CURRENT");
     expect(await control()).toBeUndefined();
   });
