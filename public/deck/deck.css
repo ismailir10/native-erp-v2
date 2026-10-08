@@ -583,3 +583,6 @@ html.flow .tl-row > i { display: none; }
 .tax { align-items: stretch; }
 .inbox { top: 50%; transform: translateY(-50%); }
 html.flow .inbox { transform: none; }
+.kel .ph-body { min-height: 0; padding-bottom: 2rem; gap: 1rem; }
+.kel .bub { font-size: 1.45rem; padding: 1.1rem 1.3rem; }
+.kel .ph-top { padding-block: 1.1rem 1.3rem; }
