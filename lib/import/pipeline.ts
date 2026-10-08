@@ -9,7 +9,7 @@ import { financingSuggestion, taxPaymentSuggestion } from "@/lib/classify/financ
 import { simpleGuess } from "@/lib/classify/fallback";
 import { matchTransfers, type TransferCandidate } from "@/lib/classify/transfer";
 import { AUTO_POST_CONFIDENCE, type Classification } from "@/lib/classify/types";
-import { suggestWithAi } from "@/lib/ai/classify";
+import { aiScope, suggestWithAi } from "@/lib/ai/classify";
 import type { AiProvider } from "@/lib/ai/provider";
 import { postBankTransaction } from "@/lib/ledger/bank";
 import { defaultTaxMonth } from "@/lib/tax/masa";
@@ -218,13 +218,13 @@ export async function importStatement(
     else pendingAi.push({ key: it.merchantKey, direction: it.direction, sample: it.description });
   }
 
-  const postable = accounts.filter(isClassifiable).map((a) => ({ code: a.code, name: a.name }));
+  const scope = aiScope(client, entity.kind, accounts.filter(isClassifiable));
   const ai = await suggestWithAi(db, {
     firmId: client.firmId,
     clientId: client.id,
-    clientName: `${client.name} (${client.industry ?? "umum"})`,
+    clientName: scope.clientName,
     coaVersion: client.coaVersion,
-    accounts: postable,
+    accounts: scope.accounts,
     pending: pendingAi,
     provider: args.provider,
   });

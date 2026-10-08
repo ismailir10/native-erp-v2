@@ -40,7 +40,7 @@ What an accountant would not accept:
   A customer receipt "bayar nota … Belifi DINA PUSPITA" still names a third party and is unchanged.
 - [ ] **AI classification knows the entity.** The prompt states the entity's kind (badan usaha / perorangan-pemilik). For a PERORANGAN line
   the account list sent excludes trade receivables, trade payables and sales (1130, 2110, 4100, 4110); answers outside the list are dropped
-  as today (rule 19). Prompt version bumps (cached answers for the old prompt are not reused).
+  as today (rule 19). The cache key already holds the prompt, so a person's lines get fresh answers while a company's cached answers stay valid (no version bump).
 - [ ] **An entity's own report never waits for the group's rates.** Laporan Keuangan for one entity renders its Laba Rugi / Neraca when another
   entity lacks translation rates; the Kertas Kerja Gabungan tab shows the compact "kurs belum lengkap" card instead.
 - [ ] **Mapping rules** (suggestions only; accepted mappings are untouched):
@@ -64,8 +64,8 @@ What an accountant would not accept:
   differences; entering SGD→IDR rates; converting the holding company's face-value USD rows.
 - Deleting the production test clients (Kopi Nusa, Chickin, Belifi uji bank): only on the owner's word.
 
-**Gate-reopeners:** none of migration or dependency. The prompt version bump means the next imports call the model again for leftovers
-(normal per-import caps and the monthly budget apply). Mapping and classification changes can move demo numbers → `verify:books`.
+**Gate-reopeners:** none of migration or dependency. A person's lines get a new prompt, so their next import calls the model again for
+leftovers (normal per-import caps and the monthly budget apply); companies keep their cache. Mapping and classification changes can move demo numbers → `verify:books`.
 
 **Assumptions:**
 1. For a Perorangan, 1130 / 2110 / 4100 / 4110 are never right for a personal bank line; anything else stays available to the model.
@@ -75,7 +75,7 @@ What an accountant would not accept:
 
 ## Tasks
 - [x] T1 Own-entity words in the 1190 review branch (`lib/classify/transfer.ts`) — accept: unit test with the Belifi line → 1190 review; customer receipt unchanged; existing transfer tests green.
-- [ ] T2 Entity kind in AI classification (`lib/ai/provider.ts`, `lib/ai/classify.ts`, caller in `lib/import`) — accept: unit test on `buildPrompt` / account filter; MockProvider DB test for a Perorangan import; prompt version bumped.
+- [x] T2 Entity kind in AI classification (`lib/ai/provider.ts`, `lib/ai/classify.ts`, caller in `lib/import`) — accept: unit test on `buildPrompt` / account filter; MockProvider DB test for a Perorangan line.
 - [ ] T3 Entity reports independent of group rates (`app/(app)/clients/[id]/reports/page.tsx`) — accept: DB/e2e-free check by rendering helper or manual local run with an SGD entity lacking rates; typecheck.
 - [ ] T4 Mapping rules (`lib/ledger-import/mapping.ts`, posting of template accounts) — accept: `tests/db/mapping.test.ts` cases for the seven Chickin names above; prior expectations kept.
 - [ ] T5 TB groups need numbers (`lib/ledger-import/read.ts`) — accept: synthetic fixture of the foundation-sheet shape reads as NERACA with 0 BLOCK; existing TB tests green.
@@ -84,8 +84,10 @@ What an accountant would not accept:
 ## Implementation
 - Plan: tasks T1–T6 sequential, done inline (each is small and touches a different area; one driver keeps the review tight).
 - T1: `lib/classify/transfer.ts` — the 1190 review branch also takes out words (≥ 4 letters) of the line's own entity names; an empty remainder gets its own reason. Test: `tests/unit/transfer-safety.test.ts` (Belifi-shaped line with only the full PT name → 1190 at 0.8; customer receipt untouched).
+- T2: `lib/ai/classify.ts` (`aiScope`: context names a person's own account; accounts on PIUTANG_USAHA / UTANG_USAHA / PENDAPATAN_USAHA left out for PERORANGAN), `lib/import/pipeline.ts`, `lib/ai/retry.ts` (one pass per entity kind, stops after a cap/budget note), `lib/demo/seed.ts` (pre-cache key built the same way). Test: `tests/db/ai-retry.test.ts`.
 
 ## Verification
 - T1: lint + typecheck clean; `npm test` → Test Files 183 passed (183), Tests 1205 passed (1205).
+- T2: lint + typecheck clean; `npm test` → Test Files 183 passed (183), Tests 1206 passed (1206).
 
 ## Ship Notes

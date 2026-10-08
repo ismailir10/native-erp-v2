@@ -11,7 +11,7 @@ import { formatMoney } from "@/lib/money";
 import { DEMO_AI_MODEL, MockProvider } from "@/lib/ai/provider";
 import { dateOnly } from "@/lib/format";
 import { merchantKey } from "@/lib/import/normalize";
-import { aiCacheKey } from "@/lib/ai/classify";
+import { aiCacheKey, aiScope } from "@/lib/ai/classify";
 import { renderStatement } from "@/lib/demo/writers";
 import { demoFaktur } from "@/lib/demo/faktur";
 import { aiTable, DEMO_MONTHS, scenarios, statementFiles, type ClientScenario, type Truth } from "@/lib/demo/scenario";
@@ -143,11 +143,12 @@ export async function seedDemo(db: Db, opts: { log?: (s: string) => void; liveAi
     // or credit. Set DEMO_LIVE_AI=1 (with AI_API_KEY) to leave them uncached and see a real call.
     if (sc.liveUpload && !opts.liveAi) {
       const lu = sc.liveUpload;
-      const chart = (await db.account.findMany({ where: { clientId: client.id }, orderBy: { code: "asc" } })).filter(isClassifiable).map(a => ({ code: a.code, name: a.name }));
+      const kind = sc.spec.entities[sc.banks[lu.bankKey].entity].kind;
+      const scope = aiScope(client, kind, (await db.account.findMany({ where: { clientId: client.id }, orderBy: { code: "asc" } })).filter(isClassifiable));
       for (const l of sc.lines.filter((l) => l.bankKey === lu.bankKey && l.ai && l.date.getUTCFullYear() === lu.year && l.date.getUTCMonth() + 1 === lu.month)) {
         const key = merchantKey(l.description);
         const direction = l.amount >= 0n ? "IN" : "OUT";
-        const cacheKey = aiCacheKey(key, direction, client.coaVersion, { firmId: client.firmId, clientId: client.id, model: DEMO_AI_MODEL, clientName: `${client.name} (${client.industry ?? "umum"})`, accounts: chart, sample: l.description });
+        const cacheKey = aiCacheKey(key, direction, client.coaVersion, { firmId: client.firmId, clientId: client.id, model: DEMO_AI_MODEL, clientName: scope.clientName, accounts: scope.accounts, sample: l.description });
         await db.aiSuggestion.upsert({
           where: { cacheKey },
           create: { cacheKey, merchantKey: key, direction, accountCode: l.ai!.accountCode, confidence: l.ai!.confidence, taxTag: l.ai!.taxTag, reason: l.ai!.reason, model: DEMO_AI_MODEL },
