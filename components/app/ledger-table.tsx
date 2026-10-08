@@ -121,7 +121,7 @@ export function LedgerTable({ rows, opening, currency = "IDR", accounts }: { row
             <TableRow key={r.id} className="cursor-pointer" onClick={() => show(r)} data-testid="ledger-row">
               <TableCell className="num pl-6 whitespace-nowrap text-muted-foreground">{r.date}</TableCell>
               <TableCell className="max-w-md">
-                <button type="button" className="block max-w-full truncate text-left underline decoration-border underline-offset-4 hover:text-primary hover:decoration-primary" onClick={(e) => { e.stopPropagation(); show(r); }}>{r.memo}</button>
+                <button type="button" className="block max-w-full truncate text-left drill" onClick={(e) => { e.stopPropagation(); show(r); }}>{r.memo}</button>
                 <div className="flex items-center gap-1 text-xs text-muted-foreground">
                   {KIND[r.kind]} · {r.entity}
                   {(r.source || r.fileSource) && <FileText className="size-3" aria-label="Ada sumber" />}

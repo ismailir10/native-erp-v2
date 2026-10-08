@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { loadClientPage } from "@/lib/client-page";
-import type { SearchParams } from "@/lib/scope";
+import { withParams, type SearchParams } from "@/lib/scope";
 import { formatDate, periodBounds } from "@/lib/format";
 import { liveUploadFile } from "@/lib/demo/seed";
 import { evidenceEnabled } from "@/lib/evidence/config";
@@ -39,10 +39,14 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
     where: { bankAccountId: { in: banks.map((b) => b.id) } },
     include: { bankAccount: { include: { entity: true } }, importedBy: { select: { name: true } } },
     orderBy: [{ periodStart: "desc" }, { createdAt: "desc" }],
-    take: 30,
+    take: 100,
   });
   const ledgerImports = await prisma.ledgerImport.findMany({ where: { clientId: client.id }, orderBy: { createdAt: "desc" }, take: 30, include: { _count: { select: { entries: true } }, importedBy: { select: { name: true } }, postedBy: { select: { name: true } } } });
   const hasBanks = banks.length > 0;
+  // The history is a reference, not the task: six rows, the rest one click away (state in the URL like the other lists).
+  const HISTORY = 6;
+  const showAll = sp.riwayat === "semua";
+  const shownImports = showAll ? imports : imports.slice(0, HISTORY);
   // Removing an import (ADR 0013) is an admin's decision, like reopening a month.
   const isAdmin = (await getCurrentMember()).role === "ADMIN";
   const tab = !hasBanks || sp.tab === "ledger" ? "ledger" : "statement";
@@ -132,15 +136,6 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
       )}
       <SetupSteps progress={setup} />
       {completeness.rows.length > 0 && <CompletenessCard months={completeness.months} rows={completeness.rows} />}
-      {request && <DataRequestCard message={request.text} items={request.items} clientId={client.id} canLink={evidenceEnabled()} />}
-      {evidenceEnabled() && (
-        <UploadLinksCard
-          clientId={client.id}
-          clientName={client.name}
-          links={links.map((l) => ({ id: l.id, intakeId: l.intakeId, created: formatDate(l.createdAt), expires: formatDate(l.expiresAt), lastUsed: l.lastUsedAt ? formatDate(l.lastUsedAt) : null, files: l.files, active: l.active }))}
-        />
-      )}
-      {evidenceEnabled() && <p className="text-sm text-muted-foreground">Ingin menyimpan berkas untuk ditanyakan, bukan dibukukan? Pakai <Link href="/documents" className="text-primary hover:underline">Dokumen</Link>. Yang diimpor di sini langsung menjadi jurnal.</p>}
       {!hasBanks ? (
         ledger
       ) : (
@@ -161,10 +156,10 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
               <TableRow>
                 <TableHead className="pl-6">File</TableHead>
                 <TableHead>Rekening</TableHead>
-                <TableHead>Periode</TableHead>
-                <TableHead className="text-right">Baris</TableHead>
+                <TableHead className="hidden md:table-cell">Periode</TableHead>
+                <TableHead className="hidden text-right md:table-cell">Baris</TableHead>
                 <TableHead>Saldo berjalan</TableHead>
-                <TableHead className={isAdmin ? undefined : "pr-6"}>Diimpor</TableHead>
+                <TableHead className={isAdmin ? "hidden md:table-cell" : "hidden pr-6 md:table-cell"}>Diimpor</TableHead>
                 {isAdmin && <TableHead className="w-24 pr-6"><span className="sr-only">Hapus</span></TableHead>}
               </TableRow>
             </TableHeader>
@@ -174,28 +169,44 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
                   <TableCell colSpan={isAdmin ? 7 : 6} className="pl-6 text-muted-foreground">Belum ada rekening koran yang diimpor untuk klien ini.</TableCell>
                 </TableRow>
               )}
-              {imports.map((i) => (
+              {shownImports.map((i) => (
                 <TableRow key={i.id}>
                   <TableCell className="pl-6">
                     <span className="font-mono text-xs">{i.fileName}</span>
                     {i.parseNotes.map((n) => <span key={n} className="mt-1 block max-w-md text-xs text-muted-foreground">{n}</span>)}
                   </TableCell>
                   <TableCell>{i.bankAccount.label} <span className="text-muted-foreground">· {i.bankAccount.entity.shortName}</span></TableCell>
-                  <TableCell className="text-muted-foreground">{formatDate(i.periodStart)} – {formatDate(i.periodEnd)}</TableCell>
-                  <TableCell className="num text-right">{i.rowCount}{i.duplicateCount ? <span className="text-muted-foreground"> ({i.duplicateCount} duplikat)</span> : null}</TableCell>
+                  <TableCell className="hidden text-muted-foreground md:table-cell">{formatDate(i.periodStart)} – {formatDate(i.periodEnd)}</TableCell>
+                  <TableCell className="num hidden text-right md:table-cell">{i.rowCount}{i.duplicateCount ? <span className="text-muted-foreground"> ({i.duplicateCount} duplikat)</span> : null}</TableCell>
                   <TableCell><StatusPill status={i.continuityOk ? "PASS" : "REVIEW"} label={i.continuityOk ? "Nyambung" : "Ada celah"} /></TableCell>
-                  <TableCell className={isAdmin ? "text-muted-foreground" : "pr-6 text-muted-foreground"}>{formatDate(i.createdAt)}<span className="block text-xs">oleh {i.importedBy?.name ?? "Sistem"}</span></TableCell>
+                  <TableCell className={isAdmin ? "hidden text-muted-foreground md:table-cell" : "hidden pr-6 text-muted-foreground md:table-cell"}>{formatDate(i.createdAt)}<span className="block text-xs">oleh {i.importedBy?.name ?? "Sistem"}</span></TableCell>
                   {isAdmin && <TableCell className="pr-6 text-right"><RemoveImportButton clientId={client.id} importId={i.id} kind="statement" fileName={i.fileName} /></TableCell>}
                 </TableRow>
               ))}
             </TableBody>
           </Table>
+          {imports.length > HISTORY && (
+            <div className="border-t px-6 pt-3 text-sm">
+              <Link href={withParams(`/clients/${client.id}/import`, { period: period.key, ...(showAll ? {} : { riwayat: "semua" }) })} className="text-primary underline-offset-4 hover:underline">
+                {showAll ? `Tampilkan ${HISTORY} terbaru` : `Tampilkan semua (${imports.length})`}
+              </Link>
+            </div>
+          )}
         </CardContent>
       </Card>
           </TabsContent>
           <TabsContent value="ledger">{ledger}</TabsContent>
         </Tabs>
       )}
+      {request && <DataRequestCard message={request.text} items={request.items} clientId={client.id} canLink={evidenceEnabled()} />}
+      {evidenceEnabled() && (
+        <UploadLinksCard
+          clientId={client.id}
+          clientName={client.name}
+          links={links.map((l) => ({ id: l.id, intakeId: l.intakeId, created: formatDate(l.createdAt), expires: formatDate(l.expiresAt), lastUsed: l.lastUsedAt ? formatDate(l.lastUsedAt) : null, files: l.files, active: l.active }))}
+        />
+      )}
+      {evidenceEnabled() && <p className="text-sm text-muted-foreground">Ingin menyimpan berkas untuk ditanyakan, bukan dibukukan? Pakai <Link href="/documents" className="text-primary hover:underline">Dokumen</Link>. Yang diimpor di sini langsung menjadi jurnal.</p>}
     </div>
   );
 }

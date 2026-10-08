@@ -103,7 +103,7 @@ test("statement in → reviewed → traceable reports → combined → closed", 
   // since its opening balance), and PT Ayam holds stock with no August count → the accountant notes why → sign-offs → lock
   await page.getByRole("link", { name: "Tutup Buku" }).click();
   await expect(page.getByRole("heading", { name: "Tutup Buku" })).toBeVisible();
-  await expect(page.getByText("Lolos").first()).toBeVisible();
+  await expect(page.getByText(/\d+ kontrol lolos/).first()).toBeVisible();
   await expect(page.getByText("Gagal")).toHaveCount(0);
   const flagged = page.locator('[data-testid^="control-"]').filter({ hasText: "Perlu dicek" });
   await expect(flagged).toHaveCount(2);

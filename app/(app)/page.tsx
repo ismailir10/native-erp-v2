@@ -20,12 +20,12 @@ export default async function HomePage({ searchParams }: { searchParams: Workspa
     <div className="space-y-6">
       {header}
       {first ? (
-        <NextStep href={first.href} cta="Kerjakan">{data.tasks.length} pekerjaan menunggu. Pertama: {first.title}.</NextStep>
+        <NextStep href={first.href} cta="Kerjakan">{first.title}.{data.tasks.length > 1 && ` ${data.tasks.length - 1} pekerjaan lain menunggu.`}</NextStep>
       ) : (
         <NextStep tone="done">{`Semua klien dalam cakupan ini sudah tutup buku ${data.scope.periodLabel}.`}</NextStep>
       )}
+      <WorkspaceTasks data={data} limit={3} expanded={expanded} afterFirst />
       <WorkspaceAsk scope={data.scope} />
-      <WorkspaceTasks data={data} limit={3} expanded={expanded} />
       <WorkspaceClose data={data} />
       <WorkspaceFinancials data={data} />
     </div>

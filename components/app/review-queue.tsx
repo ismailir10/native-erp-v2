@@ -346,6 +346,7 @@ export function ReviewQueue({
         <span className="num font-medium text-foreground" data-testid="review-count">{open.length} menunggu</span>
         <span><Kbd>↑</Kbd> <Kbd>↓</Kbd> pindah</span>
         <span><Kbd>Enter</Kbd> terima usulan</span>
+        {simpleGuesses > 0 && <span>Tebakan tidak diterima dengan Enter: pilih akunnya sendiri</span>}
         {savingNote}
       </div>
       {simpleGuesses > 0 && clientId && (
@@ -411,7 +412,7 @@ export function ReviewQueue({
                 return hints.length > 0 && (
                   <ul className="mt-3 space-y-1.5" data-testid="review-hints">
                     {hints.map((h) => (
-                      <li key={h.key} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-review-subtle px-3 py-2 text-sm">
+                      <li key={h.key} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-l-2 border-review py-1 pl-3 text-sm">
                         <CircleAlert className="size-4 shrink-0 text-review" aria-hidden />
                         <span className="min-w-0 flex-1">{h.text}</span>
                         {h.apply && (

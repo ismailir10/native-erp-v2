@@ -53,7 +53,7 @@ export function TbTable({ rows, currency, codeLabel = "Kode" }: { rows: TbTableR
             <TableCell className="num hidden pl-6 text-muted-foreground sm:table-cell">{r.code || "–"}</TableCell>
             <TableCell className="pl-6 whitespace-normal sm:pl-2">
               {r.code && <div className="num text-xs text-muted-foreground sm:hidden">{r.code}</div>}
-              <Link className="underline decoration-border underline-offset-4 hover:text-primary hover:decoration-primary" href={r.href} data-testid="tb-account-link">
+              <Link className="drill" href={r.href} data-testid="tb-account-link">
                 {r.name}
               </Link>
               {r.review && <StatusPill className="ml-2" status="REVIEW" label="Perlu dicek" />}

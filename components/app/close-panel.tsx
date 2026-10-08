@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, Lock, LockOpen, MessageSquare } from "lucide-react";
+import { ChevronRight, Loader2, Lock, LockOpen, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
@@ -70,68 +70,83 @@ export function ClosePanel(props: {
   const worst = (g: string) => Math.min(...props.controls.filter((c) => c.scope === g).map((c) => ORDER[c.status]));
   const groups = [...new Set(props.controls.map((c) => c.scope))].sort((a, b) => worst(a) - worst(b));
 
+  const rowsOf = (g: string) => {
+    const rows = props.controls.filter((c) => c.scope === g).sort((a, b) => ORDER[a.status] - ORDER[b.status]);
+    return { open: rows.filter((c) => c.status !== "PASS"), passed: rows.filter((c) => c.status === "PASS") };
+  };
+  const controlRow = (c: (typeof props.controls)[number]) => (
+    <div key={c.key} className="flex flex-wrap items-center gap-3 px-6 py-2.5" data-testid={`control-${c.key.split(":")[0]}`}>
+      <StatusPill status={c.status} />
+      <div className="min-w-0 flex-1 basis-56">
+        <div className="text-sm font-medium">{c.title}</div>
+        <div className="text-xs text-muted-foreground">{c.detail}</div>
+        {c.ack && <div className="mt-1 flex items-center gap-1 text-xs text-foreground"><MessageSquare className="size-3" /> {c.ack}</div>}
+        {c.staleAck && (
+          <div className="mt-1 flex items-center gap-1 text-xs text-review" data-testid="stale-ack">
+            <MessageSquare className="size-3" /> Catatan lama: “{c.staleAck}” — kondisinya berubah, periksa dan beri catatan lagi.
+          </div>
+        )}
+      </div>
+      {c.href && c.status !== "PASS" && (
+        <Link href={c.href} className="text-sm font-medium text-primary hover:underline">Periksa</Link>
+      )}
+      {c.status !== "PASS" && !props.locked && props.aiReady && !explained[c.key] && (
+        <Button variant="ghost" size="sm" disabled={explaining !== null} onClick={() => explain(c)}>
+          {explaining === c.key ? "Menjelaskan…" : "Jelaskan"}
+        </Button>
+      )}
+      {c.status === "REVIEW" && !props.locked && (
+        <Button variant="outline" size="sm" onClick={() => { setAckFor(c); setNote(c.ack ?? c.staleAck ?? ""); }}>
+          {c.ack ? "Ubah catatan" : c.staleAck ? "Perbarui catatan" : "Beri catatan"}
+        </Button>
+      )}
+      {explained[c.key] && (
+        <div className="basis-full space-y-1.5 border-l-2 border-primary/30 pl-3 text-sm" data-testid="control-explanation">
+          <p>{explained[c.key].explanation}</p>
+          {explained[c.key].suggestion && <p><span className="font-medium">Usulan AI:</span> {explained[c.key].suggestion}</p>}
+          {explained[c.key].links.length > 0 && (
+            <ul className="space-y-0.5 text-xs">
+              {explained[c.key].links.map((l) => (
+                <li key={l.id}><Link href={l.href} className="text-muted-foreground drill">{l.label} ›</Link></li>
+              ))}
+            </ul>
+          )}
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            {explained[c.key].proposal && <span className="text-xs text-muted-foreground">Draf jurnal dibuat di <span className="font-medium text-foreground">Usulan jurnal koreksi</span>; dicatat setelah Anda klik.</span>}
+            {c.status === "REVIEW" && explained[c.key].note && (
+              <Button variant="outline" size="sm" onClick={() => { setAckFor(c); setNote(explained[c.key].note); }}>Pakai sebagai catatan</Button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="grid gap-4 lg:grid-cols-3">
       <div className="space-y-4 lg:col-span-2">
-        {groups.map((g) => (
+        {groups.map((g) => {
+          const { open, passed } = rowsOf(g);
+          return (
           <Card key={g}>
             <CardHeader>
               <CardTitle>{g}</CardTitle>
             </CardHeader>
             <CardContent className="divide-y px-0">
-              {props.controls
-                .filter((c) => c.scope === g)
-                .sort((a, b) => ORDER[a.status] - ORDER[b.status])
-                .map((c) => (
-                <div key={c.key} className="flex flex-wrap items-center gap-3 px-6 py-2.5" data-testid={`control-${c.key.split(":")[0]}`}>
-                  <StatusPill status={c.status} />
-                  <div className="min-w-0 flex-1 basis-56">
-                    <div className="text-sm font-medium">{c.title}</div>
-                    <div className="text-xs text-muted-foreground">{c.detail}</div>
-                    {c.ack && <div className="mt-1 flex items-center gap-1 text-xs text-foreground"><MessageSquare className="size-3" /> {c.ack}</div>}
-                    {c.staleAck && (
-                      <div className="mt-1 flex items-center gap-1 text-xs text-review" data-testid="stale-ack">
-                        <MessageSquare className="size-3" /> Catatan lama: “{c.staleAck}” — kondisinya berubah, periksa dan beri catatan lagi.
-                      </div>
-                    )}
-                  </div>
-                  {c.href && c.status !== "PASS" && (
-                    <Link href={c.href} className="text-sm font-medium text-primary hover:underline">Periksa</Link>
-                  )}
-                  {c.status !== "PASS" && !props.locked && props.aiReady && !explained[c.key] && (
-                    <Button variant="ghost" size="sm" disabled={explaining !== null} onClick={() => explain(c)}>
-                      {explaining === c.key ? "Menjelaskan…" : "Jelaskan"}
-                    </Button>
-                  )}
-                  {c.status === "REVIEW" && !props.locked && (
-                    <Button variant="outline" size="sm" onClick={() => { setAckFor(c); setNote(c.ack ?? c.staleAck ?? ""); }}>
-                      {c.ack ? "Ubah catatan" : c.staleAck ? "Perbarui catatan" : "Beri catatan"}
-                    </Button>
-                  )}
-                  {explained[c.key] && (
-                    <div className="basis-full space-y-1.5 border-l-2 border-primary/30 pl-3 text-sm" data-testid="control-explanation">
-                      <p>{explained[c.key].explanation}</p>
-                      {explained[c.key].suggestion && <p><span className="font-medium">Usulan AI:</span> {explained[c.key].suggestion}</p>}
-                      {explained[c.key].links.length > 0 && (
-                        <ul className="space-y-0.5 text-xs">
-                          {explained[c.key].links.map((l) => (
-                            <li key={l.id}><Link href={l.href} className="text-muted-foreground underline decoration-border underline-offset-4 hover:text-primary hover:decoration-primary">{l.label} ›</Link></li>
-                          ))}
-                        </ul>
-                      )}
-                      <div className="flex flex-wrap items-center gap-2 pt-1">
-                        {explained[c.key].proposal && <span className="text-xs text-muted-foreground">Draf jurnal dibuat di <span className="font-medium text-foreground">Usulan jurnal koreksi</span>; dicatat setelah Anda klik.</span>}
-                        {c.status === "REVIEW" && explained[c.key].note && (
-                          <Button variant="outline" size="sm" onClick={() => { setAckFor(c); setNote(explained[c.key].note); }}>Pakai sebagai catatan</Button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
+              {open.map(controlRow)}
+              {passed.length > 0 && (
+                <details className="group/passed" data-testid="passed-controls">
+                  <summary className="flex cursor-pointer list-none items-center gap-2 px-6 py-2.5 text-sm text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
+                    <ChevronRight className="size-4 transition-transform group-open/passed:rotate-90" aria-hidden />
+                    {passed.length} kontrol lolos
+                  </summary>
+                  <div className="divide-y border-t">{passed.map(controlRow)}</div>
+                </details>
+              )}
             </CardContent>
           </Card>
-        ))}
+          );
+        })}
       </div>
 
       <div className="space-y-4">

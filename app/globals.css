@@ -2,12 +2,13 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/inter";
+@import "@fontsource-variable/newsreader";
 
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Buku design tokens — 9fin look on a light background: hairlines, sharp corners, mono micro-labels,
- * navy ink and one strong blue. Rules: .agents/skills/ui-rules/SKILL.md
+ * Buku design tokens — ledger paper: warm canvas, hairlines, near-square corners, mono micro-labels,
+ * warm ink and one deep ink-blue. Rules: .agents/skills/ui-rules/SKILL.md
  */
 @theme inline {
   --color-background: var(--background);
@@ -15,6 +16,8 @@
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
   --font-heading: var(--font-sans);
+  /* Display serif: page titles and headline figures only. Body, tables and forms stay Inter. */
+  --font-display: "Newsreader Variable", ui-serif, Georgia, "Times New Roman", serif;
 
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -70,65 +73,65 @@
 }
 
 :root {
-  /* 9fin-inspired: cool light canvas, navy ink, one strong blue */
-  --background: #F5F7FA;
-  --foreground: #0B1B32;
+  /* Ledger paper: warm canvas, warm ink, one deep ink-blue. White is kept for working surfaces (tables, forms). */
+  --background: #F6F3EC;
+  --foreground: #17181C;
   --card: #FFFFFF;
-  --card-foreground: #0B1B32;
+  --card-foreground: #17181C;
   --popover: #FFFFFF;
-  --popover-foreground: #0B1B32;
+  --popover-foreground: #17181C;
 
-  /* Strong blue — 5.9:1 on white: text, links, rings, fills */
-  --primary: #1D5BD8;
+  /* Ink blue — 10.3:1 on white, 9.3:1 on paper. Actions, focus and selection only; never a figure's colour. */
+  --primary: #1F3A8A;
   --primary-foreground: #FFFFFF;
-  --primary-subtle: #EDF2FD;
-  /* Opaque hover step: white text keeps 7.4:1 (a translucent /80 fill drops to 4.0:1 on white) */
-  --primary-hover: #184DBE;
+  --primary-subtle: #E9EDF8;
+  /* Opaque hover step (12.6:1 with white text) */
+  --primary-hover: #172E70;
 
-  /* Brand fill (primary button, logo, NextStep marker) — the same blue, white text on top */
-  --brand: #1D5BD8;
+  /* Brand fill (primary button, logo, NextStep marker) — the same ink blue, white text on top */
+  --brand: #1F3A8A;
   --brand-foreground: #FFFFFF;
-  --brand-hover: #184DBE;
+  --brand-hover: #172E70;
 
-  --secondary: #EEF2F7;
-  --secondary-foreground: #0B1B32;
-  --muted: #EFF2F6;
-  --muted-foreground: #4B5768;
-  --accent: #EEF2F7;
-  --accent-foreground: #0B1B32;
-  --destructive: #C4213A;
+  --secondary: #EFEBE2;
+  --secondary-foreground: #17181C;
+  --muted: #F0ECE3;
+  --muted-foreground: #58554D; /* 6.7:1 on paper, 7.4:1 on white */
+  --accent: #EFEBE2;
+  --accent-foreground: #17181C;
+  --destructive: #B3203A;
 
-  --border: #E3E7ED;
-  --input: #8792A2;
-  --ring: #1D5BD8;
-  --radius: 0.25rem;
+  --border: #DDD8CC;
+  --input: #8C877B; /* control borders: 3.6:1 on white */
+  --ring: #1F3A8A;
+  --radius: 0.125rem;
 
-  /* Light app chrome: white sidebar, navy text, blue-tinted active item */
-  --sidebar: #FFFFFF;
-  --sidebar-foreground: #2A3547;
-  --sidebar-primary: #EDF2FD;
-  --sidebar-primary-foreground: #1747B0;
-  --sidebar-accent: #F1F4F8;
-  --sidebar-accent-foreground: #0B1B32;
-  --sidebar-border: #E3E7ED;
-  --sidebar-ring: #1D5BD8;
+  /* Chrome: paper-white sidebar, warm ink text, blue-tinted active item */
+  --sidebar: #FBFAF6;
+  --sidebar-foreground: #2E2D29;
+  --sidebar-primary: #E9EDF8;
+  --sidebar-primary-foreground: #172E70;
+  --sidebar-accent: #EFEBE2;
+  --sidebar-accent-foreground: #17181C;
+  --sidebar-border: #DDD8CC;
+  --sidebar-ring: #1F3A8A;
 
-  /* Categorical chart order (blue, orange, green, violet), validated with the dataviz validator on white:
-     lightness band, chroma, adjacent CVD ΔE ≥ 8, contrast ≥ 3:1. Fixed order, never cycled.
-     chart-5 is the neutral "Lainnya" slot, not a fifth hue. */
-  --chart-1: #1D5BD8;
+  /* Categorical chart order (blue, orange, green, violet), validated with the dataviz validator (lightness band, chroma,
+     adjacent CVD ΔE ≥ 8, contrast ≥ 3:1). chart-1 is a lighter blue than --primary on purpose: the ink blue is below the
+     lightness band for a data series. chart-5 is the neutral "Lainnya" slot, not a fifth hue (grey by design). */
+  --chart-1: #3358B8;
   --chart-2: #E0592A;
   --chart-3: #12876F;
   --chart-4: #9B4DCA;
   --chart-5: #6B7280;
 
   /* Status — reserved for control & state, never chart series */
-  --pass: #0E7A4D;
-  --pass-subtle: #E6F5EE;
-  --review: #8A5300;
-  --review-subtle: #FFF3D6;
-  --fail: #C4213A;
-  --fail-subtle: #FCEBEE;
+  --pass: #0E6B43;
+  --pass-subtle: #E3F1E8;
+  --review: #7A4A00;
+  --review-subtle: #FBEFD0;
+  --fail: #B3203A;
+  --fail-subtle: #FBE6E9;
 }
 
 @layer base {
@@ -145,6 +148,22 @@
 }
 
 @layer components {
+  /* Drill-down figure or account name: ink, dotted underline at rest (visible without hover), solid blue on hover/focus.
+     Blue is reserved for actions, so a number you can open does not look like a button. */
+  .drill {
+    text-decoration-line: underline;
+    text-decoration-style: dotted;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 4px;
+    text-decoration-color: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
+  }
+  .drill:hover,
+  .drill:focus-visible {
+    color: var(--primary);
+    text-decoration-style: solid;
+    text-decoration-color: var(--primary);
+  }
+
   /* 9fin micro-label: monospace, uppercase, tracked. Table headers, group labels, stat labels, eyebrows. */
   .eyebrow {
     @apply font-mono text-[11px] font-medium tracking-[0.08em] uppercase text-muted-foreground;

@@ -15,7 +15,7 @@ function Codes({ codes, accountHref }: { codes: string[]; accountHref: (code: st
       {codes.map((c, i) => (
         <Fragment key={c}>
           {i > 0 && ", "}
-          <Link href={accountHref(c)} className="num underline decoration-border underline-offset-4 hover:text-primary hover:decoration-primary" data-testid="fs-account-link">{c}</Link>
+          <Link href={accountHref(c)} className="num drill" data-testid="fs-account-link">{c}</Link>
         </Fragment>
       ))}
     </>

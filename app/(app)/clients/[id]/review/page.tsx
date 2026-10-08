@@ -55,9 +55,7 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
     <div className="space-y-6">
       <PageHeader title="Review transaksi" description={`${scopeLabel} · mutasi sampai ${formatDate(period.end)}, termasuk sisa periode sebelumnya`} actions={<ScopeBar entities={entityOptions} periods={periodOptions} entity={scope.value} period={period.key} />} />
       {txs.length > 0 ? (
-        <NextStep>
-          Cek usulan akun. Tekan <b>Enter</b> untuk menerima, atau ganti akunnya. Buku mengingat pilihan Anda untuk impor berikutnya; <b>Tebakan</b> tidak diterima dengan Enter dan tidak diingat sampai Anda memilih akunnya.
-        </NextStep>
+        <NextStep>Periksa {txs.length} usulan akun di bawah: terima yang benar, ganti yang salah.</NextStep>
       ) : (
         <NextStep href={`${base}/close?entity=${scope.value}&period=${period.key}`} cta="Tutup buku" tone="done">Tidak ada transaksi menunggu review dalam cakupan ini.</NextStep>
       )}

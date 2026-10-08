@@ -2,18 +2,20 @@ import { CircleCheck, CircleAlert, CircleX } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ControlStatus } from "@/lib/controls";
 
-const MAP: Record<ControlStatus, { label: string; icon: typeof CircleCheck; cls: string }> = {
-  PASS: { label: "Lolos", icon: CircleCheck, cls: "bg-pass-subtle text-pass" },
-  REVIEW: { label: "Perlu dicek", icon: CircleAlert, cls: "bg-review-subtle text-review" },
-  FAIL: { label: "Gagal", icon: CircleX, cls: "bg-fail-subtle text-fail" },
+const MAP: Record<ControlStatus, { label: string; icon: typeof CircleCheck; text: string; fill: string }> = {
+  PASS: { label: "Lolos", icon: CircleCheck, text: "text-pass", fill: "" },
+  REVIEW: { label: "Perlu dicek", icon: CircleAlert, text: "text-review", fill: "" },
+  FAIL: { label: "Gagal", icon: CircleX, text: "text-fail", fill: "bg-fail-subtle px-1.5" },
 };
 
-/** Status always carries icon + label — never colour alone. */
-export function StatusPill({ status, label, className }: { status: ControlStatus; label?: string; className?: string }) {
+/** Status always carries icon + label — never colour alone. Only a failure gets a fill: it blocks, the rest just reads. */
+export function StatusPill({ status, label, className, iconOnly = false }: { status: ControlStatus; label?: string; className?: string; iconOnly?: boolean }) {
   const s = MAP[status];
   const Icon = s.icon;
+  // `iconOnly`: inside a list whose header already says the state, the shape carries it and the word is for screen readers.
+  if (iconOnly) return <Icon className={cn("size-4 shrink-0", s.text, className)} role="img" aria-label={label ?? s.label} />;
   return (
-    <span className={cn("inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-sm px-1.5 py-0.5 text-xs font-medium", s.cls, className)}>
+    <span className={cn("inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-sm py-0.5 text-xs font-medium", s.text, s.fill, className)}>
       <Icon className="size-3.5" aria-hidden />
       {label ?? s.label}
     </span>

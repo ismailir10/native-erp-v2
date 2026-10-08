@@ -72,12 +72,12 @@ export function WorkspaceAsk({ scope }: { scope: Answer["scope"] }) {
     finally { setBusy(false); }
   }
   return (
-    <Card className="border-primary/20">
-      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3"><div><CardTitle role="heading" aria-level={2} className="text-lg">Tanya Buku</CardTitle><p className="mt-1 text-sm text-muted-foreground">{scope.label} · {scope.periodLabel}</p></div><Button type="button" variant="ghost" onClick={() => setShowHistory(!showHistory)} aria-expanded={showHistory} aria-controls="workspace-answer-history"><History aria-hidden />Riwayat ({answers.length})</Button></CardHeader>
+    <Card>
+      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3"><div><CardTitle role="heading" aria-level={2} className="text-base">Tanya Buku</CardTitle><p className="mt-1 text-sm text-muted-foreground">{scope.label} · {scope.periodLabel}</p></div><Button type="button" variant="ghost" onClick={() => setShowHistory(!showHistory)} aria-expanded={showHistory} aria-controls="workspace-answer-history"><History aria-hidden />Riwayat ({answers.length})</Button></CardHeader>
       <CardContent className="space-y-4">
         <form onSubmit={(event) => { event.preventDefault(); void submit(); }} className="space-y-3">
-          <Label htmlFor="workspace-question">Apa yang ingin Anda periksa?</Label>
-          <Textarea ref={inputRef} id="workspace-question" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Contoh: Klien mana yang belum siap tutup buku?" maxLength={2000} aria-describedby="workspace-ask-help" aria-invalid={Boolean(error)} rows={2} />
+          <Label htmlFor="workspace-question" className="sr-only">Apa yang ingin Anda periksa?</Label>
+          <Textarea ref={inputRef} id="workspace-question" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Contoh: Klien mana yang belum siap tutup buku?" maxLength={2000} aria-describedby="workspace-ask-help" aria-invalid={Boolean(error)} rows={1} className="min-h-9" />
           <div className="flex flex-wrap items-center justify-between gap-3"><p id="workspace-ask-help" className="max-w-md text-xs text-muted-foreground">Jawaban menyertakan sumber. Usulan akuntansi tetap perlu diperiksa.</p><Button type="submit" disabled={busy || !question.trim()}>{busy ? <LoaderCircle className="animate-spin" aria-hidden /> : <ArrowUp aria-hidden />}{busy ? "Memeriksa…" : "Tanya Buku"}</Button></div>
           {error && <p role="alert" className="text-sm text-fail">{error}</p>}
         </form>
