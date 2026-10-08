@@ -120,6 +120,10 @@ const KEYWORDS: { re: RegExp; code: string; types?: AccountType[]; not?: RegExp;
   { re: /(interest income|pendapatan bunga|jasa giro|bank interest|bunga bank|bunga tabungan|revenue interest|interest revenue)/, code: "4900", types: ["PENDAPATAN"] },
   { re: /(interest expense|beban bunga|bunga pinjaman|interest p2p)/, code: "7110", types: ["BEBAN"] },
   { re: /(bank charge|admin(istrasi)? bank|biaya bank|bank administration|bank admin|provisi|biaya transfer)/, code: "7100", types: ["BEBAN"] },
+  // Card and QR payment fees (MDR) and payment-gateway charges are the cost of being paid, with the bank charges, not marketing.
+  { re: /(\b(qris|edc|mdr)\b|merchant discount|payment gateway|gateway fee|biaya gateway|\b(xendit|midtrans|doku|flip|ipaymu)\b.*(fee|admin|biaya|charge))/, code: "7100", types: ["BEBAN"], strict: true },
+  // A small asset expensed when bought is supplies, not depreciation.
+  { re: /(low value asset|aset (ber)?nilai rendah|inventaris kecil|barang modal kecil)/, code: "6160", types: ["BEBAN"], strict: true },
   { re: /(petty cash|kas kecil|cash in transit|\bkas\b|cash on hand)/, code: "1110", types: ["ASET"], not: /bank/ },
   { re: /\b(bank|giro|tabungan|deposito|time deposits?|call a ?c|ocbc|bca|bri|bni|mandiri|cimb|dbs|uob|citibank|permata|bjb|bsi|btn|maybank|panin|danamon|doku|flip|xendit|midtrans)\b/, code: "1120", types: ["ASET"], not: /(non ?bank|payable|utang|hutang|loan|pinjaman)/ },
   // The allowance always goes to its contra account 1135 (created from the template on posting if the client predates it): netted into

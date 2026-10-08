@@ -30,11 +30,13 @@ Left for an accountant:
 
 ## Tasks
 - [x] T1 Person scope without HPP / selling expenses (`lib/ai/classify.ts`) — accept: `tests/db/ai-retry.test.ts` asserts 5100 / 6150 absent for a person, present for a PT.
-- [ ] T2 Payment-fee and low-value-asset rules (`lib/ledger-import/mapping.ts`) — accept: `tests/db/mapping.test.ts` cases; prior expectations kept.
+- [x] T2 Payment-fee and low-value-asset rules (`lib/ledger-import/mapping.ts`) — accept: `tests/db/mapping.test.ts` cases; prior expectations kept.
 
 ## Implementation
 - Plan: T1, T2 sequential, inline (two small edits in different files).
-- T1: `lib/ai/classify.ts` — `NOT_FOR_PERSON` adds HPP and BEBAN_PENJUALAN. Test: `tests/db/ai-retry.test.ts` (5100 / 5110 / 6150 absent for a person, present for a PT).
+- T1: `lib/ai/classify.ts` — `NOT_FOR_PERSON` adds HPP and BEBAN_PENJUALAN. Test: `tests/db/ai-retry.test.ts` (5100 / 5110 / 6150 absent for a person, present for a PT).- T2: `lib/ledger-import/mapping.ts` — QRIS / EDC / MDR / merchant-discount / payment-gateway fees → 7100 and low-value assets → 6160, both `strict` (type must be known as an expense: "Settlement EDC" with no type stays out). Test: `tests/db/mapping.test.ts` (QRIS, DOKU admin → 7100; GoFood commission not 7100; Low Value Asset → 6160).
+
 ## Verification
-- T1: lint + typecheck clean; `npm test` → Test Files 184 passed (184), Tests 1210 passed (1210).
+- T1: lint + typecheck clean; `npm test` → Test Files 184 passed (184), Tests 1210 passed (1210).- T2: lint + typecheck clean; `npm test` → Test Files 184 passed (184), Tests 1210 passed (1210).
+
 ## Ship Notes
