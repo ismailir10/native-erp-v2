@@ -65,7 +65,7 @@ In a cloud agent sandbox with a preinstalled browser set `PW_CHROMIUM=/opt/pw-br
 | Touching | Load first |
 |---|---|
 | `lib/ledger/** lib/import/** lib/ledger-import/** lib/fx/** lib/classify/** lib/ai/** lib/reports/** lib/controls/** prisma/**` | [`accounting-rules`](.agents/skills/accounting-rules/SKILL.md) — **non-negotiable invariants** |
-| `app/** components/**` | [`ui-rules`](.agents/skills/ui-rules/SKILL.md) — 9fin look on a light background, shadcn-first, "don't make me think" |
+| `app/** components/**` | [`ui-rules`](.agents/skills/ui-rules/SKILL.md) — Ramp-style look with one strong blue, shadcn-first, "don't make me think" |
 | `lib/demo/** scripts/seed.ts e2e/**` | [`demo-data`](.agents/skills/demo-data/SKILL.md) |
 | Anything that changes a number on a report | [`verify-books`](.agents/skills/verify-books/SKILL.md) |
 

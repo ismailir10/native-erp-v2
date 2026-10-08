@@ -10,7 +10,7 @@ export function SetupSteps({ progress, className }: { progress: SetupProgress; c
   return (
     <nav aria-label="Langkah persiapan" data-testid="setup-steps" className={className}>
       <div className="eyebrow mb-2">Langkah {at} dari {progress.steps.length}</div>
-      <ol className="grid grid-cols-2 gap-px border bg-border sm:grid-cols-4">
+      <ol className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-4">
         {progress.steps.map((s, i) => (
           <li key={s.key} className="bg-card">
             <Link
@@ -18,7 +18,7 @@ export function SetupSteps({ progress, className }: { progress: SetupProgress; c
               aria-current={s.state === "current" ? "step" : undefined}
               className={cn("flex h-full items-start gap-3 px-3 py-2.5 text-sm hover:bg-muted", s.state === "current" && "bg-primary-subtle")}
             >
-              <span className={cn("num mt-0.5 flex size-5 shrink-0 items-center justify-center border text-xs", s.state === "done" ? "border-pass/40 bg-pass-subtle text-pass" : s.state === "current" ? "border-primary bg-brand text-white" : "text-muted-foreground")}>
+              <span className={cn("num mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border text-xs", s.state === "done" ? "border-pass/40 bg-pass-subtle text-pass" : s.state === "current" ? "border-primary bg-brand text-white" : "text-muted-foreground")}>
                 {s.state === "done" ? <Check className="size-3.5" aria-label="Selesai" /> : i + 1}
               </span>
               <span className="min-w-0">

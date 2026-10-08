@@ -1,28 +1,34 @@
 ---
 name: ui-rules
-description: Buku UI standard — 9fin look on a light background (navy ink, one strong blue, hairlines, sharp corners, sans micro-labels), shadcn-first, "Don't Make Me Think" rules and Bahasa copy. Load before touching app/ or components/.
+description: Buku UI standard — Ramp-style look (warm grey canvas, near-black ink, one strong blue, soft 8–16px corners, large regular-weight sans headlines), shadcn-first, "Don't Make Me Think" rules and Bahasa copy. Load before touching app/ or components/.
 ---
 
 # UI rules
 
-## Look — ledger paper (tokens in `app/globals.css`; never hard-code hex in components)
-- Warm paper canvas `--background #F6F3EC`; **white is for working surfaces** (cards holding tables and forms) and the sidebar is a lighter
-  paper `#FBFAF6`. 1px warm hairline `--border #DDD8CC`, warm ink `--foreground #17181C`, secondary text `--muted-foreground #58554D`.
-- **One deep ink-blue `--primary #1F3A8A`** (10:1 on white): actions, focus rings, selected states. `--brand` is the same blue as a fill
-  with white text: the primary button, the logo, the `NextStep` marker. **Blue is for things you can do, never for a figure.**
-  No green in the chrome.
-- Sidebar: active item = blue tint (`sidebar-primary`) with dark-blue text, hover = warm grey; text uses `sidebar-*` tokens.
+## Look — Ramp-style, strong blue (tokens in `app/globals.css`; never hard-code hex in components · [ADR 0016](../../../docs/adrs/0016-ramp-restyle.md))
+- Warm grey canvas `--background #F4F2F0`; **white is for working surfaces** (cards holding tables and forms, fields) and the sidebar is white.
+  1px warm hairline `--border #E4E0DB`, near-black ink `--foreground #0C0A08`, secondary text `--muted-foreground #5F5B58`.
+- **One strong blue `--primary #2152E8`** (6.1:1 on white, 5.5:1 on the canvas): actions, focus rings, selected states. `--brand` is the same
+  blue as a fill with white text: the primary button, the logo, the `NextStep` marker. **Blue is for things you can do, never for a figure.**
+  Where Ramp uses lime, Buku uses this blue; nothing else is a second accent. No green in the chrome.
+- Sidebar: active item = pale-blue tint (`sidebar-primary`) with dark-blue text, hover = warm grey; text uses `sidebar-*` tokens.
 - Status tokens `pass / review / fail` (+ `-subtle`) are reserved for control & state — never chart series.
-- Near-square corners: `--radius` 2px. Cards are hairline-bordered (`ring-border`), no shadow. No gradients.
+- Soft corners: `--radius` 8px (controls), cards and panels 12px (`rounded-xl`), auth card 16px, chips and pills fully round. Cards are
+  hairline-bordered, flat: no shadow, no gradient. Controls are 36px high (sm 32, xs 28, lg 40).
+- **`NextStep` is a pale-blue panel** (`primary-subtle`, no border) with a round blue marker; the done state is the green check on `pass-subtle`.
+- **Icon tile** (`.icon-tile`): pale-blue rounded square with a blue glyph or step number, to lead a card or list row.
+- **Buttons:** the blue primary; `outline` (white, hairline) and `ghost` for the rest; `ink` (near-black) exists for a rare second emphasis and
+  never sits next to the blue primary in the same row.
 - **Drill-down = `.drill`**: a figure or account name you can open is ink with a dotted underline at rest (visible without hover), solid blue
   on hover/focus. Never a blue underlined number; never hand-copy underline classes.
-- **Status is icon + label in the status colour, no fill** (`StatusPill`); only a failure keeps a subtle fill. Don't box every cell.
+- **Status is icon + label in the status colour, no fill** (`StatusPill`); only a failure keeps a subtle fill (as a round chip). Don't box every cell.
 - **No boxes in boxes.** A card holding a list shows divided rows, not a bordered card per row. Same page, same fact: shown once.
-- Chart series colours are their own tokens (`--chart-1…5`, validated with the `dataviz` validator); `--chart-1` is a lighter blue than
-  `--primary` because the ink blue is too dark for a data series.
-- Type: Inter (self-hosted) for body, tables and forms; **Newsreader** (`font-display`, self-hosted variable serif) only for page titles,
-  the login heading and `Stat` values. `.num` = tabular numerals on every amount. **Micro-labels** (table headers, sidebar group
-  labels, stat labels, eyebrows) use `.eyebrow`: the UI sans, 12px, medium, sentence case, muted. Never monospace or uppercase-tracked (it reads as generic AI chrome).
+- Chart series colours are their own tokens (`--chart-1…5`, validated with the `dataviz` validator); `--chart-1` is the brand blue.
+- Type: **Hanken Grotesk** (self-hosted variable, `@fontsource-variable/hanken-grotesk`) for everything. Ramp's own face (Lausanne) is
+  commercial, so this is the closest free neighbour with tabular numerals. **`.display`** (regular 450 weight, −0.025em tracking, 1.1 line
+  height) for page titles, the login heading and `Stat` values; no serif anywhere. `.num` = tabular numerals on every amount.
+  **Micro-labels** (table headers, sidebar group labels, stat labels, eyebrows) use `.eyebrow`: the UI sans, 12px, medium, sentence case,
+  muted. Never monospace or uppercase-tracked (it reads as generic AI chrome). Monospace stays only for file names, patterns and raw bank text.
 
 ## Components
 - **shadcn first** (`components/ui/*`, base-nova on `@base-ui/react` — composition uses `render={<Link/>}`, not `asChild`).
