@@ -25,7 +25,9 @@ type EntityRow = { name: string; shortName: string; kind: Kind; npwp: string; cu
 const KIND_LABEL: Record<Kind, string> = { PT: "PT", CV: "CV", BADAN_USAHA_ASING: "Badan usaha asing", PERORANGAN: "Perorangan (pemilik)" };
 const BANK_LABEL: Record<Bank, string> = { BCA: "BCA", MANDIRI: "Mandiri", BRI: "BRI", SMBC: "SMBC / Jenius", GENERIC: "Bank lain" };
 const newBank = (): BankRow => ({ bank: "BCA", number: "", label: "", isOverdraft: false });
-const newEntity = (kind: Kind): EntityRow => ({ name: "", shortName: "", kind, npwp: "", currency: "IDR", reportingFramework: "SAK_EP", banks: [newBank()] });
+/** A person's own books have no SAK of their own: SAK EMKM (no OCI, no deferred tax) is the closest; companies start on SAK EP. */
+const defaultFramework = (kind: Kind): Framework => (kind === "PERORANGAN" ? "SAK_EMKM" : "SAK_EP");
+const newEntity = (kind: Kind): EntityRow => ({ name: "", shortName: "", kind, npwp: "", currency: "IDR", reportingFramework: defaultFramework(kind), banks: [newBank()] });
 
 export function ClientForm({ initial, evidenceIntakeId, onCreated }: { initial?: NewClientInput; evidenceIntakeId?: string; onCreated?: () => void } = {}) {
   const router = useRouter();
@@ -127,7 +129,12 @@ export function ClientForm({ initial, evidenceIntakeId, onCreated }: { initial?:
             <div className="grid gap-4 sm:grid-cols-4">
               <Field>
                 <FieldLabel>Jenis</FieldLabel>
-                <Select value={e.kind} onValueChange={(v) => setEntity(i, v === "BADAN_USAHA_ASING" ? { kind: v as Kind, npwp: "" } : { kind: v as Kind })}>
+                <Select value={e.kind} onValueChange={(v) => {
+                  const kind = v as Kind;
+                  // The framework follows the kind until the accountant picks one.
+                  const framework = e.reportingFramework === defaultFramework(e.kind) ? { reportingFramework: defaultFramework(kind) } : {};
+                  setEntity(i, kind === "BADAN_USAHA_ASING" ? { kind, npwp: "", ...framework } : { kind, ...framework });
+                }}>
                   <SelectTrigger className="w-full" aria-label="Jenis entitas"><SelectValue>{KIND_LABEL[e.kind]}</SelectValue></SelectTrigger>
                   <SelectContent>{(Object.keys(KIND_LABEL) as Kind[]).map((k) => <SelectItem key={k} value={k}>{KIND_LABEL[k]}</SelectItem>)}</SelectContent>
                 </Select>
@@ -166,7 +173,7 @@ export function ClientForm({ initial, evidenceIntakeId, onCreated }: { initial?:
               {e.kind !== "BADAN_USAHA_ASING" && (
                 <Field>
                   <FieldLabel htmlFor={`e-npwp-${i}`}>NPWP (opsional)</FieldLabel>
-                  <Input id={`e-npwp-${i}`} value={e.npwp} aria-invalid={!!err(`entities.${i}.npwp`)} onChange={(ev) => setEntity(i, { npwp: ev.target.value })} placeholder="01.234.567.8-015.000" />
+                  <Input id={`e-npwp-${i}`} value={e.npwp} aria-invalid={!!err(`entities.${i}.npwp`)} onChange={(ev) => setEntity(i, { npwp: ev.target.value })} placeholder="16 digit, mis. 0012 3456 7801 5000" />
                   <FieldError>{err(`entities.${i}.npwp`)}</FieldError>
                 </Field>
               )}

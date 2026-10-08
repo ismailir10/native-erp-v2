@@ -66,7 +66,7 @@ function cleanEntity(e: EntityInput, at: string, fields: Record<string, string>,
   if (npwp === null) fields[`${at}.npwp`] = "NPWP berisi 15 atau 16 angka, boleh dengan titik dan strip.";
   const currency = (e.currency ?? "IDR").trim().toUpperCase();
   if (!isCurrency(currency)) fields[`${at}.currency`] = "Pilih mata uang dari daftar.";
-  const reportingFramework = e.reportingFramework ?? "SAK_EP";
+  const reportingFramework = e.reportingFramework ?? (e.kind === "PERORANGAN" ? "SAK_EMKM" : "SAK_EP");
   if (!isFramework(reportingFramework)) fields[`${at}.reportingFramework`] = "Pilih kerangka pelaporan.";
   const banks = e.banks.flatMap((b, k) => cleanBank(b, `${at}.banks.${k}`, fields, seen, duplicate) ?? []);
   return { name: eName, shortName: e.shortName.trim() || eName, kind: e.kind, npwp: npwp || undefined, functionalCurrency: currency, reportingFramework, banks };

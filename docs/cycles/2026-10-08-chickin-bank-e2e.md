@@ -79,7 +79,7 @@ leftovers (normal per-import caps and the monthly budget apply); companies keep 
 - [x] T3 Entity reports independent of group rates (`app/(app)/clients/[id]/reports/page.tsx`) — accept: DB/e2e-free check by rendering helper or manual local run with an SGD entity lacking rates; typecheck.
 - [x] T4 Mapping rules (`lib/ledger-import/mapping.ts`, posting of template accounts) — accept: `tests/db/mapping.test.ts` cases for the seven Chickin names above; prior expectations kept.
 - [x] T5 TB groups need numbers (`lib/ledger-import/read.ts`) — accept: synthetic fixture of the foundation-sheet shape reads as NERACA with 0 BLOCK; existing TB tests green.
-- [ ] T6 Small things (`lib/periods.ts`, client form, ledger draft page, scope picker, rounding copy) — accept: unit test for the period cap; browser check.
+- [x] T6 Small things (`lib/periods.ts`, client form, ledger draft page, scope picker, rounding copy) — accept: unit test for the period cap; browser check.
 
 ## Implementation
 - Plan: tasks T1–T6 sequential, done inline (each is small and touches a different area; one driver keeps the review tight).
@@ -88,6 +88,7 @@ leftovers (normal per-import caps and the monthly budget apply); companies keep 
 - T3: `app/(app)/clients/[id]/reports/page.tsx` — the combined worksheet runs under its own `withFx`; a missing rate shows the compact card in the *Kertas Kerja Gabungan* tab only, the entity's statements render. Export routes already use the entity scope only. Page check: on production after deploy (no Docker here for the local Supabase stack).
 - T4: `lib/ledger-import/mapping.ts` — `intern` word-bounded; deferred tax → 1270 / 2320 / 8110 and right-of-use → 1230 / 1239 / 6181 as template accounts (created on accept); non-income taxes → 6190; biologis/biological → 1160; production-cost words → `new:HPP`. Spec reworded: the HPP rule goes by words (a 5-code is not always cost of sales). Test: `tests/db/mapping.test.ts` (Chickin names; "Aset Hak Guna" now 1230).
 - T5: `lib/ledger-import/read.ts` (`tbLayout`) — a TB group whose columns hold no number under the header is dropped before the two-group test. The real Chickin `04_HC_2022_FOUNDATION` now reads as NERACA (11 rows, Debit | Credit); the formula-only engine sheets (14_HC_TB_ENGINE, 21/22_OPCO_*) are no longer offered as tables. Test: `tests/unit/neraca-k2.test.ts` (fails without the change).
+- T6: `lib/periods.ts` (`pickWorkingMonth`, replaces the unused `workingMonth`), `lib/client-page.ts`, `lib/workspace/index.ts` — default period = latest data month not after this month; `client-form.tsx` / `lib/onboarding.ts` — Perorangan defaults to SAK EMKM and the framework follows the kind until picked; NPWP placeholder 16 digits (form and *Tambah entitas*); `lib/controls/index.ts` + draft page — rounding named in the entities' currency; `scope-bar.tsx` — popup as wide as the longest name. *Batalkan draf* already returns to Impor (`router.push`); what looked like staying was the navigation delay — no change. Tests: `tests/unit/working-month.test.ts`; `tests/db/onboarding-add.test.ts` expectation now SAK_EMKM.
 
 ## Verification
 - T1: lint + typecheck clean; `npm test` → Test Files 183 passed (183), Tests 1205 passed (1205).
@@ -95,5 +96,6 @@ leftovers (normal per-import caps and the monthly budget apply); companies keep 
 - T3: lint + typecheck clean; `npm test` → Test Files 183 passed (183), Tests 1206 passed (1206).
 - T4: lint + typecheck clean; `npm test` → Test Files 183 passed (183), Tests 1207 passed (1207).
 - T5: lint + typecheck clean; `npm test` → Test Files 183 passed (183), Tests 1208 passed (1208).
+- T6: lint + typecheck clean; `npm test` → Test Files 184 passed (184), Tests 1210 passed (1210).
 
 ## Ship Notes

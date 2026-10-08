@@ -135,7 +135,7 @@ function AddEntity({ clientId, onDone }: { clientId: string; onDone: () => void 
         {kind !== "BADAN_USAHA_ASING" && (
           <Field>
             <FieldLabel htmlFor="new-entity-npwp">NPWP (opsional)</FieldLabel>
-            <Input id="new-entity-npwp" value={npwp} aria-invalid={!!errors["entity.npwp"]} onChange={(e) => { setNpwp(e.target.value); clear(); }} placeholder="01.234.567.8-015.000" />
+            <Input id="new-entity-npwp" value={npwp} aria-invalid={!!errors["entity.npwp"]} onChange={(e) => { setNpwp(e.target.value); clear(); }} placeholder="16 digit, mis. 0012 3456 7801 5000" />
             <FieldError>{errors["entity.npwp"]}</FieldError>
           </Field>
         )}
