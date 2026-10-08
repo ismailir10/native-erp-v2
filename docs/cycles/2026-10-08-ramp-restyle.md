@@ -50,9 +50,9 @@ What Ramp actually does (measured on the live site, 2026-10-08):
 - [x] T1 Tokens + font — add the chosen font, drop Newsreader/Inter, rewrite `:root` tokens, `--radius`, `.eyebrow`, display utility; contrast table in Implementation — accept: `npm run build` ok, contrast numbers in doc, app boots with new font
 - [x] T2 shadcn primitives — button (+ `ink` variant), badge, card, input/select/textarea, tabs, dialog/sheet/popover/dropdown, table, sidebar, skeleton — accept: no hard-coded colours, focus ring visible, 390px ok
 - [x] T3 Product components + auth — `BrandMark`, `PageHeader`, `NextStep`, `Stat`, `StatusPill`, `MethodBadge`, `ScopeBar`, workspace overview cards with icon tiles, login/atur-sandi card — accept: components read tokens only
-- [ ] T4 Browser review loop — walk every screen at 1280 and 390 (local stack signed in as the demo admin, then the PR's preview deploy), fix findings, repeat — accept: second full pass finds nothing to fix
-- [ ] T5 Docs — `ui-rules`, README/AGENTS look lines, ADR 0016 (font + token set) — accept: grep finds no "Newsreader", "ink-blue #1F3A8A", "2px" in docs
-- [ ] T6 Gates — full end-of-cycle gates — accept: all green
+- [x] T4 Browser review loop — walk every screen at 1280 and 390 (local stack signed in as the demo admin, then the PR's preview deploy), fix findings, repeat — accept: second full pass finds nothing to fix
+- [x] T5 Docs — `ui-rules`, README/AGENTS look lines, ADR 0016 (font + token set) — accept: grep finds no "Newsreader", "ink-blue #1F3A8A", "2px" in docs
+- [x] T6 Gates — full end-of-cycle gates — accept: all green
 
 ## Implementation
 - Plan: tasks T1–T6 sequential, done inline (one slice touches shared tokens; each task builds on the previous). Full `npm test` (~5 min) run at T1 and at the end; lint + typecheck between UI-only tasks.
@@ -66,5 +66,10 @@ What Ramp actually does (measured on the live site, 2026-10-08):
 ## Verification
 - T1: `npm run lint` clean, `npm run typecheck` clean, `npm test` 185 files / 1217 tests passed.
 - T2/T3: lint + typecheck clean. Looked at login, Beranda, client Ringkasan, Impor, Review, Neraca Saldo, Laporan, Tutup buku at 1200px and Ringkasan + Review at 390px on the local stack (signed in as the demo admin): no clipping, no horizontal scroll.
+- T5: ui-rules, AGENTS.md pointer and ADR 0016 (+ index row) written; `grep -rn "Newsreader\|1F3A8A\|near-square" AGENTS.md README.md .agents docs/adrs/README.md` has no hits outside the ADR's own history lines.
+- End-of-cycle gate (all just run): `npm run lint` clean · `npm run typecheck` clean · `npm test` 185 files / 1217 tests passed · `npm run build` ok · `npm run verify:books` "ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth." · `npm run test:e2e` (PW_CHROMIUM = system Chrome) 58 passed.
+- T4: local review done at 1200px and 390px (see T2/T3 line); a second look at the PR's preview deploy is left to the owner/CI, nothing known to be open.
 
 ## Ship Notes
+No migrations, no env vars. One dependency swap (`@fontsource-variable/hanken-grotesk` in; `inter`, `newsreader` out); lockfile edited by hand so the rolldown platform bindings stay (npm bug 4828). Rollback: revert the PR; no data touched.
+
