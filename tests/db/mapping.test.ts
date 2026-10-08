@@ -94,6 +94,11 @@ describe("deterministic mapping", () => {
     expect(deterministicSuggestion({ code: "SKP-UNM-05", name: "[UNMAPPED] Inventarisasi Biologis", typeHint: "ASET" }, { accounts: chart, priorByName: new Map() })?.accountCode).toBe("1160");
     expect(typed("50017", "Production Cost - Makloon and Blasting Expense")).toBe("new:HPP");
     expect(typed("51001", "Shipment Expense - Shipment to Client Expense (Frieght-out)")).not.toBe("new:HPP");
+    const expense = (code: string, name: string) => deterministicSuggestion({ code, name, typeHint: "BEBAN" }, { accounts: chart, priorByName: new Map() })?.accountCode ?? null;
+    expect(expense("60004", "Platform Fee - QRIS")).toBe("7100");
+    expect(expense("64052", "DOKU Admin Expense")).toBe("7100");
+    expect(expense("60001", "Platform Fee - Gofood")).not.toBe("7100"); // a marketplace commission is not a payment fee
+    expect(expense("63008", "Low Value Asset")).toBe("6160");
     // A chart made before the template account existed: suggested anyway, created on accept (as 1135).
     const old = chart.filter((a) => a.code !== "1270");
     expect(deterministicSuggestion({ code: "X", name: "Deferred Tax Asset", typeHint: "ASET" }, { accounts: old, priorByName: new Map() })?.accountCode).toBe("1270");
