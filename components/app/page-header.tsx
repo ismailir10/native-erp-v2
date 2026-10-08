@@ -8,7 +8,7 @@ export function PageHeader({ title, description, actions }: { title: string; des
   return (
     <div className="flex flex-wrap items-end justify-between gap-4">
       <div className="min-w-0">
-        <h1 className="text-2xl font-semibold tracking-tight text-balance">{title}</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-[-0.01em] text-balance">{title}</h1>
         {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
       </div>
       {actions && <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">{actions}</div>}
@@ -41,7 +41,7 @@ export function Stat({ label, value, hint, className }: { label: string; value: 
   return (
     <div className={cn("rounded-lg border bg-card p-4", className)}>
       <div className="eyebrow">{label}</div>
-      <div className="num mt-1 text-2xl font-semibold tracking-tight">{value}</div>
+      <div className="num font-display mt-1 text-3xl font-semibold leading-tight tracking-[-0.01em]">{value}</div>
       {hint && <div className="mt-1 text-xs text-muted-foreground">{hint}</div>}
     </div>
   );
