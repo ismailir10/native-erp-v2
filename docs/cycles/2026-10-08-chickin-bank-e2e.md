@@ -45,12 +45,12 @@ What an accountant would not accept:
   entity lacks translation rates; the Kertas Kerja Gabungan tab shows the compact "kurs belum lengkap" card instead.
 - [ ] **Mapping rules** (suggestions only; accepted mappings are untouched):
   - `intern` matches only as a word (internship/intern), so "Internet" → 6130 and "Internal" falls through.
-  - deferred tax: asset → 1270, liability → 2300 (unchanged), expense → 8110; right-of-use asset → 1230, its accumulated depreciation → 1239.
+  - deferred tax: asset → 1270, liability → 2320, expense → 8110; right-of-use asset → 1230, its accumulated depreciation → 1239, its depreciation → 6181.
     Template accounts are created on posting when the client predates them (as 1135 today).
   - "tax expense" with vehicle / kendaraan / PBB / stamp / meterai / retribusi / regional words → 6190, not 8100.
   - biologis / biological → 1160 Persediaan.
-  - A generic match that proposes a new account uses the client's code scheme: a leading digit learnt as cost of sales (≥ 3 votes ≥ 80 %)
-    proposes the new account under HPP, not Beban Umum.
+  - A production cost (production cost / biaya produksi / makloon / factory overhead / direct labour) proposes a new account under HPP,
+    not Beban Umum. By words, not the leading digit: Chickin's 51001 *Freight-out* is a selling expense under a 5-code.
 - [ ] **TB column groups need numbers.** A column group whose data cells hold no number (blank or text only) is not a group. The Chickin
   foundation sheet reads as a Neraca from its Debit / Credit columns, with no BLOCK issue.
 - [ ] **Small things:** default period is the latest data month not after the current month; NPWP placeholder `0000 0000 0000 0000` (16 digits;
@@ -77,7 +77,7 @@ leftovers (normal per-import caps and the monthly budget apply); companies keep 
 - [x] T1 Own-entity words in the 1190 review branch (`lib/classify/transfer.ts`) — accept: unit test with the Belifi line → 1190 review; customer receipt unchanged; existing transfer tests green.
 - [x] T2 Entity kind in AI classification (`lib/ai/provider.ts`, `lib/ai/classify.ts`, caller in `lib/import`) — accept: unit test on `buildPrompt` / account filter; MockProvider DB test for a Perorangan line.
 - [x] T3 Entity reports independent of group rates (`app/(app)/clients/[id]/reports/page.tsx`) — accept: DB/e2e-free check by rendering helper or manual local run with an SGD entity lacking rates; typecheck.
-- [ ] T4 Mapping rules (`lib/ledger-import/mapping.ts`, posting of template accounts) — accept: `tests/db/mapping.test.ts` cases for the seven Chickin names above; prior expectations kept.
+- [x] T4 Mapping rules (`lib/ledger-import/mapping.ts`, posting of template accounts) — accept: `tests/db/mapping.test.ts` cases for the seven Chickin names above; prior expectations kept.
 - [ ] T5 TB groups need numbers (`lib/ledger-import/read.ts`) — accept: synthetic fixture of the foundation-sheet shape reads as NERACA with 0 BLOCK; existing TB tests green.
 - [ ] T6 Small things (`lib/periods.ts`, client form, ledger draft page, scope picker, rounding copy) — accept: unit test for the period cap; browser check.
 
@@ -86,10 +86,12 @@ leftovers (normal per-import caps and the monthly budget apply); companies keep 
 - T1: `lib/classify/transfer.ts` — the 1190 review branch also takes out words (≥ 4 letters) of the line's own entity names; an empty remainder gets its own reason. Test: `tests/unit/transfer-safety.test.ts` (Belifi-shaped line with only the full PT name → 1190 at 0.8; customer receipt untouched).
 - T2: `lib/ai/classify.ts` (`aiScope`: context names a person's own account; accounts on PIUTANG_USAHA / UTANG_USAHA / PENDAPATAN_USAHA left out for PERORANGAN), `lib/import/pipeline.ts`, `lib/ai/retry.ts` (one pass per entity kind, stops after a cap/budget note), `lib/demo/seed.ts` (pre-cache key built the same way). Test: `tests/db/ai-retry.test.ts`.
 - T3: `app/(app)/clients/[id]/reports/page.tsx` — the combined worksheet runs under its own `withFx`; a missing rate shows the compact card in the *Kertas Kerja Gabungan* tab only, the entity's statements render. Export routes already use the entity scope only. Page check: on production after deploy (no Docker here for the local Supabase stack).
+- T4: `lib/ledger-import/mapping.ts` — `intern` word-bounded; deferred tax → 1270 / 2320 / 8110 and right-of-use → 1230 / 1239 / 6181 as template accounts (created on accept); non-income taxes → 6190; biologis/biological → 1160; production-cost words → `new:HPP`. Spec reworded: the HPP rule goes by words (a 5-code is not always cost of sales). Test: `tests/db/mapping.test.ts` (Chickin names; "Aset Hak Guna" now 1230).
 
 ## Verification
 - T1: lint + typecheck clean; `npm test` → Test Files 183 passed (183), Tests 1205 passed (1205).
 - T2: lint + typecheck clean; `npm test` → Test Files 183 passed (183), Tests 1206 passed (1206).
 - T3: lint + typecheck clean; `npm test` → Test Files 183 passed (183), Tests 1206 passed (1206).
+- T4: lint + typecheck clean; `npm test` → Test Files 183 passed (183), Tests 1207 passed (1207).
 
 ## Ship Notes
