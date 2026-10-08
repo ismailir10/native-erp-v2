@@ -10,11 +10,14 @@ const nextConfig: NextConfig = {
   logging: { serverFunctions: false },
   // Statements up to 5 MB go through a server action (default limit is 1 MB).
   experimental: { serverActions: { bodySizeLimit: "6mb" } },
-  // Public product deck: static files in public/deck, served without login. Same-origin only; nothing from the app is reachable from it.
+  // Public product decks: static files in public/deck, served without login. Same-origin only; nothing from the app is reachable from them.
+  // /deck chooses between the two decks: /deck/kantor (accounting firms) and /deck/perusahaan (companies).
   async rewrites() {
     return [
       { source: "/deck", destination: "/deck/index.html" },
       { source: "/deck/", destination: "/deck/index.html" },
+      { source: "/deck/kantor", destination: "/deck/kantor.html" },
+      { source: "/deck/perusahaan", destination: "/deck/perusahaan.html" },
     ];
   },
   async headers() {
