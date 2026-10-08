@@ -145,6 +145,22 @@
 }
 
 @layer components {
+  /* Drill-down figure or account name: ink, dotted underline at rest (visible without hover), solid blue on hover/focus.
+     Blue is reserved for actions, so a number you can open does not look like a button. */
+  .drill {
+    text-decoration-line: underline;
+    text-decoration-style: dotted;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 4px;
+    text-decoration-color: color-mix(in oklab, var(--muted-foreground) 70%, transparent);
+  }
+  .drill:hover,
+  .drill:focus-visible {
+    color: var(--primary);
+    text-decoration-style: solid;
+    text-decoration-color: var(--primary);
+  }
+
   /* 9fin micro-label: monospace, uppercase, tracked. Table headers, group labels, stat labels, eyebrows. */
   .eyebrow {
     @apply font-mono text-[11px] font-medium tracking-[0.08em] uppercase text-muted-foreground;

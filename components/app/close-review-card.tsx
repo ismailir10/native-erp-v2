@@ -45,7 +45,7 @@ export function CloseReviewCard({ clientId, year, month, flagged, aiReady, initi
                     <ul className="space-y-0.5 text-xs">
                       {i.links.map((l) => (
                         <li key={l.id}>
-                          <Link href={l.href} className="text-muted-foreground underline decoration-border underline-offset-4 hover:text-primary hover:decoration-primary">
+                          <Link href={l.href} className="text-muted-foreground drill">
                             {l.label} ›
                           </Link>
                         </li>

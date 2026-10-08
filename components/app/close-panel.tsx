@@ -115,7 +115,7 @@ export function ClosePanel(props: {
                       {explained[c.key].links.length > 0 && (
                         <ul className="space-y-0.5 text-xs">
                           {explained[c.key].links.map((l) => (
-                            <li key={l.id}><Link href={l.href} className="text-muted-foreground underline decoration-border underline-offset-4 hover:text-primary hover:decoration-primary">{l.label} ›</Link></li>
+                            <li key={l.id}><Link href={l.href} className="text-muted-foreground drill">{l.label} ›</Link></li>
                           ))}
                         </ul>
                       )}

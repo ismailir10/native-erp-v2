@@ -245,7 +245,7 @@ function ReconCard({ clientId, base, v }: { clientId: string; base: string; v: R
             <dt className="eyebrow">Buku besar</dt>
             <dd className="text-lg"><Money value={BigInt(v.ledger)} /></dd>
             <dd className="text-xs text-muted-foreground">
-              {v.accounts.map((a, i) => <span key={a.code}>{i > 0 && " · "}<Link href={ledgerHref(a.code)} className="underline decoration-border underline-offset-4 hover:text-primary">{a.code}</Link> {formatMoney(BigInt(a.balance), "IDR")}</span>)}
+              {v.accounts.map((a, i) => <span key={a.code}>{i > 0 && " · "}<Link href={ledgerHref(a.code)} className="drill">{a.code}</Link> {formatMoney(BigInt(a.balance), "IDR")}</span>)}
             </dd>
           </div>
           <div>
@@ -285,19 +285,19 @@ function ReconCard({ clientId, base, v }: { clientId: string; base: string; v: R
             {c.cutoff.length > 0 && (
               <Section title={`Jurnal sekitar ${v.asOf} (±7 hari) di akun yang dibandingkan`} hint="Faktur atau pelunasan di sekitar tutup periode yang mungkin belum (atau sudah) masuk aging.">
                 {c.cutoff.map((x, i) => (
-                  <Line key={i} left={<><span className="num text-muted-foreground">{x.date}</span> <Link href={ledgerHref(x.code)} className="underline decoration-border underline-offset-4 hover:text-primary">{x.code}</Link> {x.memo}{x.source && <span className="text-xs text-muted-foreground"> · {x.source}</span>}</>} amount={x.amount} />
+                  <Line key={i} left={<><span className="num text-muted-foreground">{x.date}</span> <Link href={ledgerHref(x.code)} className="drill">{x.code}</Link> {x.memo}{x.source && <span className="text-xs text-muted-foreground"> · {x.source}</span>}</>} amount={x.amount} />
                 ))}
               </Section>
             )}
             {(c.credits.length > 0 || c.advances.length > 0) && (
               <Section title="Uang muka dan saldo kredit" hint={v.kind === "RECEIVABLE" ? "Baris aging bersaldo kredit (kelebihan bayar / uang muka) dan akun uang muka pelanggan." : "Baris aging bersaldo debit-balik dan akun uang muka pembelian."}>
                 {c.credits.map((x, i) => <Line key={`c${i}`} left={<>{x.counterparty} <span className="text-xs text-muted-foreground">· {x.sourceRef}</span></>} amount={x.total} />)}
-                {c.advances.map((a) => <Line key={a.code} left={<><Link href={ledgerHref(a.code)} className="underline decoration-border underline-offset-4 hover:text-primary">{a.code}</Link> {a.name}</>} amount={a.balance} />)}
+                {c.advances.map((a) => <Line key={a.code} left={<><Link href={ledgerHref(a.code)} className="drill">{a.code}</Link> {a.name}</>} amount={a.balance} />)}
               </Section>
             )}
             {c.nonTrade.length > 0 && (
               <Section title={v.kind === "PAYABLE" ? "Utang di luar aging" : "Piutang di luar aging"} hint={v.kind === "PAYABLE" ? "Saldo akun lain yang tidak dibandingkan. Ringkasan aging sering tidak mencakup utang bank, pemegang saham atau akrual." : "Saldo piutang lain yang tidak dibandingkan, mis. piutang karyawan, pihak berelasi atau antar entitas."}>
-                {c.nonTrade.map((a) => <Line key={a.code} left={<><Link href={ledgerHref(a.code)} className="underline decoration-border underline-offset-4 hover:text-primary">{a.code}</Link> {a.name}</>} amount={a.balance} />)}
+                {c.nonTrade.map((a) => <Line key={a.code} left={<><Link href={ledgerHref(a.code)} className="drill">{a.code}</Link> {a.name}</>} amount={a.balance} />)}
               </Section>
             )}
             {c.cutoff.length === 0 && c.credits.length === 0 && c.advances.length === 0 && c.nonTrade.length === 0 && (

@@ -3,17 +3,17 @@ import { cn } from "@/lib/utils";
 import type { ControlStatus } from "@/lib/controls";
 
 const MAP: Record<ControlStatus, { label: string; icon: typeof CircleCheck; cls: string }> = {
-  PASS: { label: "Lolos", icon: CircleCheck, cls: "bg-pass-subtle text-pass" },
-  REVIEW: { label: "Perlu dicek", icon: CircleAlert, cls: "bg-review-subtle text-review" },
-  FAIL: { label: "Gagal", icon: CircleX, cls: "bg-fail-subtle text-fail" },
+  PASS: { label: "Lolos", icon: CircleCheck, cls: "text-pass" },
+  REVIEW: { label: "Perlu dicek", icon: CircleAlert, cls: "text-review" },
+  FAIL: { label: "Gagal", icon: CircleX, cls: "bg-fail-subtle px-1.5 text-fail" },
 };
 
-/** Status always carries icon + label — never colour alone. */
+/** Status always carries icon + label — never colour alone. Only a failure gets a fill: it blocks, the rest just reads. */
 export function StatusPill({ status, label, className }: { status: ControlStatus; label?: string; className?: string }) {
   const s = MAP[status];
   const Icon = s.icon;
   return (
-    <span className={cn("inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-sm px-1.5 py-0.5 text-xs font-medium", s.cls, className)}>
+    <span className={cn("inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-sm py-0.5 text-xs font-medium", s.cls, className)}>
       <Icon className="size-3.5" aria-hidden />
       {label ?? s.label}
     </span>

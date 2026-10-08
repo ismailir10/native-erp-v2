@@ -63,7 +63,7 @@ export default async function LedgerIndex({ params, searchParams }: { params: Pr
                       {rows.map((r) => (
                         <TableRow key={r.key}>
                           <TableCell className="pl-6 whitespace-normal">
-                            <Link href={r.key === "prior" ? withParams(`${base}/reports`, { period: periodKeyOf(priorYearEnd(client.fiscalYearEndMonth, period.year, period.month)), entity: scope.value, tab: "pl" }) : r.sourceAccountId ? withParams(`${base}/ledger/akun/${r.sourceAccountId}`, q) : withParams(`${base}/ledger/${r.accountCode}`, q)} className="underline decoration-border underline-offset-4 hover:text-primary hover:decoration-primary" data-testid="client-account-link">
+                            <Link href={r.key === "prior" ? withParams(`${base}/reports`, { period: periodKeyOf(priorYearEnd(client.fiscalYearEndMonth, period.year, period.month)), entity: scope.value, tab: "pl" }) : r.sourceAccountId ? withParams(`${base}/ledger/akun/${r.sourceAccountId}`, q) : withParams(`${base}/ledger/${r.accountCode}`, q)} className="drill" data-testid="client-account-link">
                               {r.code && <span className="num text-muted-foreground">{r.code}</span>} {r.name}
                             </Link>
                             <div className="text-xs text-muted-foreground">{r.clientAccount ? `→ ${r.clientAccount.code} ${r.clientAccount.name}` : r.key === "prior" ? "dari pendapatan & beban tahun lalu · buka Laba Rugi" : "tanpa akun klien"}</div>
@@ -112,7 +112,7 @@ export default async function LedgerIndex({ params, searchParams }: { params: Pr
                     {rows.map((r) => (
                       <TableRow key={r.account.id}>
                         <TableCell className="pl-6">
-                          <Link href={withParams(`${base}/ledger/${r.account.code}`, q)} className="underline decoration-border underline-offset-4 hover:text-primary hover:decoration-primary">
+                          <Link href={withParams(`${base}/ledger/${r.account.code}`, q)} className="drill">
                             <span className="num text-muted-foreground">{r.account.code}</span> {r.account.name}
                           </Link>
                         </TableCell>

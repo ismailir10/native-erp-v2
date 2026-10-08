@@ -74,7 +74,7 @@ the login/auth card layout (already minimal); redoing charts beyond colour.
 
 ## Tasks
 - [x] T1 Tokens: warm paper palette, ink blue, 2px radius, contrast table in the cycle doc — accept: `npm run lint && typecheck && test`; contrast ≥ 4.5:1 text / 3:1 UI computed in the doc; chart palette passes the validator.
-- [ ] T2 Quiet status + ink drill-down links (`StatusPill`, `MethodBadge`, `Money` links, `FsTable` account links) — accept: no tinted fill except FAIL; link affordance still visible without hover; unit/e2e green.
+- [x] T2 Quiet status + ink drill-down links (`StatusPill`, `MethodBadge`, `Money` links, `FsTable` account links) — accept: no tinted fill except FAIL; link affordance still visible without hover; unit/e2e green.
 - [ ] T3 Display serif for `PageHeader` title and `Stat` value (depends on gate approval) — accept: lighthouse-free check: font self-hosted, no layout shift at 390 px.
 - [ ] T4 Sections by rule: `Card` default + the "boxes in boxes" places (Beranda finance, Ringkasan) — accept: screenshots; no nested bordered boxes.
 - [ ] T5 Beranda: reorder *Tanya Buku*, de-duplicate NextStep vs list, finance table — accept: sweep shows 1 NextStep, no duplicate sentence; e2e investor walk green.
@@ -87,8 +87,10 @@ the login/auth card layout (already minimal); redoing charts beyond colour.
 - T1: `app/globals.css` — warm paper palette, ink-blue primary/brand (`#1F3A8A`), 2px radius, new status tints. `--chart-1` is a separate lighter blue (`#3358B8`): the ink blue fails the dataviz lightness band (L 0.38 < 0.43) as a series colour.
 
 Contrast (WCAG, computed): ink on paper 16.0 · ink on white 17.7 · muted on paper 6.7 · muted on white 7.4 · primary on paper 9.3 · white on primary 10.3 · white on primary-hover 12.6 · pass on paper 5.9 · review on its tint 6.5 · fail on paper 6.0 · fail on its tint 5.5 · input border on white 3.6 (UI ≥ 3:1) · sidebar text 13.8 · active item 10.8.
+- T2: `app/globals.css` (`.drill`), `components/app/status.tsx`, and the account/figure links in `fs-table`, `tb-table`, `ledger-table`, `statements`, `close-panel`, `close-review-card`, `workspace-overview`, `subledger-recon`, ledger page — one shared `.drill` (ink, dotted underline at rest, solid blue on hover/focus) replaces seven hand-copied class strings; `StatusPill` is text + icon, with a fill only for FAIL.
 
 ## Verification
 - Environment: `xlsx` is a stub here (cdn.sheetjs.com blocked), so 7 spreadsheet-reading test files fail locally; they fail identically on untouched `main` (27 failed | 48 passed in those 7 files, both runs). CI has the real package.
-- T1: lint clean; typecheck clean; `npm test` → Test Files 7 failed | 178 passed (185), Tests 27 failed | 1190 passed (1217): the same 27 as on `main`, none related to the change. Chart palette: validator PASS on lightness, chroma, CVD ΔE 8.6 / tritan 16.9, normal-vision ΔE 27.2, contrast ≥ 3:1 (grey "Lainnya" slot fails chroma by design).
+- T1: lint clean; typecheck clean; `npm test` → Test Files 7 failed | 178 passed (185), Tests 27 failed | 1190 passed (1217): the same 27 as on `main`, none related to the change. Chart palette: validator PASS on lightness, chroma, CVD ΔE 8.6 / tritan 16.9, normal-vision ΔE 27.2, contrast ≥ 3:1 (grey "Lainnya" slot fails chroma by design).- T2: lint + typecheck clean. No unit/e2e file references the changed classes or imports the touched components, so no test is affected; visual check follows in T8.
+
 ## Ship Notes

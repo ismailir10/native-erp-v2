@@ -69,7 +69,7 @@ function SectionRows({ section, keys, accountHref, currency, parts }: { section:
                 <Fragment key={code}>
                 <TableRow className="border-b-0 text-muted-foreground hover:bg-muted/40">
                   <TableCell className="py-1 pl-10 whitespace-normal">
-                    <Link href={accountHref(code)} className="underline decoration-border underline-offset-4 hover:text-primary hover:decoration-primary" data-testid="fs-account-link">
+                    <Link href={accountHref(code)} className="drill" data-testid="fs-account-link">
                       <span className="num">{code}</span> {name}
                     </Link>
                   </TableCell>
@@ -81,7 +81,7 @@ function SectionRows({ section, keys, accountHref, currency, parts }: { section:
                   <TableRow key={p.key} className="border-b-0 text-xs text-muted-foreground hover:bg-muted/40" data-testid="fs-client-account">
                     <TableCell className="py-0.5 pl-14 whitespace-normal">
                       {p.href ? (
-                        <Link href={p.href} className="underline decoration-border underline-offset-4 hover:text-primary hover:decoration-primary">
+                        <Link href={p.href} className="drill">
                           {p.code && <span className="num">{p.code}</span>} {p.name}
                         </Link>
                       ) : (
