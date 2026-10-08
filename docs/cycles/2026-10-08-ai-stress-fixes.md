@@ -70,5 +70,10 @@ SAK EP / PSAK and Indonesian tax practice for this firm's clients. 3. Approved u
 ## Verification
 - T1+T2: lint + typecheck clean; `npm test` → Test Files 184 passed (184), Tests 1213 passed (1213).- T3: lint + typecheck clean; `npm test` → Test Files 185 passed (185), Tests 1216 passed (1216).
 - T4: lint + typecheck clean; `npm test` → Test Files 185 passed (185), Tests 1216 passed (1216).
+- End of cycle (local): `npm run build` ✓; `npm run verify:books` → ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth; e2e → CI.
+- Production after deploy: Tanya Buku on the Chickin retest ("utang SKP ke pihak berelasi", "saldo akun 10005 PT SKP" at group scope, "laba SKP Maret 2027", "apa yang menghambat tutup buku"); one Jelaskan on Belifi.
 
 ## Ship Notes
+- No migration, env var or dependency.
+- AI: Jelaskan and close-review output caps 12 000 tokens and the per client-month scope limit 100 000 (was 40 000); the monthly budget still caps the total. Prompts changed (versions bumped): cached reviews/explanations re-run once. The prompt now carries entity names, kinds, currencies and own bank GL codes (no amounts).
+- Rollback: revert the merge.
