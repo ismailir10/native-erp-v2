@@ -31,7 +31,7 @@ function ValueProposition() {
       <ol className="space-y-5">
         {POINTS.map((p, i) => (
           <li key={p.title} className="flex gap-4 border-t pt-5 first:border-t-0 first:pt-0">
-            <span className="num font-mono text-sm text-primary" aria-hidden>{String(i + 1).padStart(2, "0")}</span>
+            <span className="icon-tile num size-7 text-xs font-medium" aria-hidden>{String(i + 1).padStart(2, "0")}</span>
             <div>
               <h3 className="font-semibold">{p.title}</h3>
               <p className="mt-1 text-sm text-muted-foreground">{p.text}</p>

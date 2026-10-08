@@ -48,8 +48,8 @@ What Ramp actually does (measured on the live site, 2026-10-08):
 
 ## Tasks
 - [x] T1 Tokens + font — add the chosen font, drop Newsreader/Inter, rewrite `:root` tokens, `--radius`, `.eyebrow`, display utility; contrast table in Implementation — accept: `npm run build` ok, contrast numbers in doc, app boots with new font
-- [ ] T2 shadcn primitives — button (+ `ink` variant), badge, card, input/select/textarea, tabs, dialog/sheet/popover/dropdown, table, sidebar, skeleton — accept: no hard-coded colours, focus ring visible, 390px ok
-- [ ] T3 Product components + auth — `BrandMark`, `PageHeader`, `NextStep`, `Stat`, `StatusPill`, `MethodBadge`, `ScopeBar`, workspace overview cards with icon tiles, login/atur-sandi card — accept: components read tokens only
+- [x] T2 shadcn primitives — button (+ `ink` variant), badge, card, input/select/textarea, tabs, dialog/sheet/popover/dropdown, table, sidebar, skeleton — accept: no hard-coded colours, focus ring visible, 390px ok
+- [x] T3 Product components + auth — `BrandMark`, `PageHeader`, `NextStep`, `Stat`, `StatusPill`, `MethodBadge`, `ScopeBar`, workspace overview cards with icon tiles, login/atur-sandi card — accept: components read tokens only
 - [ ] T4 Browser review loop — walk every screen at 1280 and 390 (local stack signed in as the demo admin, then the PR's preview deploy), fix findings, repeat — accept: second full pass finds nothing to fix
 - [ ] T5 Docs — `ui-rules`, README/AGENTS look lines, ADR 0016 (font + token set) — accept: grep finds no "Newsreader", "ink-blue #1F3A8A", "2px" in docs
 - [ ] T6 Gates — full end-of-cycle gates — accept: all green
@@ -60,8 +60,11 @@ What Ramp actually does (measured on the live site, 2026-10-08):
 - T1: `app/globals.css`, `app/icon.svg`, `package.json`/`package-lock.json`, `components/app/page-header.tsx`, `app/login/shell.tsx`, `app/(app)/not-found.tsx` — tokens (warm neutrals, `#2152E8` blue, 8px radius, xl 12px / 2xl 16px), Hanken Grotesk replaces Inter + Newsreader, `.display` and `.icon-tile` utilities. Lockfile edited by hand: a plain `npm install` prunes the rolldown platform bindings (npm bug 4828) and would break Linux CI.
   Contrast (WCAG, computed): white on `#2152E8` 6.11; `#2152E8` on canvas 5.47; muted `#5F5B58` 6.72 white / 6.02 canvas; hover `#1A44C4` with white 7.87; sidebar active text `#1638A8` on `#E6ECFD` 8.21; control border `#8F8A85` 3.42.
   Chart palette `#2152E8,#E0592A,#12876F,#9B4DCA,#6B7280`: dataviz validator — lightness band, CVD (worst adjacent ΔE 8.6), normal-vision floor, contrast all PASS; the only FAIL is the chroma floor of the grey "Lainnya" slot, which is grey by design.
+- T2: `components/ui/{button,input,select,textarea,tabs}.tsx` — controls 36px (sm 32, xs 28, lg 40), fields on `bg-card`, outline button on card white, new `ink` button variant. Other primitives (badge, card, dialog, sheet, popover, dropdown, table, sidebar) already read radius/colour tokens and needed no change.
+- T3: `brand-mark`, `page-header` (NextStep → borderless pale-blue panel with round marker, `rounded-xl`; titles `md:text-4xl`), `status` (StatusPill failure fill and MethodBadge are full-round chips), `app/login/{page,shell}.tsx` (icon-tile step numbers, `rounded-2xl` card).
 
 ## Verification
 - T1: `npm run lint` clean, `npm run typecheck` clean, `npm test` 185 files / 1217 tests passed.
+- T2/T3: lint + typecheck clean. Looked at login, Beranda, client Ringkasan, Impor, Review, Neraca Saldo, Laporan, Tutup buku at 1200px and Ringkasan + Review at 390px on the local stack (signed in as the demo admin): no clipping, no horizontal scroll.
 
 ## Ship Notes
