@@ -38,5 +38,9 @@ Left for an accountant:
 
 ## Verification
 - T1: lint + typecheck clean; `npm test` → Test Files 184 passed (184), Tests 1210 passed (1210).- T2: lint + typecheck clean; `npm test` → Test Files 184 passed (184), Tests 1210 passed (1210).
+- End of cycle (local): `npm run build` ✓; `npm run verify:books` → ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth; `npm run test:e2e` → CI (no Docker locally).
+- Production after deploy: re-import the Belifi owner's Jenius statement on the retest client (outgoing lines no longer 5100); mapping rules are covered by unit tests.
 
 ## Ship Notes
+- No migration, env var or dependency. Suggestions only; nothing posted changes. A person's leftover lines get one fresh AI call per unique key on the next import.
+- Rollback: revert the merge.
