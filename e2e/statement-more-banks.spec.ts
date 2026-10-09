@@ -67,6 +67,8 @@ test("the bank field is keyboard-first: typing searches without choosing, Enter 
   // Typing on the closed field opens the search with the keys in it; it never picks the first bank starting with "b".
   await page.keyboard.type("bank j");
   await expect(page.getByLabel("Cari bank")).toHaveValue("bank j");
+  // The keys after the first belong to the search box (an Enter on the button would close the list without choosing).
+  await expect(page.getByLabel("Cari bank")).toBeFocused();
   await expect(bank).toContainText("BCA");
   await page.keyboard.press("Enter");
   await expect(bank).toContainText("Bank Jago");

@@ -66,6 +66,13 @@ model; changing how 1999 is used.
 - End of cycle: `npm run build` ok · `demo:reset && verify:books` → ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth ·
   `npm run test:e2e` → 60 passed (3.4m). After merging main (#126): typecheck clean, AI/bank/MT940 tests 17 passed.
 
+- **Production check after #127 (2026-10-09):** Pengaturan shows "bulan ini terpakai 181.349 dari 2.000.000 token" (the new limit; the old
+  200.000 was the reason the AI close review was refused); Neraca Saldo no longer flags 1999 at zero; Beranda and *Tanya Buku* agree with the
+  books ("2 mutasi … PT Sumber Kopi Arabika … 5100 … keluar Rp 40.500.000", rows cited). Picker in Jurnal Penyesuaian: keys "2 1 4" on the closed
+  field open the search with "214" and leave the field empty (fixed: it used to commit 2110) — **but Enter then closed the list without
+  choosing**: in real Chrome focus stayed on the trigger button, so Enter "clicked" it (Playwright's browser moved focus into the search box,
+  which is why the e2e passed). Fixed in the follow-up: typing that opens the list moves focus into the search box (`focusSearch`).
+
 ## Ship Notes
 - No migration, no env var change by the code. Separately, the user raised production `AI_MONTHLY_TOKEN_BUDGET` to 2.000.000 (takes effect
   with this deploy).
