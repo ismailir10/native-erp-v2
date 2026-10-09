@@ -132,3 +132,14 @@ export async function addEntity(db: Db, firmId: string, clientId: string, input:
   if (Object.keys(fields).length) throw new OnboardingError(fields);
   return db.$transaction(async (tx) => (await createEntity(tx, firmId, clientId, spec, await freeGlCodes(tx, clientId))).entity).catch(limitReached("entity"));
 }
+
+/**
+ * The bank a bank account is recorded at, corrected (the import says when a file names another bank). Only the label: no number,
+ * GL account or posted line changes. The account must be one of the client's.
+ */
+export async function setBankAccountBank(db: Db, clientId: string, bankAccountId: string, bank: string) {
+  if (!(BANK_CODES as readonly string[]).includes(bank)) throw new OnboardingError({ bank: "Pilih bank." });
+  const account = await db.bankAccount.findFirst({ where: { id: bankAccountId, entity: { clientId } }, select: { id: true } });
+  if (!account) throw new OnboardingError({ bank: "Rekening tidak ditemukan di klien ini." });
+  return db.bankAccount.update({ where: { id: account.id }, data: { bank: bank as BankCode } });
+}

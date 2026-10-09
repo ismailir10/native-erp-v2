@@ -5,14 +5,16 @@ import Link from "next/link";
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { FileText, FileUp, Loader2, ScanText } from "lucide-react";
+import { ChevronDown, FileText, FileUp, Loader2, ScanText } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { StatusPill } from "@/components/app/status";
-import { importAction, importSampleAction, ocrAction } from "@/app/actions";
+import { importAction, importSampleAction, ocrAction, setBankAccountBankAction } from "@/app/actions";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { BANKS, GROUP_ORDER, bankName } from "@/lib/banks";
 import type { ImportSummary } from "@/lib/import/pipeline";
 import { cn } from "@/lib/utils";
 import { MAX_UPLOAD_BYTES, UPLOAD_TOO_BIG } from "@/lib/upload";
@@ -47,6 +49,8 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
   };
   const [drag, setDrag] = useState(false);
   const [result, setResult] = useState<ImportSummary | null>(null);
+  // The account the shown result was imported into (the select may have moved on since).
+  const [resultBankId, setResultBankId] = useState<string | null>(null);
   // The file of the last successful import: "Impor juga ke …" reuses it for another account in the same PDF.
   // With its PDF password (kept in this page only, never sent anywhere else or stored) so another account in it needs no re-typing.
   const [lastFile, setLastFile] = useState<{ file: File; password: string } | null>(null);
@@ -63,7 +67,7 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
   useKeepEarlyFile(inputRef, (f) => setFileState(f));
   const entities = [...new Set(banks.map((b) => b.entity))];
 
-  const done = (r: Awaited<ReturnType<typeof importAction>>, sent: { file: File; password: string } | null = null) => {
+  const done = (r: Awaited<ReturnType<typeof importAction>>, sent: { file: File; password: string } | null = null, sentTo: string = bankId) => {
     setMismatch(null);
     setScan(null);
     if (!r.ok) {
@@ -89,6 +93,7 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
       return;
     }
     setResult(r.summary);
+    setResultBankId(sentTo);
     if (sent) setLastFile(sent);
     setFile(null);
     toast.success(`${r.summary.rows - r.summary.duplicates} transaksi diproses`);
@@ -106,7 +111,7 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
       fd.set("file", f);
       if (pw) fd.set("password", pw);
       if (yearHint && year) fd.set("year", year);
-      done(await importAction(fd), { file: f, password: pw });
+      done(await importAction(fd), { file: f, password: pw }, override?.bankId ?? bankId);
     });
   const readScan = () =>
     start(async () => {
@@ -130,6 +135,17 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
     if (pw) setPassword(pw);
     submit({ bankId: id, file: f, password: pw });
   };
+  const resultBank = banks.find((b) => b.id === resultBankId) ?? null;
+  const recordBank = (id: string, bank: string) =>
+    start(async () => {
+      const r = await setBankAccountBankAction(clientId, id, bank);
+      if (!r.ok) {
+        toast.error(r.error);
+        return;
+      }
+      toast.success(`Rekening dicatat di ${bankName(bank)}`);
+      router.refresh();
+    });
   const alsoImport = result && lastFile
     ? result.otherAccounts.filter((o) => !o.imported).flatMap((o) => banks.filter((b) => b.id !== bankId && digits(b.number) === digits(o.number)).map((b) => ({ id: b.id, label: `${b.label} · ${b.number}` })))
     : [];
@@ -139,7 +155,24 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
       <Card className="lg:col-span-3">
         <CardHeader>
           <CardTitle>Unggah rekening koran</CardTitle>
-          <CardDescription>PDF e-statement, CSV KlikBCA, CSV BRI, Excel (.xlsx atau .xls, termasuk salinan kerja satu lembar per bulan), atau file lain yang punya kolom tanggal, keterangan, debet/kredit, dan saldo.</CardDescription>
+          <CardDescription>
+            PDF, CSV, Excel atau MT940 dari {BANKS.length} bank, juga PDF bersandi, PDF gabungan beberapa rekening dan salinan kerja Excel satu lembar per bulan. File lain bisa dibaca bila punya kolom tanggal, keterangan, debet/kredit dan saldo.
+          </CardDescription>
+          <Collapsible>
+            <CollapsibleTrigger className="group/trigger inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+              Lihat {BANKS.length} bank <ChevronDown className="size-4 transition-transform group-data-[panel-open]/trigger:rotate-180" aria-hidden />
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <dl className="mt-2 space-y-2 text-sm" data-testid="bank-list">
+                {GROUP_ORDER.map((g) => (
+                  <div key={g} className="grid gap-1 sm:grid-cols-[9.5rem_1fr]">
+                    <dt className="eyebrow">{g}</dt>
+                    <dd className="text-muted-foreground">{BANKS.filter((b) => b.group === g).map((b) => b.name).sort((a, b) => a.localeCompare(b, "id")).join(", ")}</dd>
+                  </div>
+                ))}
+              </dl>
+            </CollapsibleContent>
+          </Collapsible>
         </CardHeader>
         <CardContent className="space-y-5">
           <Field>
@@ -270,6 +303,18 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
                 <StatusPill status={result.continuityOk ? "PASS" : "REVIEW"} label={result.continuityOk ? "Nyambung" : "Ada celah"} />
               </div>
               {result.continuityNote && <p className="text-xs text-review">{result.continuityNote}</p>}
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-muted-foreground">Bank di file</span>
+                <span className="text-right">{result.fileBank === "GENERIC" ? "Tidak disebut di file" : bankName(result.fileBank)}</span>
+              </div>
+              {resultBank && result.fileBank !== "GENERIC" && result.fileBank !== resultBank.bank && (
+                <div className="space-y-2 rounded-md bg-review-subtle px-3 py-2 text-xs" data-testid="bank-differs">
+                  <p>File ini dari {bankName(result.fileBank)}, rekening {resultBank.label} tercatat di {bankName(resultBank.bank)}.</p>
+                  <Button size="sm" variant="outline" disabled={pending} onClick={() => recordBank(resultBank.id, result.fileBank)}>
+                    Catat rekening ini sebagai {bankName(result.fileBank)}
+                  </Button>
+                </div>
+              )}
               <div className="flex items-center justify-between gap-4">
                 <span className="text-muted-foreground">Periode</span>
                 <span className="text-right">{result.months.length > 1 ? `${result.months[0]} – ${result.months.at(-1)} (${result.months.length} bulan)` : result.months[0]}</span>

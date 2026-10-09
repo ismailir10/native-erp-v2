@@ -177,7 +177,7 @@ export function parseMt940(text: string): ParsedStatement[] {
     const closing = lastBlock.closing ?? first.opening + rows.reduce((s, r) => s + r.amount, 0n);
     const start = new Date(+first.openingDate + 86_400_000);
     const end = lastBlock.closingDate ?? rows.at(-1)?.date ?? first.openingDate;
-    const notes = ["Dibaca sebagai MT940 (SWIFT). MT940 tidak mencetak saldo per baris: saldo dicek dari saldo awal (:60F:), saldo akhir setiap pernyataan (:62F:), dan saldo akhir file."];
+    const notes = ["Dibaca sebagai MT940 (SWIFT). File ini tanpa saldo per baris; saldo dicek dari saldo awal dan saldo akhir setiap pernyataan."];
     if (group.length > 1) notes.push(`${group.length} pernyataan MT940 rekening ini digabung menjadi satu rekening koran.`);
     const senNote = sen.note();
     if (senNote) notes.push(senNote);

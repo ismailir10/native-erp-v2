@@ -120,7 +120,7 @@ grows — re-checked with `verify:books`).
   listed not imported, `RD`/`RC` reversals, `:86:` multi-line, BIC → bank; malformed tag → clear Bahasa error.
 - [x] T8 Coverage test + docs — registry × formats test; `docs/real-data.md` + README supported list point to the registry —
   accept: removing a fixture fails the test.
-- [ ] T9 Import UI: supported-files text + bank list disclosure, detected bank on the result, mismatch note — accept: e2e step imports
+- [x] T9 Import UI: supported-files text + bank list disclosure, detected bank on the result, mismatch note — accept: e2e step imports
   a BNI fixture into a BNI account and sees "BNI"; screenshot 1440 + 390.
 - [ ] T10 End-of-cycle: real files still NYAMBUNG (local), full gates, Ship Notes — accept: gate tails pasted.
 
@@ -169,6 +169,13 @@ grows — re-checked with `verify:books`).
   format; the inferred-only banks are named: BJB, Danamon, DKI, Mega, Panin, Sinarmas), the SMBC combined PDF (REAL layout) joins the
   catalog with its own check (`Layout.check`); `docs/real-data.md`, `README.md` (Import row) and `AGENTS.md` (repo map) point to
   `lib/banks.ts` instead of a hand-kept bank list.
+- T9: `components/app/import-form.tsx` (the card says "PDF, CSV, Excel atau MT940 dari 25 bank…" with a *Lihat 25 bank* disclosure grouped like the
+  picker; the result shows *Bank di file*; when it isn't the account's bank, a review-coloured line says so with one button, *Catat
+  rekening ini sebagai <bank>*), `lib/import/pipeline.ts` (`ImportSummary.fileBank`), `lib/onboarding.ts` `setBankAccountBank` + `app/actions.ts`
+  `setBankAccountBankAction` (only the label changes; the account must be the client's; the code must be known). Said once: the line on
+  the result, not also as an import note. Tests: `tests/db/bank-coverage-import.test.ts` (MT940 through the real pipeline, re-import adds
+  nothing, mismatch → fix, tenancy), `e2e/statement-more-banks.spec.ts` (picker search, bank list, MT940 import, one-click fix; screenshots
+  1440 + 390 checked).
 
 ## Verification
 - T1: `npm run lint` 0 errors (1 existing warning in `public/deck/deck.js`) · typecheck clean · `npm test` 185 files, 1218 passed.- T2: `npm test` 186 files, 1224 passed · `npm run demo:reset && npm run verify:books` → ALL PASS — 1765 pemeriksaan saldo cocok
@@ -179,5 +186,7 @@ grows — re-checked with `verify:books`).
 - T6: `npm test` 188 files, 1273 passed (38 layouts); lint 0 errors; typecheck clean; real-file and private-fixture hashes unchanged.
 - T7: `npm test` 189 files, 1291 passed (49 layouts, 7 MT940 cases); lint 0 errors; typecheck clean; real-file/fixture hashes unchanged.
 - T8: `npm test` 190 files, 1295 passed; removing the Bank Jatim MT940 fixture fails `bank-coverage.test.ts` with `JATIM · MT940` (then restored).
+- T9: `npm test` 191 files, 1298 passed; `npx playwright test e2e/statement-more-banks.spec.ts` 1 passed (local: `PW_CHROMIUM` = the cached
+  headless shell 1243, the installed Playwright wants 1248).
 
 ## Ship Notes

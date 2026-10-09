@@ -40,7 +40,7 @@ import { PdfPasswordError } from "@/lib/import/parsers/pdf";
 import { MoneyError, parseMoney } from "@/lib/money";
 import { dateOnly } from "@/lib/format";
 import { liveUploadFile } from "@/lib/demo/seed";
-import { addBankAccount, addClient, addEntity, OnboardingError, type NewClientInput } from "@/lib/onboarding";
+import { addBankAccount, addClient, addEntity, OnboardingError, setBankAccountBank, type NewClientInput } from "@/lib/onboarding";
 import { EntitySettingsError, setFiscalYearEnd, setReportingFramework } from "@/lib/entity-settings";
 import { setClientModules } from "@/lib/clients/modules";
 import { FormatError, resetReportFormat, saveReportFormat } from "@/lib/reports/format-settings";
@@ -683,6 +683,19 @@ export async function addBankAccountAction(clientId: string, entityId: string, i
     return { ok: true, bankAccountId: bank.id };
   } catch (e) {
     if (e instanceof OnboardingError) return { ok: false, error: e.message, fields: e.fields };
+    return fail(e);
+  }
+}
+
+/** The import result's *Catat sebagai <bank>*: the account's bank follows the file's. */
+export async function setBankAccountBankAction(clientId: string, bankAccountId: string, bank: string): Promise<Result> {
+  try {
+    const client = await getClientForFirm(clientId);
+    await setBankAccountBank(prisma, client.id, bankAccountId, bank);
+    revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (e) {
+    if (e instanceof OnboardingError) return { ok: false, error: e.message };
     return fail(e);
   }
 }
