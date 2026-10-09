@@ -92,6 +92,20 @@ describe("MT940", () => {
     expect(checkContinuity(st).ok).toBe(true);
   });
 
+  it("names each account's bank from the BIC in front of its own number", async () => {
+    const sections = await parseStatementSections(
+      "forwarded.mt940",
+      file(
+        ":20:A", ":25:CENAIDJA/0000012345", ":60F:C260731IDR1000,00", ":61:2608010801C100,00NTRFNONREF", ":62F:C260801IDR1100,00",
+        ":20:B", ":25:BMRIIDJA/1370000123456", ":60F:C260731IDR500,00", ":61:2608010801D50,00NTRFNONREF", ":62F:C260801IDR450,00",
+      ),
+    );
+    expect(sections.map((s) => [s.accountNumber, s.format, s.section?.label])).toEqual([
+      ["0000012345", "BCA", "BCA"],
+      ["1370000123456", "MANDIRI", "Mandiri"],
+    ]);
+  });
+
   it("says what is wrong with a line it can't read", async () => {
     await expect(parseStatement("x.txt", file(":20:A", ":25:0000012345", ":60F:C260731IDR1000,00", ":61:26AB01C100,00NTRF"))).rejects.toThrow(/:61: di baris 4 tidak bisa dibaca/);
     await expect(parseStatement("x.txt", file(":20:A", ":25:0000012345", ":61:2608010801C100,00NTRFNONREF", ":60F:C260731IDR1000,00"))).rejects.toThrow(/sebelum saldo awal/);

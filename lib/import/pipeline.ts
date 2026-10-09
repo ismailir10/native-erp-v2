@@ -82,11 +82,15 @@ export async function importStatement(
     st = { ...st, rows: st.rows.filter((r) => r.amount !== 0n), notes: [...(st.notes ?? []), `${zeroRows.length} baris bernilai nol dilewati (baris ${refs}${zeroRows.length > 5 ? ", …" : ""}): tidak ada uang yang bergerak.`] };
   }
   const others = sections.filter((s) => s !== chosen);
-  const otherSections = others.map((s) => `${s.accountNumber} ${s.section?.label ?? ""} (${s.section?.currency ?? "IDR"}): tidak diimpor ke rekening ini`);
   // An account of this client already holding an import of the same period doesn't need "Impor juga ke …" again.
   const done = await db.statementImport.findMany({
     where: { bankAccount: { entity: { clientId: client.id } }, OR: others.map((s) => ({ periodStart: s.periodStart, periodEnd: s.periodEnd })) },
-    select: { periodStart: true, periodEnd: true, bankAccount: { select: { number: true } } },
+    select: { periodStart: true, periodEnd: true, bankAccount: { select: { number: true, label: true } } },
+  });
+  const importedTo = (s: ParsedStatement) => done.find((d) => digits(d.bankAccount.number) === digits(s.accountNumber) && +d.periodStart === +s.periodStart && +d.periodEnd === +s.periodEnd);
+  const otherSections = others.map((s) => {
+    const to = importedTo(s);
+    return `${s.accountNumber} ${s.section?.label ?? ""} (${s.section?.currency ?? "IDR"}): ${to ? `sudah diimpor ke ${to.bankAccount.label}` : "tidak diimpor ke rekening ini"}`;
   });
   const otherAccounts = others.flatMap((s) =>
     s.accountNumber
@@ -94,7 +98,7 @@ export async function importStatement(
           number: s.accountNumber,
           label: s.section?.label ?? "",
           currency: s.section?.currency ?? "IDR",
-          imported: done.some((d) => digits(d.bankAccount.number) === digits(s.accountNumber) && +d.periodStart === +s.periodStart && +d.periodEnd === +s.periodEnd),
+          imported: !!importedTo(s),
         }]
       : [],
   );

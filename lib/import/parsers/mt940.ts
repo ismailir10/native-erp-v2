@@ -1,4 +1,4 @@
-import { bankOfBic } from "@/lib/banks";
+import { bankName, bankOfBic } from "@/lib/banks";
 import type { BankCode } from "@/lib/generated/prisma/enums";
 import { dateOnly } from "@/lib/format";
 import { parseRupiah } from "@/lib/money";
@@ -167,8 +167,11 @@ export function parseMt940(text: string): ParsedStatement[] {
     const key = `${accountNumber(b.account)}|${b.currency}`;
     groups.set(key, [...(groups.get(key) ?? []), b]);
   }
-  const format = bankOf(text, blocks.map((b) => b.account));
+  const fileBank = bankOf(text, blocks.map((b) => b.account));
+  // A statement's bank: the BIC in front of its own account ("BMRIIDJA/…"), else the file's header — one file may forward several banks.
+  const bankOfGroup = (group: Block[]) => (group[0].account.includes("/") ? bankOfBic(group[0].account.split("/")[0]) : null) ?? fileBank;
   const statements = [...groups.values()].map((group): ParsedStatement => {
+    const format = bankOfGroup(group);
     const first = group[0];
     const lastBlock = group[group.length - 1];
     for (let k = 1; k < group.length; k++) {
@@ -198,5 +201,6 @@ export function parseMt940(text: string): ParsedStatement[] {
   });
   const keys = [...groups.keys()];
   if (statements.length === 1 && keys[0].endsWith("|IDR")) return statements;
-  return statements.map((st, k) => ({ ...st, section: { label: `Rekening ${st.accountNumber}`, currency: keys[k].split("|")[1] } }));
+  // The section's name: its bank (the number is printed beside it already).
+  return statements.map((st, k) => ({ ...st, section: { label: st.format === "GENERIC" ? "MT940" : bankName(st.format), currency: keys[k].split("|")[1] } }));
 }

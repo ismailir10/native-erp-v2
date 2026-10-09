@@ -38,24 +38,24 @@ Intended outcome: Buku names **25 Indonesian banks**, reads each one's documente
 which bank a file is from — with every layout pinned by a synthetic fixture whose running balance must chain.
 
 ## Spec
-- [ ] **S1 Bank registry** — one module (`lib/banks.ts`) owns the bank list: code, display name, how to recognise its files
+- [x] **S1 Bank registry** — one module (`lib/banks.ts`) owns the bank list: code, display name, how to recognise its files
   (heading names, product names, SWIFT BIC), and the formats Buku has a fixture for. The client form, the bank-account card, the
   onboarding validation, the import help text, the parser's bank detection and the transfer matcher's bank-name words all read it
   (today the list is copied in 5 places). 25 banks + *Bank lain*:
   BCA, Mandiri, BRI, BNI, BSI, CIMB Niaga, Permata, Danamon, OCBC, Panin, BTN, Maybank, UOB, Bank Mega, Sinarmas, SMBC Indonesia / Jenius,
   Bank Jago, SeaBank, blu (BCA Digital), DBS, HSBC, Citibank, Bank DKI, BJB, Bank Jatim.
-- [ ] **S2 Schema** — `BankCode` gains the 21 new values (**migration**: `ALTER TYPE … ADD VALUE`, additive only; existing rows keep
+- [x] **S2 Schema** — `BankCode` gains the 21 new values (**migration**: `ALTER TYPE … ADD VALUE`, additive only; existing rows keep
   their code). `SMBC` stays the code for SMBC Indonesia / Jenius / BTPN.
-- [ ] **S3 Detection** — a file is tagged with its bank from the lines above its table (PDF preamble, CSV/XLSX title rows) or the MT940
+- [x] **S3 Detection** — a file is tagged with its bank from the lines above its table (PDF preamble, CSV/XLSX title rows) or the MT940
   header/BIC, never from transaction text. Strict names only ("Bank Permata", "PermataNet", BIC `BBBAIDJA` — not "PT Permata Hijau";
   "Bank Mega", not "CV Mega Jaya"; Jago only as "Bank Jago"/BIC). A file naming no bank stays GENERIC. Guard tests for company names.
-- [ ] **S4 MT940** — a SWIFT MT940 file (`.txt`, `.sta`, `.940`, `.mt940`, any name; sniffed by `:20:` + `:25:` + `:60F:`/`:61:`) is read:
+- [x] **S4 MT940** — a SWIFT MT940 file (`.txt`, `.sta`, `.940`, `.mt940`, any name; sniffed by `:20:` + `:25:` + `:60F:`/`:61:`) is read:
   `:60F/:60M` opening, `:61:` rows (value date `YYMMDD`, optional entry date, `C`/`D`/`RC`/`RD`, comma decimals, funds code), `:86:`
   narrative (multi-line) as the description, `:62F/:62M` closing, several statements per file, intermediate pages (`:60M`/`:62M`)
   joined per account, several accounts → sections like a combined PDF, the account from `:25:` (with or without a `BIC/` prefix),
   the currency from `:60F:` (non-IDR sections are listed, not imported — as today). Bank from the BIC in block 1/2 or `:25:`.
   Accept `.txt/.sta/.940/.mt940` in the upload field.
-- [ ] **S5 Reader fixes for the documented layouts** (each with a synthetic fixture of the same five August rows, `expectAugust`):
+- [x] **S5 Reader fixes for the documented layouts** (each with a synthetic fixture of the same five August rows, `expectAugust`):
   - tabular: an amount cell carrying its direction (`1,000.00 CR`, `5,500.00 D`, `1.000-`, `Db.`/`Cr.` flags); KlikBCA Bisnis current CSV
     (BCA reader reads both layouts); KlikBCA Individual CSV (unquoted commas in the description, `=` metadata, `Starting/Ending
     Balance` trailer); more header synonyms (`Tanggal & Waktu`, `Date & Time`, `Rincian Transaksi`, `Transaction Details`, `Remark`,
@@ -70,15 +70,15 @@ which bank a file is from — with every layout pinned by a synthetic fixture wh
     blu PDF, SMBC/Jenius (existing) — and MT940 for every bank that issues it. Banks with no public column layout are recognised by name and pinned by
     MT940 where they issue it (Maybank, UOB, DBS, HSBC, Citi, Jatim) or by a generic-reader fixture marked *layout inferred* in the
     registry (Panin, Mega, Sinarmas, DKI, BJB) — the registry says which evidence each format rests on.
-- [ ] **S6 Coverage is provable** — a registry test fails if a bank declares a format without a fixture that parses NYAMBUNG and is
+- [x] **S6 Coverage is provable** — a registry test fails if a bank declares a format without a fixture that parses NYAMBUNG and is
   tagged with that bank; `docs/real-data.md` "Supported" points to the registry instead of a hand-kept sentence.
-- [ ] **S7 UI** — the bank field in *Tambah klien* and the entity card is a searchable picker over the 25 banks (+ *Bank lain*); the
+- [x] **S7 UI** — the bank field in *Tambah klien* and the entity card is a searchable picker over the 25 banks (+ *Bank lain*); the
   import card says which files are read ("PDF, CSV, Excel atau MT940 dari 25 bank") with the bank list behind a disclosure; the import
   result names the bank the file is from, and says so when it differs from the account's bank (a note, not a refusal — a client may
   label an account wrongly).
-- [ ] **S8 No regression** — the two real files in `data/private/` still NYAMBUNG with the same rows (checked locally, never committed),
+- [x] **S8 No regression** — the two real files in `data/private/` still NYAMBUNG with the same rows (checked locally, never committed),
   every existing parser test passes unchanged, `verify:books` ALL PASS, e2e green.
-- [ ] **S9 Production check** — after merge, on https://native-erp-v2.vercel.app (Chrome): a throwaway client *Uji Bank (hapus)* gets
+- [x] **S9 Production check** — after merge, on https://native-erp-v2.vercel.app (Chrome): a throwaway client *Uji Bank (hapus)* gets
   accounts at several new banks; synthetic fixture files (BNI PDF, Jago PDF, MT940 multi-account, KlikBCA Bisnis CSV) import with
   *Saldo nyambung*; then the client is deleted (admin delete, rule 25). No real client is touched.
 - [x] **Deck (ship step 3)** — claims to update: kantor slide "PDF dari bank. BCA, Mandiri, BRI, SMBC…", perusahaan slide "PDF, CSV,
@@ -210,4 +210,26 @@ grows — re-checked with `verify:books`).
 - **Deck (ship step 3):** `kantor.html` slide 05 *Sumber* ("25 bank, sampai MT940. BCA, Mandiri, BRI, BNI, BSI, CIMB Niaga, hingga Bank
   Jago…" and "CSV, Excel, dan file lain…"), `perusahaan.html` slide 04 *Kirim file* ("PDF, CSV, Excel, atau MT940 dari 25 bank…"). Checked at
   1440×900 and 375×812. No competitor named (the comparison stays in the cycle doc); the limits slide ("Tanpa koneksi bank langsung") is still true.
-- Production check (S9) follows after the merge; results recorded below.
+- **Production check (S9), 2026-10-09, https://native-erp-v2.vercel.app (Chrome), after PR #125 deployed (`20261009100000_bank_codes`
+  applied by the build).** Client *Uji Bank (hapus)*, PT Uji Bank Sintetis, 8 accounts at 6 banks picked with the new bank field:
+  BCA, BNI, Mandiri, CIMB ×2, Jago ×2, SeaBank. Synthetic files only:
+  - **Upload:** KlikBCA Bisnis CSV, BNI corporate PDF, Mandiri Livin' PDF, one CIMB MT940 with two accounts (second via *Impor juga ke*),
+    one Jago PDF with two pockets (second via *Impor juga ke*), SeaBank PDF. Every import *Nyambung*, *Bank di file* right each time;
+    the account-number guard caught each file uploaded to the wrong account and offered the right one. AI is configured in production:
+    3 calls in total, the rest from its cache.
+  - **Saldo Awal:** 8 bank lines prefilled from the statements, citing their files; 3100 Modal Disetor 800.000.000 typed, no 3290 difference.
+  - **Review:** 16 lines. The AI proposed 1130 Piutang Usaha / 2110 Utang Usaha for receipts and supplier payments of a client with no
+    invoices — rejected as an accountant would: 8 receipts → 4110 Pendapatan Jasa, 8 payments → 6170 Beban Jasa Profesional, with
+    *Simpan untuk N serupa*. Interest, PLN and bank fees were posted by firm rules.
+  - **Books checked against an independent computation:** every bank 138.080.678 (= 100.000.000 + 55.500.000 − 2.450.000 − 15.000.000
+    + 45.678 − 15.000); TB balanced at 1.244.365.424; Laba Rugi net profit 304.645.424 (444.000.000 + 365.424 − 19.600.000 −
+    120.000.000 − 120.000); Neraca total 1.104.645.424 = Modal 800.000.000 + laba 304.645.424; a Jago ledger row opens to *jago.pdf,
+    baris 5* with the raw PDF row.
+  - **Tutup Buku Agustus 2026:** 21 controls *Lolos* (TB, A = L + E, reconciliation + continuity for all 8 accounts, 1199, sanity, 1999),
+    3 checklist items ticked, month locked. Then the client was deleted (*Hapus klien*, name typed); the client list is back to 18.
+  - **Found and fixed in the follow-up PR:** (1) the bank / account picker committed a value on type-ahead from the closed field ("4110"
+    picked 4100 Penjualan first; also in Review), (2) choosing with Enter reopened the list, (3) a space in the open search toggled it and
+    wiped the query; (4) an MT940 section was labelled "Rekening <number>" beside the same number; (5) "File ini juga berisi rekening lain
+    …: tidak diimpor ke rekening ini" stayed after that account was imported to its own account.
+  - **Seen, left for a later cycle:** the AI proposing 1130 / 2110 without open documents; *Hapus klien* leaves the page on the deleted
+    client; a typed Saldo Awal amount isn't formatted after leaving the field; 1999 shows *Perlu dicek* in the TB with a zero balance.
