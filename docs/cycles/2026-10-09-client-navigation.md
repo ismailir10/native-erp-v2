@@ -14,6 +14,11 @@ between clients today costs them their place, and on many pages it doesn't say w
    the sidebar is closed, so nothing names the client at all** (the top bar says "Buku").
 4. **No way up.** Drill pages (*Buku Besar → akun → baris*, *Impor → berkas*, *Aset → satu aset*) rely on the browser Back button.
 5. Sidebar items carry no `aria-current`, so a screen reader doesn't hear which page is open.
+6. **Same words, different scope** (seen in the running app): with a client open the sidebar has *Laporan* (all clients), *3 · Laporan*
+   (this client) and *Laporan Keuangan*; *Pengaturan klien* and, in the footer, *Pengaturan* (the whole firm). Nothing says which is
+   which. The client's name is small grey text that doesn't look clickable, and the client list sits at the bottom, collapsed.
+7. Beranda, Dokumen and Laporan also pick a client (the scope select in their header), so there are two ways to choose a client with
+   different meanings: *filter this page* versus *open this client*.
 
 Outcome: from any client page, two keystrokes (⌘K, a few letters, Enter) land on the *same page of another client*, every client page
 names its client and its place, and drill pages have a path back up. Works at 390px.
@@ -24,17 +29,25 @@ names its client and its place, and drill pages have a path back up. Works at 39
   - Groups: *Klien* (current first), *Halaman* (the current client's pages, same list and order as the sidebar, modules included),
     *Lainnya* (Beranda, Tambah klien).
   - **Choosing a client keeps the page.** On `/clients/A/trial-balance` it goes to `/clients/B/trial-balance`. Rules, in one tested
-    pure function (`lib/nav.ts`): the top-level section is kept (`tax/masa` and `journals/new` count as sections);
+    pure function (`lib/nav.ts`): the top-level section is kept (`tax/masa` and `journals/new` count as sections; only pages in the client menu, Kurs, Pengaturan klien and Riwayat count);
     a detail page (an account, an asset, an import file) falls back to its section list; a module B does not show falls back to
     Ringkasan. Period is kept; entity resets to *Gabungan Grup* (entity ids belong to one client); `scope` becomes `client:B`.
-  - From Beranda or another workspace page it goes to B's Ringkasan.
+  - **Every client row says where it will land** ("Neraca Saldo", or "Ringkasan klien" when it falls back), so the jump is never a
+    surprise.
+  - On a workspace page (Beranda, Dokumen, Laporan): already scoped to client A → the same page scoped to B (as the sidebar
+    already treats it); scoped to *Semua klien* → B's Ringkasan.
+  - Only pages in the client menu carry over (plus Kurs, Pengaturan klien, Riwayat); anything else goes to Ringkasan.
   - Keyboard only is enough: ↑↓ Enter Esc, focus returns to where it was.
-- [ ] **Client context bar on every client page** (`app/(app)/clients/[id]/layout.tsx`): `PT Contoh ▾ › Neraca Saldo`. The name is the switcher
-  trigger, so it works on a phone. A drill page shows its section as a link (`Buku Besar › …`), which is the way up. Landmark
+- [ ] **Client context bar on every client page** (`app/(app)/clients/[id]/layout.tsx`): `Semua klien › PT Contoh ▾ › Neraca Saldo`. *Semua klien* goes back to Beranda
+  (just a home icon at 390px), the name is the switcher trigger, so it works on a phone. A drill page shows its section as a link (`Buku Besar › …`), which is the way up. Landmark
   `nav aria-label="Posisi"`; the last crumb has `aria-current="page"`.
-- [ ] **Sidebar:** a *Cari klien* button with the shortcut hint opens the switcher; with a client open, the client's name
-  in the group heading is that trigger. The existing *Daftar klien (N)* list and *Tambah klien* stay as they are.
-  Active items get `aria-current="page"`.
+- [ ] **Sidebar says which scope each item is in:**
+  - The firm-wide items sit under a *Semua klien* label (Beranda, Dokumen, Laporan), so *Laporan* there can't be mistaken for the
+    client's *3 · Laporan*. The footer *Pengaturan* becomes *Pengaturan kantor* (page title too: "Berlaku untuk semua klien di kantor ini").
+  - With a client open, the client is a **switcher block** at the head of its section: building icon tile, name (full name on hover),
+    "Ganti klien ⌘K" and an up-down chevron. It reads as a control, not a label. With no client open, a *Cari klien* ⌘K button opens
+    the same palette.
+  - The existing *Daftar klien (N)* list and *Tambah klien* stay as they are. Active items get `aria-current="page"`.
 - [ ] **Recent clients:** the switcher lists the last 5 clients opened first (per browser, `localStorage` in try/catch). It renders
   correctly without it.
 - [ ] **Show each fact once:** with the context bar naming the client, the `${client.name} · ` prefix is dropped from client page
@@ -57,6 +70,7 @@ persisting anything on the server.
 5. The e2e specs that click *Daftar klien (N)* keep working, since that button stays.
 
 ## Tasks
+- [ ] T0 Sidebar scope labels: *Semua klien* group, *Pengaturan kantor*. Accept: `workspace.spec` selectors still match.
 - [ ] T1 `lib/nav.ts`: nav items shared by sidebar and palette, `switchClientHref`, `sectionOf`, recents helper + unit tests.
   Accept: `tests/unit/nav.test.ts` covers section kept, detail falls back, hidden module falls back, period kept, entity reset,
   `tax/masa`, Beranda target, recents dedupe/cap/garbage-in.
