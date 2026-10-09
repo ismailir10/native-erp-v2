@@ -122,7 +122,7 @@ grows — re-checked with `verify:books`).
   accept: removing a fixture fails the test.
 - [x] T9 Import UI: supported-files text + bank list disclosure, detected bank on the result, mismatch note — accept: e2e step imports
   a BNI fixture into a BNI account and sees "BNI"; screenshot 1440 + 390.
-- [ ] T10 End-of-cycle: real files still NYAMBUNG (local), full gates, Ship Notes — accept: gate tails pasted.
+- [x] T10 End-of-cycle: real files still NYAMBUNG (local), full gates, Ship Notes — accept: gate tails pasted.
 
 ## Implementation
 - Plan: tasks T1–T10 sequential, done inline (T2–T7 all touch `lib/import/parsers/*` and `tests/bank-fixture.ts`; MT940 is a new file but
@@ -176,6 +176,8 @@ grows — re-checked with `verify:books`).
   the result, not also as an import note. Tests: `tests/db/bank-coverage-import.test.ts` (MT940 through the real pipeline, re-import adds
   nothing, mismatch → fix, tenancy), `e2e/statement-more-banks.spec.ts` (picker search, bank list, MT940 import, one-click fix; screenshots
   1440 + 390 checked).
+- T10: end-of-cycle gate; real files (BCA June, SMBC May) re-read after every parser task with identical row hashes; synthetic files for
+  the production check generated under `data/private/scratch/prod-bank-test/` (not committed).
 
 ## Verification
 - T1: `npm run lint` 0 errors (1 existing warning in `public/deck/deck.js`) · typecheck clean · `npm test` 185 files, 1218 passed.- T2: `npm test` 186 files, 1224 passed · `npm run demo:reset && npm run verify:books` → ALL PASS — 1765 pemeriksaan saldo cocok
@@ -188,5 +190,16 @@ grows — re-checked with `verify:books`).
 - T8: `npm test` 190 files, 1295 passed; removing the Bank Jatim MT940 fixture fails `bank-coverage.test.ts` with `JATIM · MT940` (then restored).
 - T9: `npm test` 191 files, 1298 passed; `npx playwright test e2e/statement-more-banks.spec.ts` 1 passed (local: `PW_CHROMIUM` = the cached
   headless shell 1243, the installed Playwright wants 1248).
+- End of cycle (2026-10-09): `npm run lint` 0 errors (1 existing warning, `public/deck/deck.js`) · typecheck clean · `npm test` 191 files,
+  1298 passed · `npm run build` ok · `npm run demo:reset && npm run verify:books` → ALL PASS — 1765 pemeriksaan saldo cocok dengan ground
+  truth · `npm run test:e2e` → 59 passed (4.4m).
+- Real files (local, `inspect:statement`): `belifi-bca-2026-06.pdf` BCA NYAMBUNG ✓, `smbc-mei-2026.pdf` 3 rekening NYAMBUNG ✓ — same hashes as
+  before the cycle.
 
 ## Ship Notes
+- **Migration** `20261009100000_bank_codes`: 21 `ALTER TYPE "BankCode" ADD VALUE` — additive; applied by the Vercel build (`prisma migrate deploy`).
+  Rollback: revert the code; unused enum values are harmless (Postgres can't drop enum values, and nothing needs to).
+- No env vars, no new dependency, no AI calls.
+- Re-import safety: descriptions of the layouts already in production (BCA PDF, SMBC PDF) are unchanged, so row hashes — and the dedupe of a
+  file imported again — are unchanged (checked on the real files).
+- Production check (S9) and the deck (ship step 3) follow after the PR opens / merges; results recorded below.
