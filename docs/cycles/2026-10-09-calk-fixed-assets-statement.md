@@ -45,7 +45,7 @@ Approval: the owner's brief in-session ("continue improving Buku until we are pr
 - [x] T1 `fixedAssetMovement` (lib/reports/statements.ts) + the CALK note. Accept: a db test with an opening, a purchase, depreciation and a
   disposal, where every row adds up, the book value equals the Neraca and there is no separate *Akumulasi penyusutan* note.
 - [x] T2 Surat Pernyataan fields and PDF placement. Accept: tests on `directorsStatement` and the PDF page order. The page is looked at.
-- [ ] T3 End-of-cycle gates and Ship Notes.
+- [x] T3 End-of-cycle gates and Ship Notes.
 
 ## Implementation
 - Plan: T1–T3 sequential, inline (stacked on `task/report-pack-partner`: same files).
@@ -60,4 +60,13 @@ Approval: the owner's brief in-session ("continue improving Buku until we are pr
   `report-pdf` / `report-pdf-layout` (page order and draft lines). Page 1 rendered and looked at.
 ## Verification
 - T1: lint clean · typecheck clean · `npm test` 198 files, 1316 passed.
+- T2 + end of cycle: lint clean · typecheck clean · `npm test` 198 files, 1316 passed · `npm run build` ok · `npm run test:e2e` 61 passed
+  (6.4m) · `demo:reset && verify:books` → ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.
+
 ## Ship Notes
+- Stacked on `task/report-pack-partner` (PR #130): it merges after that one (GitHub retargets it to `main` when #130's branch goes).
+- No migration, env var, dependency or AI call; no figure changes (the schedule reads the same GL as the Neraca).
+- Visible changes: the PDF opens with the Surat Pernyataan; the CALK *Aset tetap* note leads with *Mutasi aset tetap*, and *Akumulasi
+  penyusutan* no longer has a note of its own (later notes renumber).
+- Deck: no deck change — the decks don't list CALK contents or the statement's layout.
+- Rollback: revert.
