@@ -58,3 +58,28 @@ test("pick a bank, import an MT940 from another bank, record the account at the 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: "test-results/more-banks-390.png", fullPage: true });
 });
+
+test("the bank field is keyboard-first: typing searches without choosing, Enter chooses and the list stays closed", async ({ page }) => {
+  await page.goto("/clients/new");
+  const bank = page.getByRole("combobox", { name: "Bank", exact: true });
+  await expect(bank).toContainText("BCA");
+  await bank.focus();
+  // Typing on the closed field opens the search with the keys in it; it never picks the first bank starting with "b".
+  await page.keyboard.type("bank j");
+  await expect(page.getByLabel("Cari bank")).toHaveValue("bank j");
+  await expect(bank).toContainText("BCA");
+  await page.keyboard.press("Enter");
+  await expect(bank).toContainText("Bank Jago");
+  await page.waitForTimeout(400);
+  await expect(page.getByRole("option")).toHaveCount(0);
+  await expect(page.getByLabel("Cari bank")).toBeHidden();
+  // Closing with Escape is no choice: the list opens again at once.
+  await bank.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByLabel("Cari bank")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByLabel("Cari bank")).toBeHidden();
+  await bank.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByLabel("Cari bank")).toBeVisible();
+});
