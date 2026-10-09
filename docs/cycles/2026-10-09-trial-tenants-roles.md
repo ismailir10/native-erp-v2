@@ -242,7 +242,7 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   AKUNTAN × clients → ClientAccess; no role rewrite, see M1). Add a CHECK `endsAt IS NULL OR endsAt > startsAt`.
   — accept: `npm run db:migrate` on the seeded demo DB succeeds; the test asserts the backfill (grant exists, one OWNER, AKUNTAN
   assigned to all clients); all existing tests stay green.
-- [~] **T02 Permissions + access state (pure).** After: T01. Files: `lib/auth/permissions.ts`, `lib/access/grant.ts`,
+- [x] **T02 Permissions + access state (pure).** After: T01. Files: `lib/auth/permissions.ts`, `lib/access/grant.ts`,
   `tests/unit/permissions.test.ts`, `tests/unit/access-grant.test.ts`.
   `type Capability` (`books.read`, `books.write`, `client.create`, `period.unlock`, `import.remove`, `close.batch`, `client.delete`,
   `org.settings`, `members.manage`, `org.transfer`) and `can(role, capability)` following the Roles table. `accessState(grants, firm, now)` returns
@@ -374,11 +374,16 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   ADMIN to OWNER, because `FirmMember` is protected from migrations and the guard test refused the UPDATE (see M1). **For later tasks:**
   every existing `role === "ADMIN"` check now reads `isAdminRole(role)`, so an OWNER is never weaker than an ADMIN. A firm created by
   `createFirm` after the migration has no grant yet; T03 gives `createFirm` a default open COMP grant.
+- T02: `lib/auth/permissions.ts` (`Capability`, `can`, `isWrite`, `capabilityRefusal`), `lib/access/grant.ts` (`accessState`,
+  `endOfDayJakarta`, `readOnlyMessage`). A revocation dated in the future has not happened yet; a grant that has not started yet gives
+  NONE when nothing came before it and READ_ONLY in a gap between grants. `ROLE_LABEL` is re-exported from `lib/auth/session.ts` for
+  the existing import sites.
 
 ## Verification
 - T01: full `npx vitest run`: 203 of 204 files passed; the one failure was `migration-protected-tables` refusing the backfill's role
   UPDATE. After removing it: lint ✓, typecheck ✓, and `tenancy-migration`, `migration-protected-tables`, `period-lock`, `close-history`
   and `remove-import` → 5 files, 51 tests passed.
+- T02: `permissions.test.ts` and `access-grant.test.ts` → 2 files, 25 tests passed; lint ✓, typecheck ✓.
 
 ## Ship Notes
 
