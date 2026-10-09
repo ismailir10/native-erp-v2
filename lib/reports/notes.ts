@@ -5,7 +5,7 @@ import { fiscalEndMonth, fiscalSpan, periodFrom } from "@/lib/fiscal";
 import { reportPeriods } from "@/lib/reports/periods";
 import { formatMoney } from "@/lib/money";
 import { balanceSheet, incomeStatement, type FsItem, type Scope } from "@/lib/reports/ledger";
-import { MixedScopeError, otherComprehensiveIncome } from "@/lib/reports/statements";
+import { fixedAssetMovement, MixedScopeError, otherComprehensiveIncome } from "@/lib/reports/statements";
 import { isMixed, scopeEntities } from "@/lib/reports/fx";
 import { assetRegister } from "@/lib/assets/register";
 import { BUCKETS, BUCKET_LABEL, invoicesAt } from "@/lib/receivables/aging";
@@ -182,6 +182,34 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
       ],
       total: ["Beban pokok penjualan", c.total],
     });
+  }
+
+  // Aset tetap: the movement schedule from the GL (PSAK 216's reconciliation of the carrying amount) replaces the two balance notes; the
+  // accumulated depreciation is part of it, not a note of its own.
+  const movement = await fixedAssetMovement(db, scope, asOf);
+  if (movement.rows.length) {
+    const accumulated = lineByKey.get("AKUM_PENYUSUTAN");
+    if (accumulated) {
+      notes.splice(notes.indexOf(accumulated), 1);
+      lineByKey.delete("AKUM_PENYUSUTAN");
+      notes.forEach((x, i) => (x.number = String(i + 1)));
+      n = notes.length;
+    }
+    const note = lineByKey.get("ASET_TETAP") ?? add("Aset tetap");
+    note.title = "Aset tetap";
+    const sum = (rows: typeof movement.rows, pick: (r: (typeof movement.rows)[number]) => bigint) => rows.reduce((t, r) => t + pick(r), 0n);
+    const line = (r: (typeof movement.rows)[number]): NoteCell[] => [`${r.code} ${r.name}`, r.opening, r.additions, r.deductions, r.closing];
+    const cost = movement.rows.filter((r) => r.kind === "COST");
+    const acc = movement.rows.filter((r) => r.kind === "ACCUMULATED");
+    note.paragraphs = [`Mutasi aset tetap ${formatDateLong(movement.openedAt)} – ${formatDateLong(asOf)}: penambahan harga perolehan adalah pembelian, penambahan akumulasi penyusutan adalah beban penyusutan periode ini; pengurangan adalah pelepasan.`];
+    note.tables = [{
+      columns: ["Uraian", `Saldo ${formatDateLong(movement.openedAt)}`, "Penambahan", "Pengurangan", `Saldo ${formatDateLong(asOf)}`],
+      rows: [
+        ...(cost.length ? [["Harga perolehan", null, null, null, null] as NoteCell[], ...cost.map(line)] : []),
+        ...(acc.length ? [["Akumulasi penyusutan", null, null, null, null] as NoteCell[], ...acc.map(line)] : []),
+      ],
+      total: ["Nilai buku", sum(movement.rows, (r) => r.opening), sum(movement.rows, (r) => r.additions), sum(movement.rows, (r) => r.deductions), sum(movement.rows, (r) => r.closing)],
+    }];
   }
 
   // Detail from the registers, attached to their line.
