@@ -23,7 +23,7 @@ export function LedgerImportForm({ clientId, entities }: { clientId: string; ent
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFileState] = useState<File | null>(null);
   // A file chosen before the form hydrated is picked up.
-  useKeepEarlyFile(inputRef, (f) => setFileState(f));
+  useKeepEarlyFile(inputRef, (files) => setFileState(files[0]));
   const [entityId, setEntityId] = useState<string>(entities.length > 1 ? FROM_FILE : (entities[0]?.id ?? FROM_FILE));
   const [currencyMode, setCurrencyMode] = useState<"FUNCTIONAL" | "CONVERT">("FUNCTIONAL");
   const [date, setDate] = useState("");
