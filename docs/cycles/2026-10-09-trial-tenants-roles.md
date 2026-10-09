@@ -1,5 +1,8 @@
 # Trial access, tenants and roles: Buku → organisation → client → entity
 
+Approval: the owner approved this Spec in session on 2026-10-09 ("approved, proceed"), including support sessions (A4) and the
+professional surface (P1–P6).
+
 ## Context
 Buku is in its trial phase. Today production holds one real firm ([ADR 0008](../adrs/0008-one-workspace.md)). People get in only
 when the owner runs `npm run access -- invite` from a laptop ([ADR 0010](../adrs/0010-supabase-platform.md)). There are two roles,
@@ -222,7 +225,7 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
 ```
 
 ## Tasks
-- [ ] **T01 Schema + backfill migration.** After: none. Files: `prisma/schema.prisma`, `prisma/migrations/<ts>_trial_tenants/`,
+- [~] **T01 Schema + backfill migration.** After: none. Files: `prisma/schema.prisma`, `prisma/migrations/<ts>_trial_tenants/`,
   `lib/generated/**` (regenerated), `tests/db/tenancy-migration.test.ts`.
   `enum OrgKind { KANTOR_AKUNTAN PERUSAHAAN }` and `enum GrantKind { TRIAL PAID COMP }`. `MemberRole` gains `OWNER` and `VIEWER`.
   New `Firm` fields: `kind` (default KANTOR_AKUNTAN), `suspendedAt?`, `aiMonthlyTokenBudget Int?`, `seatLimit Int?`. Models:
@@ -237,14 +240,14 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   earliest ADMIN → OWNER, AKUNTAN × clients → ClientAccess). Add a CHECK `endsAt IS NULL OR endsAt > startsAt`.
   — accept: `npm run db:migrate` on the seeded demo DB succeeds; the test asserts the backfill (grant exists, one OWNER, AKUNTAN
   assigned to all clients); all existing tests stay green.
-- [ ] **T02 Permissions + access state (pure).** After: T01. Files: `lib/auth/permissions.ts`, `lib/access/grant.ts`,
+- [~] **T02 Permissions + access state (pure).** After: T01. Files: `lib/auth/permissions.ts`, `lib/access/grant.ts`,
   `tests/unit/permissions.test.ts`, `tests/unit/access-grant.test.ts`.
   `type Capability` (`books.read`, `books.write`, `client.create`, `period.unlock`, `import.remove`, `close.batch`, `client.delete`,
   `org.settings`, `members.manage`, `org.transfer`) and `can(role, capability)` following the Roles table. `accessState(grants, firm, now)` returns
   `{ state, endsAt, daysLeft }`, with the Jakarta end-of-day rule. `ROLE_LABEL` moves here (four labels).
   — accept: table-driven unit tests cover every role × capability and every grant edge (open-ended, revoked, future-starting,
   overlapping, ends today 23:59 WIB, suspended).
-- [ ] **T03 Session v2 + client resolver.** After: T02. Files: `lib/auth/session.ts`, `lib/tenant.ts`, `tests/db/tenant-scope.test.ts`.
+- [~] **T03 Session v2 + client resolver.** After: T02. Files: `lib/auth/session.ts`, `lib/tenant.ts`, `tests/db/tenant-scope.test.ts`.
   `getWorkspaceSession()` also loads grants and assignments and returns `{ member, firm, access, clientIds: string[] | "ALL" }`. It returns
   null on NONE, and the `(app)` layout then sends the user to an *Akses ditutup* page (T10 styles it; T03 ships a plain one).
   `requireCapability(cap, { clientId? })` for actions throws `AccessError` (Bahasa message) on READ_ONLY writes, a missing
@@ -359,6 +362,8 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   Screenshots of the bar at desktop and 390 px.
 
 ## Implementation
+- Plan: the critical path T01 → T02 → T03 goes first, on this branch (claimed: driver). T15, T16 and T17 have no schema
+  dependency and are open for a second agent to take in parallel. Wave 2+ is claimed task by task after T03 lands.
 
 ## Verification
 
