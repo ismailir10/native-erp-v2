@@ -12,7 +12,9 @@ const balances = (month: Month) => {
   let b = opening(month);
   return TX.map((t) => (b += t.amt));
 };
-const date = (d: number, month: Month) => `${p2(d)}/${p2(month)}/2026`;
+/** September has 30 days: August's last-day row lands on the 30th. */
+const day = (d: number, month: Month) => (month === 9 ? Math.min(d, 30) : d);
+const date = (d: number, month: Month) => `${p2(day(d, month))}/${p2(month)}/2026`;
 
 /** CSV: a title block, the header, a "Saldo Awal" row, transactions with descriptions wrapped onto dateless rows, a total row. */
 export function unknownCsv(month: Month = 8): Buffer {
@@ -47,6 +49,6 @@ export function unknownPdf(month: Month = 8): Buffer {
 /** Workbook: one amount column with a separate D/C column, newest first, Excel dates. */
 export function unknownXlsx(month: Month = 8): Promise<Buffer> {
   const bal = balances(month);
-  const body = TX.map((t, i) => [new Date(Date.UTC(2026, month - 1, t.d)), t.desc.join(" "), Math.abs(t.amt), t.amt < 0 ? "D" : "C", bal[i]] as (string | number | Date)[]).reverse();
+  const body = TX.map((t, i) => [new Date(Date.UTC(2026, month - 1, day(t.d, month))), t.desc.join(" "), Math.abs(t.amt), t.amt < 0 ? "D" : "C", bal[i]] as (string | number | Date)[]).reverse();
   return xlsxBuffer("Kas", [["POSISI KAS HARIAN"], [], ["Value Dt", "Particulars", "Amt", "D/C", "Position"], ...body]);
 }

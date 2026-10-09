@@ -63,7 +63,7 @@ rows were read. No new dependency, no AI credit, no accounting-invariant change 
 ## Tasks
 - [x] T1 Grid extraction (`lib/import/grid.ts`): CSV/XLSX sheets and text-PDF lines → `string[][]` with row numbers; layout signature —
   accept: unit tests on synthetic CSV, XLSX and PDF fixtures (a PDF's columns line up with its header cells).
-- [ ] T2 Mapped reader (`lib/import/mapped.ts`): mapping → `ParsedStatement` (dates with guessed/overridden order, joined descriptions,
+- [x] T2 Mapped reader (`lib/import/mapped.ts`): mapping → `ParsedStatement` (dates with guessed/overridden order, joined descriptions,
   Debet+Kredit / Jumlah+sign/marker/column, Saldo, continuation and empty rows) — accept: unit tests per amount style and date order;
   a fixture's rows chain NYAMBUNG.
 - [ ] T3 Schema + draft (migration `StatementLayout`, `OcrDraft.source`; `createMappedDraft` in `lib/ocr/draft.ts` reusing `proveRows` and
@@ -84,6 +84,14 @@ rows were read. No new dependency, no AI credit, no accounting-invariant change 
   columns of the widest line at or just above the common row width — the header, so Debet and Kredit stay apart; `layoutSignature`:
   kind + normalised header words, null for a data row; `sameRow` for repeated page headers). Fixtures `tests/unknown-layout.ts`
   (CSV / PDF / XLSX in column words no reader knows; August or September). Test: `tests/unit/statement-grid.test.ts`.
+- T2: `lib/import/mapped.ts` (`checkMapping`: every named column exists, one job per column, Saldo required; `readMapped`: Debet + Kredit or
+  Jumlah with a D/K column, a marker in the cell or its sign; a "Saldo awal" row or the first balance as opening; dateless description rows
+  continue the transaction above, totals and page furniture skipped and counted; repeated headers skipped; newest-first reversed; year-less
+  dates take the given year and run on into January; words in an amount column refused with the row; `guessOrder`; `signatureOf`;
+  `suggestMapping`: date column = most dates, numbers = digit columns that aren't written dates, balance = the right-most, a D/K column,
+  every other text column joined as the description). Test: `tests/unit/statement-mapped.test.ts`. Checked locally (not committed)
+  on the real BCA PDF in `data/private/`: the suggested mapping plus the year reads 31 rows and the running balance chains.
 ## Verification
 - T1: lint clean · typecheck clean · `npm test` 200 files, 1329 passed.
+- T2: lint clean · typecheck clean · `npm test` 201 files, 1341 passed.
 ## Ship Notes
