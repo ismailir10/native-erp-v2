@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { db, makeGroup, resetDb } from "../helpers";
 import { createMappedDraft, importOcrDraft, ocrDraft } from "@/lib/ocr/draft";
+import { proveRows } from "@/lib/ocr/prove";
 import { importStatement } from "@/lib/import/pipeline";
 import { readGrid } from "@/lib/import/grid";
 import { suggestMapping, type ColumnMapping } from "@/lib/import/mapped";
@@ -50,6 +51,8 @@ describe("Atur kolom: a file the readers refuse, read with the accountant's mapp
     const draft = await createMappedDraft(db, { firmId: g.firm.id, clientId: g.client.id, bankAccountId: g.pt.banks[0].id, fileName: "kas.pdf", data, mapping: await mappingOf(data) });
     const view = await ocrDraft(db, g.firm.id, g.client.id, draft.id);
     expect(view.pages).toBe(1);
+    // No "Saldo awal" row and no earlier import: the opening is derived, and said so.
+    expect(view.header.openingSource).toBe("DERIVED");
     expect(view.proof.importable).toBe(true);
     const summary = await importOcrDraft(db, { firmId: g.firm.id, clientId: g.client.id, draftId: draft.id, provider: null });
     expect(summary.continuityOk).toBe(true);
@@ -74,6 +77,42 @@ describe("Atur kolom: a file the readers refuse, read with the accountant's mapp
     const badView = await ocrDraft(db, g.firm.id, g.client.id, bad.id);
     expect(badView.proof.rows.map((r) => r.state)).toEqual(["BREAK", "BREAK", "BREAK", "BREAK"]);
     expect(badView.proof.importable).toBe(false);
+  });
+
+  it("opens from the account's last imported closing when the file prints no Saldo awal, so a misread first row breaks", async () => {
+    const g = await makeGroup();
+    const bank = g.pt.banks[0];
+    const july = await createMappedDraft(db, { firmId: g.firm.id, clientId: g.client.id, bankAccountId: bank.id, fileName: "juli.csv", data: unknownCsv(7), mapping: await mappingOf(unknownCsv(7), { description: [2] }) });
+    await importOcrDraft(db, { firmId: g.firm.id, clientId: g.client.id, draftId: july.id, provider: null });
+    // August's PDF prints no Saldo awal; its first amount misread (55.500.000 → 55.000.000) with the printed balance kept.
+    const pdf = unknownPdf(8);
+    const august = await createMappedDraft(db, { firmId: g.firm.id, clientId: g.client.id, bankAccountId: bank.id, fileName: "agustus.pdf", data: pdf, mapping: await mappingOf(pdf) });
+    const view = await ocrDraft(db, g.firm.id, g.client.id, august.id);
+    expect(view.header.openingSource).toBe("PREVIOUS");
+    expect(view.opening).toBe(BigInt(OPEN));
+    expect(view.proof.importable).toBe(true);
+    const misread = view.rows.map((r, i) => (i === 0 ? { ...r, credit: 55_000_000n } : r));
+    expect(proveRows(misread, view.opening, null, { chained: true }).rows[0].state).toBe("BREAK");
+  });
+
+  it("leaves a day without a printed balance unproved: a Saldo column that is mostly empty can't prove the file", async () => {
+    const g = await makeGroup();
+    const data = Buffer.from(["Value Dt;Particulars;Withdrawn;Lodged;Position", "01/08/2026;SALDO AWAL;;;10.000.000", "01/08/2026;SETOR;;1.000.000;", "02/08/2026;BIAYA;5.000;;", "03/08/2026;BUNGA;;2.000;10.997.000", ""].join("\n"));
+    const mapping: ColumnMapping = { sheet: null, firstRow: 2, date: 0, description: [1], amount: { style: "split", debit: 2, credit: 3 }, balance: 4, order: "DMY", year: null };
+    const draft = await createMappedDraft(db, { firmId: g.firm.id, clientId: g.client.id, bankAccountId: g.pt.banks[0].id, fileName: "a.csv", data, mapping });
+    const view = await ocrDraft(db, g.firm.id, g.client.id, draft.id);
+    expect(view.proof.rows.map((r) => r.state)).toEqual(["NO_BALANCE", "NO_BALANCE", "OK"]);
+    expect(view.proof.importable).toBe(false);
+  });
+
+  it("refuses a file too long for one draft before the draft exists", async () => {
+    const g = await makeGroup();
+    let b = 10_000_000;
+    const rows = Array.from({ length: 2001 }, (_, i) => `01/08/2026;SETOR ${i};;1.000;${(b += 1000)}`);
+    const data = Buffer.from(["Value Dt;Particulars;Withdrawn;Lodged;Position", ...rows, ""].join("\n"));
+    const mapping: ColumnMapping = { sheet: null, firstRow: 2, date: 0, description: [1], amount: { style: "split", debit: 2, credit: 3 }, balance: 4, order: "DMY", year: null };
+    await expect(createMappedDraft(db, { firmId: g.firm.id, clientId: g.client.id, bankAccountId: g.pt.banks[0].id, fileName: "a.csv", data, mapping })).rejects.toThrow("File ini berisi 2.001 transaksi; Periksa baris menampung paling banyak 2.000.");
+    expect(await db.ocrDraft.count()).toBe(0);
   });
 
   it("doesn't remember a mapping of a file without a header row", async () => {

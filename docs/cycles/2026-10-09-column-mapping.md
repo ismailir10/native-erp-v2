@@ -16,34 +16,34 @@ the date, description, amount and balance columns, and Buku reads every row into
 of that layout imports straight away like any supported bank.
 
 ## Spec
-- [ ] **M1 No dead end** — when a CSV, XLSX/XLS or text PDF can't be read (no table found, or a section the reader refuses), the import
+- [x] **M1 No dead end** — when a CSV, XLSX/XLS or text PDF can't be read (no table found, or a section the reader refuses), the import
   card keeps the error and offers *Atur kolom* for that file and account. Scans keep *Baca scan dengan AI*; password-protected PDFs
   ask for the password first (as today).
-- [ ] **M2 The file as a grid** — CSV/XLSX: cells as written (one sheet at a time, a sheet picker for workbooks). Text PDF: each line's
+- [x] **M2 The file as a grid** — CSV/XLSX: cells as written (one sheet at a time, a sheet picker for workbooks). Text PDF: each line's
   text cut into columns at the x-positions the page uses (the reader's own `readLines` cells), page headers and footers left in so the
   accountant sees what Buku sees. The first 30 rows are shown with their row numbers; nothing is sent anywhere.
-- [ ] **M3 The mapping** — the accountant marks: the first transaction row (or the header row), *Tanggal*, *Keterangan* (one or more
+- [x] **M3 The mapping** — the accountant marks: the first transaction row (or the header row), *Tanggal*, *Keterangan* (one or more
   columns, joined), the amount as **Debet + Kredit** or as **Jumlah** with its direction from the sign, a marker in the cell
   (`CR/DB/D/K`, reusing `splitMarker`) or a separate direction column, and *Saldo* (optional; without it the draft can't prove itself
   and says so). Date order is guessed from the values (DD/MM vs MM/DD, month names, Excel serials) and can be switched. Rows without a
   date continue the previous row's description; rows whose amount cells are empty are skipped and counted. Buku previews the first
   5 rows read with the mapping before *Baca semua baris*.
-- [ ] **M4 Same draft, same proof** — reading with the mapping creates a draft on the existing *Periksa baris* page (`lib/ocr/draft.ts`,
+- [x] **M4 Same draft, same proof** — reading with the mapping creates a draft on the existing *Periksa baris* page (`lib/ocr/draft.ts`,
   `proveRows`): opening = the balance before the first row (or the previous import's closing, as for scans), each row proved by the
   running balance, editable, imported only when every row proves, through `importStatement` (dedupe, locked periods, Saldo Awal guard,
   classifier unchanged). The draft says *Dibaca dengan pemetaan kolom* instead of an AI model; no AI call, works with AI off.
-- [ ] **M5 Remembered** — on import the mapping is saved for the firm under the file's **layout signature** (file kind + the header
+- [x] **M5 Remembered** — on import the mapping is saved for the firm under the file's **layout signature** (file kind + the header
   row's normalised cells, or the column count + first-row shape when there is no header). The next file with the same signature, for
   any client of the firm, is read with it directly inside `parseStatementSections` (after the bank readers and the generic reader fail),
   goes through the normal import (continuity check, *Ada celah* if it breaks), and the result says *Dibaca dengan pemetaan kolom tersimpan*
   with *Lupakan pemetaan ini* (deletes it; the import stays). A signature never matches across firms.
-- [ ] **M6 Safe by construction** — amounts are parsed with `parseRupiah` / `splitMarker` into `bigint`; a mapped read that yields no rows,
+- [x] **M6 Safe by construction** — amounts are parsed with `parseRupiah` / `splitMarker` into `bigint`; a mapped read that yields no rows,
   a date outside 2000–2100 or an amount beyond 15 digits is refused with the row number (as the pipeline does today). Tenant scoping
   through `getClientForFirm`; the grid and the mapping are built server-side from the uploaded file, never from client-sent cell text.
 - [ ] **M7 Production check** — after merge, on a throwaway client *Uji Kolom (hapus)*: an unknown-layout CSV and an unknown-layout text PDF
   (synthetic, `tests/`) go through *Atur kolom* → *Periksa baris* → import with *Saldo nyambung*; next month's file of the same layout
   imports straight away; then the client is deleted. No real client is touched.
-- [ ] **Deck (ship step 3)** — review the bank claims ("25 bank … MT940") and add "bank lain: tunjuk kolomnya sekali" only if M5 shipped.
+- [x] **Deck (ship step 3)** — review the bank claims ("25 bank … MT940") and add "bank lain: tunjuk kolomnya sekali" only if M5 shipped.
 
 **Non-goals:** AI reading of text files (stays deterministic); editing a saved mapping (forget it and map again); mapping for scans (AI
 scan reader); foreign-currency statements (still listed, not imported); batch upload of several files at once (next cycle); changing
@@ -114,6 +114,18 @@ rows were read. No new dependency, no AI credit, no accounting-invariant change 
   test-runner import, so e2e can build files). Test: `e2e/statement-column-mapping.spec.ts` (CSV: notice → mapper guess → Ref column
   dropped → preview → 390px without page scroll → draft proves → import → August's file read with the saved layout → forget → refused
   again; PDF: Debet/Kredit apart → import). Screenshots looked at: desktop 1440 and 390.
+- Review round (independent review of the branch): (1) a remembered layout whose header matches but whose rows don't read was a plain
+  error — now an `UnreadableFileError`, so the import page offers *Atur kolom* again (the new mapping replaces the old on import);
+  (2) the opening of a mapped draft was always derived from the first balance, so the first rows proved nothing: now a "Saldo awal" row,
+  else the account's last imported closing (`PREVIOUS`, as for scans), else derived and labelled `DERIVED` on *Periksa baris*; and the
+  chained proof only reaches back **within one date** — a day ending without a printed balance stays unproved, so a Saldo column mapped to a
+  mostly empty column can't prove a file; (3) a file over 2.000 rows is refused at the preview and before the draft (`checkDraftSize`), not
+  after. Also: *Baca semua baris* waits for the preview of the mapping on screen; opening the mapper clears the previous file's result (one
+  primary button); comments corrected. Kept as is (stated): a rule-12 repair refusal also offers *Atur kolom* (mapping can't fix it — the
+  draft then shows the same break); a year-less newest-first file spanning New Year is read in file order (rare; the proof still shows it).
+- Deck (ship step 3): `public/deck/kantor.html` slide 05 — "CSV, Excel, dan file lain" becomes **"Bank lain: tunjuk kolomnya sekali"**, PDF
+  regenerated (`npm run deck:pdf`, 17 slides). `perusahaan.html` unchanged (the client company never maps). README Import row,
+  `docs/real-data.md` and the AGENTS repo map name Atur kolom.
 ## Verification
 - T1: lint clean · typecheck clean · `npm test` 200 files, 1329 passed.
 - T2: lint clean · typecheck clean · `npm test` 201 files, 1341 passed.
@@ -121,4 +133,12 @@ rows were read. No new dependency, no AI credit, no accounting-invariant change 
 - T4: lint clean · typecheck clean · `npm test` 203 files, 1352 passed.
 - T5: lint clean · typecheck clean · `npm test` 203 files, 1352 passed · e2e column-mapping, ocr-scan, qa-import-edge-cases, import-xls,
   statements, statement-mismatch: 12 passed.
+- End of cycle: lint clean · typecheck clean · `npm test` 203 files, 1352 passed · `npm run build` ok · `demo:reset && verify:books` →
+  ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth · `npm run test:e2e` → 64 passed (3.6m).
+- After the review round: lint clean · typecheck clean · `npm test` 203 files, 1355 passed · build ok · e2e column-mapping, ocr-scan,
+  qa-import-edge-cases: 9 passed.
 ## Ship Notes
+- **Migration** `20261009150000_statement_layouts` (additive: `StatementLayout` table, `OcrDraft.source` default `OCR`); applied by the
+  Vercel build (`prisma migrate deploy`). No env var, no new dependency, no AI calls.
+- Manual steps: none. Production check (M7) after merge on a throwaway client, deleted afterwards.
+- Rollback: revert the merge; the migration may stay (an unused table and column). Imports made through Atur kolom are ordinary imports.

@@ -9,7 +9,7 @@ export { readAmount };
 import { importStatement, type ImportSummary } from "@/lib/import/pipeline";
 import { bankName } from "@/lib/banks";
 import { readGrid } from "@/lib/import/grid";
-import { readMapped, signatureOf, type ColumnMapping } from "@/lib/import/mapped";
+import { readMappedDetail, signatureOf, type ColumnMapping } from "@/lib/import/mapped";
 import { OcrError, pageImages } from "@/lib/ocr/pages";
 import { proveRows, type OcrRow, type Proof } from "@/lib/ocr/prove";
 import { buildOcrPrompt, OCR_MAX_TOKENS, OCR_PROMPT_VERSION, OCR_TOKENS_PER_PAGE, type OcrTranscript } from "@/lib/ocr/transcribe";
@@ -29,6 +29,13 @@ export async function setOcrEnabled(db: Pick<Db, "appSetting">, on: boolean) {
 }
 
 const OCR_TOKEN_LIMIT = 120_000;
+/** Rows a *Periksa baris* draft holds (each is an editable line on the page). */
+export const DRAFT_MAX_ROWS = 2000;
+
+/** A file too long for one draft is refused before the draft exists, with what to do. */
+export function checkDraftSize(rows: number) {
+  if (rows > DRAFT_MAX_ROWS) throw new OcrError(`File ini berisi ${rows.toLocaleString("id-ID")} transaksi; Periksa baris menampung paling banyak 2.000. Pecah filenya per bulan atau per tanggal, lalu baca tiap bagian.`);
+}
 const digits = (s: string | null | undefined) => (s ?? "").replace(/\D/g, "");
 
 type StoredRow = { date: string; description: string; debit: string | null; credit: string | null; balance: string | null };
@@ -39,7 +46,7 @@ const json = (v: unknown) => JSON.parse(JSON.stringify(v)) as Prisma.InputJsonVa
 async function bankFor(db: Db, firmId: string, clientId: string, bankAccountId: string) {
   const bank = await db.bankAccount.findFirst({ where: { id: bankAccountId, firmId, entity: { clientId } }, include: { entity: true } });
   if (!bank) throw new OcrError("Rekening tidak ditemukan untuk klien ini.");
-  if (bank.currency !== "IDR" || bank.entity.functionalCurrency !== "IDR") throw new OcrError("Baca scan baru untuk rekening Rupiah.");
+  if (bank.currency !== "IDR" || bank.entity.functionalCurrency !== "IDR") throw new OcrError("Periksa baris baru untuk rekening Rupiah.");
   return bank;
 }
 
@@ -105,7 +112,8 @@ export type OcrDraftView = {
   fileName: string;
   pages: number;
   model: string;
-  header: { bank: string; accountNumber: string; periodStart: string; periodEnd: string; openingSource: "PRINTED" | "PREVIOUS" | "MANUAL" | null };
+  /** DERIVED (Atur kolom only): the first printed balance less its movement — the first rows then prove nothing on their own. */
+  header: { bank: string; accountNumber: string; periodStart: string; periodEnd: string; openingSource: "PRINTED" | "PREVIOUS" | "MANUAL" | "DERIVED" | null };
   opening: bigint | null;
   closing: bigint | null;
   rows: OcrRow[];
@@ -132,7 +140,7 @@ export type OcrRowInput = { date: string; description: string; debit: string; cr
 export async function updateOcrDraft(db: Db, input: { firmId: string; clientId: string; draftId: string; rows: OcrRowInput[]; opening: string; closing: string }) {
   const d = await ocrDraft(db, input.firmId, input.clientId, input.draftId);
   if (d.status !== "DRAFT") throw new OcrError("Draf ini sudah diimpor.");
-  if (input.rows.length > 2000) throw new OcrError("Maksimal 2.000 baris.");
+  if (input.rows.length > DRAFT_MAX_ROWS) throw new OcrError("Maksimal 2.000 baris.");
   const amount = (t: string, what: string, i: number) => {
     if (!t.trim()) return null;
     const v = readAmount(t);
@@ -200,7 +208,13 @@ type MappedHeader = OcrDraftView["header"] & { layout?: StoredLayout };
 export async function createMappedDraft(db: Db, input: { firmId: string; clientId: string; bankAccountId: string; fileName: string; data: Buffer; password?: string; mapping: ColumnMapping; actorId?: string | null }) {
   const bank = await bankFor(db, input.firmId, input.clientId, input.bankAccountId);
   const grid = await readGrid(input.data, { password: input.password });
-  const st = readMapped(grid, input.mapping, { fileName: input.fileName });
+  const { statement: st, printedOpening } = readMappedDetail(grid, input.mapping, { fileName: input.fileName });
+  checkDraftSize(st.rows.length);
+  // Opening: a "Saldo awal" row of the file; else the account's last imported closing (as for scans), an independent check of the first
+  // rows; else the first balance less its movement, said so (the first rows then prove nothing on their own).
+  const previous = printedOpening ? null : await previousClosing(db, bank.id, st.periodStart.toISOString().slice(0, 10));
+  const opening = printedOpening ? st.openingBalance : (previous ?? st.openingBalance);
+  const openingSource = printedOpening ? "PRINTED" : previous !== null ? "PREVIOUS" : "DERIVED";
   const iso = (d: Date) => d.toISOString().slice(0, 10);
   const rows: OcrRow[] = st.rows.map((r) => ({ date: iso(r.date), description: r.description.slice(0, 240), debit: r.amount < 0n ? -r.amount : null, credit: r.amount > 0n ? r.amount : null, balance: r.balance }));
   const signature = signatureOf(grid, input.mapping);
@@ -216,9 +230,9 @@ export async function createMappedDraft(db: Db, input: { firmId: string; clientI
       pages: grid.pages,
       model: "",
       source: "MAPPING",
-      header: json({ bank: st.format === "GENERIC" ? "" : bankName(st.format), accountNumber: "", periodStart: iso(st.periodStart), periodEnd: iso(st.periodEnd), openingSource: "PRINTED", layout }),
+      header: json({ bank: st.format === "GENERIC" ? "" : bankName(st.format), accountNumber: "", periodStart: iso(st.periodStart), periodEnd: iso(st.periodEnd), openingSource, layout }),
       rows: json(rows.map(toStored)),
-      opening: st.openingBalance.toString(),
+      opening: opening.toString(),
       closing: null,
       createdById: input.actorId ?? null,
     },

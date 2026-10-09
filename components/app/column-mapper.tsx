@@ -106,7 +106,8 @@ export function ColumnMapper({
   const [order, setOrder] = useState<"DMY" | "MDY">("DMY");
   const [year, setYear] = useState("");
   const [needsYear, setNeedsYear] = useState(false);
-  const [preview, setPreview] = useState<{ ok: true; data: MappedPreview } | { ok: false; error: string } | null>(null);
+  // The preview answers one mapping (`key`): *Baca semua baris* waits until it answers the mapping on screen.
+  const [preview, setPreview] = useState<({ ok: true; data: MappedPreview } | { ok: false; error: string }) & { key: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [pending, start] = useTransition();
   const seq = useRef(0);
@@ -167,13 +168,14 @@ export function ColumnMapper({
   useEffect(() => {
     if (!mapping) return;
     const n = ++seq.current;
+    const key = JSON.stringify(mapping);
     const t = setTimeout(async () => {
-      const r = await mappedPreviewAction(form({ mapping: JSON.stringify(mapping) }));
+      const r = await mappedPreviewAction(form({ mapping: key }));
       if (n !== seq.current) return;
-      if (r.ok) setPreview({ ok: true, data: r.preview });
+      if (r.ok) setPreview({ ok: true, data: r.preview, key });
       else {
         if (r.needsYear) setNeedsYear(true);
-        setPreview({ ok: false, error: r.error });
+        setPreview({ ok: false, error: r.error, key });
       }
     }, 250);
     return () => clearTimeout(t);
@@ -386,7 +388,7 @@ export function ColumnMapper({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <Button disabled={pending || !preview?.ok} onClick={readAll}>
+              <Button disabled={pending || !preview?.ok || preview.key !== JSON.stringify(mapping)} onClick={readAll}>
                 {pending ? <Loader2 className="animate-spin" /> : null} Baca semua baris
               </Button>
               <Button variant="ghost" disabled={pending} onClick={onCancel}>

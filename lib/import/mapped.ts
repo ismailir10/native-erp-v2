@@ -3,13 +3,14 @@ import { dateOnly } from "@/lib/format";
 import { parseRupiah } from "@/lib/money";
 import { chronologicalOrder, closingFromRows, dateParts, dayMonthEvidence, monthBoundsOf, openingFromBalances, splitMarker, type DayMonthOrder } from "@/lib/import/parsers/common";
 import { guessYear } from "@/lib/import/parsers/tabular";
-import { layoutSignature, sameRow, type Grid, type GridKind, type GridSheet } from "@/lib/import/grid";
-import { ParseError, YearNeededError, type ParsedRow, type ParsedStatement } from "@/lib/import/types";
+import { layoutSignature, sameRow, type Grid, type GridSheet } from "@/lib/import/grid";
+import { ParseError, UnreadableFileError, YearNeededError, type ParsedRow, type ParsedStatement } from "@/lib/import/types";
 
 /**
  * *Atur kolom*: the accountant's reading of a file Buku's readers don't know. Columns are 0-based indexes of the grid (`lib/import/grid.ts`),
  * rows are the grid's 1-based row numbers. Deterministic: the same file and mapping always read the same rows, and every row is then proved
- * by its running balance (the draft's proof, or the import's continuity check) — a wrong mapping can't post in silence.
+ * by its running balance: a first mapping only imports once its draft proves on *Periksa baris*; a file read with a remembered layout goes
+ * through the import's continuity check like any file (a misread shows as *Ada celah*, as for the generic reader).
  */
 export type AmountMapping =
   | { style: "split"; debit: number; credit: number }
@@ -148,6 +149,11 @@ const OPENING_ROW = /saldo\s*awal|opening\s*balance|beginning\s*balance|saldo\s*
  * headers, totals, footers) are skipped and counted in a note.
  */
 export function readMapped(grid: Grid, m: ColumnMapping, ctx: { fileName?: string } = {}): ParsedStatement {
+  return readMappedDetail(grid, m, ctx).statement;
+}
+
+/** `readMapped` and whether its opening was printed (a "Saldo awal" row) rather than derived from the first balance and its movement. */
+export function readMappedDetail(grid: Grid, m: ColumnMapping, ctx: { fileName?: string } = {}): { statement: ParsedStatement; printedOpening: boolean } {
   const sheet = checkMapping(m, grid);
   const header = headerOf(sheet, m.firstRow);
   const isXlsx = grid.kind === "XLSX";
@@ -201,13 +207,16 @@ export function readMapped(grid: Grid, m: ColumnMapping, ctx: { fileName?: strin
   const { start, end } = monthBoundsOf(rows);
   const preamble = sheet.rows.slice(0, m.firstRow - 1).map((r) => r.join(" ")).join("\n");
   const notes = skipped ? [`${skipped} baris tanpa tanggal atau tanpa nominal dilewati (judul halaman, total, catatan).`] : [];
-  return { format: detectBank(preamble), accountNumber: null, periodStart: start, periodEnd: end, openingBalance: opening, closingBalance: closingFromRows(rows, opening), rows, notes };
+  return {
+    statement: { format: detectBank(preamble), accountNumber: null, periodStart: start, periodEnd: end, openingBalance: opening, closingBalance: closingFromRows(rows, opening), rows, notes },
+    printedOpening: printedOpening !== null,
+  };
 }
 
 /**
  * A first guess at the mapping, for the accountant to correct: the date column is the one with most dates, the first transaction row the
  * first with a date there and a number elsewhere, the balance the right-most number column, the amounts the number columns before it,
- * the description the widest text column. Never applied without the accountant's click.
+ * every other column with text joined as the description. Never applied without the accountant's click.
  */
 export function suggestMapping(grid: Grid, sheetName?: string | null): ColumnMapping {
   const sheet = (grid.kind === "XLSX" && sheetName ? grid.sheets.find((s) => s.name === sheetName) : null) ?? grid.sheets[0];
@@ -265,7 +274,8 @@ export function readWithLayout(grid: Grid, layouts: RememberedLayout[], ctx: { f
       try {
         st = readMapped(grid, mapping, ctx);
       } catch (e) {
-        if (e instanceof ParseError && !(e instanceof YearNeededError)) throw new ParseError(`File ini cocok dengan pemetaan kolom tersimpan ("${layout.label}"), tetapi tidak terbaca: ${e.message}`);
+        // Still a file the accountant can map again (the new mapping replaces this one on import).
+        if (e instanceof ParseError && !(e instanceof YearNeededError)) throw new UnreadableFileError(`File ini cocok dengan pemetaan kolom tersimpan ("${layout.label}"), tetapi tidak terbaca: ${e.message}`);
         throw e;
       }
       return { ...st, layout: { id: layout.id, label: layout.label }, notes: [`Dibaca dengan pemetaan kolom tersimpan (dari "${layout.label}").`, ...(st.notes ?? [])] };
@@ -274,4 +284,3 @@ export function readWithLayout(grid: Grid, layouts: RememberedLayout[], ctx: { f
   return null;
 }
 
-export type { GridKind };

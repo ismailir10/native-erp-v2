@@ -5,7 +5,7 @@ import { importStatement } from "@/lib/import/pipeline";
 import { readGrid } from "@/lib/import/grid";
 import { suggestMapping } from "@/lib/import/mapped";
 import { forgetLayout } from "@/lib/import/layouts";
-import { ParseError, UnreadableFileError } from "@/lib/import/types";
+import { UnreadableFileError } from "@/lib/import/types";
 import { createClient, createFirm } from "@/lib/setup";
 import { unknownCsv, unknownXlsx } from "../unknown-layout";
 
@@ -64,7 +64,8 @@ describe("a remembered Atur kolom layout", () => {
     await mapAugust(g);
     const broken = Buffer.from(["Value Dt;Ref;Particulars;Withdrawn;Lodged;Position", "01/09/2026;R1;SETOR;TUNAI;;100", ""].join("\n"));
     const err = await importStatement(db, { bankAccountId: g.pt.banks[1].id, fileName: "x.csv", data: broken, provider: null }).catch((e) => e);
-    expect(err).toBeInstanceOf(ParseError);
+    // Still a file the accountant can map again: the import page offers Atur kolom.
+    expect(err).toBeInstanceOf(UnreadableFileError);
     expect(err.message).toBe('File ini cocok dengan pemetaan kolom tersimpan ("kas-agustus.csv"), tetapi tidak terbaca: Baris 2: kolom Debet berisi "TUNAI", bukan angka. Periksa pemetaan kolomnya.');
   });
 

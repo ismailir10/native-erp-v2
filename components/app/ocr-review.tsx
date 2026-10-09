@@ -76,7 +76,7 @@ export function OcrReview({ clientId, draftId, imported, openingSource, source =
           <Field>
             <FieldLabel htmlFor="ocr-opening">Saldo awal</FieldLabel>
             <Input id="ocr-opening" inputMode="decimal" className="num text-right" disabled={imported} value={d.opening} onChange={(e) => setD({ ...d, opening: e.target.value })} />
-            <FieldDescription>{openingSource === "PRINTED" ? (mapped ? "Dari file: baris saldo awal, atau saldo pertama dikurangi mutasinya." : "Tercetak di scan.") : openingSource === "PREVIOUS" ? "Dari saldo akhir impor sebelumnya rekening ini (tidak tercetak di scan)." : openingSource === "MANUAL" ? "Diisi akuntan." : "Isi dari scan atau dari saldo akhir bulan sebelumnya."}</FieldDescription>
+            <FieldDescription>{openingSource === "PRINTED" ? (mapped ? "Dari baris saldo awal di file." : "Tercetak di scan.") : openingSource === "DERIVED" ? "Dihitung dari saldo pertama di file dikurangi mutasinya, jadi baris pertama belum teruji sendiri. Bandingkan dengan saldo akhir bulan sebelumnya." : openingSource === "PREVIOUS" ? "Dari saldo akhir impor sebelumnya rekening ini (tidak tercetak di scan)." : openingSource === "MANUAL" ? "Diisi akuntan." : "Isi dari scan atau dari saldo akhir bulan sebelumnya."}</FieldDescription>
           </Field>
           <Field>
             <FieldLabel htmlFor="ocr-closing">Saldo akhir (bila tercetak)</FieldLabel>

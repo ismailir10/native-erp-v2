@@ -3,9 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { getClientForFirm, getCurrentFirm, getCurrentMember } from "@/lib/tenant";
-import { createMappedDraft, createOcrDraft, importOcrDraft, ocrEnabled, updateOcrDraft, type OcrRowInput } from "@/lib/ocr/draft";
+import { checkDraftSize, createMappedDraft, createOcrDraft, importOcrDraft, ocrEnabled, updateOcrDraft, type OcrRowInput } from "@/lib/ocr/draft";
 import { readGrid } from "@/lib/import/grid";
-import { checkMapping, mappingFromJson, MAX_COLUMNS, readMapped, suggestMapping, type ColumnMapping } from "@/lib/import/mapped";
+import { mappingFromJson, MAX_COLUMNS, readMapped, suggestMapping, type ColumnMapping } from "@/lib/import/mapped";
 import { forgetLayout } from "@/lib/import/layouts";
 import { OcrError } from "@/lib/ocr/pages";
 import { clearReportComment, CommentError, draftCommentary, saveReportComment } from "@/lib/reports/report-comment";
@@ -173,14 +173,15 @@ export async function mappedPreviewAction(formData: FormData): Promise<Result<{ 
     const { data, password, file } = await mappingUpload(formData);
     const mapping = mappingFromJson(String(formData.get("mapping") ?? ""));
     const grid = await readGrid(data, { password });
-    checkMapping(mapping, grid);
     const st = readMapped(grid, mapping, { fileName: file.name });
+    checkDraftSize(st.rows.length);
     const iso = (d: Date) => d.toISOString().slice(0, 10);
     return {
       ok: true,
       preview: { rows: st.rows.slice(0, 5).map((r) => ({ row: r.rowNumber, date: iso(r.date), description: r.description, amount: r.amount.toString(), balance: r.balance?.toString() ?? null })), total: st.rows.length, notes: st.notes ?? [], opening: st.openingBalance.toString() },
     };
   } catch (e) {
+    if (e instanceof OcrError) return { ok: false, error: e.message };
     return fail(e);
   }
 }

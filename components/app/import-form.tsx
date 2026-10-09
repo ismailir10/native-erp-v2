@@ -284,7 +284,11 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
             <div role="alert" className="space-y-2 rounded-md border border-review/40 bg-review-subtle px-3 py-2 text-sm" data-testid="mappable-notice">
               <p>{mappable.error}</p>
               <p className="text-muted-foreground">Buku bisa membacanya bila Anda menunjuk kolom tanggal, keterangan, nominal dan saldonya sekali. Susunan ini lalu diingat untuk file berikutnya.</p>
-              <Button size="sm" variant="outline" disabled={pending} onClick={() => setMapping(true)}>
+              <Button size="sm" variant="outline" disabled={pending} onClick={() => {
+                  // The last result belongs to another file; its primary next step would compete with the mapper's.
+                  setResult(null);
+                  setMapping(true);
+                }}>
                 <TableProperties /> Atur kolom
               </Button>
             </div>
