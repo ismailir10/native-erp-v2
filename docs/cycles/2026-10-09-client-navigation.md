@@ -114,4 +114,5 @@ persisting anything on the server.
 - Settings page title is now *Pengaturan kantor* (it was *Pengaturan*), matching the sidebar.
 - Left alone on purpose: Beranda, Dokumen and Laporan still pick a client with their header select (it filters that page); the palette
   is the way to *open* a client.
+- Deck: no deck change. `public/deck/*` makes no claim about the sidebar, client switching or shortcuts.
 - Rollback: revert; nothing is stored server-side.
