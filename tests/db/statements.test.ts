@@ -126,8 +126,8 @@ describe("equity changes, cash flow, other comprehensive income", () => {
       });
       return out;
     };
-    expect(find("Neraca", "Total aset")).toEqual([875_000_000, 600_000_000]);
-    expect(find("Neraca", "Total liabilitas & ekuitas")).toEqual([875_000_000, 600_000_000]);
+    expect(find("Neraca", "Jumlah aset")).toEqual([875_000_000, 600_000_000]);
+    expect(find("Neraca", "Jumlah liabilitas dan ekuitas")).toEqual([875_000_000, 600_000_000]);
     expect(find("Laba Rugi", "Laba bersih")).toEqual([37_000_000, 100_000_000]);
     expect(find("Laba Rugi", "Total penghasilan komprehensif")).toEqual([35_000_000, 100_000_000]);
     expect(find("Perubahan Ekuitas", "Saldo 31 Desember 2026")).toEqual([500_000_000, 117_000_000, -2_000_000, 615_000_000]);

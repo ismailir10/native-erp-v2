@@ -30,7 +30,7 @@ describe("statements PDF", () => {
     const pdf = await getDocumentProxy(new Uint8Array(buf));
     const { totalPages, text } = await extractText(pdf, { mergePages: false });
     const all = text.join("\n");
-    for (const s of ["Laporan Posisi Keuangan", "Laporan Laba Rugi", "Catatan atas Laporan Keuangan", "Dinyatakan dalam ribuan Rupiah", "LABA BERSIH TAHUN BERJALAN", "Total aset", "Per 31 Maret 2026"]) expect(all, s).toContain(s);
+    for (const s of ["Laporan Posisi Keuangan", "Laporan Laba Rugi", "Catatan atas Laporan Keuangan", "Dinyatakan dalam ribuan Rupiah", "LABA BERSIH TAHUN BERJALAN", "Jumlah aset", "Per 31 Maret 2026"]) expect(all, s).toContain(s);
     // Every page: the entity, a DRAF line (the reasons on the first page) and its number.
     text.forEach((page, i) => {
       expect(page).toContain("PT Uji Coba");

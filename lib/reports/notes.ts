@@ -156,7 +156,12 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
     const old = isPrior ? pick(isPrior) : [];
     return [...new Set([...pick(is), ...old].map((i) => i.fsLine))].map((k) => ({ k, cur: pick(is).find((i) => i.fsLine === k), old: old.find((i) => i.fsLine === k) }));
   };
-  for (const { k, cur: c, old } of [...plKeys((i) => i.revenue), ...plKeys((i) => i.cogs), ...plKeys((i) => i.opex), ...plKeys((i) => i.other), ...plKeys((i) => i.tax)]) {
+  // The Laba Rugi nets other income and other expenses in one section (expenses negative there); a note shows an expense as an expense,
+  // positive like every other expense note.
+  const positive = (i: FsItem | undefined): FsItem | undefined => (i ? { ...i, amount: -i.amount, accounts: i.accounts.map((a) => ({ ...a, amount: -a.amount })) } : i);
+  const otherExpense = new Set<string>(["BEBAN_LAIN", "UNMAPPED_EXPENSE"]); // only ever in `other`, negated (lib/reports/ledger.ts)
+  for (const { k, cur: c0, old: o0 } of [...plKeys((i) => i.revenue), ...plKeys((i) => i.cogs), ...plKeys((i) => i.opex), ...plKeys((i) => i.other), ...plKeys((i) => i.tax)]) {
+    const [c, old] = otherExpense.has(k) ? [positive(c0), positive(o0)] : [c0, o0];
     lineByKey.set(`PL:${k}`, lineNote((c ?? old)!.label.replace(/^./, (x) => x.toUpperCase()), c, old, plCols));
   }
 

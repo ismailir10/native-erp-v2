@@ -60,7 +60,7 @@ Approval: the owner's brief in-session ("continue improving Buku until we are pr
   - An intercompany account with a debit balance at the period end is *Pinjaman kepada pihak berelasi* (investing). With a credit
     balance it is *Pinjaman dari pihak berelasi* (financing).
   - The totals and the check against the Neraca's cash are unchanged.
-- [ ] **P5 Wording and print.**
+- [x] **P5 Wording and print.**
   - The default format says *Jumlah aset*, *Jumlah liabilitas* and *Jumlah liabilitas dan ekuitas*. A client's saved format keeps its own
     labels.
   - The CALK expense notes print expenses positive, *Beban lain-lain* included.
@@ -93,7 +93,7 @@ it prints.
   "."). The rendered pages are inspected by eye.
 - [x] T4 Arus Kas presentation + intercompany by side. Accept: db test (a debit 1190 → investing, credit → financing; the totals still
   equal the change in cash); export labels carry no "(1130)".
-- [ ] T5 Wording + print (Jumlah …, expense-note signs, `fitToPage`). Accept: the updated tests; the workbook's sheets have
+- [x] T5 Wording + print (Jumlah …, expense-note signs, `fitToPage`). Accept: the updated tests; the workbook's sheets have
   `fitToPage`.
 - [ ] T6 End-of-cycle gates. Re-download the three packs and look at every page. Ship Notes.
 
@@ -114,11 +114,15 @@ it prints.
   berelasi*, investing; else *Pinjaman dari pihak berelasi*, financing — one `lineOf` inside `cashFlow` for every use, so the non-cash
   and disposal paths agree), `statement-set.ts` (export labels without codes; Laba bersih → *Penyesuaian:* → *Perubahan modal kerja:*).
   The page keeps its codes for drill-down. Test: `tests/db/cashflow-presentation.test.ts` (new, 2: both sides, totals = change in cash;
-  export order, no codes).
+  export order, no codes).- T5: `format.ts` (default Neraca totals *Jumlah aset*, *Jumlah liabilitas*, *Jumlah liabilitas dan ekuitas*; saved formats keep their
+  labels), `notes.ts` (BEBAN_LAIN / UNMAPPED_EXPENSE notes positive: the Laba Rugi's "other" section nets them negative), `workbook.ts`
+  (`PRINT_SETUP`: A4, `fitToPage`, one page wide, on every sheet incl. the directors' statement; the DRAF line wraps across the columns).
+  Tests: `report-final-wording.test.ts` (+1), labels updated in `report-format`, `statements`, `report-pdf` tests.
 ## Verification
 - T1: lint clean · typecheck clean · `npm test` 195 files, 1311 passed.
 - T2: lint + typecheck clean · report-final-wording, statements, report-pdf: all passed (full suite at T3).
 - T3: lint clean · typecheck clean · `npm test` 196 files, 1312 passed.
 - T4: lint clean · typecheck clean · `npm test` 197 files, 1314 passed · `demo:reset && verify:books` → ALL PASS — 1765 (a run on the
   e2e-touched demo first showed CV Sinar 6190 off; reset → ALL PASS: data left by the e2e walk, not this change).
+- T5: lint clean · typecheck clean · `npm test` 197 files, 1315 passed.
 ## Ship Notes

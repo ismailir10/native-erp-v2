@@ -37,4 +37,16 @@ describe("final set wording", () => {
     expect(await subtitle()).toBe("Per 30 September 2026 dan untuk periode yang berakhir pada tanggal tersebut");
     expect(await subtitle("1 transaksi masih di Review")).toBe("Per 30 September 2026 dan untuk periode yang berakhir pada tanggal tersebut (draf)");
   });
+
+  it("prints every sheet one page wide, and an other-expense note shows the expense positive", async () => {
+    const scope = await books();
+    const id = async (code: string) => (await db.account.findFirstOrThrow({ where: { clientId: scope.clientId, code } })).id;
+    await db.$transaction(async (tx) => postJournal(tx, { entityId: scope.entityIds[0], date: dateOnly(2026, 5, 31), kind: "ADJUSTMENT", memo: "admin bank", lines: [{ accountId: await id("7100"), debit: 75_000n }, { accountId: await id("1110"), credit: 75_000n }] }));
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(await financialStatementsWorkbook(db, scope, 2026, 9, { firm: "KJA Uji", title: "PT Uji", draft: "x" }) as unknown as ArrayBuffer);
+    for (const ws of wb.worksheets) expect([ws.name, ws.pageSetup.fitToPage, ws.pageSetup.fitToWidth, ws.pageSetup.fitToHeight]).toEqual([ws.name, true, 1, 0]);
+    const note = (await financialNotes(db, scope, 2026, 9)).notes.find((n) => n.title === "Beban lain-lain")!;
+    expect(note.tables[0].total).toEqual(["Jumlah", 75_000n]);
+    expect(note.tables[0].rows[0].slice(1)).toEqual([75_000n]);
+  });
 });
