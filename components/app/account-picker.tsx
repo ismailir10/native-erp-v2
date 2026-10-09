@@ -7,11 +7,13 @@ import { ComboboxCollection, ComboboxContent, ComboboxEmpty, ComboboxGroup, Comb
 import { cn } from "@/lib/utils";
 
 export type AccountOption = { code: string; name: string; group: string };
+/** How an option reads in the list and on the trigger: "6150 Beban pemasaran" for accounts. */
+const codeAndName = (o: AccountOption) => `${o.code} ${o.name}`;
 type Item = { value: string; label: string };
 type Group = { value: string; items: Item[] };
 
 /**
- * Searchable account select: looks like a Select, opens a list with a search box on top. Type a code ("6150") or part
+ * Searchable select (accounts; banks through `BankPicker`): looks like a Select, opens a list with a search box on top. Type a code ("6150") or part
  * of a name ("pemasaran"). `extra` items (e.g. "+ Buat akun baru") come first, outside any group. The first match is highlighted,
  * so Enter picks it; keys typed on the closed trigger open the list with them already in the search (none lost while it opens).
  */
@@ -24,6 +26,9 @@ export function AccountPicker({
   placeholder = "Pilih akun",
   disabled,
   className,
+  searchPlaceholder = "Cari kode atau nama akun",
+  emptyText = "Tidak ada akun yang cocok.",
+  labelOf = codeAndName,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -33,12 +38,15 @@ export function AccountPicker({
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  searchPlaceholder?: string;
+  emptyText?: string;
+  labelOf?: (o: AccountOption) => string;
 }) {
   const groups = useMemo<Group[]>(() => {
     const byGroup = new Map<string, Item[]>();
-    for (const o of options) byGroup.set(o.group, [...(byGroup.get(o.group) ?? []), { value: o.code, label: `${o.code} ${o.name}` }]);
+    for (const o of options) byGroup.set(o.group, [...(byGroup.get(o.group) ?? []), { value: o.code, label: labelOf(o) }]);
     return [...(extra.length ? [{ value: "", items: extra }] : []), ...[...byGroup].map(([g, items]) => ({ value: g, items }))];
-  }, [options, extra]);
+  }, [options, extra, labelOf]);
   const selected = useMemo(() => groups.flatMap((g) => g.items).find((i) => i.value === value) ?? null, [groups, value]);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -80,10 +88,10 @@ export function AccountPicker({
       <ComboboxContent className="min-w-72">
         <ComboboxPrimitive.Input
           aria-label={`Cari ${ariaLabel.charAt(0).toLowerCase()}${ariaLabel.slice(1)}`}
-          placeholder="Cari kode atau nama akun"
+          placeholder={searchPlaceholder}
           className="m-1 h-8 w-[calc(100%-0.5rem)] rounded-md border border-input bg-card px-2 text-sm outline-none focus-visible:border-ring"
         />
-        <ComboboxEmpty>Tidak ada akun yang cocok.</ComboboxEmpty>
+        <ComboboxEmpty>{emptyText}</ComboboxEmpty>
         <ComboboxList>
           {(group: Group) => (
             <ComboboxGroup key={group.value || "_extra"} items={group.items}>

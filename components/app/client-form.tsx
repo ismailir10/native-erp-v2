@@ -9,6 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { BankPicker } from "@/components/app/bank-picker";
+import { bankName } from "@/lib/banks";
+import type { BankCode } from "@/lib/generated/prisma/enums";
 import { Checkbox } from "@/components/ui/checkbox";
 import { addClientAction, createEvidenceClientAction } from "@/app/actions";
 import { CURRENCIES, CURRENCY_CODES } from "@/lib/fx/currency";
@@ -18,12 +21,11 @@ import { isBlankBankRow } from "@/lib/blank-bank";
 import type { NewClientInput } from "@/lib/onboarding";
 
 type Kind = "PT" | "CV" | "BADAN_USAHA_ASING" | "PERORANGAN";
-type Bank = "BCA" | "MANDIRI" | "BRI" | "SMBC" | "GENERIC";
+type Bank = BankCode;
 type BankRow = { bank: Bank; number: string; label: string; isOverdraft: boolean };
 type EntityRow = { name: string; shortName: string; kind: Kind; npwp: string; currency: string; reportingFramework: Framework; banks: BankRow[] };
 
 const KIND_LABEL: Record<Kind, string> = { PT: "PT", CV: "CV", BADAN_USAHA_ASING: "Badan usaha asing", PERORANGAN: "Perorangan (pemilik)" };
-const BANK_LABEL: Record<Bank, string> = { BCA: "BCA", MANDIRI: "Mandiri", BRI: "BRI", SMBC: "SMBC / Jenius", GENERIC: "Bank lain" };
 const newBank = (): BankRow => ({ bank: "BCA", number: "", label: "", isOverdraft: false });
 /** A person's own books have no SAK of their own: SAK EMKM (no OCI, no deferred tax) is the closest; companies start on SAK EP. */
 const defaultFramework = (kind: Kind): Framework => (kind === "PERORANGAN" ? "SAK_EMKM" : "SAK_EP");
@@ -196,10 +198,7 @@ export function ClientForm({ initial, evidenceIntakeId, onCreated }: { initial?:
               )}
               {e.banks.map((b, k) => (
                 <div key={k} className="grid gap-2 sm:grid-cols-[10rem_1fr_1fr_auto] sm:items-start">
-                  <Select value={b.bank} onValueChange={(v) => setBank(i, k, { bank: v as Bank })}>
-                    <SelectTrigger className="w-full" aria-label="Bank"><SelectValue>{BANK_LABEL[b.bank]}</SelectValue></SelectTrigger>
-                    <SelectContent>{(Object.keys(BANK_LABEL) as Bank[]).map((x) => <SelectItem key={x} value={x}>{BANK_LABEL[x]}</SelectItem>)}</SelectContent>
-                  </Select>
+                  <BankPicker value={b.bank} onChange={(v) => setBank(i, k, { bank: v })} />
                   <div className="space-y-1">
                     <Input
                       aria-label="Nomor rekening"
@@ -212,7 +211,7 @@ export function ClientForm({ initial, evidenceIntakeId, onCreated }: { initial?:
                     <FieldError>{err(`entities.${i}.banks.${k}.number`)}</FieldError>
                   </div>
                   <div className="space-y-1.5">
-                    <Input aria-label="Nama rekening" value={b.label} onChange={(ev) => setBank(i, k, { label: ev.target.value })} placeholder={`Nama (opsional), mis. ${BANK_LABEL[b.bank]} Giro`} />
+                    <Input aria-label="Nama rekening" value={b.label} onChange={(ev) => setBank(i, k, { label: ev.target.value })} placeholder={`Nama (opsional), mis. ${bankName(b.bank)} Giro`} />
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <Checkbox id={`prk-${i}-${k}`} checked={b.isOverdraft} onCheckedChange={(v) => setBank(i, k, { isOverdraft: v === true })} />
                       <label htmlFor={`prk-${i}-${k}`}>Pinjaman rekening koran (PRK), saldonya utang ke bank</label>

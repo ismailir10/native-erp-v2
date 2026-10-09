@@ -29,6 +29,27 @@ describe("Tambah klien", () => {
     expect(await db.account.count({ where: { clientId: client.id, code: { in: ["1190", "1199", "1999", "3200"] } } })).toBe(4);
   });
 
+  it("accepts every bank Buku knows, names a blank account after the bank's short name, and refuses an unknown code", async () => {
+    const firm = await db.$transaction((tx) => createFirm(tx, "KJA Uji"));
+    const many = input();
+    many.entities[1].banks = [
+      { bank: "BNI", number: "0123456789", label: "" },
+      { bank: "JAGO", number: "100200300400", label: "Jago Operasional" },
+      { bank: "SMBC", number: "90022152088", label: "" },
+    ];
+    const client = await addClient(db, firm.id, many);
+    const rows = await db.bankAccount.findMany({ where: { entity: { clientId: client.id } }, orderBy: { number: "asc" } });
+    expect(rows.map((b) => [b.bank, b.label])).toEqual([
+      ["BRI", "BRI Simpedes"],
+      ["BNI", "BNI ••6789"],
+      ["JAGO", "Jago Operasional"],
+      ["SMBC", "SMBC ••2088"],
+    ]);
+    const bad = input();
+    (bad.entities[0].banks[0] as { bank: string }).bank = "BANKX";
+    expect(() => validateNewClient(bad)).toThrow("Pilih bank.");
+  });
+
   it("stores each entity's reporting framework, SAK EP when none is chosen, and rejects an unknown one", async () => {
     const firm = await db.$transaction((tx) => createFirm(tx, "KJA Uji"));
     const withFramework = input();

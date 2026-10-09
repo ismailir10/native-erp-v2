@@ -104,7 +104,7 @@ grows — re-checked with `verify:books`).
 5. Merge when green (as standing practice); the deck commit rides on the same PR after it opens.
 
 ## Tasks
-- [ ] T1 Bank registry + migration — `lib/banks.ts`, `BankCode` +21 values, client form / entity card / onboarding read it (searchable
+- [x] T1 Bank registry + migration — `lib/banks.ts`, `BankCode` +21 values, client form / entity card / onboarding read it (searchable
   picker) — accept: new client with a BNI and a Jago account saves; db test on onboarding; migration applies on a fresh DB.
 - [ ] T2 Detection from the registry — `detectFormat` → registry; tabular/PDF tag every bank; transfer matcher words from the registry
   — accept: guard tests (company names) + one tag test per bank; `verify:books` ALL PASS.
@@ -125,5 +125,13 @@ grows — re-checked with `verify:books`).
 - [ ] T10 End-of-cycle: real files still NYAMBUNG (local), full gates, Ship Notes — accept: gate tails pasted.
 
 ## Implementation
+- Plan: tasks T1–T10 sequential, done inline (T2–T7 all touch `lib/import/parsers/*` and `tests/bank-fixture.ts`; MT940 is a new file but
+  shares the detection and the fixtures, so no slice is independent enough to delegate).
+- T1: `lib/banks.ts` (25 banks: code, names, group, BIC, strict heading pattern, transaction words, formats with evidence level;
+  `detectBank`, `bankOfBic`, `bankOptions`, `bankName`), `prisma/schema.prisma` + `migrations/20261009100000_bank_codes` (21 `ADD VALUE`),
+  `components/app/bank-picker.tsx` (the searchable `AccountPicker`, now with `searchPlaceholder` / `emptyText` / `labelOf`),
+  `client-form.tsx` + `entities-card.tsx` (picker, no local bank list), `lib/onboarding.ts` (validates against `BANK_CODES`; a blank
+  account name is the bank's short name). Test: `tests/db/onboarding.test.ts` (BNI, Jago, SMBC accounts; unknown code refused).
 ## Verification
+- T1: `npm run lint` 0 errors (1 existing warning in `public/deck/deck.js`) · typecheck clean · `npm test` 185 files, 1218 passed.
 ## Ship Notes

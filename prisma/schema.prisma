@@ -81,6 +81,27 @@ enum BankCode {
   BRI
   SMBC
   GENERIC
+  BNI
+  BSI
+  BTN
+  CIMB
+  PERMATA
+  DANAMON
+  OCBC
+  PANIN
+  MAYBANK
+  UOB
+  MEGA
+  SINARMAS
+  DBS
+  HSBC
+  CITI
+  JAGO
+  SEABANK
+  BLU
+  DKI
+  BJB
+  JATIM
 }
 
 enum PeriodStatus {

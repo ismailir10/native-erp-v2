@@ -10,12 +10,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { BankPicker } from "@/components/app/bank-picker";
+import { bankName } from "@/lib/banks";
+import type { BankCode } from "@/lib/generated/prisma/enums";
 import { addBankAccountAction, addEntityAction } from "@/app/actions";
 import { CURRENCIES, CURRENCY_CODES } from "@/lib/fx/currency";
 
-type Bank = "BCA" | "MANDIRI" | "BRI" | "SMBC" | "GENERIC";
+type Bank = BankCode;
 type Kind = "PT" | "CV" | "BADAN_USAHA_ASING" | "PERORANGAN";
-const BANK_LABEL: Record<Bank, string> = { BCA: "BCA", MANDIRI: "Mandiri", BRI: "BRI", SMBC: "SMBC / Jenius", GENERIC: "Bank lain" };
 const KIND_LABEL: Record<Kind, string> = { PT: "PT", CV: "CV", BADAN_USAHA_ASING: "Badan usaha asing", PERORANGAN: "Perorangan (pemilik)" };
 
 export type EntityView = { id: string; name: string; kind: Kind; banks: { id: string; label: string; number: string; code: string; isOverdraft: boolean }[] };
@@ -25,16 +27,13 @@ function BankFields({ value, onChange, errors, prefix }: { value: { bank: Bank; 
   const id = prefix.replace(/\W/g, "-");
   return (
     <div className="grid gap-2 sm:grid-cols-[10rem_1fr_1fr]">
-      <Select value={value.bank} onValueChange={(v) => onChange({ ...value, bank: v as Bank })}>
-        <SelectTrigger className="w-full" aria-label="Bank"><SelectValue>{BANK_LABEL[value.bank]}</SelectValue></SelectTrigger>
-        <SelectContent>{(Object.keys(BANK_LABEL) as Bank[]).map((b) => <SelectItem key={b} value={b}>{BANK_LABEL[b]}</SelectItem>)}</SelectContent>
-      </Select>
+      <BankPicker value={value.bank} onChange={(v) => onChange({ ...value, bank: v })} />
       <div className="space-y-1">
         <Input aria-label="Nomor rekening" inputMode="numeric" value={value.number} aria-invalid={!!errors[`${prefix}.number`]} onChange={(e) => onChange({ ...value, number: e.target.value })} placeholder="Nomor rekening, sesuai rekening koran" />
         <FieldError>{errors[`${prefix}.number`]}</FieldError>
       </div>
       <div className="space-y-1.5">
-        <Input aria-label="Nama rekening" value={value.label} onChange={(e) => onChange({ ...value, label: e.target.value })} placeholder={`Nama (opsional), mis. ${BANK_LABEL[value.bank]} Giro`} />
+        <Input aria-label="Nama rekening" value={value.label} onChange={(e) => onChange({ ...value, label: e.target.value })} placeholder={`Nama (opsional), mis. ${bankName(value.bank)} Giro`} />
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Checkbox id={`prk-${id}`} checked={value.isOverdraft} onCheckedChange={(v) => onChange({ ...value, isOverdraft: v === true })} />
           <label htmlFor={`prk-${id}`}>Pinjaman rekening koran (PRK), saldonya utang ke bank</label>
