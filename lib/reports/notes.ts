@@ -367,20 +367,27 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
     asOf,
     comparativeLabel: per.balanceComparative?.label ?? null,
     notes,
-    directors: directorsStatement(title, asOf, framework, signatory),
+    directors: directorsStatement(title, asOf, framework, signatory, entities.every((e) => e.kind === "PERORANGAN")),
     framework,
     signatory,
   };
 }
 
-/** The statement of responsibility (a template: name and signature are left blank), for the framework and whoever signs for the entity. */
-export function directorsStatement(entity: string, asOf: Date, framework: Framework = "SAK_EP", signatory: Signatory = signatoryOf([{ kind: "PT" }])): string[] {
+/**
+ * The statement of responsibility (a template: the signer's details and the signature are left to fill), for the framework and whoever
+ * signs for the entity. The last line is always the signer's role. An individual signs for themselves, not "atas nama" an entity.
+ */
+export function directorsStatement(entity: string, asOf: Date, framework: Framework = "SAK_EP", signatory: Signatory = signatoryOf([{ kind: "PT" }]), person = false): string[] {
+  const blank = "____________________";
   return [
     signatory.title,
     `TENTANG TANGGUNG JAWAB ATAS LAPORAN KEUANGAN ${entity.toUpperCase()}`,
     `UNTUK PERIODE YANG BERAKHIR ${formatDateLong(asOf).toUpperCase()}`,
     "Kami yang bertanda tangan di bawah ini:",
-    `Nama: ____________________    Jabatan: ${signatory.role}`,
+    `Nama: ${blank}    Jabatan: ${signatory.role}`,
+    `Alamat kantor: ${blank}`,
+    `Alamat domisili sesuai KTP: ${blank}`,
+    `Nomor telepon: ${blank}`,
     "menyatakan bahwa:",
     `1. Kami bertanggung jawab atas penyusunan dan penyajian laporan keuangan ${entity};`,
     `2. Laporan keuangan telah disusun dan disajikan sesuai dengan ${standardOf(framework).full};`,
@@ -388,7 +395,10 @@ export function directorsStatement(entity: string, asOf: Date, framework: Framew
     "   b. Laporan keuangan tidak mengandung informasi atau fakta material yang tidak benar, dan tidak menghilangkan informasi atau fakta material;",
     `4. Kami bertanggung jawab atas sistem pengendalian intern dalam ${entity}.`,
     "Demikian pernyataan ini dibuat dengan sebenarnya.",
-    "____________________, ____________________",
+    `${blank}, ${blank}`,
+    ...(person ? [] : [`Atas nama dan mewakili ${entity}`]),
+    "Meterai Rp10.000",
+    `( ${blank} )`,
     signatory.role,
   ];
 }

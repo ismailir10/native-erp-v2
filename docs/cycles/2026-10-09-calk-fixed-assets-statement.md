@@ -23,7 +23,7 @@ Approval: the owner's brief in-session ("continue improving Buku until we are pr
   end. The cost accounts are grouped under *Harga perolehan* and the accumulated accounts under *Akumulasi penyusutan* (negative). The
   total is *Nilai buku*. Each row adds up, and the closing book value equals the Neraca. The register's per-asset table stays below it
   when there is a register. *Akumulasi penyusutan* no longer gets a note of its own.
-- [ ] **F2** The **Surat Pernyataan**:
+- [x] **F2** The **Surat Pernyataan**:
   - It gives fields to fill for the signer: Nama, Alamat kantor, Alamat domisili sesuai KTP, Nomor telepon, Jabatan.
   - It closes with "Atas nama dan mewakili <entitas>", a place and date line, a materai space ("Meterai Rp10.000") and the name and
     role under the signature.
@@ -44,7 +44,7 @@ Approval: the owner's brief in-session ("continue improving Buku until we are pr
 ## Tasks
 - [x] T1 `fixedAssetMovement` (lib/reports/statements.ts) + the CALK note. Accept: a db test with an opening, a purchase, depreciation and a
   disposal, where every row adds up, the book value equals the Neraca and there is no separate *Akumulasi penyusutan* note.
-- [ ] T2 Surat Pernyataan fields and PDF placement. Accept: tests on `directorsStatement` and the PDF page order. The page is looked at.
+- [x] T2 Surat Pernyataan fields and PDF placement. Accept: tests on `directorsStatement` and the PDF page order. The page is looked at.
 - [ ] T3 End-of-cycle gates and Ship Notes.
 
 ## Implementation
@@ -53,7 +53,11 @@ Approval: the owner's brief in-session ("continue improving Buku until we are pr
   additions/deductions signed so each row adds up), `lib/reports/notes.ts` (the *Aset tetap* note leads with the movement table under
   *Harga perolehan* / *Akumulasi penyusutan*, total *Nilai buku*; the separate *Akumulasi penyusutan* note is dropped and the notes renumbered;
   the register's per-asset table follows). Test: `tests/db/asset-movement.test.ts` (opening, purchase, four months' depreciation, a disposal
-  at a loss: rows add up, book value = Neraca, numbering continuous).
+  at a loss: rows add up, book value = Neraca, numbering continuous).- T2: `notes.ts` (`directorsStatement`: Nama/Jabatan, Alamat kantor, Alamat domisili sesuai KTP, Nomor telepon; place-and-date line,
+  "Atas nama dan mewakili <entitas>" — not for an individual —, "Meterai Rp10.000", the name line and the role last), `pdf.ts` (the
+  statement opens the PDF; its header carries the entity only; the draft reasons move to the Neraca's page and later pages point to it;
+  room to sign over the meterai; a sub-item keeps its indent). Tests: `tests/unit/directors-statement.test.ts` (fields, atas nama),
+  `report-pdf` / `report-pdf-layout` (page order and draft lines). Page 1 rendered and looked at.
 ## Verification
 - T1: lint clean · typecheck clean · `npm test` 198 files, 1316 passed.
 ## Ship Notes

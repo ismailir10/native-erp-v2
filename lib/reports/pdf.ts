@@ -72,17 +72,22 @@ export async function financialStatementsPdf(db: Db, scope: Scope, year: number,
   // The page header follows the part being printed; every new page (one per part, and overflow) draws it.
   let header = { title: "", subtitle: "", unit: "", columns: [] as string[], colWidth: 0, size: 9 };
   let pages = 0;
+  let reasonsAt = 0;
   doc.on("pageAdded", () => drawHeader());
   function drawHeader() {
     pages += 1;
     doc.x = M.left;
     doc.y = M.top;
     doc.fillColor(INK).font("Helvetica-Bold").fontSize(12).text(meta.title, { width });
-    doc.font("Helvetica-Bold").fontSize(10).text(header.title, { width });
-    doc.font("Helvetica").fontSize(9).fillColor(MUTED).text(header.subtitle, { width });
+    if (header.title) doc.font("Helvetica-Bold").fontSize(10).text(header.title, { width });
+    if (header.subtitle) doc.font("Helvetica").fontSize(9).fillColor(MUTED).text(header.subtitle, { width });
     if (header.unit) doc.font("Helvetica-Oblique").text(header.unit, { width });
-    // The reasons once, on the first page; every later page still says DRAF.
-    if (meta.draft) doc.moveDown(0.3).font("Helvetica-Bold").fillColor(FAIL).text(pages === 1 ? `DRAF — ${meta.draft}` : "DRAF — lihat halaman 1", { width });
+    // The reasons once, on the first statement page (not on the Surat Pernyataan); every other page still says DRAF.
+    if (meta.draft) {
+      const first = !reasonsAt && Boolean(header.title);
+      if (first) reasonsAt = pages;
+      doc.moveDown(0.3).font("Helvetica-Bold").fillColor(FAIL).text(first ? `DRAF — ${meta.draft}` : reasonsAt ? `DRAF — lihat halaman ${reasonsAt}` : "DRAF", { width });
+    }
     doc.moveDown(0.6).fillColor(INK);
     if (header.columns.length) {
       const y = doc.y;
@@ -104,6 +109,8 @@ export async function financialStatementsPdf(db: Db, scope: Scope, year: number,
   };
 
   const unitLine = `Dinyatakan dalam ${set.unit === "RIBUAN" ? "ribuan " : ""}Rupiah`;
+  // The statement of responsibility opens the set, as in an Indonesian report; its own heading is its title.
+  if (set.notes) directors(set.notes.directors);
   for (const st of set.statements) statement(st);
 
   function statement(st: SetStatement) {
@@ -174,14 +181,27 @@ export async function financialStatementsPdf(db: Db, scope: Scope, year: number,
       for (const t of note.tables) table(t.columns, t.rows.map((r) => r.map(cell)), t.total?.map(cell));
       doc.moveDown(0.6);
     }
+  }
 
-    // Pernyataan Direksi (Pemilik/Pengurus for a CV, a firm or an individual)
-    startPart({ title: set.signatory.title, subtitle: `Per ${asOf}` });
-    notes.directors.forEach((text, i) => {
-      doc.font(i < 3 ? "Helvetica-Bold" : "Helvetica").fontSize(9.5).fillColor(INK);
-      ensure(doc.heightOfString(text, { width }) + 6);
-      doc.text(text, M.left, doc.y, { width, align: i < 3 ? "center" : "left" });
-      doc.moveDown(0.5);
+  // Pernyataan Direksi (Pemilik/Pengurus for a CV, a firm or an individual): the signer's details to fill, then room to sign over a meterai.
+  function directors(lines: string[]) {
+    startPart({});
+    doc.moveDown(1);
+    lines.forEach((text, i) => {
+      const head = i < 3;
+      if (text === "Meterai Rp10.000") {
+        doc.moveDown(1.5);
+        doc.font("Helvetica").fontSize(8).fillColor(MUTED).text(text, M.left, doc.y, { width });
+        doc.moveDown(3);
+        return;
+      }
+      doc.font(head ? "Helvetica-Bold" : "Helvetica").fontSize(head ? 10.5 : 9.5).fillColor(INK);
+      // A sub-item ("   b. …") keeps its indent on every wrapped line; the place-and-date line gets air above it.
+      const inset = /^\s+/.test(text) ? 14 : 0;
+      if (/^_+, _+$/.test(text)) doc.moveDown(1);
+      ensure(doc.heightOfString(text.trim(), { width: width - inset }) + 6);
+      doc.text(text.trim(), M.left + inset, doc.y, { width: width - inset, align: head ? "center" : "left" });
+      doc.moveDown(head && i === 2 ? 1.2 : 0.5);
     });
   }
 

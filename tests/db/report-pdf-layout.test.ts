@@ -32,9 +32,13 @@ describe("statements PDF layout", () => {
     expect(last).toBeGreaterThan(first); // the table spans pages
     for (let p = first + 1; p <= last; p++) expect(text[p], `page ${p + 1}`).toMatch(/Akun\s+1 Januari – 31 Maret/);
 
-    expect(text[0]).toContain("DRAF — 1 transaksi masih di Review.");
-    for (const p of text.slice(1)) {
-      expect(p).toContain("DRAF — lihat halaman 1");
+    // Page 1 is the Surat Pernyataan (DRAF only); the reasons on the Neraca's page 2; every later page points there.
+    expect(text[0]).toContain("SURAT PERNYATAAN DIREKSI");
+    expect(text[0]).toMatch(/DRAF\n/);
+    expect(text[1]).toContain("Laporan Posisi Keuangan");
+    expect(text[1]).toContain("DRAF — 1 transaksi masih di Review.");
+    for (const p of text.slice(2)) {
+      expect(p).toContain("DRAF — lihat halaman 2");
       expect(p).not.toContain("1 transaksi masih di Review");
     }
     for (const p of text) expect(p.split("\n").some((l) => l.trim() === ".")).toBe(false);
