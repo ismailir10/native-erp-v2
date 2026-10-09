@@ -216,4 +216,34 @@ export function suggestMapping(grid: Grid, sheetName?: string | null): ColumnMap
   return { sheet: isXlsx ? sheet.name : null, firstRow, date, description: description.length ? description : [Math.min(width - 1, date + 1)], amount, balance, order: guessOrder(sheet, firstRow, date), year: null };
 }
 
+/** A layout the firm mapped before (`StatementLayout`): the mapping less sheet, first row and year, under its header's signature. */
+export type RememberedLayout = { id: string; label: string; signature: string; mapping: Omit<ColumnMapping, "sheet" | "firstRow" | "year"> };
+
+/** How far down a sheet a header is looked for (title blocks above it vary from month to month). */
+const HEADER_SEARCH_ROWS = 80;
+
+/**
+ * The file read with the first remembered layout whose header it carries (any sheet, any row in the first 80), or null when it carries
+ * none. A matching header with rows the mapping can't read is refused with the reader's message: the accountant maps the file again.
+ */
+export function readWithLayout(grid: Grid, layouts: RememberedLayout[], ctx: { fileName?: string; year?: number } = {}): ParsedStatement | null {
+  for (const sheet of grid.sheets) {
+    for (let i = 0; i < Math.min(sheet.rows.length - 1, HEADER_SEARCH_ROWS); i++) {
+      const sig = layoutSignature(grid.kind, sheet.rows[i]);
+      const layout = sig && layouts.find((l) => l.signature === sig);
+      if (!layout) continue;
+      const mapping: ColumnMapping = { ...layout.mapping, sheet: grid.kind === "XLSX" ? sheet.name : null, firstRow: i + 2, year: ctx.year ?? null };
+      let st: ParsedStatement;
+      try {
+        st = readMapped(grid, mapping, ctx);
+      } catch (e) {
+        if (e instanceof ParseError && !(e instanceof YearNeededError)) throw new ParseError(`File ini cocok dengan pemetaan kolom tersimpan ("${layout.label}"), tetapi tidak terbaca: ${e.message}`);
+        throw e;
+      }
+      return { ...st, layout: { id: layout.id, label: layout.label }, notes: [`Dibaca dengan pemetaan kolom tersimpan (dari "${layout.label}").`, ...(st.notes ?? [])] };
+    }
+  }
+  return null;
+}
+
 export type { GridKind };

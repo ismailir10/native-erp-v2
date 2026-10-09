@@ -68,7 +68,7 @@ rows were read. No new dependency, no AI credit, no accounting-invariant change 
   a fixture's rows chain NYAMBUNG.
 - [x] T3 Schema + draft (migration `StatementLayout`, `OcrDraft.source`; `createMappedDraft` in `lib/ocr/draft.ts` reusing `proveRows` and
   `importOcrDraft`; layout saved on import) — accept: db test: unknown CSV → draft proves → import → layout stored; AI off works.
-- [ ] T4 Remembered layouts in `parseStatementSections` + *Lupakan pemetaan ini* — accept: db test: same-signature file imports directly
+- [x] T4 Remembered layouts in `parseStatementSections` + *Lupakan pemetaan ini* — accept: db test: same-signature file imports directly
   with the note; another firm's layout never applies; forgetting deletes only the layout.
 - [ ] T5 UI: *Atur kolom* on a failed import, grid + column pickers + 5-row preview → *Baca semua baris* → *Periksa baris* (label), result
   note + forget action — accept: e2e `statement-column-mapping.spec.ts` (CSV and PDF; second file auto); screenshot at desktop and 390px.
@@ -97,8 +97,15 @@ rows were read. No new dependency, no AI credit, no accounting-invariant change 
   once the draft is imported: the mapping less sheet, first row and year); `draftCsv` keeps an unprinted balance empty; `proveRows`
   `chained` for mapped drafts only (BCA prints a balance per day: a stretch is proved by the next printed balance, or breaks with it).
   `accounting-rules` 16c. Test: `tests/db/mapped-draft.test.ts`.
+- T4: `parseStatementSections` takes the firm's layouts: when every reader refuses (password, missing year and scans excepted), the file is
+  read with the first layout whose header it carries (any sheet, first 80 rows; `readWithLayout` in `lib/import/mapped.ts`), repaired like
+  any statement and noted "Dibaca dengan pemetaan kolom tersimpan (dari …)"; a matching header with unreadable rows is refused naming the
+  layout; otherwise `UnreadableFileError` (the reader's own message) so the import page can offer *Atur kolom*. `importStatement` loads the
+  firm's layouts, returns `summary.layout` and stamps `lastUsedAt`; a section's repair refusal is an `UnreadableFileError` too.
+  `lib/import/layouts.ts` `forgetLayout` (firm-scoped). Test: `tests/db/remembered-layout.test.ts`.
 ## Verification
 - T1: lint clean · typecheck clean · `npm test` 200 files, 1329 passed.
 - T2: lint clean · typecheck clean · `npm test` 201 files, 1341 passed.
 - T3: lint clean · typecheck clean · `npm test` 202 files, 1346 passed.
+- T4: lint clean · typecheck clean · `npm test` 203 files, 1352 passed.
 ## Ship Notes

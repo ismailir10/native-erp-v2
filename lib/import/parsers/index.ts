@@ -1,4 +1,7 @@
-import { ParseError, ScanError, YearNeededError, type ParsedStatement } from "@/lib/import/types";
+import { ParseError, ScanError, UnreadableFileError, YearNeededError, type ParsedStatement } from "@/lib/import/types";
+import { PdfPasswordError } from "@/lib/import/parsers/pdf";
+import { readGrid } from "@/lib/import/grid";
+import { readWithLayout, type RememberedLayout } from "@/lib/import/mapped";
 import { sniffImageFile } from "@/lib/ocr/pages";
 import { isBcaCsv, isBcaIndividualCsv, parseBca, parseBcaIndividual } from "@/lib/import/parsers/bca";
 import { isBriCsv, parseBri } from "@/lib/import/parsers/bri";
@@ -14,6 +17,8 @@ export type ParseOptions = {
   password?: string;
   /** Year of the first month, for files whose dates have none (the accountant's answer to `YearNeededError`). */
   year?: number;
+  /** The firm's *Atur kolom* layouts: tried only when every reader refuses the file. */
+  layouts?: RememberedLayout[];
 };
 
 /** Detect the bank format from content (not the file name) and parse; the first statement of the file. */
@@ -40,9 +45,25 @@ export async function parseStatementSections(fileName: string, data: Buffer, opt
       }
     });
   } catch (e) {
-    if (e instanceof ParseError) throw e;
-    throw new ParseError(`File tidak bisa dibaca: ${(e as Error).message}`);
+    // A password, a missing year or a scan is the accountant's to answer: no layout can help.
+    if (e instanceof PdfPasswordError || e instanceof YearNeededError || e instanceof ScanError) throw e;
+    const message = e instanceof ParseError ? e.message : `File tidak bisa dibaca: ${(e as Error).message}`;
+    const remembered = opts.layouts?.length ? await rememberedRead(fileName, data, opts) : null;
+    if (remembered) return [remembered];
+    throw new UnreadableFileError(message);
   }
+}
+
+/** The file read with a layout the firm mapped before (its header matches), repaired like any statement; null when none matches. */
+async function rememberedRead(fileName: string, data: Buffer, opts: ParseOptions): Promise<ParsedStatement | null> {
+  let grid;
+  try {
+    grid = await readGrid(data, { password: opts.password });
+  } catch {
+    return null;
+  }
+  const st = readWithLayout(grid, opts.layouts!, { fileName, year: opts.year });
+  return st && repairStatement(st);
 }
 
 async function parseAny(fileName: string, data: Buffer, opts: ParseOptions): Promise<ParsedStatement[]> {

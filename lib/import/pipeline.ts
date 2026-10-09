@@ -3,7 +3,8 @@ import type { BankCode, ClassifyMethod, Direction } from "@/lib/generated/prisma
 import { ACCOUNT_CODES, isClassifiable } from "@/lib/coa/template";
 import { parseStatementSections } from "@/lib/import/parsers";
 import { checkContinuity, isGenericKey, merchantKey, rowHashes } from "@/lib/import/normalize";
-import { AccountMismatchError, ParseError, type ParsedStatement } from "@/lib/import/types";
+import { AccountMismatchError, ParseError, UnreadableFileError, type ParsedStatement } from "@/lib/import/types";
+import type { RememberedLayout } from "@/lib/import/mapped";
 import { matchRule, sortRules } from "@/lib/classify/rules";
 import { financingSuggestion, taxPaymentSuggestion } from "@/lib/classify/financing";
 import { simpleGuess } from "@/lib/classify/fallback";
@@ -39,6 +40,8 @@ export type ImportSummary = {
   months: string[];
   /** The bank the file names (its heading, or an MT940 BIC); GENERIC when it names none. The form says so when it differs from the account's. */
   fileBank: BankCode;
+  /** Read with a layout the firm mapped in *Atur kolom*: the result offers *Lupakan pemetaan ini*. */
+  layout: { id: string; label: string } | null;
 };
 
 export async function importStatement(
@@ -52,7 +55,9 @@ export async function importStatement(
   const entity = bankAccount.entity;
   const client = entity.client;
 
-  const sections = await parseStatementSections(args.fileName, args.data, { password: args.password, year: args.year });
+  // The firm's Atur kolom layouts, tried only when every reader refuses the file (`parseStatementSections`).
+  const layouts = (await db.statementLayout.findMany({ where: { firmId: bankAccount.firmId }, select: { id: true, label: true, signature: true, mapping: true } })).map((l) => ({ ...l, mapping: l.mapping as unknown as RememberedLayout["mapping"] }));
+  const sections = await parseStatementSections(args.fileName, args.data, { password: args.password, year: args.year, layouts });
   const digits = (s: string | null) => (s ?? "").replace(/\D/g, "");
   let st = sections.length === 1 ? sections[0] : sections.find((s) => digits(s.accountNumber) === digits(bankAccount.number));
   if (!st) {
@@ -67,7 +72,7 @@ export async function importStatement(
   }
   // The section as parsed (and repaired against its balance, rule 12): `st` is replaced below, the other sections are told apart from it.
   const chosen = st;
-  if (st.error) throw new ParseError(st.error);
+  if (st.error) throw new UnreadableFileError(st.error);
   // A date that is nowhere near a statement (an Excel serial misread as 1905) must never become a period of the books.
   const odd = st.rows.find((r) => r.date.getUTCFullYear() < 2000 || r.date.getUTCFullYear() > 2100);
   if (odd) throw new ParseError(`Tanggal di baris ${odd.rowNumber}${odd.sheet ? ` (lembar ${odd.sheet})` : ""} tidak masuk akal: ${formatDate(odd.date)}. Periksa kolom tanggal di file.`);
@@ -167,6 +172,7 @@ export async function importStatement(
         notes,
         fileBank: st.format,
         months: monthsOf(st.periodStart, st.periodEnd),
+        layout: chosen.layout ?? null,
       };
     }
   }
@@ -336,6 +342,7 @@ export async function importStatement(
     },
     { timeout: 120_000, maxWait: 10_000 },
   );
+  if (chosen.layout) await db.statementLayout.updateMany({ where: { id: chosen.layout.id, firmId: bankAccount.firmId }, data: { lastUsedAt: new Date() } });
 
   return {
     importId,
@@ -353,6 +360,7 @@ export async function importStatement(
     notes,
     months: monthsOf(st.periodStart, st.periodEnd),
     fileBank: st.format,
+    layout: chosen.layout ?? null,
   };
 }
 
