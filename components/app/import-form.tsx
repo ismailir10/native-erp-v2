@@ -267,7 +267,7 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
               {pending ? <Loader2 className="animate-spin" /> : <FileUp />} Proses mutasi
             </Button>
             {sample && (
-              <Button variant="outline" disabled={pending} onClick={() => start(async () => done(await importSampleAction(clientId, sample.bankAccountId)))}>
+              <Button variant="outline" disabled={pending} onClick={() => start(async () => done(await importSampleAction(clientId, sample.bankAccountId), null, sample.bankAccountId))}>
                 <FileText /> Pakai file contoh ({sample.fileName})
               </Button>
             )}

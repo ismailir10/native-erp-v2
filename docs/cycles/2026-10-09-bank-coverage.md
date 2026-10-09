@@ -195,6 +195,11 @@ grows — re-checked with `verify:books`).
   truth · `npm run test:e2e` → 59 passed (4.4m).
 - Real files (local, `inspect:statement`): `belifi-bca-2026-06.pdf` BCA NYAMBUNG ✓, `smbc-mei-2026.pdf` 3 rekening NYAMBUNG ✓ — same hashes as
   before the cycle.
+- Review round (PR #125, Codex + an independent review): (1) a multi-message MT940 with an envelope per statement and no `:64:` glued the next
+  `{2:…}{4:` onto `:62F:` and refused the file — the whole envelope (blocks 1–3, nested block 3) and `-}{5:…}` trailers are now dropped, test
+  added (failed before); (2) the sample import bound its result to the selected account, so *Catat sebagai* could relabel the wrong account —
+  it now uses the sample's account; (3) `livin`/`kopra` matched inside company names ("PT LIVING SPACE" made a BCA statement Mandiri; also
+  `simobi`, `jakone`) — word boundaries, guard tests. `npm test` 191 files, 1299 passed; real-file hashes unchanged.
 
 ## Ship Notes
 - **Migration** `20261009100000_bank_codes`: 21 `ALTER TYPE "BankCode" ADD VALUE` — additive; applied by the Vercel build (`prisma migrate deploy`).

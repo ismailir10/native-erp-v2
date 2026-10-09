@@ -77,6 +77,21 @@ describe("MT940", () => {
     ]);
   });
 
+  it("reads a multi-message export where every statement carries its own SWIFT envelope and trailer", async () => {
+    const env = "{1:F01CENAIDJAAXXX0000000000}{2:O9401200260901CENAIDJAXXXX00000000002609011200N}{3:{108:MT940}}{4:";
+    const st = await parseStatement(
+      "fin.txt",
+      file(
+        env, ":20:A", ":25:0000012345", ":28C:00001/001", ":60F:C260731IDR1000,00", ":61:2608010801C100,00NTRFNONREF", ":86:SETOR", ":62F:C260801IDR1100,00", "-}{5:{CHK:ABC123}}",
+        env, ":20:B", ":25:0000012345", ":28C:00002/001", ":60F:C260801IDR1100,00", ":61:2608020802D50,00NTRFNONREF", ":86:TARIK", ":62F:C260802IDR1050,00", "-}",
+      ),
+    );
+    expect(st.format).toBe("BCA");
+    expect(st.rows.map((r) => [r.amount, r.balance])).toEqual([[100n, 1100n], [-50n, 1050n]]);
+    expect(st.closingBalance).toBe(1050n);
+    expect(checkContinuity(st).ok).toBe(true);
+  });
+
   it("says what is wrong with a line it can't read", async () => {
     await expect(parseStatement("x.txt", file(":20:A", ":25:0000012345", ":60F:C260731IDR1000,00", ":61:26AB01C100,00NTRF"))).rejects.toThrow(/:61: di baris 4 tidak bisa dibaca/);
     await expect(parseStatement("x.txt", file(":20:A", ":25:0000012345", ":61:2608010801C100,00NTRFNONREF", ":60F:C260731IDR1000,00"))).rejects.toThrow(/sebelum saldo awal/);

@@ -42,12 +42,16 @@ function balanceOf(t: Tag): { amount: bigint; date: Date; currency: string } {
   return { amount: m[1] === "D" ? -amount : amount, date: dateOf(m[2], m[3], m[4], t.line), currency: m[5] };
 }
 
+/** The SWIFT basic, application and user header blocks at the start of a line (block 3 nests `{108:…}`). */
+const ENVELOPE = /^(?:\{[1-3]:(?:[^{}]|\{[^{}]*\})*\})+/;
+
 /** The tags of the text block, each with its continuation lines; header blocks `{1:…}{2:…}{4:` and the `-}` trailer are dropped. */
 function tags(text: string): Tag[] {
   const out: Tag[] = [];
   text.split(/\r?\n/).forEach((raw, i) => {
-    const line = raw.replace(/^\{[1-3]:[^}]*\}/g, "").replace(/^\{4:/, "").replace(/\s+$/, "");
-    if (!line || line === "-}" || line === "-" || /^\{5:/.test(line)) return;
+    // Every message of a multi-message export repeats its envelope ({1:…}{2:…}{3:{…}}{4:) and ends with "-}" (maybe "-}{5:{CHK:…}}").
+    const line = raw.replace(ENVELOPE, "").replace(/^\{4:/, "").replace(/\s+$/, "");
+    if (!line || /^-\}?(\{5:.*)?$/.test(line) || /^\{5:/.test(line)) return;
     const m = line.match(/^:(\d{2}[A-Z]?):(.*)$/);
     if (m) out.push({ tag: m[1], value: m[2], line: i + 1 });
     else if (out.length) out[out.length - 1].value += `\n${line}`;

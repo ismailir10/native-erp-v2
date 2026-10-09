@@ -49,7 +49,7 @@ describe("bank registry", () => {
   });
 
   it("never takes a bank from a company name that holds a bank's word", () => {
-    for (const company of ["PT Permata Hijau Sejahtera", "CV Mega Jaya Abadi", "Toko Jago Sepatu", "PT Panin Life", "UD Danamon Makmur", "PT Sinar Mas Agro", "CV Mandiri Sejahtera", "PT Blue Sky Logistik", "PT Jatim Prima"]) {
+    for (const company of ["PT Permata Hijau Sejahtera", "CV Mega Jaya Abadi", "Toko Jago Sepatu", "PT Panin Life", "UD Danamon Makmur", "PT Sinar Mas Agro", "CV Mandiri Sejahtera", "PT Blue Sky Logistik", "PT Jatim Prima", "PT Living Space Indonesia", "CV Kopramas"]) {
       expect(detectBank(`Rekening Koran\nNama : ${company}\nNo. Rekening : 0000123456`), company).toBe("GENERIC");
     }
   });
@@ -58,6 +58,9 @@ describe("bank registry", () => {
     expect(detectBank("blu by BCA Digital")).toBe("BLU");
     expect(detectBank("PT Bank Syariah Mandiri")).toBe("BSI");
     expect(detectBank("KlikBCA Bisnis")).toBe("BCA");
+    // A BCA statement for a company whose name holds a Mandiri product word stays BCA.
+    expect(detectBank("PT BANK CENTRAL ASIA TBK\nPT LIVING SPACE INDONESIA")).toBe("BCA");
+    expect(detectBank("Livin' by Mandiri")).toBe("MANDIRI");
   });
 
   it("names the bank of a SWIFT BIC, with or without a branch code", () => {

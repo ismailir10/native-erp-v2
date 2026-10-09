@@ -57,7 +57,7 @@ export const BANKS: BankInfo[] = [
   {
     code: "MANDIRI", name: "Mandiri", fullName: "PT Bank Mandiri (Persero) Tbk", group: "Bank besar", bic: ["BMRIIDJA"],
     // The bank's own names: account holders are often called "… Mandiri …".
-    detect: /bank\s+mandiri|livin|kopra|mandiri\s+(?:online|cash|cms|direct)|\bMCM\b/i, words: ["MANDIRI", "MDR"],
+    detect: /bank\s+mandiri|\blivin['’]?(?![a-z])|\bkopra\b|mandiri\s+(?:online|cash|cms|direct)|\bMCM\b/i, words: ["MANDIRI", "MDR"],
     formats: [xlsx("Livin' / MCM (Excel)"), pdf("e-statement Livin'"), pdf("rekening koran tabungan"), pdf("MCM / Kopra account statement"), csv("Kopra / MCM (CSV)"), mt940],
   },
   {
@@ -115,7 +115,7 @@ export const BANKS: BankInfo[] = [
   },
   {
     code: "SINARMAS", name: "Sinarmas", fullName: "PT Bank Sinarmas Tbk", group: "Bank swasta & asing", bic: ["SBJKIDJA"],
-    detect: /bank\s+sinarmas|simobi/i, words: ["SINARMAS"], formats: [pdf("e-statement Sinarmas", "INFERRED")],
+    detect: /bank\s+sinarmas|\bsimobi/i, words: ["SINARMAS"], formats: [pdf("e-statement Sinarmas", "INFERRED")],
   },
   {
     code: "DBS", name: "DBS", fullName: "PT Bank DBS Indonesia", group: "Bank swasta & asing", bic: ["DBSBIDJA"],
@@ -139,7 +139,7 @@ export const BANKS: BankInfo[] = [
   },
   {
     code: "DKI", name: "Bank DKI", fullName: "PT Bank DKI", group: "Bank daerah", bic: ["BDKIIDJ1"],
-    detect: /bank\s+dki|jakone/i, words: ["DKI", "JAKONE"], formats: [csv("CMS Bank DKI (CSV)", "INFERRED")],
+    detect: /bank\s+dki|\bjakone\b/i, words: ["DKI", "JAKONE"], formats: [csv("CMS Bank DKI (CSV)", "INFERRED")],
   },
   {
     code: "BJB", name: "bank bjb", fullName: "PT Bank Pembangunan Daerah Jawa Barat dan Banten Tbk", group: "Bank daerah", bic: ["PDJBIDJA"],
