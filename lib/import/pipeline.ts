@@ -10,6 +10,7 @@ import { simpleGuess } from "@/lib/classify/fallback";
 import { matchTransfers, type TransferCandidate } from "@/lib/classify/transfer";
 import { AUTO_POST_CONFIDENCE, type Classification } from "@/lib/classify/types";
 import { aiScope, suggestWithAi } from "@/lib/ai/classify";
+import { demoteUnbacked, tradeBacking } from "@/lib/ai/unbacked";
 import type { AiProvider } from "@/lib/ai/provider";
 import { postBankTransaction } from "@/lib/ledger/bank";
 import { defaultTaxMonth } from "@/lib/tax/masa";
@@ -232,9 +233,13 @@ export async function importStatement(
     pending: pendingAi,
     provider: args.provider,
   });
+  // An AI receivable/payable with nothing on the books to settle is demoted below the bulk accept (lib/ai/unbacked.ts).
+  const backing = ai.suggestions.size ? await tradeBacking(db, entity.id) : { receivable: true, payable: true };
+  const fsLineOf = (code: string) => accounts.find((a) => a.code === code)?.fsLine;
   for (const it of items) {
     if (result.has(it.id)) continue;
-    result.set(it.id, ai.suggestions.get(`${it.merchantKey}|${it.direction}`) ?? simpleGuess(it.direction, entity.kind, isGenericKey(it.merchantKey)));
+    const suggested = ai.suggestions.get(`${it.merchantKey}|${it.direction}`);
+    result.set(it.id, suggested ? demoteUnbacked(suggested, it.direction, fsLineOf, backing) : simpleGuess(it.direction, entity.kind, isGenericKey(it.merchantKey)));
   }
 
   // ---- write: import + transactions + journals, all-or-nothing ----

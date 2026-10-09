@@ -16,7 +16,7 @@ On 2026-10-09 two accountant-style runs in production (upload → Saldo Awal →
    the monthly budget is `AI_MONTHLY_TOKEN_BUDGET` (env), not a field in Pengaturan.
 
 ## Spec
-- [ ] **A1** An AI suggestion of a trade receivable (fsLine `PIUTANG_USAHA`) for money in, or a trade payable (`UTANG_USAHA`) for money out,
+- [x] **A1** An AI suggestion of a trade receivable (fsLine `PIUTANG_USAHA`) for money in, or a trade payable (`UTANG_USAHA`) for money out,
   is demoted when the entity has nothing to settle there: the GL balance of those accounts at the line's date is not on their normal
   side (receivable ≤ 0 debit, payable ≤ 0 credit; invoices and Saldo Awal items both post there, so this covers them). Demoted =
   confidence capped at 0.55 (below the 0.8 bulk accept and the 0.6 *tebakan* line, so accepting it unchanged is a sanity REVIEW) and
@@ -39,7 +39,7 @@ model; changing how 1999 is used.
 3. No schema migration, no new dependency, no AI calls.
 
 ## Tasks
-- [ ] T1 A1 guard (`lib/ai/` helper used by `pipeline.ts` and `retry.ts`) — accept: unit test of the rule; db test: import into an entity with
+- [x] T1 A1 guard (`lib/ai/` helper used by `pipeline.ts` and `retry.ts`) — accept: unit test of the rule; db test: import into an entity with
   no receivable → AI 1130 suggestion stored at ≤ 0.55 with the reason; with an opening receivable → unchanged.
 - [ ] T2 A2 + A3 + A4 (UI) — accept: e2e delete-client lands on Beranda; opening-form tidy on blur (e2e or component test); TB 1999 badge
   only with a balance (db/page test).
@@ -47,5 +47,12 @@ model; changing how 1999 is used.
 - [ ] T4 End-of-cycle gates, Ship Notes; verify in production (Kopi Uji (hapus): run *Minta saran AI*/re-import check, delete-client).
 
 ## Implementation
+- Plan: T1–T4 sequential, inline (small, related; no slice worth delegating).
+- T1: `lib/ai/unbacked.ts` (`tradeBacking`: the entity's GL net on PIUTANG_USAHA / UTANG_USAHA accounts; `demoteUnbacked`: an AI receivable for
+  money in / payable for money out with nothing on its normal side → confidence ≤ 0.55 + reason), used in `lib/import/pipeline.ts` (one
+  query per import, only when the AI answered) and `lib/ai/retry.ts` (per entity). `accounting-rules` §14 names it. Test:
+  `tests/db/ai-unbacked.test.ts` (import demotes both; with a receivable and a payable on the books nothing changes; *Minta saran AI*
+  demotes the same way; another entity's receivable doesn't count).
 ## Verification
+- T1: lint clean · typecheck clean · `npm test` 192 files, 1303 passed · `demo:reset && verify:books` → ALL PASS — 1765 pemeriksaan.
 ## Ship Notes
