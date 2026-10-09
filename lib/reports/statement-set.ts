@@ -75,6 +75,9 @@ const itemRows = (cols: (FsItem[] | undefined)[], prefix: string): SetRow[] => {
   return rows;
 };
 
+/** Operating lines that are not cash movements of working capital: depreciation, non-cash and deferred items (cashFlow's keys). */
+const NON_CASH_KEYS = new Set(["AKUM_PENYUSUTAN", "BENEFITS", "DEFERRED_TAX", "OCI", "NONCASH", "DISPOSAL_NONCASH", "LEASE_INTEREST"]);
+
 export async function statementSet(db: Db, scope: Scope, year: number, month: number): Promise<StatementSet> {
   const asOf = periodBounds(year, month).end;
   // The client's financial year (lib/fiscal.ts): 1 January – 31 December unless it closes in another month.
@@ -152,7 +155,11 @@ export async function statementSet(db: Db, scope: Scope, year: number, month: nu
 
   // Arus Kas
   const cf = await cashFlow(db, scope, asOf);
-  const flows = (items: typeof cf.operating) => items.map((i): SetRow => ({ label: `${frameworkLabel(framework, i.label)} (${i.codes.join(", ")})`, values: [i.amount], indent: 1 }));
+  // A published statement names the line, not the ledger's account codes (the page keeps them, to drill into).
+  const flows = (items: typeof cf.operating, indent = 1) => items.map((i): SetRow => ({ label: frameworkLabel(framework, i.label), values: [i.amount], indent }));
+  // Indirect method: profit, then the non-cash items, then the changes in working capital.
+  const adjustments = cf.operating.filter((i) => NON_CASH_KEYS.has(i.key));
+  const workingCapital = cf.operating.filter((i) => !NON_CASH_KEYS.has(i.key));
   statements.push({
     name: "Arus Kas",
     title: names.cashFlow,
@@ -162,7 +169,8 @@ export async function statementSet(db: Db, scope: Scope, year: number, month: nu
     rows: [
       { label: "ARUS KAS DARI AKTIVITAS OPERASI", values: [], bold: true },
       { label: "Laba bersih", values: [cf.netProfit], indent: 1 },
-      ...flows(cf.operating),
+      ...(adjustments.length ? [{ label: "Penyesuaian:", values: [], indent: 1 }, ...flows(adjustments, 2)] : []),
+      ...(workingCapital.length ? [{ label: "Perubahan modal kerja:", values: [], indent: 1 }, ...flows(workingCapital, 2)] : []),
       { label: "Kas bersih dari aktivitas operasi", values: [cf.totals.OPERATING], bold: true },
       { label: "ARUS KAS DARI AKTIVITAS INVESTASI", values: [], bold: true },
       ...flows(cf.investing),

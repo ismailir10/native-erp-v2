@@ -53,7 +53,7 @@ Approval: the owner's brief in-session ("continue improving Buku until we are pr
   - A table or statement that continues on a new page repeats its column header and keeps its row font.
   - Punctuation after a management blank stays on its line.
   - The full draft list prints on the first page only; later pages carry "DRAF — lihat halaman 1".
-- [ ] **P4 Arus Kas.**
+- [x] **P4 Arus Kas.**
   - The export prints labels without account codes. The page keeps them, as it is for drill-down.
   - The operating section reads Laba bersih → *Penyesuaian:* (depreciation, non-cash and deferred items) → *Perubahan modal kerja:*
     (the rest) → *Kas bersih dari aktivitas operasi*.
@@ -91,7 +91,7 @@ it prints.
   "draf" and no "Catat jurnalnya".
 - [x] T3 PDF layout fixes. Accept: a db test on extracted PDF text (header repeated on a continued note page, no line that is only
   "."). The rendered pages are inspected by eye.
-- [ ] T4 Arus Kas presentation + intercompany by side. Accept: db test (a debit 1190 → investing, credit → financing; the totals still
+- [x] T4 Arus Kas presentation + intercompany by side. Accept: db test (a debit 1190 → investing, credit → financing; the totals still
   equal the change in cash); export labels carry no "(1130)".
 - [ ] T5 Wording + print (Jumlah …, expense-note signs, `fitToPage`). Accept: the updated tests; the workbook's sheets have
   `fitToPage`.
@@ -110,9 +110,15 @@ it prints.
   punctuation after it; the draft reasons on page 1, "DRAF — lihat halaman 1" after; statement and note columns wide enough for
   "1 Januari – 31 Maret 2026" on one line), `statement-set.ts` (no OCI in the period: one "Penghasilan komprehensif lain –" line instead of
   an empty heading). Tests: `tests/db/report-pdf-layout.test.ts` (new: 70-account note across pages), `report-pdf.test.ts` (draft line per
-  page). Pages rendered and looked at.
+  page). Pages rendered and looked at.- T4: `statements.ts` (`cashLine(a, lentOut)`: an intercompany account with a debit balance at the period end → *Pinjaman kepada pihak
+  berelasi*, investing; else *Pinjaman dari pihak berelasi*, financing — one `lineOf` inside `cashFlow` for every use, so the non-cash
+  and disposal paths agree), `statement-set.ts` (export labels without codes; Laba bersih → *Penyesuaian:* → *Perubahan modal kerja:*).
+  The page keeps its codes for drill-down. Test: `tests/db/cashflow-presentation.test.ts` (new, 2: both sides, totals = change in cash;
+  export order, no codes).
 ## Verification
 - T1: lint clean · typecheck clean · `npm test` 195 files, 1311 passed.
 - T2: lint + typecheck clean · report-final-wording, statements, report-pdf: all passed (full suite at T3).
 - T3: lint clean · typecheck clean · `npm test` 196 files, 1312 passed.
+- T4: lint clean · typecheck clean · `npm test` 197 files, 1314 passed · `demo:reset && verify:books` → ALL PASS — 1765 (a run on the
+  e2e-touched demo first showed CV Sinar 6190 off; reset → ALL PASS: data left by the e2e walk, not this change).
 ## Ship Notes
