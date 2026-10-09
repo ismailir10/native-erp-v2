@@ -14,6 +14,7 @@ import { appUrl } from "@/lib/supabase/env";
 import { formatDate } from "@/lib/format";
 import { createUploadLink, revokeUploadLink, uploadPath, UploadLinkError } from "@/lib/upload-links";
 import { importStatement, type ImportSummary } from "@/lib/import/pipeline";
+import { peekStatement, type PeekResult } from "@/lib/import/peek";
 import { resolveProvider } from "@/lib/settings/ai";
 import { acceptSimilar, reviewTransaction, splitTransaction, unpairTransfer, type SplitPartInput } from "@/lib/review";
 import { CloseError, lockPeriod, runControls, unlockPeriod } from "@/lib/controls";
@@ -57,7 +58,7 @@ import { saveControlNote } from "@/lib/controls/ack";
 import { closeHistoryMonth, historyPreview, type HistoryPreview, type YearMonth } from "@/lib/controls/history";
 import type { TaxTag, WithholdingKind } from "@/lib/generated/prisma/enums";
 import { RateError, upsertRate, validateRateInput } from "@/lib/fx/rates";
-import { MAX_UPLOAD_BYTES } from "@/lib/upload";
+import { MAX_UPLOAD_BYTES, UPLOAD_TOO_BIG } from "@/lib/upload";
 import { postRevaluation, RevaluationError } from "@/lib/fx/revalue";
 import { reviewClose, type CloseReviewView } from "@/lib/controls/ai-review";
 import { explainControl, ExplainError, type ControlExplanation } from "@/lib/controls/explain";
@@ -124,6 +125,26 @@ export async function importAction(formData: FormData): Promise<Result<{ summary
     // A text file no reader knows: the form offers Atur kolom.
     if (e instanceof UnreadableFileError) return { ok: false, error: e.message, mappable: true };
     return fail(e);
+  }
+}
+
+/**
+ * Batch upload, step 1: what one file holds and which of the client's accounts it belongs to. Reads the file on the server and writes
+ * nothing (no import, no AI). The same file is sent again to `importAction` when the accountant imports.
+ */
+export async function peekStatementAction(formData: FormData): Promise<PeekResult> {
+  try {
+    const client = await getClientForFirm(String(formData.get("clientId")));
+    const file = formData.get("file");
+    if (!(file instanceof File) || file.size === 0) return { ok: false, kind: "ERROR", error: "File kosong." };
+    if (file.size > MAX_UPLOAD) return { ok: false, kind: "ERROR", error: UPLOAD_TOO_BIG };
+    const password = String(formData.get("password") ?? "") || undefined; // used once to open the PDF, never stored
+    const yearText = String(formData.get("year") ?? "").trim();
+    const year = yearText ? Number(yearText) : undefined;
+    if (year !== undefined && !(Number.isInteger(year) && year >= 2000 && year <= 2100)) return { ok: false, kind: "YEAR", error: "Tahun harus 4 angka, misalnya 2026." };
+    return await peekStatement(prisma, { clientId: client.id, fileName: file.name, data: Buffer.from(await file.arrayBuffer()), password, year });
+  } catch (e) {
+    return { ok: false, kind: "ERROR", error: fail(e).error };
   }
 }
 
