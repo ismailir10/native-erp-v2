@@ -112,7 +112,7 @@ grows — re-checked with `verify:books`).
   `bca-individual.csv`, `mandiri-savings-dsuffix.csv`, trailing-minus fixture → `expectAugust`; old KlikBCA test unchanged.
 - [x] T4 Tabular header/label synonyms + layouts: BRI QLola, BNIDirect, CIMB, Permata, Danamon, OCBC, MCM/Kopra CSV/XLSX — accept: one
   fixture each → `expectAugust` + right bank.
-- [ ] T5 PDF: bilingual headers, row-number column, `Db./Cr.` and `D/K` markers, signed amounts; Mandiri Livin', Mandiri savings,
+- [x] T5 PDF: bilingual headers, row-number column, `Db./Cr.` and `D/K` markers, signed amounts; Mandiri Livin', Mandiri savings,
   MCM/Kopra, BNI old/corporate/wondr, BRI Rincian/IBBIZ, BSI, BTN fixtures — accept: each → `expectAugust` + right bank.
 - [ ] T6 PDF: time on next line, amount on next line (blu), pocket sections (Jago), year-less `DD MON` (SeaBank) — accept: Jago (2 pockets
   → 2 sections), SeaBank, blu fixtures → continuous.
@@ -147,11 +147,20 @@ grows — re-checked with `verify:books`).
   `Current Balance`). Layouts added to the catalog: Mandiri Livin'/MCM Excel + Kopra/MCM CSV, BRI CMS (TGL_TRAN) + internet banking CSV
   + QLola Excel, BNIDirect CSV/Excel + BNI Mobile Excel, CIMB OCTO CSV/Excel, PermataNet CSV/Excel; inferred: Danamon CSV, OCBC CSV,
   Panin Excel, Mega Excel, Bank DKI CSV, bjb Excel.
+- T5: `parsers/pdf.ts` (header words as in T4 plus `Trans Description`, `Tanggal & Jam`; bilingual header cells by their known part;
+  a `skip` column kind — `No`, `Cabang`/`Branch`, `Journal`, `Teller` — whose cells left of the description are dropped (only left of it,
+  so no amount can be pulled off its column); `Db.`/`Cr.`/`C` markers; Debit/Credit columns read unsigned (BSI prints `- 1,000.00`);
+  bilingual balance labels `Saldo Awal/Initial Balance`, `Saldo Awal / Previous Balance`, `Last Bal`, `Current Balance`; a `WIB/WITA/WIT`
+  after the time is no description). Layouts: BCA e-statement + KlikBCA mutasi print, Mandiri Livin' e-statement + savings + MCM/Kopra,
+  BNI corporate + savings + wondr, BRI Rincian + IBBIZ, BSI, BTN, CIMB, Sinarmas (inferred). The layout test also checks every
+  description starts with the bank's text (the BNI file failed that before the skip columns). Real files (BCA, SMBC) and the 26 private
+  audit fixtures: same row hashes before and after (local check, `data/private/scratch/`, not committed).
 
 ## Verification
 - T1: `npm run lint` 0 errors (1 existing warning in `public/deck/deck.js`) · typecheck clean · `npm test` 185 files, 1218 passed.- T2: `npm test` 186 files, 1224 passed · `npm run demo:reset && npm run verify:books` → ALL PASS — 1765 pemeriksaan saldo cocok
   (before the reseed the local DB was stale from earlier sessions and showed 4 CV Sinar Retail differences; the reseed runs the new code).
 - T3: `npm test` 188 files, 1235 passed; lint 0 errors; typecheck clean.
 - T4: `npm test` 188 files, 1253 passed (`bank-layouts.test.ts` 20 layouts); lint 0 errors; typecheck clean.
+- T5: `npm test` 188 files, 1267 passed (34 layouts); lint 0 errors; typecheck clean; real-file and private-fixture row hashes unchanged.
 
 ## Ship Notes
