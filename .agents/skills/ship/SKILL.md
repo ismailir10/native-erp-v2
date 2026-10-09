@@ -8,7 +8,8 @@ description: Ship a completed Buku cycle — preflight the cycle doc, push the f
 ## Preflight (stop on any failure)
 - All Tasks ticked; Implementation, Verification (with real gate output, incl. `verify:books` and e2e) and Ship Notes filled.
 - README updated if routes, modules, env vars or setup changed.
-- Big feature? Plan the deck review (step 3) — it belongs to this PR, not a follow-up.
+- Big feature? The deck review (step 3) is part of this PR, not a follow-up, and not a cycle task: it runs after the PR is
+  open, so the Tasks can all be ticked before shipping.
 - `git status` clean; branch is neither `staging` nor `main`.
 
 ## Steps
