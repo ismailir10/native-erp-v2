@@ -33,6 +33,33 @@ const wrapped = (t: (typeof TX)[number], x: number, first: Cells): Cells[] => [f
 const total = (sign: 1 | -1) => TX.filter((t) => Math.sign(t.amt) === sign).reduce((s, t) => s + Math.abs(t.amt), 0);
 const ID_MON = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
 
+/** "55500000,00" — SWIFT amounts: no thousands separator, comma decimals. */
+const swift = (v: number) => `${Math.abs(v)},00`;
+const yymmdd = (d: number, m = 8) => `26${p2(m)}${p2(d)}`;
+/**
+ * An MT940 file of the five August rows. `daily`: one statement per booking day (60F/62F each day, as banks send them by SFTP);
+ * `bicIn`: the BIC in the SWIFT header blocks, or in front of the account in `:25:`.
+ */
+export function mt940(bic: string, account: string, opts: { daily?: boolean; bicIn?: "header" | "account" } = {}): Buffer {
+  const header = opts.bicIn === "account" ? "" : `{1:F01${bic}AXXX0000000000}{2:O9401200260901${bic}XXXX00000000002609011200N}{4:\n`;
+  const acct = opts.bicIn === "account" ? `${bic}/${account}` : account;
+  const days = opts.daily ? [...new Set(TX.map((t) => t.d))] : [0];
+  let balance = OPEN;
+  let prevDate = yymmdd(31, 7);
+  const blocks = days.map((day, k) => {
+    const txs = TX.filter((t) => !opts.daily || t.d === day);
+    const open = `:60${k === 0 ? "F" : "M"}:C${prevDate}IDR${swift(balance)}`;
+    const lines = txs.flatMap((t) => {
+      balance += t.amt;
+      return [`:61:${yymmdd(t.d)}08${p2(t.d)}${t.amt < 0 ? "D" : "C"}${swift(t.amt)}NTRFNONREF//FT26${p2(t.d)}${String(Math.abs(t.amt)).slice(0, 4)}`, `:86:${t.desc[0]}`, ...t.desc.slice(1)];
+    });
+    const closeDate = opts.daily ? yymmdd(day) : yymmdd(31);
+    prevDate = closeDate;
+    return [`:20:STMT${closeDate}`, `:25:${acct}`, `:28C:${String(k + 1).padStart(5, "0")}/001`, open, ...lines, `:62${k === days.length - 1 ? "F" : "M"}:C${closeDate}IDR${swift(balance)}`, `:64:C${closeDate}IDR${swift(balance)}`].join("\n");
+  });
+  return Buffer.from(header + blocks.join("\n-}\n") + (header ? "\n-}" : ""));
+}
+
 export const LAYOUTS: Layout[] = [
   {
     bank: "BCA",
@@ -510,4 +537,16 @@ export const LAYOUTS: Layout[] = [
         ["Ketentuan Umum"],
       ),
   },
+  // ---- MT940: one SWIFT format, every bank that issues it ----
+  { bank: "BCA", format: "MT940", file: "bca.mt940", build: () => mt940("CENAIDJA", "0000012345") },
+  { bank: "MANDIRI", format: "MT940", file: "mandiri.sta", build: () => mt940("BMRIIDJA", "1370000123456", { daily: true }) },
+  { bank: "BRI", format: "MT940", file: "bri-mt940.txt", build: () => mt940("BRINIDJA", "000001000123509", { daily: true, bicIn: "account" }) },
+  { bank: "CIMB", format: "MT940", file: "cimb.940", build: () => mt940("BNIAIDJA", "800123456789") },
+  { bank: "OCBC", format: "MT940", file: "ocbc.mt940", build: () => mt940("NISPIDJA", "693800123456", { bicIn: "account" }) },
+  { bank: "MAYBANK", format: "MT940", file: "maybank.mt940", build: () => mt940("IBBKIDJA", "2000123456", { daily: true }) },
+  { bank: "UOB", format: "MT940", file: "uob.mt940", build: () => mt940("BBIJIDJA", "3000123456") },
+  { bank: "DBS", format: "MT940", file: "dbs.mt940", build: () => mt940("DBSBIDJA", "4000123456", { bicIn: "account" }) },
+  { bank: "HSBC", format: "MT940", file: "hsbc.mt940", build: () => mt940("HSBCIDJA", "001123456069") },
+  { bank: "CITI", format: "MT940", file: "citi.mt940", build: () => mt940("CITIIDJX", "0101234567", { daily: true }) },
+  { bank: "JATIM", format: "MT940", file: "jatim.txt", build: () => mt940("PDJTIDJ1", "0011223344") },
 ];

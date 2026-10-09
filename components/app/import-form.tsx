@@ -187,7 +187,7 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
               {file ? <span className="font-medium">{file.name}</span> : <span><span className="font-medium text-primary">Pilih file</span> atau tarik ke sini</span>}
               <span className="text-xs text-muted-foreground">Maks. 5 MB · baris yang sudah pernah diimpor otomatis dilewati</span>
             </button>
-            <input ref={inputRef} type="file" accept=".pdf,.csv,.xlsx,.xls,.jpg,.jpeg,.png" className="sr-only" data-testid="file-input" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            <input ref={inputRef} type="file" accept=".pdf,.csv,.xlsx,.xls,.txt,.sta,.940,.mt940,.jpg,.jpeg,.png" className="sr-only" data-testid="file-input" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
             <FieldDescription>Saldo berjalan dicek di setiap baris. Kalau ada baris yang hilang, hasilnya ditandai Ada celah.</FieldDescription>
           </Field>
           {needsPassword && (

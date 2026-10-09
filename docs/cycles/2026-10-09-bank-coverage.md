@@ -116,7 +116,7 @@ grows — re-checked with `verify:books`).
   MCM/Kopra, BNI old/corporate/wondr, BRI Rincian/IBBIZ, BSI, BTN fixtures — accept: each → `expectAugust` + right bank.
 - [x] T6 PDF: time on next line, amount on next line (blu), pocket sections (Jago), year-less `DD MON` (SeaBank) — accept: Jago (2 pockets
   → 2 sections), SeaBank, blu fixtures → continuous.
-- [ ] T7 MT940 parser + upload accept list — accept: single statement, multi-page `:60M/:62M`, multi-account → sections, USD section
+- [x] T7 MT940 parser + upload accept list — accept: single statement, multi-page `:60M/:62M`, multi-account → sections, USD section
   listed not imported, `RD`/`RC` reversals, `:86:` multi-line, BIC → bank; malformed tag → clear Bahasa error.
 - [ ] T8 Coverage test + docs — registry × formats test; `docs/real-data.md` + README supported list point to the registry —
   accept: removing a fixture fails the test.
@@ -159,6 +159,12 @@ grows — re-checked with `verify:books`).
   section like SMBC's account titles — Jago; `Saldo Sebelumnya` as an opening label). Layouts: Livin' with the time on its own line, blu,
   Jago (two pockets), SeaBank (`DD MON` without a year, one unsigned whole-Rupiah amount). Tests: Jago → two sections with their numbers;
   an unsigned first-row debit read from the balance.
+- T7: `lib/import/parsers/mt940.ts` (new: tags with continuation lines, SWIFT header blocks dropped; `:60F/M` → opening, `:61:` value +
+  booking date across a year end, C/D/RC/RD, funds code, comma decimals; `:86:` multi-line as the description; `:62F/M` printed on the
+  statement's last row so a gap between daily statements breaks the chain; blocks joined per account + currency; an empty day that
+  doesn't continue is refused; several accounts or a foreign currency → sections; bank from the BIC in blocks 1/2 or `:25:`), routed in
+  `parsers/index.ts` before the CSV readers; upload accepts `.txt/.sta/.940/.mt940`. Layouts: MT940 for BCA, Mandiri (daily), BRI
+  (daily, BIC in `:25:`), CIMB, OCBC, Maybank (daily), UOB, DBS, HSBC, Citi (daily), Bank Jatim. Tests: `tests/unit/mt940.test.ts`.
 
 ## Verification
 - T1: `npm run lint` 0 errors (1 existing warning in `public/deck/deck.js`) · typecheck clean · `npm test` 185 files, 1218 passed.- T2: `npm test` 186 files, 1224 passed · `npm run demo:reset && npm run verify:books` → ALL PASS — 1765 pemeriksaan saldo cocok
@@ -167,5 +173,6 @@ grows — re-checked with `verify:books`).
 - T4: `npm test` 188 files, 1253 passed (`bank-layouts.test.ts` 20 layouts); lint 0 errors; typecheck clean.
 - T5: `npm test` 188 files, 1267 passed (34 layouts); lint 0 errors; typecheck clean; real-file and private-fixture row hashes unchanged.
 - T6: `npm test` 188 files, 1273 passed (38 layouts); lint 0 errors; typecheck clean; real-file and private-fixture hashes unchanged.
+- T7: `npm test` 189 files, 1291 passed (49 layouts, 7 MT940 cases); lint 0 errors; typecheck clean; real-file/fixture hashes unchanged.
 
 ## Ship Notes
