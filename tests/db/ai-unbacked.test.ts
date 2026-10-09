@@ -8,8 +8,8 @@ import { suggestAgainWithAi } from "@/lib/ai/retry";
 import { dateOnly } from "@/lib/format";
 
 const accountId = async (clientId: string, code: string) => (await db.account.findUniqueOrThrow({ where: { clientId_code: { clientId, code } } })).id;
-const post = async (entityId: string, clientId: string, dr: string, cr: string, amount: bigint) =>
-  db.$transaction(async (tx) => postJournal(tx, { entityId, date: dateOnly(2026, 7, 31), kind: "ADJUSTMENT", memo: "uji", lines: [{ accountId: await accountId(clientId, dr), debit: amount }, { accountId: await accountId(clientId, cr), credit: amount }] }));
+const post = async (entityId: string, clientId: string, dr: string, cr: string, amount: bigint, date = dateOnly(2026, 7, 31)) =>
+  db.$transaction(async (tx) => postJournal(tx, { entityId, date, kind: "ADJUSTMENT", memo: "uji", lines: [{ accountId: await accountId(clientId, dr), debit: amount }, { accountId: await accountId(clientId, cr), credit: amount }] }));
 
 // A receipt from a customer and a payment to a supplier, nothing else.
 const file = Buffer.from(["Tanggal;Keterangan;Debet;Kredit;Saldo", "01/08/2026;SALDO AWAL;;;10.000.000", "05/08/2026;TRSF MASUK PT PELANGGAN SETIA;;5.000.000;15.000.000", "06/08/2026;TRSF KELUAR CV PEMASOK ABADI;2.000.000;;13.000.000", ""].join("\n"));
@@ -38,7 +38,7 @@ describe("an AI receivable or payable with nothing on the books to settle", () =
     const g = await makeGroup();
     await post(g.pt.entity.id, g.client.id, "1130", "4100", 5_000_000n);
     await post(g.pt.entity.id, g.client.id, "5100", "2110", 2_000_000n);
-    expect(await tradeBacking(db, g.pt.entity.id)).toEqual({ receivable: true, payable: true });
+    expect((await tradeBacking(db, g.pt.entity.id))(dateOnly(2026, 8, 31))).toEqual({ receivable: true, payable: true });
     await importStatement(db, { bankAccountId: g.pt.banks[0].id, fileName: "agu.csv", data: file, provider: provider() });
     const lines = await db.bankTransaction.findMany({ where: { bankAccountId: g.pt.banks[0].id }, orderBy: { rowNumber: "asc" } });
     expect(lines.map((l) => [l.suggestedCode, l.confidence])).toEqual([["1130", 0.85], ["2110", 0.88]]);
@@ -54,9 +54,19 @@ describe("an AI receivable or payable with nothing on the books to settle", () =
     expect(lines.map((l) => [l.suggestedCode, l.confidence])).toEqual([["1130", UNBACKED_CONFIDENCE], ["2110", UNBACKED_CONFIDENCE]]);
   });
 
+  it("counts only what was on the books by the row's date: a receivable booked later settles nothing earlier", async () => {
+    const g = await makeGroup();
+    await post(g.pt.entity.id, g.client.id, "1130", "4100", 5_000_000n, dateOnly(2026, 8, 20));
+    const at = await tradeBacking(db, g.pt.entity.id);
+    expect([at(dateOnly(2026, 8, 5)).receivable, at(dateOnly(2026, 8, 20)).receivable]).toEqual([false, true]);
+    await importStatement(db, { bankAccountId: g.pt.banks[0].id, fileName: "agu.csv", data: file, provider: provider() });
+    const receipt = await db.bankTransaction.findFirstOrThrow({ where: { bankAccountId: g.pt.banks[0].id, suggestedCode: "1130" } });
+    expect(receipt.confidence).toBe(UNBACKED_CONFIDENCE); // the 5 Aug receipt, before the 20 Aug invoice
+  });
+
   it("counts another entity's receivable for nothing", async () => {
     const g = await makeGroup();
     await post(g.owner.entity.id, g.client.id, "1130", "4910", 5_000_000n);
-    expect(await tradeBacking(db, g.pt.entity.id)).toEqual({ receivable: false, payable: false });
+    expect((await tradeBacking(db, g.pt.entity.id))(dateOnly(2026, 8, 31))).toEqual({ receivable: false, payable: false });
   });
 });

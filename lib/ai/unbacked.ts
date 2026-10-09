@@ -16,21 +16,25 @@ const TRADE = { IN: "PIUTANG_USAHA", OUT: "UTANG_USAHA" } as const;
 /** What the entity's books hold to settle: a debit balance on its trade receivables, a credit balance on its trade payables. */
 export type TradeBacking = { receivable: boolean; payable: boolean };
 
-export async function tradeBacking(db: Db, entityId: string): Promise<TradeBacking> {
-  const rows = await db.journalLine.groupBy({
-    by: ["accountId"],
+/**
+ * The entity's trade receivable/payable position as of any date (inclusive): one query, then each bank row asks about its own date —
+ * a receivable booked after an older row can't have been what that row settled.
+ */
+export async function tradeBacking(db: Db, entityId: string): Promise<(asOf: Date) => TradeBacking> {
+  const lines = await db.journalLine.findMany({
     where: { entityId, account: { fsLine: { in: [TRADE.IN, TRADE.OUT] } } },
-    _sum: { debit: true, credit: true },
+    select: { date: true, debit: true, credit: true, account: { select: { fsLine: true } } },
   });
-  const accounts = new Map((await db.account.findMany({ where: { id: { in: rows.map((r) => r.accountId) } }, select: { id: true, fsLine: true } })).map((a) => [a.id, a.fsLine]));
-  let receivable = 0n;
-  let payable = 0n;
-  for (const r of rows) {
-    const net = (r._sum.debit ?? 0n) - (r._sum.credit ?? 0n);
-    if (accounts.get(r.accountId) === TRADE.IN) receivable += net;
-    else payable -= net;
-  }
-  return { receivable: receivable > 0n, payable: payable > 0n };
+  return (asOf) => {
+    let receivable = 0n;
+    let payable = 0n;
+    for (const l of lines) {
+      if (+l.date > +asOf) continue;
+      if (l.account.fsLine === TRADE.IN) receivable += l.debit - l.credit;
+      else payable += l.credit - l.debit;
+    }
+    return { receivable: receivable > 0n, payable: payable > 0n };
+  };
 }
 
 /** The suggestion as Review should see it: demoted with its reason when it would settle a receivable/payable the books don't hold. */

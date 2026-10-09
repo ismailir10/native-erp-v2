@@ -238,12 +238,12 @@ export async function importStatement(
     provider: args.provider,
   });
   // An AI receivable/payable with nothing on the books to settle is demoted below the bulk accept (lib/ai/unbacked.ts).
-  const backing = ai.suggestions.size ? await tradeBacking(db, entity.id) : { receivable: true, payable: true };
+  const backingAt = ai.suggestions.size ? await tradeBacking(db, entity.id) : () => ({ receivable: true, payable: true });
   const fsLineOf = (code: string) => accounts.find((a) => a.code === code)?.fsLine;
   for (const it of items) {
     if (result.has(it.id)) continue;
     const suggested = ai.suggestions.get(`${it.merchantKey}|${it.direction}`);
-    result.set(it.id, suggested ? demoteUnbacked(suggested, it.direction, fsLineOf, backing) : simpleGuess(it.direction, entity.kind, isGenericKey(it.merchantKey)));
+    result.set(it.id, suggested ? demoteUnbacked(suggested, it.direction, fsLineOf, backingAt(it.date)) : simpleGuess(it.direction, entity.kind, isGenericKey(it.merchantKey)));
   }
 
   // ---- write: import + transactions + journals, all-or-nothing ----
