@@ -11,7 +11,7 @@ import { planRejections } from "@/lib/evidence/plan-stats";
 import { ocrEnabled } from "@/lib/ocr/draft";
 import { OcrSettingCard } from "@/components/app/ocr-setting";
 
-export const metadata = { title: "Pengaturan" };
+export const metadata = { title: "Pengaturan kantor" };
 
 export default async function SettingsPage() {
   const { firm, member } = await requireWorkspaceSession();
@@ -22,7 +22,7 @@ export default async function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Pengaturan" description="Berlaku untuk semua klien di kantor ini." />
+      <PageHeader title="Pengaturan kantor" description="Berlaku untuk semua klien di kantor ini." />
       {!isAdmin ? (
         <NextStep>Hanya admin kantor yang dapat mengubah pengaturan ini. Anda bisa melihat statusnya di bawah.</NextStep>
       ) : !secretReady ? (
