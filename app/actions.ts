@@ -3,7 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { getClientForFirm, getCurrentFirm, getCurrentMember } from "@/lib/tenant";
-import { createOcrDraft, importOcrDraft, ocrEnabled, updateOcrDraft, type OcrRowInput } from "@/lib/ocr/draft";
+import { createMappedDraft, createOcrDraft, importOcrDraft, ocrEnabled, updateOcrDraft, type OcrRowInput } from "@/lib/ocr/draft";
+import { readGrid } from "@/lib/import/grid";
+import { checkMapping, mappingFromJson, MAX_COLUMNS, readMapped, suggestMapping, type ColumnMapping } from "@/lib/import/mapped";
+import { forgetLayout } from "@/lib/import/layouts";
 import { OcrError } from "@/lib/ocr/pages";
 import { clearReportComment, CommentError, draftCommentary, saveReportComment } from "@/lib/reports/report-comment";
 import { headers } from "next/headers";
@@ -35,7 +38,7 @@ import { deleteInstalment, setInstalment } from "@/lib/tax/instalment";
 import { recordInventoryCount } from "@/lib/inventory";
 import { acceptSuggestion, addCorrection, addCredit, deleteCorrection, deleteCredit, deleteLoss, dismissSuggestion, setCorrectionPercent, setLoss, setRegime, setTaxMonth, type CorrectionInput, type CreditInput } from "@/lib/tax/records";
 import type { TaxPostingKind, TaxRegime } from "@/lib/generated/prisma/enums";
-import { AccountMismatchError, ParseError, ScanError, YearNeededError } from "@/lib/import/types";
+import { AccountMismatchError, ParseError, ScanError, UnreadableFileError, YearNeededError } from "@/lib/import/types";
 import { PdfPasswordError } from "@/lib/import/parsers/pdf";
 import { MoneyError, parseMoney } from "@/lib/money";
 import { dateOnly } from "@/lib/format";
@@ -75,7 +78,7 @@ import type { MapMethod } from "@/lib/generated/prisma/enums";
  * Server actions — the only write path from the UI. Each returns {ok, …} or {ok:false, error}
  * with a Bahasa message the UI shows verbatim. Domain errors are expected; others are bugs.
  */
-type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string; needsPassword?: boolean; needsYear?: boolean; yearGuess?: number | null; fields?: Record<string, string>; suggestBankAccountId?: string; scanned?: { ocrReady: boolean } };
+type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string; needsPassword?: boolean; needsYear?: boolean; yearGuess?: number | null; fields?: Record<string, string>; suggestBankAccountId?: string; scanned?: { ocrReady: boolean }; mappable?: boolean };
 
 function fail(e: unknown): { ok: false; error: string; needsPassword?: boolean; needsYear?: boolean; yearGuess?: number | null } {
   if (e instanceof PdfPasswordError) return { ok: false, error: e.message, needsPassword: true };
@@ -118,6 +121,90 @@ export async function importAction(formData: FormData): Promise<Result<{ summary
     }
     // A scan or photo: the form offers Baca scan dengan AI when the workspace switch is on and a model is configured (I2a).
     if (e instanceof ScanError) return { ok: false, error: e.message, scanned: { ocrReady: (await ocrEnabled(prisma)) && (await resolveProvider(prisma)) !== null } };
+    // A text file no reader knows: the form offers Atur kolom.
+    if (e instanceof UnreadableFileError) return { ok: false, error: e.message, mappable: true };
+    return fail(e);
+  }
+}
+
+/** The upload of an Atur kolom step: the client's own bank account and a file within the limit; the bytes are read here, on the server. */
+async function mappingUpload(formData: FormData) {
+  const client = await getClientForFirm(String(formData.get("clientId")));
+  const bankAccountId = String(formData.get("bankAccountId"));
+  if (!client.entities.some((e) => e.bankAccounts.some((b) => b.id === bankAccountId))) throw new ParseError("Pilih rekening bank dulu.");
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) throw new ParseError("Pilih file rekening koran.");
+  if (file.size > MAX_UPLOAD) throw new ParseError("File terlalu besar (maks. 5 MB).");
+  const password = String(formData.get("password") ?? "") || undefined; // used once to open the PDF, never stored
+  return { client, bankAccountId, file, password, data: Buffer.from(await file.arrayBuffer()) };
+}
+
+/** Rows of a grid sheet shown in Atur kolom: the first 60, cells cut to 80 characters (the mapping is read from the whole file later). */
+export type GridPreview = { kind: "CSV" | "XLSX" | "PDF"; sheets: { name: string; rows: string[][]; totalRows: number; width: number; suggestion: ColumnMapping }[] };
+const PREVIEW_ROWS = 60;
+
+/** Atur kolom, step 1: the file as Buku sees it, with a first guess at the mapping per sheet. Nothing is stored. */
+export async function columnGridAction(formData: FormData): Promise<Result<{ grid: GridPreview }>> {
+  try {
+    const { data, password } = await mappingUpload(formData);
+    const grid = await readGrid(data, { password });
+    const sheets = grid.sheets.map((s) => {
+      const suggestion = suggestMapping(grid, s.name);
+      const shown = Math.max(PREVIEW_ROWS, Math.min(s.rows.length, suggestion.firstRow + 20));
+      return {
+        name: s.name,
+        rows: s.rows.slice(0, shown).map((r) => r.slice(0, MAX_COLUMNS).map((c) => (c.length > 80 ? `${c.slice(0, 79)}…` : c))),
+        totalRows: s.rows.length,
+        width: Math.min(MAX_COLUMNS, Math.max(1, ...s.rows.map((r) => r.length))),
+        suggestion,
+      };
+    });
+    return { ok: true, grid: { kind: grid.kind, sheets } };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export type MappedPreview = { rows: { row: number; date: string; description: string; amount: string; balance: string | null }[]; total: number; notes: string[]; opening: string };
+
+/** Atur kolom, step 2: the first five rows the mapping reads from the whole file, for the accountant to check. Nothing is stored. */
+export async function mappedPreviewAction(formData: FormData): Promise<Result<{ preview: MappedPreview }>> {
+  try {
+    const { data, password, file } = await mappingUpload(formData);
+    const mapping = mappingFromJson(String(formData.get("mapping") ?? ""));
+    const grid = await readGrid(data, { password });
+    checkMapping(mapping, grid);
+    const st = readMapped(grid, mapping, { fileName: file.name });
+    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    return {
+      ok: true,
+      preview: { rows: st.rows.slice(0, 5).map((r) => ({ row: r.rowNumber, date: iso(r.date), description: r.description, amount: r.amount.toString(), balance: r.balance?.toString() ?? null })), total: st.rows.length, notes: st.notes ?? [], opening: st.openingBalance.toString() },
+    };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Atur kolom, step 3: every row read into a draft on Periksa baris (proved by the running balance there, imported only by a click). */
+export async function mappedDraftAction(formData: FormData): Promise<Result<{ draftId: string }>> {
+  try {
+    const { client, bankAccountId, file, password, data } = await mappingUpload(formData);
+    const mapping = mappingFromJson(String(formData.get("mapping") ?? ""));
+    const draft = await createMappedDraft(prisma, { firmId: client.firmId, clientId: client.id, bankAccountId, fileName: file.name, data, password, mapping, actorId: (await getCurrentMember()).id });
+    return { ok: true, draftId: draft.id };
+  } catch (e) {
+    if (e instanceof OcrError) return { ok: false, error: e.message };
+    return fail(e);
+  }
+}
+
+/** *Lupakan pemetaan ini*: the firm stops reading files of that layout with it; imports already made stay. */
+export async function forgetLayoutAction(clientId: string, layoutId: string): Promise<Result> {
+  try {
+    const client = await getClientForFirm(clientId);
+    if (!(await forgetLayout(prisma, client.firmId, layoutId))) return { ok: false, error: "Pemetaan ini sudah tidak tersimpan." };
+    return { ok: true };
+  } catch (e) {
     return fail(e);
   }
 }

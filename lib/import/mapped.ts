@@ -32,6 +32,34 @@ export type ColumnMapping = {
 
 export const MAX_COLUMNS = 40;
 
+/**
+ * A mapping as the browser sends it (JSON), reduced to the shape `ColumnMapping` declares — integers where columns and rows go, the known
+ * amount styles, DMY/MDY. Anything else is refused; whether the columns exist is `checkMapping`'s job, against the file itself.
+ */
+export function mappingFromJson(text: string): ColumnMapping {
+  let v: unknown;
+  try {
+    v = JSON.parse(text);
+  } catch {
+    throw new ParseError("Pemetaan kolom tidak terbaca. Muat ulang halaman lalu coba lagi.");
+  }
+  const o = (v ?? {}) as Record<string, unknown>;
+  const int = (x: unknown) => (Number.isInteger(x) ? (x as number) : -1);
+  const a = (o.amount ?? {}) as Record<string, unknown>;
+  const amount: AmountMapping =
+    a.style === "split" ? { style: "split", debit: int(a.debit), credit: int(a.credit) } : { style: "signed", column: int(a.column), direction: a.direction === null || a.direction === undefined ? null : int(a.direction) };
+  return {
+    sheet: typeof o.sheet === "string" ? o.sheet.slice(0, 200) : null,
+    firstRow: int(o.firstRow),
+    date: int(o.date),
+    description: Array.isArray(o.description) ? o.description.slice(0, MAX_COLUMNS).map(int) : [],
+    amount,
+    balance: int(o.balance),
+    order: o.order === "MDY" ? "MDY" : "DMY",
+    year: o.year === null || o.year === undefined || o.year === "" ? null : int(Number(o.year)),
+  };
+}
+
 /** The mapping is the accountant's, sent from the browser: refused unless every column it names exists and no column has two jobs. */
 export function checkMapping(m: ColumnMapping, grid: Grid): GridSheet {
   const sheet = grid.kind === "XLSX" ? grid.sheets.find((s) => s.name === m.sheet) : grid.sheets[0];

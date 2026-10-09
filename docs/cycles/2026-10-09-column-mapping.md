@@ -70,7 +70,7 @@ rows were read. No new dependency, no AI credit, no accounting-invariant change 
   `importOcrDraft`; layout saved on import) — accept: db test: unknown CSV → draft proves → import → layout stored; AI off works.
 - [x] T4 Remembered layouts in `parseStatementSections` + *Lupakan pemetaan ini* — accept: db test: same-signature file imports directly
   with the note; another firm's layout never applies; forgetting deletes only the layout.
-- [ ] T5 UI: *Atur kolom* on a failed import, grid + column pickers + 5-row preview → *Baca semua baris* → *Periksa baris* (label), result
+- [x] T5 UI: *Atur kolom* on a failed import, grid + column pickers + 5-row preview → *Baca semua baris* → *Periksa baris* (label), result
   note + forget action — accept: e2e `statement-column-mapping.spec.ts` (CSV and PDF; second file auto); screenshot at desktop and 390px.
 - [ ] T6 End-of-cycle gates, Ship Notes, production check (M7), deck review.
 
@@ -103,9 +103,22 @@ rows were read. No new dependency, no AI credit, no accounting-invariant change 
   layout; otherwise `UnreadableFileError` (the reader's own message) so the import page can offer *Atur kolom*. `importStatement` loads the
   firm's layouts, returns `summary.layout` and stamps `lastUsedAt`; a section's repair refusal is an `UnreadableFileError` too.
   `lib/import/layouts.ts` `forgetLayout` (firm-scoped). Test: `tests/db/remembered-layout.test.ts`.
+- T5: `app/actions.ts` (`importAction` answers an `UnreadableFileError` with `mappable`; `columnGridAction` — the first 60 rows per sheet,
+  cells cut to 80 characters, a suggested mapping per sheet; `mappedPreviewAction` — five rows read from the whole file; `mappedDraftAction`;
+  `forgetLayoutAction`; every step re-reads the uploaded file on the server, `mappingFromJson` reduces what the browser sends to the
+  mapping's shape). `components/app/column-mapper.tsx` (new: sheet, first row — typed or by clicking a row number — date order, year when
+  asked; a role picker per column, one Tanggal/Saldo/…, Jumlah and Debet/Kredit exclusive; live five-row preview; *Baca semua baris* →
+  *Periksa baris*). `import-form.tsx` (the *Atur kolom* notice, the mapper below the form with *Proses mutasi* turned outline, the result's
+  "Dibaca dengan pemetaan kolom tersimpan" line with *Lupakan pemetaan ini*, its note not repeated). Draft page and `ocr-review.tsx` say
+  "file" instead of "scan" for a mapped draft and prove it `chained` like the server. Fixture data moved to `tests/fixture-rows.ts` (no
+  test-runner import, so e2e can build files). Test: `e2e/statement-column-mapping.spec.ts` (CSV: notice → mapper guess → Ref column
+  dropped → preview → 390px without page scroll → draft proves → import → August's file read with the saved layout → forget → refused
+  again; PDF: Debet/Kredit apart → import). Screenshots looked at: desktop 1440 and 390.
 ## Verification
 - T1: lint clean · typecheck clean · `npm test` 200 files, 1329 passed.
 - T2: lint clean · typecheck clean · `npm test` 201 files, 1341 passed.
 - T3: lint clean · typecheck clean · `npm test` 202 files, 1346 passed.
 - T4: lint clean · typecheck clean · `npm test` 203 files, 1352 passed.
+- T5: lint clean · typecheck clean · `npm test` 203 files, 1352 passed · e2e column-mapping, ocr-scan, qa-import-edge-cases, import-xls,
+  statements, statement-mismatch: 12 passed.
 ## Ship Notes

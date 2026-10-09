@@ -1,13 +1,15 @@
-import { CLOSE, OPEN, TX, en, idn, p2, xlsxBuffer } from "./bank-fixture";
+import { CLOSE, OPEN, TX, en, idn, p2, xlsxBuffer } from "./fixture-rows";
 import { makePdf, table } from "./pdf-fixture";
 
 /**
  * Statements in a layout no Buku reader knows (column words no bank uses: "Value Dt", "Particulars", "Withdrawn", "Lodged", "Position"),
- * holding the five August rows of `tests/bank-fixture.ts` — or the same rows in September, carried on from August's closing balance, for
- * a "next month's file". *Atur kolom* must read them; the generic reader must not. Names and numbers are fake.
+ * holding the five August rows of `tests/bank-fixture.ts` — or the same rows in July or September, each month carried on from the last,
+ * for a "next month's file" (e2e stays in July/August: specs share one database whose work period must not pass August). *Atur kolom*
+ * must read them; the generic reader must not. Names and numbers are fake.
  */
-export type Month = 8 | 9;
-const opening = (month: Month) => (month === 8 ? OPEN : CLOSE);
+export type Month = 7 | 8 | 9;
+/** Each month carries on from the last: August opens at OPEN, so July opens one month's movement lower and September at CLOSE. */
+const opening = (month: Month) => OPEN + (month - 8) * (CLOSE - OPEN);
 const balances = (month: Month) => {
   let b = opening(month);
   return TX.map((t) => (b += t.amt));
