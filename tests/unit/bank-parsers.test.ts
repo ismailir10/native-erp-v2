@@ -248,7 +248,8 @@ describe("the bank is tagged from the statement's own words, not its transaction
     [["Informasi Rekening BCA"], "BCA"],
     [["PT Bank SMBC Indonesia Tbk"], "SMBC"],
     [["Laporan Mutasi Rekening", "Nama : PT SINAR MANDIRI ABADI"], "GENERIC"],
-    [["CIMB Niaga - Rekening Koran"], "GENERIC"],
+    [["CIMB Niaga - Rekening Koran"], "CIMB"],
+    [["Laporan Mutasi Rekening", "Nama : PT PERMATA HIJAU"], "GENERIC"],
   ] as const)("CSV preamble %j → %s", async (preamble, format) => {
     expect((await parseStatement("x.csv", csv(...preamble))).format).toBe(format);
   });

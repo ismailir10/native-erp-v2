@@ -106,7 +106,7 @@ grows — re-checked with `verify:books`).
 ## Tasks
 - [x] T1 Bank registry + migration — `lib/banks.ts`, `BankCode` +21 values, client form / entity card / onboarding read it (searchable
   picker) — accept: new client with a BNI and a Jago account saves; db test on onboarding; migration applies on a fresh DB.
-- [ ] T2 Detection from the registry — `detectFormat` → registry; tabular/PDF tag every bank; transfer matcher words from the registry
+- [x] T2 Detection from the registry — `detectFormat` → registry; tabular/PDF tag every bank; transfer matcher words from the registry
   — accept: guard tests (company names) + one tag test per bank; `verify:books` ALL PASS.
 - [ ] T3 Tabular direction-in-cell + KlikBCA current/Individual CSV (depends T2) — accept: `bca-bisnis-2026.csv`,
   `bca-individual.csv`, `mandiri-savings-dsuffix.csv`, trailing-minus fixture → `expectAugust`; old KlikBCA test unchanged.
@@ -131,7 +131,13 @@ grows — re-checked with `verify:books`).
   `detectBank`, `bankOfBic`, `bankOptions`, `bankName`), `prisma/schema.prisma` + `migrations/20261009100000_bank_codes` (21 `ADD VALUE`),
   `components/app/bank-picker.tsx` (the searchable `AccountPicker`, now with `searchPlaceholder` / `emptyText` / `labelOf`),
   `client-form.tsx` + `entities-card.tsx` (picker, no local bank list), `lib/onboarding.ts` (validates against `BANK_CODES`; a blank
-  account name is the bank's short name). Test: `tests/db/onboarding.test.ts` (BNI, Jago, SMBC accounts; unknown code refused).
+  account name is the bank's short name). Test: `tests/db/onboarding.test.ts` (BNI, Jago, SMBC accounts; unknown code refused).- T2: `lib/import/parsers/pdf.ts` (`detectFormat` → `detectBank`, so PDF, CSV and XLSX preambles name all 25 banks),
+  `lib/classify/transfer.ts` (bank words = BANK/GIRO/TABUNGAN + the registry's words: a superset of the old list, adds BLU, OCTO, NISP,
+  SINARMAS, DIGIBANK, CITI(BANK), DKI, JAKONE, BJB, JATIM). Tests: `tests/unit/bank-detect.test.ts` (a heading per bank, company-name
+  guards, blu vs BCA, BSI vs Mandiri, BIC); `bank-parsers.test.ts` CIMB preamble now CIMB (was GENERIC: no code then) + a Permata guard.
+
 ## Verification
-- T1: `npm run lint` 0 errors (1 existing warning in `public/deck/deck.js`) · typecheck clean · `npm test` 185 files, 1218 passed.
+- T1: `npm run lint` 0 errors (1 existing warning in `public/deck/deck.js`) · typecheck clean · `npm test` 185 files, 1218 passed.- T2: `npm test` 186 files, 1224 passed · `npm run demo:reset && npm run verify:books` → ALL PASS — 1765 pemeriksaan saldo cocok
+  (before the reseed the local DB was stale from earlier sessions and showed 4 CV Sinar Retail differences; the reseed runs the new code).
+
 ## Ship Notes

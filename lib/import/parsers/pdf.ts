@@ -1,6 +1,7 @@
 import { extractTextItems, getDocumentProxy } from "unpdf";
 import type { BankCode } from "@/lib/generated/prisma/enums";
 import { dateOnly } from "@/lib/format";
+import { detectBank } from "@/lib/banks";
 import { parseRupiah } from "@/lib/money";
 import { ParseError, ScanError, type DepositProduct, type ParsedRow, type ParsedStatement } from "@/lib/import/types";
 import { closingFromRows, dateParts, MONTHS, monthBoundsOf, periodFromText, SenWatch } from "@/lib/import/parsers/common";
@@ -220,20 +221,9 @@ function nearest(cols: Column[], cell: Cell, kinds: ColKind[]): Column | null {
   return best && kinds.includes(best.kind) ? best : null;
 }
 
-/**
- * The bank a statement's heading names. Read only from the preamble (the lines above the first table), never from transactions.
- * Mandiri needs the bank's own names ("Bank Mandiri", Livin', Kopra …) because account holders are so often called "… Mandiri …".
- * Anything else (CIMB, BNI, Permata …) has no code: GENERIC.
- */
+/** The bank a statement's heading names (`lib/banks.ts`), read only from the preamble — never from transactions. GENERIC when none. */
 export function detectFormat(headerText: string): BankCode {
-  // BCA e-statements print their notes letter-spaced ("B C A b e r h a k …"), which loses the word breaks: collapsed, the
-  // capitals "BCA" still stand apart from the lowercase text around them.
-  const collapsed = headerText.replace(/(\p{L}) (?=\p{L}(?: |$))/gmu, "$1");
-  if (/\bSMBC\b|bank smbc indonesia|jenius|\bBTPN\b/i.test(headerText)) return "SMBC";
-  if (/bank\s+mandiri|livin|kopra|mandiri\s+(online|cash|cms|direct)|\bMCM\b/i.test(headerText)) return "MANDIRI";
-  if (/\bBRI\b|bank rakyat|\bbrimo\b/i.test(headerText)) return "BRI";
-  if (/\bBCA\b|bank central asia|klikbca/i.test(headerText) || /(?<![A-Z])BCA(?![A-Z])/.test(collapsed)) return "BCA";
-  return "GENERIC";
+  return detectBank(headerText);
 }
 
 export function periodOf(text: string): { start: Date; end: Date } | null {

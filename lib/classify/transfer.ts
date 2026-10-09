@@ -3,6 +3,7 @@ import { ACCOUNT_CODES } from "@/lib/coa/template";
 import { CHANNEL_WORDS, isGenericKey, merchantKey } from "@/lib/import/normalize";
 import { formatDate } from "@/lib/format";
 import { formatRupiah } from "@/lib/money";
+import { BANK_TEXT_WORDS } from "@/lib/banks";
 
 /**
  * Transfer matcher (accounting-rules 13). Pairs opposite amounts within 2 business days across a client's bank accounts, and only when
@@ -22,9 +23,7 @@ export const MATCH_BUSINESS_DAYS = 2;
 const AMBIGUOUS_CONFIDENCE = 0.8;
 
 /** Banks and their products: naming the other account's bank names no counterparty. */
-const BANK_WORDS = new Set(
-  "BANK BCA MANDIRI MDR BRI BNI BSI CIMB NIAGA SMBC BTN PERMATA DANAMON OCBC MAYBANK PANIN MEGA JAGO SEABANK JENIUS BTPN UOB HSBC DBS GIRO TABUNGAN TAHAPAN SIMPEDES BRITAMA XPRESI".split(" "),
-);
+const BANK_WORDS = new Set(["BANK", "GIRO", "TABUNGAN", ...BANK_TEXT_WORDS]);
 /**
  * Words that describe moving the group's own money, or how a bank prints a transfer (Mandiri "Transfer Dana Masuk MCM InhouseTrf",
  * BRI "NBMB … TGL … SDR"), not who it went to. A word missing here only sends an own transfer to Review, never pairs two strangers.
