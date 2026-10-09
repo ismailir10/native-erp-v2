@@ -25,7 +25,7 @@ async function setup(g: G) {
   return a;
 }
 
-describe("PSAK 24 valuation and journal", () => {
+describe("PSAK 219 valuation and journal", () => {
   beforeEach(resetDb);
 
   it("first year: prior periods to Saldo Laba, the year's cost to 6105, the rest to OCI; then nothing left", async () => {
@@ -55,7 +55,7 @@ describe("PSAK 24 valuation and journal", () => {
     expect(await control()).toMatchObject({ status: "REVIEW" });
 
     const entry = await post(2026, 12);
-    expect(entry.memo).toMatch(/^Imbalan kerja PSAK 24 per 31 Des 2026: liabilitas Rp/);
+    expect(entry.memo).toMatch(/^Imbalan kerja PSAK 219 per 31 Des 2026: liabilitas Rp/);
     expect(await lines(entry.id)).toEqual(v.lines.map((l) => [l.code, l.amount]));
     expect(await gl(g, "2310")).toBe(-v.dbo);
     expect((await at(2026, 12)).lines).toEqual([]);

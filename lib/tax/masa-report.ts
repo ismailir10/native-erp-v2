@@ -307,7 +307,7 @@ async function pph25Check(db: Db, input: { clientId: string; entityId: string; m
   };
 }
 
-/** Within 10 % of the estimate passes: the census wage is the PSAK 24 upah, not the whole gross. */
+/** Within 10 % of the estimate passes: the census wage is the PSAK 219 upah, not the whole gross. */
 const TOLERANCE_BP = 1000n;
 
 async function terCheck(db: Db, input: { clientId: string; entityId: string; masa: Masa; booked: bigint }): Promise<TerCheck> {

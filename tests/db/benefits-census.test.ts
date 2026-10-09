@@ -4,7 +4,7 @@ import { importCensus, qxOf, readMortality, saveBenefitSetting, saveEmployee, up
 import { workbook } from "../xls-fixture";
 import { CENSUS_CSV, mortalityCsv, syntheticQx } from "../benefits-fixture";
 
-describe("PSAK 24 inputs", () => {
+describe("PSAK 219 inputs", () => {
   beforeEach(resetDb);
 
   it("imports a census from CSV (wage = basic + fixed allowance) and updates it from Excel by number", async () => {

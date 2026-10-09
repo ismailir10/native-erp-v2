@@ -22,7 +22,7 @@ import { PTKP_LABEL, PTKP_STATUSES, type PtkpStatus } from "@/lib/tax/ter";
 type Result = { ok: true } | { ok: false; error: string };
 type EmployeeForm = { employeeId: string | null; name: string; employeeNo: string; ptkpStatus: string; sex: "MALE" | "FEMALE"; birthDate: string; hireDate: string; wage: string; leftOn: string };
 
-/** PSAK 24 of the scope's companies (accounting-rules 5g): assumptions, census, valuation and its journal. */
+/** PSAK 219 of the scope's companies (accounting-rules 5g): assumptions, census, valuation and its journal. */
 export function EmployeeBenefits(props: { clientId: string; year: number; month: number; periodKey: string; periodLabel: string; tables: { id: string; name: string }[]; entities: BenefitEntityView[] }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -50,7 +50,7 @@ export function EmployeeBenefits(props: { clientId: string; year: number; month:
 
   return (
     <div className="space-y-6">
-      {props.entities.length === 0 && <Card><CardContent className="pt-6 text-sm text-muted-foreground">Imbalan kerja PSAK 24 hanya untuk badan usaha; cakupan ini tidak berisi badan usaha.</CardContent></Card>}
+      {props.entities.length === 0 && <Card><CardContent className="pt-6 text-sm text-muted-foreground">Imbalan kerja PSAK 219 hanya untuk badan usaha; cakupan ini tidak berisi badan usaha.</CardContent></Card>}
 
       {props.entities.map((ev) => {
         const cur = ev.entity.currency;

@@ -35,9 +35,9 @@ export function accountantHints(h: HintInput): Hint[] {
   const size = outflow ? -h.amount : h.amount;
   const noWht = !h.wht || h.wht === "none";
 
-  // A customer's down payment is not revenue yet (PSAK 72); PPN is still due when it is received.
+  // A customer's down payment is not revenue yet (PSAK 115); PPN is still due when it is received.
   if (!outflow && t === "Pendapatan" && DOWN_PAYMENT.test(h.description)) {
-    out.push({ key: "dp", text: "Uang muka belum menjadi pendapatan: catat ke 2160 Pendapatan Diterima di Muka sampai barang atau jasa diserahkan (PSAK 72). PPN tetap terutang saat uang muka diterima.", apply: { code: "2160" }, applyLabel: "Pakai 2160" });
+    out.push({ key: "dp", text: "Uang muka belum menjadi pendapatan: catat ke 2160 Pendapatan Diterima di Muka sampai barang atau jasa diserahkan (PSAK 115). PPN tetap terutang saat uang muka diterima.", apply: { code: "2160" }, applyLabel: "Pakai 2160" });
   }
   // A machine, vehicle or building bought as an expense: usually a fixed asset to depreciate.
   // Renting a vehicle is not buying one.

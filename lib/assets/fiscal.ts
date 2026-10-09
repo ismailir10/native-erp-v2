@@ -21,7 +21,7 @@ export const TAX_GROUPS: Record<AssetTaxGroup, TaxGroupInfo> = {
 
 export const FISCAL_METHOD_LABEL: Record<FiscalMethod, string> = { GARIS_LURUS: "Garis lurus", SALDO_MENURUN: "Saldo menurun" };
 
-/** Book useful life suggested for a group (the accountant may use another estimate, PSAK 16); null for land. */
+/** Book useful life suggested for a group (the accountant may use another estimate, PSAK 216); null for land. */
 export const defaultLifeMonths = (group: AssetTaxGroup) => (TAX_GROUPS[group].lifeYears === null ? null : TAX_GROUPS[group].lifeYears! * 12);
 
 /** The fiscal method a group allows: buildings straight line only, land none. */

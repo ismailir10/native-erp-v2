@@ -11,7 +11,7 @@ import { qxOf } from "@/lib/benefits/census";
 import { interestCost, valueEmployee, type Assumptions, type EmployeeValue } from "@/lib/benefits/puc";
 
 /**
- * The PSAK 24 valuation of an entity at a month-end and the journal that books it (accounting-rules 5g). Computed at read time from the
+ * The PSAK 219 valuation of an entity at a month-end and the journal that books it (accounting-rules 5g). Computed at read time from the
  * census, the assumptions and the firm's mortality table; nothing but the journal (and its BenefitPosting) is stored.
  */
 
@@ -157,7 +157,7 @@ export async function postBenefits(db: Db, input: { clientId: string; entityId: 
       entityId: entity.id,
       date: v.at,
       kind: "ADJUSTMENT",
-      memo: `Imbalan kerja PSAK 24 per ${formatDate(v.at)}: liabilitas ${formatMoney(v.dbo, entity.functionalCurrency)}`,
+      memo: `Imbalan kerja PSAK 219 per ${formatDate(v.at)}: liabilitas ${formatMoney(v.dbo, entity.functionalCurrency)}`,
       lines: v.lines.map((l) => (l.amount > 0n ? { accountId: ids.get(l.code)!, debit: l.amount } : { accountId: ids.get(l.code)!, credit: -l.amount })),
       actorId: input.actorId,
     });

@@ -142,7 +142,7 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     losses typed per origin year as left at 1 January (at most five years back), used oldest first up to fiscal profit, expired ones
     skipped; last year's December fiscal loss from the books is only suggested. The **Excel kertas kerja** is built from the same pack. Normal regime 22 %, Pasal 31E (turnover = usaha revenue ≤ Rp 50 M: PKP × 4,8 M ÷ turnover at
     11 %), each part rounded down; both tests use the turnover **annualised** over the months the books cover (× 12 ÷ months: from January, or
-    from the day after an in-year balance-sheet-only opening), so an interim estimate carries the rate the year is heading for (PSAK 3); PP 55/2022 final 0,5 % of turnover when the accountant chooses it (no corrections or credits; its current journal books the year-to-date final tax Dr 8200 / Cr 2145 as the difference from earlier postings — the monthly payments, filed to 2145 by the tax rules, clear it — and reverses a normal-regime posting made before the switch).
+    from the day after an in-year balance-sheet-only opening), so an interim estimate carries the rate the year is heading for (PSAK 234); PP 55/2022 final 0,5 % of turnover when the accountant chooses it (no corrections or credits; its current journal books the year-to-date final tax Dr 8200 / Cr 2145 as the difference from earlier postings — the monthly payments, filed to 2145 by the tax rules, clear it — and reverses a normal-regime posting made before the switch).
     Credits = PPh 25 bank lines (tag PPH_25, wherever they sit; by **masa pajak** `BankTransaction.taxMonth` — the month before payment when the line is classified, editable in the pack; a line without one counts by its bank date) + bukti potong typed with the account they sit on → PPh 29 (2146) or 28A (1181);
     next year's PPh 25 = (terutang − PPh 22/23/24) ÷ 12, projected over the months covered (÷ months) before December. Deferred tax = 22 % × (fiscal − book value of the register + the CKPN allowance, 5e). **Journals by click only**
     (`ADJUSTMENT`, dated the period end): each books the **difference** from earlier postings of its kind (deferred balances across years) under a
@@ -177,7 +177,7 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     1239 / 2170 + 2400 differ from the register. Tax: correction (depreciation + interest − rent straight line over the term) and deferred
     tax on (payments − fiscal rent) − (ROU net − liability). Lease entries are never asset or schedule candidates. Template accounts added
     later are created on first use only when the code is free or holds the same side and name; imported new accounts never take a template code.
-5g. **Employee benefits — PSAK 24, PP 35/2021** (`lib/benefits`): the census (`Employee`), the firm's uploaded mortality table (qx × 10⁹;
+5g. **Employee benefits — PSAK 219, PP 35/2021** (`lib/benefits`): the census (`Employee`), the firm's uploaded mortality table (qx × 10⁹;
     **Buku ships no table it can't verify**) and the entity's assumptions are stored; the valuation is computed. PUC year by year to the
     retirement age: death / disability (2 × pesangon + UPMK), retirement (1,75 × pesangon + UPMK), resignation nothing; attribution over the
     last 24 years before payment or from hire (DSAK IAI 2022). Probabilities and rates are float; each obligation is wage × factor (10⁻⁹,
@@ -204,7 +204,7 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     the PPh 21 booked for December; THR, bonus and the employee's JHT / JP iuran are not in the census, so it says it is an estimate.
     An employee whose last day falls in a masa January–November gets the same recompute for the months worked through it (masa pajak
     terakhir), not TER; the masa's estimate is TER for the others plus that.
-    The TER check uses the census wage (`Employee.wage`, the PSAK 24 *upah*) and the employee's PTKP status, so it is an **estimate** and
+    The TER check uses the census wage (`Employee.wage`, the PSAK 219 *upah*) and the employee's PTKP status, so it is an **estimate** and
     says so. A masa is judged on what was booked *for* it (credits in the month; PPN keluaran − masukan), paid by bank lines classified to
     the tax account up to its due date (PPh: the 15th of the next month; PPN: the end of the next month); an older balance is shown apart,
     never netted against a missed month. An opening balance on a tax account belongs to the masa before its date (the books start owing

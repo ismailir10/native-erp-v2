@@ -1,7 +1,7 @@
 import type { Sex } from "@/lib/generated/prisma/enums";
 
 /**
- * PSAK 24 valuation of the PP 35/2021 post-employment benefit with the Projected Unit Credit method (accounting-rules 5g). Rates, ages,
+ * PSAK 219 valuation of the PP 35/2021 post-employment benefit with the Projected Unit Credit method (accounting-rules 5g). Rates, ages,
  * probabilities and the per-employee factor are dimensionless numbers (float); money is only ever wage (bigint) × factor rounded to 10⁻⁹,
  * half up. Year by year to retirement: death and disability pay 2 × pesangon + 1 × UPMK (Pasal 55, 57), retirement 1,75 × pesangon +
  * 1 × UPMK (Pasal 56), resignation nothing modelled; decrements mid-year, retirement at the exact age. Attribution (DSAK IAI, April 2022):
