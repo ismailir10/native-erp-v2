@@ -51,21 +51,21 @@ export function AccountPicker({
   const selected = useMemo(() => groups.flatMap((g) => g.items).find((i) => i.value === value) ?? null, [groups, value]);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const closedAt = useRef(0);
+  const chosenAt = useRef(0);
 
   return (
     <ComboboxPrimitive.Root
       items={groups}
       open={open}
-      onOpenChange={(next: boolean, details?: { event?: Event }) => {
+      onOpenChange={(next: boolean, details?: { event?: Event; reason?: string }) => {
         // Choosing with Enter closes the list and returns focus to the trigger, where the same key press "clicks" it open again.
-        // Only that keyboard echo is ignored: a mouse or touch reopen, however quick, opens.
+        // Only that keyboard echo right after choosing an item is ignored: closing with Escape or outside, or a mouse or touch reopen, opens.
         const pointer = !!details?.event && /^(mouse|pointer|touch)/.test(details.event.type);
-        if (next && !pointer && Date.now() - closedAt.current < 250) return;
+        if (next && !pointer && Date.now() - chosenAt.current < 250) return;
         setOpen(next);
         if (!next) {
           setQuery("");
-          closedAt.current = Date.now();
+          chosenAt.current = details?.reason === "item-press" ? Date.now() : 0;
         }
       }}
       inputValue={query}

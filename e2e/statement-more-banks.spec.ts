@@ -73,4 +73,13 @@ test("the bank field is keyboard-first: typing searches without choosing, Enter 
   await page.waitForTimeout(400);
   await expect(page.getByRole("option")).toHaveCount(0);
   await expect(page.getByLabel("Cari bank")).toBeHidden();
+  // Closing with Escape is no choice: the list opens again at once.
+  await bank.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByLabel("Cari bank")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByLabel("Cari bank")).toBeHidden();
+  await bank.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByLabel("Cari bank")).toBeVisible();
 });
