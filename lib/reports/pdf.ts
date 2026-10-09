@@ -1,6 +1,6 @@
 import PDFDocument from "pdfkit";
 import type { Db } from "@/lib/db";
-import { formatDate, formatDateTime, periodBounds } from "@/lib/format";
+import { formatDateLong, formatDateTime, periodBounds } from "@/lib/format";
 import { formatRupiah } from "@/lib/money";
 import type { Scope } from "@/lib/reports/ledger";
 import { toUnit } from "@/lib/reports/format";
@@ -60,7 +60,7 @@ export function printedValues(rows: SetRow[], unit: StatementSet["unit"]): (bigi
 export async function financialStatementsPdf(db: Db, scope: Scope, year: number, month: number, rawMeta: { firm: string; title: string; draft?: string }): Promise<Buffer> {
   const set = clean(await statementSet(db, scope, year, month));
   const meta = clean(rawMeta);
-  const asOf = formatDate(periodBounds(year, month).end);
+  const asOf = formatDateLong(periodBounds(year, month).end);
   const doc = new PDFDocument({ size: "A4", margins: M, autoFirstPage: false, bufferPages: true, info: { Title: `Laporan keuangan ${meta.title} ${asOf}`, Author: meta.firm, Creator: "Buku" } });
   const chunks: Buffer[] = [];
   doc.on("data", (c: Buffer) => chunks.push(c));

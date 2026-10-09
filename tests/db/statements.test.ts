@@ -72,7 +72,7 @@ describe("equity changes, cash flow, other comprehensive income", () => {
     expect(titles).toEqual(expect.arrayContaining([expect.stringMatching(/ Kas dan setara kas$/), expect.stringMatching(/ Utang bank$/), expect.stringMatching(/ Pendapatan usaha$/), expect.stringMatching(/ Penghasilan komprehensif lain$/)]));
     const bs = await balanceSheet(db, scope, dateOnly(2026, 12, 31));
     const cash = n.notes.find((x) => x.title === "Kas dan setara kas")!.tables[0];
-    expect(cash.columns).toEqual(["Akun", "31 Des 2026", "31 Des 2025"]);
+    expect(cash.columns).toEqual(["Akun", "31 Desember 2026", "31 Desember 2025"]);
     expect(cash.total).toEqual(["Jumlah", bs.currentAssets.find((i) => i.fsLine === "KAS_SETARA_KAS")!.amount, 600n * J]);
     const revenue = n.notes.find((x) => x.title === "Pendapatan usaha")!.tables[0];
     expect(revenue.total).toEqual(["Jumlah", 50n * J, 100n * J]); // 2025: the September cash sale
@@ -105,7 +105,7 @@ describe("equity changes, cash flow, other comprehensive income", () => {
     const n = await financialNotes(db, { clientId: g.client.id, entityIds: [g.pt.entity.id] }, 2026, 6);
     expect(n.notes[1].title).toBe("Kelangsungan usaha");
     expect(n.notes[1].paragraphs[0]).toBe(
-      "Per 30 Jun 2026 liabilitas Rp 80.000.000 melebihi aset Rp 0, sehingga ekuitas -Rp 80.000.000 dengan akumulasi rugi Rp 80.000.000. Kondisi ini menimbulkan ketidakpastian atas kemampuan Entitas mempertahankan kelangsungan usahanya.",
+      "Per 30 Juni 2026 liabilitas Rp 80.000.000 melebihi aset Rp 0, sehingga ekuitas -Rp 80.000.000 dengan akumulasi rugi Rp 80.000.000. Kondisi ini menimbulkan ketidakpastian atas kemampuan Entitas mempertahankan kelangsungan usahanya.",
     );
   });
 
@@ -130,9 +130,9 @@ describe("equity changes, cash flow, other comprehensive income", () => {
     expect(find("Neraca", "Total liabilitas & ekuitas")).toEqual([875_000_000, 600_000_000]);
     expect(find("Laba Rugi", "Laba bersih")).toEqual([37_000_000, 100_000_000]);
     expect(find("Laba Rugi", "Total penghasilan komprehensif")).toEqual([35_000_000, 100_000_000]);
-    expect(find("Perubahan Ekuitas", "Saldo 31 Des 2026")).toEqual([500_000_000, 117_000_000, -2_000_000, 615_000_000]);
+    expect(find("Perubahan Ekuitas", "Saldo 31 Desember 2026")).toEqual([500_000_000, 117_000_000, -2_000_000, 615_000_000]);
     expect(find("Arus Kas", "Kenaikan (penurunan) bersih kas dan setara kas")).toEqual([85_000_000]);
-    expect(find("Arus Kas", "Kas dan setara kas 31 Des 2026")).toEqual([685_000_000]);
+    expect(find("Arus Kas", "Kas dan setara kas 31 Desember 2026")).toEqual([685_000_000]);
     expect(find("CALK", "1. UMUM")).toEqual([]);
     expect(String(wb.getWorksheet("Pernyataan Direksi")!.getRow(1).getCell(1).value)).toBe("SURAT PERNYATAAN DIREKSI");
   });

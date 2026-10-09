@@ -27,33 +27,33 @@ describe("financial year in the statements", () => {
   }
   const row = (set: Awaited<ReturnType<typeof statementSet>>, name: string, label: string) => set.statements.find((s) => s.name === name)!.rows.find((r) => r.label.trim() === label)!.values;
 
-  it("runs 1 Februari – 31 Agu 2026 against 1 Feb – 31 Agu 2025, with the Neraca against 31 Jan 2026", async () => {
+  it("runs 1 Februari – 31 Agustus 2026 against 1 Februari – 31 Agustus 2025, with the Neraca against 31 Januari 2026", async () => {
     const set = await statementSet(db, await books(1), 2026, 8);
     const lr = set.statements.find((s) => s.name === "Laba Rugi")!;
-    expect(lr.subtitle).toBe("Untuk periode 1 Februari – 31 Agu 2026, dibandingkan periode yang sama tahun buku sebelumnya");
-    expect(lr.columns).toEqual(["1 Feb – 31 Agu 2026", "1 Feb – 31 Agu 2025"]);
+    expect(lr.subtitle).toBe("Untuk periode 1 Februari – 31 Agustus 2026, dibandingkan periode yang sama tahun buku sebelumnya");
+    expect(lr.columns).toEqual(["1 Februari – 31 Agustus 2026", "1 Februari – 31 Agustus 2025"]);
     expect(row(set, "Laba Rugi", "Laba bersih")).toEqual([40n * J, 70n * J]);
     const nr = set.statements.find((s) => s.name === "Neraca")!;
-    expect(nr.columns).toEqual(["31 Agu 2026", "31 Jan 2026"]);
+    expect(nr.columns).toEqual(["31 Agustus 2026", "31 Januari 2026"]);
     expect(row(set, "Neraca", "Laba (rugi) tahun berjalan")).toEqual([40n * J, 170n * J]);
     expect(row(set, "Neraca", "Saldo laba")).toEqual([170n * J, 0n]);
-    expect(set.statements.find((s) => s.name === "Arus Kas")!.subtitle).toBe("Untuk periode 1 Februari – 31 Agu 2026");
+    expect(set.statements.find((s) => s.name === "Arus Kas")!.subtitle).toBe("Untuk periode 1 Februari – 31 Agustus 2026");
 
   });
 
-  it("January closes the year: 1 Feb 2025 – 31 Jan 2026, with the start year printed", async () => {
+  it("January closes the year: 1 Februari 2025 – 31 Januari 2026, with the start year printed", async () => {
     const scope = await books(1);
     const set = await statementSet(db, scope, 2026, 1);
-    expect(set.statements.find((s) => s.name === "Laba Rugi")!.columns[0]).toBe("1 Feb 2025 – 31 Jan 2026");
+    expect(set.statements.find((s) => s.name === "Laba Rugi")!.columns[0]).toBe("1 Februari 2025 – 31 Januari 2026");
     expect(row(set, "Laba Rugi", "Laba bersih")[0]).toBe(170n * J);
     const notes = await financialNotes(db, scope, 2026, 1);
-    expect(notes.notes[0].paragraphs[0]).toContain("untuk periode 1 Februari 2025 – 31 Jan 2026.");
+    expect(notes.notes[0].paragraphs[0]).toContain("untuk periode 1 Februari 2025 – 31 Januari 2026.");
   });
 
   it("a calendar-year client reads as before", async () => {
     const set = await statementSet(db, await books(12), 2026, 8);
     const lr = set.statements.find((s) => s.name === "Laba Rugi")!;
-    expect([lr.subtitle, lr.columns]).toEqual(["Untuk periode 1 Januari – 31 Agu 2026, dibandingkan periode yang sama 2025", ["1 Jan – 31 Agu 2026", "1 Jan – 31 Agu 2025"]]);
+    expect([lr.subtitle, lr.columns]).toEqual(["Untuk periode 1 Januari – 31 Agustus 2026, dibandingkan periode yang sama 2025", ["1 Januari – 31 Agustus 2026", "1 Januari – 31 Agustus 2025"]]);
     expect(row(set, "Laba Rugi", "Laba bersih")).toEqual([140n * J, 70n * J]);
   });
 });

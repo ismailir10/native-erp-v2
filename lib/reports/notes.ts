@@ -1,7 +1,8 @@
 import type { Db } from "@/lib/db";
 import { ACCOUNT_CODES } from "@/lib/coa/template";
-import { formatDate, formatPeriod, periodBounds } from "@/lib/format";
-import { financialYear, fiscalEndMonth, fiscalSpan, periodFrom, priorYearEnd, samePeriodLastYear } from "@/lib/fiscal";
+import { formatDateLong, formatPeriod, periodBounds } from "@/lib/format";
+import { fiscalEndMonth, fiscalSpan, periodFrom } from "@/lib/fiscal";
+import { reportPeriods } from "@/lib/reports/periods";
 import { formatMoney } from "@/lib/money";
 import { balanceSheet, incomeStatement, type FsItem, type Scope } from "@/lib/reports/ledger";
 import { MixedScopeError, otherComprehensiveIncome } from "@/lib/reports/statements";
@@ -25,7 +26,7 @@ import { scopeFramework, signatoryOf, standardOf, type Framework, type Signatory
 export type NoteCell = string | bigint | null;
 export type NoteTable = { columns: string[]; rows: NoteCell[][]; total?: NoteCell[] };
 export type Note = { number: string; title: string; paragraphs: string[]; tables: NoteTable[] };
-export type Notes = { title: string; entities: string; asOf: Date; comparativeLabel: string; notes: Note[]; directors: string[]; framework: Framework; signatory: Signatory };
+export type Notes = { title: string; entities: string; asOf: Date; comparativeLabel: string | null; notes: Note[]; directors: string[]; framework: Framework; signatory: Signatory };
 
 /**
  * A part only management can write (the deed, the address, the business, events after the period): printed as *[isi oleh manajemen: …]*,
@@ -48,31 +49,25 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
   const emkm = framework === "SAK_EMKM";
   const signatory = signatoryOf(entities);
   const asOf = periodBounds(year, month).end;
-  // The client's financial year (lib/fiscal.ts): 1 January unless it closes in another month.
+  // The client's financial year (lib/fiscal.ts) and the periods the set reports (lib/reports/periods.ts): the same rule as the page, so a
+  // comparative appears only where the books hold data and books opened inside the year count from their Saldo Awal.
   const endMonth = await fiscalEndMonth(db, scope.clientId);
-  const yearStart = financialYear(endMonth, year, month).start;
-  const lastYearEnd = priorYearEnd(endMonth, year, month);
-  const prior = samePeriodLastYear(endMonth, year, month);
-  const priorTo = prior.end;
+  const per = await reportPeriods(db, scope, year, month, endMonth);
+  const { yearStart, booksStart } = per;
   const [bs, bsPrior, is, isPrior, oci] = await Promise.all([
     balanceSheet(db, scope, asOf),
-    balanceSheet(db, scope, lastYearEnd),
+    per.balanceComparative ? balanceSheet(db, scope, per.balanceComparative.date) : null,
     incomeStatement(db, scope, yearStart, asOf),
-    incomeStatement(db, scope, prior.start, priorTo),
+    per.priorPl ? incomeStatement(db, scope, per.priorPl.start, per.priorPl.end) : null,
     otherComprehensiveIncome(db, scope, yearStart, asOf),
   ]);
   const cur = formatPeriod(year, month);
   const fmtAmount = (v: bigint) => formatMoney(v, currency);
-  const bsCols = ["Akun", formatDate(asOf), formatDate(lastYearEnd)];
-  // Books that start inside the year (a Saldo Awal or an imported Neraca, nothing before it) cover the months from there, not the year.
-  const firstOpening = await db.journalEntry.findFirst({ where: { entityId: { in: scope.entityIds }, kind: "OPENING", date: { gte: lastYearEnd, lte: asOf } }, orderBy: { date: "asc" }, select: { date: true } });
-  const booksStart = firstOpening && +firstOpening.date >= +yearStart && !(await db.journalLine.findFirst({ where: { entityId: { in: scope.entityIds }, date: { lt: firstOpening.date } }, select: { id: true } }))
-    ? new Date(+firstOpening.date + 86_400_000)
-    : yearStart;
-  const plCols = ["Akun", `${periodFrom(+booksStart > +asOf ? yearStart : booksStart, asOf)} – ${formatDate(asOf)}`, `${periodFrom(prior.start, priorTo)} – ${formatDate(priorTo)}`];
-  const periodText = +booksStart > +asOf
-    ? `posisi keuangan per ${formatDate(asOf)}, saldo awal pembukuan`
-    : `${periodFrom(booksStart, asOf, true)} – ${formatDate(asOf)}`;
+  const bsCols = ["Akun", formatDateLong(asOf), ...(per.balanceComparative ? [per.balanceComparative.label] : [])];
+  const plCols = ["Akun", `${periodFrom(per.ytdFrom, asOf, true)} – ${formatDateLong(asOf)}`, ...(per.priorPl ? [`${periodFrom(per.priorPl.start, per.priorPl.end, true)} – ${formatDateLong(per.priorPl.end)}`] : [])];
+  const periodText = per.beforeBooks
+    ? `posisi keuangan per ${formatDateLong(asOf)}, saldo awal pembukuan`
+    : `${periodFrom(booksStart, asOf, true)} – ${formatDateLong(asOf)}`;
   const names = entities.map((e) => e.name).join(", ");
   const notes: Note[] = [];
   let n = 0;
@@ -85,8 +80,8 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
   // 1. Umum
   add("Umum", [
     entities.length > 1
-      ? `${names}, entitas-entitas dalam grup ${client.name}, menyajikan laporan keuangan gabungan untuk ${+booksStart > +asOf ? "" : "periode "}${periodText}.`
-      : `${names} ("Entitas") menyajikan laporan keuangan untuk ${+booksStart > +asOf ? "" : "periode "}${periodText}.`,
+      ? `${names}, entitas-entitas dalam grup ${client.name}, menyajikan laporan keuangan gabungan untuk ${per.beforeBooks ? "" : "periode "}${periodText}.`
+      : `${names} ("Entitas") menyajikan laporan keuangan untuk ${per.beforeBooks ? "" : "periode "}${periodText}.`,
     ...entities.filter((e) => e.npwp).map((e) => `${e.name}: NPWP ${e.npwp}.`),
     entities.length > 1 ? "Laporan gabungan ini adalah pandangan manajemen atas entitas-entitas dalam grup, bukan laporan konsolidasian menurut SAK." : "",
     ...entities.flatMap((e) => {
@@ -103,7 +98,7 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
   if (bs.totals.equity < 0n) {
     const deficit = bs.equity.filter((i) => i.fsLine === "SALDO_LABA" || i.fsLine === "LABA_BERJALAN").reduce((s, i) => s + i.amount, 0n);
     add("Kelangsungan usaha", [
-      `Per ${formatDate(asOf)} liabilitas ${fmtAmount(bs.totals.liabilities)} melebihi aset ${fmtAmount(bs.totals.assets)}, sehingga ekuitas ${fmtAmount(bs.totals.equity)}${deficit < 0n ? ` dengan akumulasi rugi ${fmtAmount(-deficit)}` : ""}. Kondisi ini menimbulkan ketidakpastian atas kemampuan ${entities.length > 1 ? "grup" : "Entitas"} mempertahankan kelangsungan usahanya.`,
+      `Per ${formatDateLong(asOf)} liabilitas ${fmtAmount(bs.totals.liabilities)} melebihi aset ${fmtAmount(bs.totals.assets)}, sehingga ekuitas ${fmtAmount(bs.totals.equity)}${deficit < 0n ? ` dengan akumulasi rugi ${fmtAmount(-deficit)}` : ""}. Kondisi ini menimbulkan ketidakpastian atas kemampuan ${entities.length > 1 ? "grup" : "Entitas"} mempertahankan kelangsungan usahanya.`,
       `Rencana manajemen untuk mengatasi kondisi tersebut: ${manual("mis. dukungan pendanaan pemegang saham, penundaan pembayaran utang pihak berelasi, rencana peningkatan pendapatan")}. Laporan keuangan disusun dengan asumsi kelangsungan usaha.`,
     ]);
   }
@@ -136,24 +131,31 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
   ].filter(Boolean).map((p, i) => `${String.fromCharCode(97 + i)}. ${p}`));
 
   // 3+. One note per Neraca line, then per Laba Rugi line: accounts, current vs comparative.
+  // Two columns when there is a comparative (cols has three entries), else the current figures alone.
   const lineNote = (label: string, current: FsItem | undefined, prior: FsItem | undefined, cols: string[]) => {
+    const withPrior = cols.length > 2;
     const codes = [...new Set([...(current?.accounts ?? []), ...(prior?.accounts ?? [])].map((a) => a.code))];
-    const rows = codes.map((code) => {
+    const rows = codes.map((code): NoteCell[] => {
       const name = [...(current?.accounts ?? []), ...(prior?.accounts ?? [])].find((x) => x.code === code)?.name ?? "";
-      return [`${code} ${name}`, current?.accounts.find((x) => x.code === code)?.amount ?? 0n, prior?.accounts.find((x) => x.code === code)?.amount ?? 0n];
+      const now = current?.accounts.find((x) => x.code === code)?.amount ?? 0n;
+      return withPrior ? [`${code} ${name}`, now, prior?.accounts.find((x) => x.code === code)?.amount ?? 0n] : [`${code} ${name}`, now];
     });
-    return add(label, [], [{ columns: cols, rows, total: ["Jumlah", current?.amount ?? 0n, prior?.amount ?? 0n] }]);
+    return add(label, [], [{ columns: cols, rows, total: withPrior ? ["Jumlah", current?.amount ?? 0n, prior?.amount ?? 0n] : ["Jumlah", current?.amount ?? 0n] }]);
   };
   const bsLines = (pick: (b: typeof bs) => FsItem[]) => {
-    const keys = [...new Set([...pick(bs), ...pick(bsPrior)].map((i) => i.fsLine))];
-    return keys.map((k) => ({ k, cur: pick(bs).find((i) => i.fsLine === k), old: pick(bsPrior).find((i) => i.fsLine === k) }));
+    const old = bsPrior ? pick(bsPrior) : [];
+    const keys = [...new Set([...pick(bs), ...old].map((i) => i.fsLine))];
+    return keys.map((k) => ({ k, cur: pick(bs).find((i) => i.fsLine === k), old: old.find((i) => i.fsLine === k) }));
   };
   const lineByKey = new Map<string, Note>();
   for (const { k, cur: c, old } of [...bsLines((b) => b.currentAssets), ...bsLines((b) => b.nonCurrentAssets), ...bsLines((b) => b.liabilities), ...bsLines((b) => b.equity)]) {
     if (k === "LABA_BERJALAN") continue;
     lineByKey.set(k, lineNote((c ?? old)!.label.replace(/^./, (x) => x.toUpperCase()), c, old, bsCols));
   }
-  const plKeys = (pick: (i: typeof is) => FsItem[]) => [...new Set([...pick(is), ...pick(isPrior)].map((i) => i.fsLine))].map((k) => ({ k, cur: pick(is).find((i) => i.fsLine === k), old: pick(isPrior).find((i) => i.fsLine === k) }));
+  const plKeys = (pick: (i: typeof is) => FsItem[]) => {
+    const old = isPrior ? pick(isPrior) : [];
+    return [...new Set([...pick(is), ...old].map((i) => i.fsLine))].map((k) => ({ k, cur: pick(is).find((i) => i.fsLine === k), old: old.find((i) => i.fsLine === k) }));
+  };
   for (const { k, cur: c, old } of [...plKeys((i) => i.revenue), ...plKeys((i) => i.cogs), ...plKeys((i) => i.opex), ...plKeys((i) => i.other), ...plKeys((i) => i.tax)]) {
     lineByKey.set(`PL:${k}`, lineNote((c ?? old)!.label.replace(/^./, (x) => x.toUpperCase()), c, old, plCols));
   }
@@ -182,7 +184,7 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
   const register = reg.filter((r) => r.cost !== 0n);
   if (register.length) {
     const note = lineByKey.get("ASET_TETAP") ?? add("Aset tetap");
-    note.paragraphs.push(`Rincian dari daftar aset tetap per ${formatDate(asOf)}. Penyusutan tahun berjalan ${formatMoney(register.reduce((t, r) => t + r.bookYtd, 0n), currency)}.`);
+    note.paragraphs.push(`Rincian dari daftar aset tetap per ${formatDateLong(asOf)}. Penyusutan tahun berjalan ${formatMoney(register.reduce((t, r) => t + r.bookYtd, 0n), currency)}.`);
     note.tables.push({
       columns: ["Aset", "Harga perolehan", "Akumulasi penyusutan", "Nilai buku"],
       rows: register.map((r) => [`${r.name} (${r.assetAccount.code})`, r.cost, r.accumulated, r.bookValue]),
@@ -193,7 +195,7 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
   if (items.length) {
     const note = lineByKey.get("PIUTANG_USAHA") ?? add("Piutang usaha");
     const by = BUCKETS.map((b) => items.filter((i) => i.bucket === b).reduce((t, i) => t + i.open, 0n));
-    note.paragraphs.push(`Umur piutang usaha per ${formatDate(asOf)} dari daftar faktur.`);
+    note.paragraphs.push(`Umur piutang usaha per ${formatDateLong(asOf)} dari daftar faktur.`);
     note.tables.push({ columns: ["Umur", "Jumlah"], rows: BUCKETS.map((b, i) => [BUCKET_LABEL[b], by[i]]), total: ["Jumlah", by.reduce((t, v) => t + v, 0n)] });
     for (const e of entities) {
       if (!(await settingAt(db, e.id, year, month))) continue;
@@ -240,8 +242,8 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
     const differs = (["rou", "accumulated", "current", "nonCurrent"] as const).some((k) => sum(k) !== ledger[k]);
     add("Sewa", [
       emkm
-        ? `Aset sewa dan liabilitas sewa per ${formatDate(asOf)} dari jurnal sewa yang sudah dicatat. Beban bunga sewa tahun berjalan ${formatMoney(leasePos.reduce((t, x) => t + x.interest, 0n), currency)}; penyusutan aset sewa ${formatMoney(leasePos.reduce((t, x) => t + x.depreciation, 0n), currency)}. SAK EMKM tidak mengatur pengakuan sewa seperti ini; tinjau kerangka pelaporan entitas (SAK EP mengaturnya).`
-        : `Aset hak guna dan liabilitas sewa per ${formatDate(asOf)} dari jurnal sewa yang sudah dicatat. Beban bunga sewa tahun berjalan ${formatMoney(leasePos.reduce((t, x) => t + x.interest, 0n), currency)}; penyusutan aset hak guna ${formatMoney(leasePos.reduce((t, x) => t + x.depreciation, 0n), currency)}.`,
+        ? `Aset sewa dan liabilitas sewa per ${formatDateLong(asOf)} dari jurnal sewa yang sudah dicatat. Beban bunga sewa tahun berjalan ${formatMoney(leasePos.reduce((t, x) => t + x.interest, 0n), currency)}; penyusutan aset sewa ${formatMoney(leasePos.reduce((t, x) => t + x.depreciation, 0n), currency)}. SAK EMKM tidak mengatur pengakuan sewa seperti ini; tinjau kerangka pelaporan entitas (SAK EP mengaturnya).`
+        : `Aset hak guna dan liabilitas sewa per ${formatDateLong(asOf)} dari jurnal sewa yang sudah dicatat. Beban bunga sewa tahun berjalan ${formatMoney(leasePos.reduce((t, x) => t + x.interest, 0n), currency)}; penyusutan aset hak guna ${formatMoney(leasePos.reduce((t, x) => t + x.depreciation, 0n), currency)}.`,
       ...(differs ? ["Daftar sewa berbeda dengan buku besar: ada jurnal bulanan sewa yang belum dicatat atau pembayaran sewa yang belum diklasifikasikan ke 2170. Neraca memakai angka buku besar."] : []),
     ], [
       {
@@ -257,7 +259,7 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
     const v = await valuation(db, scope.clientId, e.id, year, month);
     if (v.blocker) continue;
     add(`Liabilitas imbalan kerja${entities.length > 1 ? ` · ${e.shortName}` : ""}`, [
-      `Dihitung dengan metode Projected Unit Credit untuk ${v.employees.length} karyawan per ${formatDate(asOf)}, manfaat sesuai PP 35/2021. Asumsi: tingkat diskonto ${pct(setting.discountBp)}, kenaikan gaji ${pct(setting.salaryBp)}, usia pensiun normal ${setting.retirementAge} tahun, tabel mortalita ${v.tableName}, tingkat cacat ${pct(setting.disabilityBp)} dari mortalita, pengunduran diri ${pct(setting.resignBp)} sampai usia ${setting.resignFlatUntil} menurun ke 0% pada usia ${setting.resignZeroAge}.`,
+      `Dihitung dengan metode Projected Unit Credit untuk ${v.employees.length} karyawan per ${formatDateLong(asOf)}, manfaat sesuai PP 35/2021. Asumsi: tingkat diskonto ${pct(setting.discountBp)}, kenaikan gaji ${pct(setting.salaryBp)}, usia pensiun normal ${setting.retirementAge} tahun, tabel mortalita ${v.tableName}, tingkat cacat ${pct(setting.disabilityBp)} dari mortalita, pengunduran diri ${pct(setting.resignBp)} sampai usia ${setting.resignFlatUntil} menurun ke 0% pada usia ${setting.resignZeroAge}.`,
     ], [
       { columns: ["Uraian", "Jumlah"], rows: [["Liabilitas imbalan kerja", v.dbo], ["Biaya jasa kini tahun depan", v.serviceCost], ["Biaya bunga tahun depan", v.interestCost], ["Beban imbalan kerja tahun berjalan (6105)", v.expenseTarget]] },
       ...(v.sensitivity ? [{ columns: ["Sensitivitas", "Liabilitas"], rows: [["Diskonto +1%", v.sensitivity.discountUp], ["Diskonto −1%", v.sensitivity.discountDown], ["Kenaikan gaji +1%", v.sensitivity.salaryUp], ["Kenaikan gaji −1%", v.sensitivity.salaryDown]] as NoteCell[][] }] : []),
@@ -321,7 +323,7 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
   }
 
   add("Peristiwa setelah periode pelaporan", [
-    manual(`peristiwa penting setelah ${formatDate(asOf)} sampai tanggal laporan diotorisasi, atau "Tidak ada peristiwa setelah periode pelaporan yang memerlukan penyesuaian atau pengungkapan."`),
+    manual(`peristiwa penting setelah ${formatDateLong(asOf)} sampai tanggal laporan diotorisasi, atau "Tidak ada peristiwa setelah periode pelaporan yang memerlukan penyesuaian atau pengungkapan."`),
   ]);
 
   const title = entities.length === 1 ? entities[0].name : client.name;
@@ -329,7 +331,7 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
     title,
     entities: names,
     asOf,
-    comparativeLabel: formatDate(lastYearEnd),
+    comparativeLabel: per.balanceComparative?.label ?? null,
     notes,
     directors: directorsStatement(title, asOf, framework, signatory),
     framework,
@@ -342,7 +344,7 @@ export function directorsStatement(entity: string, asOf: Date, framework: Framew
   return [
     signatory.title,
     `TENTANG TANGGUNG JAWAB ATAS LAPORAN KEUANGAN ${entity.toUpperCase()}`,
-    `UNTUK PERIODE YANG BERAKHIR ${formatDate(asOf).toUpperCase()}`,
+    `UNTUK PERIODE YANG BERAKHIR ${formatDateLong(asOf).toUpperCase()}`,
     "Kami yang bertanda tangan di bawah ini:",
     `Nama: ____________________    Jabatan: ${signatory.role}`,
     "menyatakan bahwa:",

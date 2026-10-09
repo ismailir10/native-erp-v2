@@ -1,6 +1,6 @@
 import ExcelJS from "exceljs";
 import type { Db } from "@/lib/db";
-import { formatDate, formatDateTime, formatPeriod, periodBounds } from "@/lib/format";
+import { formatDateLong, formatDateTime, formatPeriod, periodBounds } from "@/lib/format";
 import type { Scope } from "@/lib/reports/ledger";
 import type { NoteCell } from "@/lib/reports/notes";
 import { statementSet, type SetStatement } from "@/lib/reports/statement-set";
@@ -84,7 +84,7 @@ export async function addStatementSheets(db: Db, book: ReturnType<typeof newWork
   if (!notes) return;
 
   // CALK
-  const ck = sheet("CALK", "Catatan atas Laporan Keuangan", `Per ${formatDate(cur)} dan untuk periode yang berakhir pada tanggal tersebut (draf)`, [60, 20, 20, 20, 20]);
+  const ck = sheet("CALK", "Catatan atas Laporan Keuangan", `Per ${formatDateLong(cur)} dan untuk periode yang berakhir pada tanggal tersebut(draf)`, [60, 20, 20, 20, 20]);
   const cell = (c: NoteCell) => (typeof c === "bigint" ? n(c) : c);
   for (const note of notes.notes) {
     ck.addRow([`${note.number}. ${note.title.toUpperCase()}`]).font = { bold: true };
