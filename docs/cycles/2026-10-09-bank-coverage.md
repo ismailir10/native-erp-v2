@@ -81,7 +81,7 @@ which bank a file is from — with every layout pinned by a synthetic fixture wh
 - [ ] **S9 Production check** — after merge, on https://native-erp-v2.vercel.app (Chrome): a throwaway client *Uji Bank (hapus)* gets
   accounts at several new banks; synthetic fixture files (BNI PDF, Jago PDF, MT940 multi-account, KlikBCA Bisnis CSV) import with
   *Saldo nyambung*; then the client is deleted (admin delete, rule 25). No real client is touched.
-- [ ] **Deck (ship step 3)** — claims to update: kantor slide "PDF dari bank. BCA, Mandiri, BRI, SMBC…", perusahaan slide "PDF, CSV,
+- [x] **Deck (ship step 3)** — claims to update: kantor slide "PDF dari bank. BCA, Mandiri, BRI, SMBC…", perusahaan slide "PDF, CSV,
   atau Excel dari bank. BCA, Mandiri, BRI, SMBC…", and the competitor/objection slides if they compare import.
 
 **Non-goals:** live bank feeds / APIs (SNAP, KlikBCA API); foreign-currency statement import (stays "listed, not imported");
@@ -202,4 +202,7 @@ grows — re-checked with `verify:books`).
 - No env vars, no new dependency, no AI calls.
 - Re-import safety: descriptions of the layouts already in production (BCA PDF, SMBC PDF) are unchanged, so row hashes — and the dedupe of a
   file imported again — are unchanged (checked on the real files).
-- Production check (S9) and the deck (ship step 3) follow after the PR opens / merges; results recorded below.
+- **Deck (ship step 3):** `kantor.html` slide 05 *Sumber* ("25 bank, sampai MT940. BCA, Mandiri, BRI, BNI, BSI, CIMB Niaga, hingga Bank
+  Jago…" and "CSV, Excel, dan file lain…"), `perusahaan.html` slide 04 *Kirim file* ("PDF, CSV, Excel, atau MT940 dari 25 bank…"). Checked at
+  1440×900 and 375×812. No competitor named (the comparison stays in the cycle doc); the limits slide ("Tanpa koneksi bank langsung") is still true.
+- Production check (S9) follows after the merge; results recorded below.
