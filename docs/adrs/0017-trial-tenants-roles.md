@@ -11,8 +11,11 @@ the AI key, model and OCR switch are global settings any firm ADMIN can change.
 1. **Hierarchy.** Buku (platform) → organisation (`Firm`, `kind` KANTOR_AKUNTAN | PERUSAHAAN) → client → entity. A company is an
    organisation with exactly one client, which the UI hides. Books stay scoped per client, so no ledger, report or close code
    changes.
-2. **Buku admins** are `PlatformAdmin` rows, created only by the CLI and resolved live per request. They work in `/backoffice` and
-   see organisation metadata, never books.
+2. **Buku admins** are `PlatformAdmin` rows, created only by the CLI and resolved live per request. They work in `/backoffice`, and
+   their actions go to a platform-side log (`PlatformAuditEvent`), never to a tenant's history. To troubleshoot they open a **support
+   session**: a quiet, read-only view of a tenant's workspace as one of its members. It is limited to 60 minutes, needs a reason and
+   MFA, and is recorded per page on Buku's side. The tenant is not notified. The Terms disclose that support access exists. A
+   support session never writes, because entries record who posted them and posting as the client would falsify that record.
 3. **Access is a grant with a period.** `AccessGrant` (TRIAL | PAID | COMP, start, optional end, revocable) decides the computed
    state: ACTIVE, READ_ONLY (all grants ended: read and export, no writes, no AI) or NONE (none, revoked, or suspended). Data is
    never deleted when a trial ends.
@@ -23,6 +26,10 @@ the AI key, model and OCR switch are global settings any firm ADMIN can change.
    capability + client), and a test fails when an exported action does not call it.
 6. **The AI key belongs to Buku.** The provider key, model and OCR switch are edited only in the backoffice. Each organisation has
    a monthly token budget.
+7. **No vendor is visible.** Every auth email is a branded Buku email, and its links point to Buku's domain (`token_hash` to
+   `/auth/callback`, confirmed by a button so mail scanners cannot use up the link). The sender is Buku's own domain over custom
+   SMTP. The templates and auth email settings are applied from the repo by a script, not pasted. Provider error text never
+   reaches a user.
 
 **Consequences.** Production holds many tenants, so isolation is a tested property: DB tests across two organisations and an e2e
 cross-tenant 404. The server stays the boundary; RLS remains unused. One person still belongs to one organisation, and an org
