@@ -24,6 +24,8 @@ function tinyPng(): Buffer {
 
 test("a photographed statement is explained and points to Baca scan dengan AI", async ({ page }) => {
   await page.goto("/settings");
+  // This month's AI use is visible next to the deployment's limit (production run 2026-10-09).
+  await expect(page.getByTestId("ai-monthly-use")).toHaveText(/^[\d.]+ dari [\d.]+ token$/);
   const setting = page.getByTestId("ocr-setting");
   await expect(setting).toContainText("Baca scan dengan AI");
   await expect(setting).toContainText("UU PDP");

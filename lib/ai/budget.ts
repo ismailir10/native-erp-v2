@@ -1,4 +1,4 @@
-import type { Db } from "@/lib/db";
+import type { Db, Tx } from "@/lib/db";
 import { AiAnswerError, aiConfig } from "@/lib/ai/provider";
 
 export const INTAKE_TOKEN_LIMIT = 20_000;
@@ -17,6 +17,30 @@ export function reservationTokens(prompt: Prompt, maxCompletionTokens: number) {
   return Buffer.byteLength(prompt.system, "utf8") + Buffer.byteLength(prompt.user, "utf8") + 256 + maxCompletionTokens;
 }
 
+const monthStartUtc = (now = new Date()) => new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+
+/** Tokens the firm has used this calendar month (logged usage plus reservations not yet settled). */
+async function spentThisMonth(tx: Db | Tx, firmId: string) {
+  const used = await tx.aiUsage.aggregate({ where: { firmId, at: { gte: monthStartUtc() } }, _sum: { promptTokens: true, completionTokens: true } });
+  // Pending reservations never expire automatically: an interrupted request may still be billed.
+  const pending = await tx.aiReservation.aggregate({ where: { firmId, settled: false }, _sum: { tokens: true } });
+  return (used._sum.promptTokens ?? 0) + (used._sum.completionTokens ?? 0) + (pending._sum.tokens ?? 0);
+}
+
+/** This month's use against the deployment's monthly limit, for Pengaturan. */
+export async function monthlyAiUse(db: Db, firmId: string): Promise<{ spent: number; limit: number }> {
+  return { spent: await spentThisMonth(db, firmId), limit: aiConfig().monthlyTokenBudget };
+}
+
+/**
+ * The refusal when a request doesn't fit the month: what is used, what was needed, and who can change the limit. The limit is a
+ * deployment setting (`AI_MONTHLY_TOKEN_BUDGET`), not a field in Pengaturan.
+ */
+export function budgetExceededMessage(spent: number, needed: number, limit: number) {
+  const n = (v: number) => v.toLocaleString("id-ID");
+  return `Kuota token AI bulan ini tidak cukup: terpakai ${n(spent)} dari ${n(limit)} token, permintaan ini butuh sekitar ${n(needed)}. Lanjutkan manual, atau minta pengelola aplikasi menaikkan batas bulanan (AI_MONTHLY_TOKEN_BUDGET).`;
+}
+
 /** Reserve under a firm advisory lock; the paid network call must happen after this transaction ends. */
 export async function reserveAiBudget(db: Db, args: BudgetArgs) {
   const tokens = reservationTokens(args.prompt, args.maxCompletionTokens);
@@ -24,13 +48,8 @@ export async function reserveAiBudget(db: Db, args: BudgetArgs) {
   if (!Number.isSafeInteger(monthlyLimit) || monthlyLimit < 0 || (args.scopeTokenLimit !== undefined && (!Number.isSafeInteger(args.scopeTokenLimit) || args.scopeTokenLimit < 0))) throw new AiBudgetError("Batas token AI tidak valid");
   return db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`ai-budget:${args.firmId}`}))::text`;
-    const now = new Date();
-    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-    const used = await tx.aiUsage.aggregate({ where: { firmId: args.firmId, at: { gte: monthStart } }, _sum: { promptTokens: true, completionTokens: true } });
-    // Pending reservations never expire automatically: an interrupted request may still be billed.
-    const pending = await tx.aiReservation.aggregate({ where: { firmId: args.firmId, settled: false }, _sum: { tokens: true } });
-    const spent = (used._sum.promptTokens ?? 0) + (used._sum.completionTokens ?? 0) + (pending._sum.tokens ?? 0);
-    if (spent + tokens > monthlyLimit) throw new AiBudgetError("Kuota token AI bulan ini tidak cukup; lanjutkan manual atau ubah batas di Pengaturan.");
+    const spent = await spentThisMonth(tx, args.firmId);
+    if (spent + tokens > monthlyLimit) throw new AiBudgetError(budgetExceededMessage(spent, tokens, monthlyLimit));
     if (args.scopeTokenLimit !== undefined) {
       const scope = await tx.aiReservation.aggregate({ where: { firmId: args.firmId, scope: args.scope }, _sum: { tokens: true } });
       if ((scope._sum.tokens ?? 0) + tokens > args.scopeTokenLimit) throw new AiBudgetError("Batas token untuk proses ini tercapai; hasil tersimpan, lanjutkan manual.");

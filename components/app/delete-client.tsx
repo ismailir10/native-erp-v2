@@ -38,8 +38,9 @@ export function DeleteClientCard({ clientId, name }: { clientId: string; name: s
             setBusy(false);
             if (!r.ok) return void toast.error(r.error);
             toast.success(`${name} dihapus`);
-            router.push("/");
-            router.refresh();
+            // Only the navigation: a refresh right after it re-renders this (now deleted) client's page and can win over the push.
+            // The action already revalidated the layout, so Beranda arrives without the client.
+            router.replace("/");
           }}
         >
           <Trash2 /> Hapus klien

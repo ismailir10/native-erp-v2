@@ -300,6 +300,8 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     — book the withholding (payroll, or rule 5h) rather than moving the remittance. A rule whose account the client's chart lacks is skipped (`matchRule(…, codes)`), never a failed import.
 14. **Only deterministic methods (TRANSFER/RULE/MEMORY, confidence ≥ 0.9) auto-post.** AI and heuristic results
     post to **1999** with `NEEDS_REVIEW` and a prefilled suggestion. Reviewer accept → reclass + Memory upsert.
+    An AI suggestion of a trade receivable for money in (or a trade payable for money out) while the entity's books hold none to settle
+    is kept but demoted to 0.55 with the reason said (`lib/ai/unbacked.ts`, import and *Minta saran AI*): never bulk-accepted, and an unchanged accept is a *tebakan*.
     A merchant key that names no counterparty (only channel/transfer/loan/cash words, refs and digits — `isGenericKey`,
     `lib/import/normalize.ts`: "BI FAST OUTGOING", "PINJAMAN LOAN", a bare "TRSF E-BANKING DB <ref>") covers unrelated payments:
     it is never written to or read from Memory, never made a rule, never grouped as *serupa*. An accepted line can be moved later

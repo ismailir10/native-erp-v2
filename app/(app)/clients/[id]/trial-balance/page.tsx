@@ -42,7 +42,7 @@ export default async function TrialBalancePage({ params, searchParams }: { param
       name: r.name,
       href: r.key === "prior" ? priorHref : r.sourceAccountId ? withParams(`${base}/ledger/akun/${r.sourceAccountId}`, q) : withParams(`${base}/ledger/${r.accountCode}`, q),
       sub: [r.clientAccount ? `→ ${r.clientAccount.code} ${r.clientAccount.name}` : r.key === "prior" ? "dari pendapatan & beban tahun lalu · buka Laba Rugi" : "tanpa akun klien", r.previousNames.length ? `dulu: ${r.previousNames.map((p) => `“${p}”`).join(", ")}` : ""].filter(Boolean).join(" · ") || undefined,
-      review: r.accountCode === "1999",
+      review: r.accountCode === "1999" && r.net !== 0n,
       move: { opening: r.opening, debit: r.periodDebit, credit: r.periodCredit },
       net: r.net,
     }));
@@ -69,7 +69,7 @@ export default async function TrialBalancePage({ params, searchParams }: { param
   if (all instanceof FxMissingError) return <div className="space-y-6">{header}<FxMissing error={all} base={base} /></div>;
   const rows: TbTableRow[] = all
     .filter((r) => r.net !== 0n || (r.move && (r.move.debit || r.move.credit)))
-    .map((r) => ({ key: r.account.id, code: r.account.code, name: r.account.name, href: withParams(`${base}/ledger/${r.account.code}`, q), review: r.account.isSuspense, move: r.move, net: r.net }));
+    .map((r) => ({ key: r.account.id, code: r.account.code, name: r.account.name, href: withParams(`${base}/ledger/${r.account.code}`, q), review: r.account.isSuspense && r.net !== 0n, move: r.move, net: r.net }));
   return (
     <div className="space-y-6">
       {header}

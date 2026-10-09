@@ -2,6 +2,7 @@ import { isClassifiable } from "@/lib/coa/template";
 import type { Db } from "@/lib/db";
 import type { AiProvider } from "@/lib/ai/provider";
 import { aiScope, suggestWithAi } from "@/lib/ai/classify";
+import { demoteUnbacked, tradeBacking, type TradeBacking } from "@/lib/ai/unbacked";
 import { isSimpleGuess } from "@/lib/classify/fallback";
 import { isGenericKey } from "@/lib/import/normalize";
 
@@ -31,6 +32,8 @@ export async function suggestAgainWithAi(db: Db, args: { clientId: string; entit
   const kinds = new Map((await db.entity.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.entityId))] } }, select: { id: true, kind: true } })).map((e) => [e.id, e.kind]));
   // One pass per kind of books: a person's lines are asked about as a person's (lib/ai/classify.ts aiScope).
   let updated = 0, calls = 0, cacheHits = 0;
+  const backings = new Map<string, (asOf: Date) => TradeBacking>();
+  const fsLineOf = (code: string) => accounts.find((a) => a.code === code)?.fsLine;
   let note: string | undefined;
   for (const kind of new Set(rows.map((r) => kinds.get(r.entityId)!))) {
     const group = rows.filter((r) => kinds.get(r.entityId) === kind);
@@ -48,8 +51,11 @@ export async function suggestAgainWithAi(db: Db, args: { clientId: string; entit
     cacheHits += ai.usage.cacheHits;
     note ??= ai.usage.note;
     for (const r of group) {
-      const s = ai.suggestions.get(`${r.merchantKey}|${r.direction}`);
-      if (!s) continue;
+      const found = ai.suggestions.get(`${r.merchantKey}|${r.direction}`);
+      if (!found) continue;
+      // Same demotion as at import: a receivable/payable the entity's books don't hold (lib/ai/unbacked.ts).
+      if (!backings.has(r.entityId)) backings.set(r.entityId, await tradeBacking(db, r.entityId));
+      const s = demoteUnbacked(found, r.direction, fsLineOf, backings.get(r.entityId)!(r.date));
       // Only while it is still waiting: a line accepted meanwhile keeps the accountant's decision.
       const res = await db.bankTransaction.updateMany({
         where: { id: r.id, status: "NEEDS_REVIEW", method: "HEURISTIC" },
