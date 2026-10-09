@@ -52,6 +52,15 @@ export function AccountPicker({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const chosenAt = useRef(0);
+  const searchRef = useRef<HTMLInputElement>(null);
+  // The popup mounts after `open` is set: try for a few frames, then put the caret after the typed text.
+  const focusSearch = (frames = 10) => {
+    const el = searchRef.current;
+    if (el) {
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    } else if (frames > 0) requestAnimationFrame(() => focusSearch(frames - 1));
+  };
 
   return (
     <ComboboxPrimitive.Root
@@ -89,6 +98,9 @@ export function AccountPicker({
           (e as unknown as { preventBaseUIHandler?: () => void }).preventBaseUIHandler?.();
           setQuery((q) => (open ? q : "") + e.key);
           setOpen(true);
+          // The keys that follow (more letters, arrows, Enter to choose) belong to the search box, not to this button: an Enter here
+          // "clicks" the button and closes the list without choosing. Browsers don't all move focus on open, so it is moved here.
+          focusSearch();
         }}
         className={cn(
           "flex h-9 w-full items-center justify-between gap-1.5 rounded-lg border border-input bg-card py-2 pr-2 pl-3 text-left text-sm whitespace-nowrap transition-colors outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50",
@@ -100,6 +112,7 @@ export function AccountPicker({
       </ComboboxPrimitive.Trigger>
       <ComboboxContent className="min-w-72">
         <ComboboxPrimitive.Input
+          ref={searchRef}
           aria-label={`Cari ${ariaLabel.charAt(0).toLowerCase()}${ariaLabel.slice(1)}`}
           placeholder={searchPlaceholder}
           className="m-1 h-8 w-[calc(100%-0.5rem)] rounded-md border border-input bg-card px-2 text-sm outline-none focus-visible:border-ring"
