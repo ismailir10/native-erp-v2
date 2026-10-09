@@ -1,4 +1,4 @@
-import { bankOfBic } from "@/lib/banks";
+import { bankName, bankOfBic } from "@/lib/banks";
 import type { BankCode } from "@/lib/generated/prisma/enums";
 import { dateOnly } from "@/lib/format";
 import { parseRupiah } from "@/lib/money";
@@ -198,5 +198,7 @@ export function parseMt940(text: string): ParsedStatement[] {
   });
   const keys = [...groups.keys()];
   if (statements.length === 1 && keys[0].endsWith("|IDR")) return statements;
-  return statements.map((st, k) => ({ ...st, section: { label: `Rekening ${st.accountNumber}`, currency: keys[k].split("|")[1] } }));
+  // The section's name: the bank (the number is printed beside it already).
+  const label = format === "GENERIC" ? "MT940" : bankName(format);
+  return statements.map((st, k) => ({ ...st, section: { label, currency: keys[k].split("|")[1] } }));
 }

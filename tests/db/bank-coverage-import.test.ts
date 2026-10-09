@@ -31,6 +31,16 @@ describe("files from more banks, through the real import", () => {
     expect((await db.bankAccount.findUniqueOrThrow({ where: { id: acct.id } })).bank).toBe("CIMB");
   });
 
+  it("names the other account of a two-account MT940 by its bank, and says once it was imported to its own account", async () => {
+    const g = await makeGroup();
+    const [bca, mandiri] = g.pt.banks;
+    const two = Buffer.from(mt940("CENAIDJA", "1111111111").toString() + "\n" + mt940("CENAIDJA", "2222222222").toString().replace(/^\{1:[^\n]*\n/, ""));
+    const first = await importStatement(db, { bankAccountId: bca.id, fileName: "dua.mt940", data: two, provider: null });
+    expect(first.otherSections).toEqual(["2222222222 BCA (IDR): tidak diimpor ke rekening ini"]);
+    const second = await importStatement(db, { bankAccountId: mandiri.id, fileName: "dua.mt940", data: two, provider: null });
+    expect(second.otherSections).toEqual(["1111111111 BCA (IDR): sudah diimpor ke BCA Giro"]);
+  });
+
   it("changes the bank only of the client's own accounts, and only to a bank Buku knows", async () => {
     const g = await makeGroup();
     const other = await makeGroup();

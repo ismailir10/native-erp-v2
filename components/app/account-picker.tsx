@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Combobox as ComboboxPrimitive } from "@base-ui/react";
 import { ChevronDownIcon } from "lucide-react";
 import { ComboboxCollection, ComboboxContent, ComboboxEmpty, ComboboxGroup, ComboboxItem, ComboboxLabel, ComboboxList } from "@/components/ui/combobox";
@@ -15,7 +15,8 @@ type Group = { value: string; items: Item[] };
 /**
  * Searchable select (accounts; banks through `BankPicker`): looks like a Select, opens a list with a search box on top. Type a code ("6150") or part
  * of a name ("pemasaran"). `extra` items (e.g. "+ Buat akun baru") come first, outside any group. The first match is highlighted,
- * so Enter picks it; keys typed on the closed trigger open the list with them already in the search (none lost while it opens).
+ * so Enter picks it; keys typed on the closed trigger open the list with them already in the search (none lost while it opens, none
+ * committed as the value), and Enter on a match chooses it and leaves the list closed.
  */
 export function AccountPicker({
   value,
@@ -50,14 +51,20 @@ export function AccountPicker({
   const selected = useMemo(() => groups.flatMap((g) => g.items).find((i) => i.value === value) ?? null, [groups, value]);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const closedAt = useRef(0);
 
   return (
     <ComboboxPrimitive.Root
       items={groups}
       open={open}
       onOpenChange={(next: boolean) => {
+        // Choosing with Enter closes the list and returns focus to the trigger, where the same key press "clicks" it open again.
+        if (next && Date.now() - closedAt.current < 250) return;
         setOpen(next);
-        if (!next) setQuery("");
+        if (!next) {
+          setQuery("");
+          closedAt.current = Date.now();
+        }
       }}
       inputValue={query}
       onInputValueChange={(v: string) => setQuery(v)}
@@ -72,8 +79,12 @@ export function AccountPicker({
       <ComboboxPrimitive.Trigger
         aria-label={ariaLabel}
         onKeyDown={(e) => {
-          if (e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey || e.key === " ") return;
+          if (e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey) return;
+          // Space opens a closed list like any button; while it is open it is part of the search ("jasa prof").
+          if (e.key === " " && !open) return;
           e.preventDefault();
+          // base-ui's closed-trigger typeahead would commit the first match as the value ("4" → 4100): typing here searches instead.
+          (e as unknown as { preventBaseUIHandler?: () => void }).preventBaseUIHandler?.();
           setQuery((q) => (open ? q : "") + e.key);
           setOpen(true);
         }}
