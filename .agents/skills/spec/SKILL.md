@@ -22,6 +22,8 @@ Output: exactly one file, `docs/cycles/$(date +%Y-%m-%d)-<slug>.md`. No PLAN.md 
    - **Spec:** acceptance criteria as checkboxes · **Non-goals** · **Assumptions** (every one you'd otherwise resolve silently).
    - **Tasks:** ordered, atomic, each independently committable with a one-line acceptance check.
      Mark dependencies. Note `reuse X from lib/...` where applicable.
+     Not a task: a big feature's deck review runs in `/ship` (step 3) after the PR is open. Name the `/deck` claims it will touch
+     under **Spec** so the review is planned.
    - Leave Implementation / Verification / Ship Notes empty.
 4. **Flag gate-reopeners explicitly** in the Spec: schema migration, new dependency, AI credit use, change to an accounting invariant.
 5. **Present and STOP.** Show Context + Spec + Tasks and end with:

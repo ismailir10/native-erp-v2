@@ -33,7 +33,7 @@ Next.js here is **16.x** — APIs differ from older training data. When unsure, 
 |---|---|---|
 | `/spec` | [`.agents/skills/spec`](.agents/skills/spec/SKILL.md) | `docs/cycles/YYYY-MM-DD-<slug>.md` with Context / Spec / Tasks. **Stop for approval.** |
 | `/build` | [`.agents/skills/build`](.agents/skills/build/SKILL.md) | One commit per task, gates between tasks, cycle doc updated as you go |
-| `/ship` | [`.agents/skills/ship`](.agents/skills/ship/SKILL.md) | Push branch, draft PR to `main`, CI green, Ship Notes filled |
+| `/ship` | [`.agents/skills/ship`](.agents/skills/ship/SKILL.md) | Push branch, draft PR to `main`, **deck reviewed** for big features, CI green, Ship Notes filled |
 
 **You drive the loop, not the user.** The user says what they want; you classify it:
 

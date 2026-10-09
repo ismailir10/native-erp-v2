@@ -8,17 +8,30 @@ description: Ship a completed Buku cycle — preflight the cycle doc, push the f
 ## Preflight (stop on any failure)
 - All Tasks ticked; Implementation, Verification (with real gate output, incl. `verify:books` and e2e) and Ship Notes filled.
 - README updated if routes, modules, env vars or setup changed.
+- Big feature? The deck review (step 3) is part of this PR, not a follow-up, and not a cycle task: it runs after the PR is
+  open, so the Tasks can all be ticked before shipping.
 - `git status` clean; branch is neither `staging` nor `main`.
 
 ## Steps
 1. `git push -u origin <branch>` (retry network failures with backoff 2s/4s/8s/16s).
-2. Open a **draft** PR to `main`; body mirrors `.github/pull_request_template.md` (Summary, Cycle doc, How to verify, Screenshots, Risks).
-3. Watch CI (`.github/workflows/ci.yml`). Red → reproduce locally, fix root cause, push. No empty commits, no skipped tests.
-4. When green, say so and leave merge to the user unless they said otherwise. **Merging to `main` is a production deploy** (the real
+2. Open a **draft** PR to `main`; body mirrors `.github/pull_request_template.md` (Summary, Cycle doc, How to verify, Screenshots, Deck, Risks).
+3. **Deck review** — right after the PR is open, for every big feature (anything a buyer would notice: a new capability, a new
+   bank or file format, a changed flow, a removed limit, a new report, a number the deck quotes). The decks are the sales story and
+   must say only what Buku does today, so a feature that ships without them going stale is not done.
+   - Read the three files in `public/deck/` (`index.html` chooser, `kantor.html` for firms, `perusahaan.html` for companies) and list
+     every claim the feature touches: capability lists, counts ("4 bank"), format chips, limits slides ("what it can't do yet"),
+     objection answers, demo numbers.
+   - Update stale claims **in the same PR** as a separate commit (`fix(deck): …`), keeping the deck's grammar (one idea per slide,
+     ≤ 3 short points, Bahasa copy, no slop — see `docs/cycles/2026-10-08-deck-rebuild.md`). Never claim what isn't merged.
+   - Look at each changed slide at 1440×900 and 375×812 (`npm run dev` → `/deck/kantor#<n>`); text must not overflow or wrap badly.
+   - Record the result in the cycle doc's Ship Notes and the PR's **Deck** section: slides changed, or "no deck change — <why>".
+   Small fixes, refactors and docs-only PRs skip this step; say so in the PR's Deck section.
+4. Watch CI (`.github/workflows/ci.yml`). Red → reproduce locally, fix root cause, push. No empty commits, no skipped tests.
+5. When green, say so and leave merge to the user unless they said otherwise. **Merging to `main` is a production deploy** (the real
    workspace) — the only Vercel build; PR branches get no preview (`vercel.json`). GitHub deletes merged task branches automatically.
    After merge, fast-forward `main` from `origin/main`, prune remote refs, remove the merged local task branch, and verify production
    (below). Never delete `main` or `staging`.
-5. `staging` is frozen (kept, no new work, no deploys). New work always starts from updated `main`.
+6. `staging` is frozen (kept, no new work, no deploys). New work always starts from updated `main`.
 
 ## Deploy (when the user asks)
 Vercel project `native-erp-v2` (team "Ismail's projects", slug `ismails-projects-196d40d3`) + Supabase org Rightjet (`native-erp-v2` = production, the only hosted environment, [ADR 0015](../../../docs/adrs/0015-production-only.md)).

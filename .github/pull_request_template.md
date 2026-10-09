@@ -12,4 +12,7 @@
 ## Screenshots
 <!-- UI changes: before/after -->
 
+## Deck
+<!-- Big feature: slides in public/deck/ updated (which), or "no deck change — <why>". Small fix / docs-only: "n/a". See the ship skill, step 3. -->
+
 ## Risks / follow-ups
