@@ -10,7 +10,7 @@ describe("every bank layout Buku claims reads to the same five August rows, tagg
       expect(st.format).toBe(layout.bank);
       expectAugust(st);
       // The description starts with the bank's text: no row number, branch, journal, second date or time in front of it.
-      st.rows.forEach((r, i) => expect(r.description.startsWith(TX[i].desc[0]), `${r.description} ← ${TX[i].desc[0]}`).toBe(true));
+      if (!layout.counterpartyFirst) st.rows.forEach((r, i) => expect(r.description.startsWith(TX[i].desc[0]), `${r.description} ← ${TX[i].desc[0]}`).toBe(true));
     }
   });
 });

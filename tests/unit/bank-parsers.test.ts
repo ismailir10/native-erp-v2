@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseStatement, parseStatementSections } from "@/lib/import/parsers";
 import { makePdf, table } from "../pdf-fixture";
+import { LAYOUTS } from "../bank-layouts";
 import { checkContinuity } from "@/lib/import/normalize";
 import { BAL, TX, en, bniDirectCsv, bniDirectXlsx, bniMobileXlsx, xlsxBuffer, briInternetBankingCsv, cimbPdf, idn, mandiriLivinPdf, mandiriLivinXlsx, serialDateXlsx, cimbOctoCsv, expectAugust, p2, permataCsv, titleWithCommasSemicolonCsv, utf16TabCsv } from "../bank-fixture";
 
@@ -313,5 +314,29 @@ describe("amounts that carry their direction", () => {
   it("reads a Db./Cr. flag column", async () => {
     const csv = ["Tanggal,Keterangan,Jumlah,Tipe,Saldo", ...TX.map((t, i) => `${p2(t.d)}/08/2026,${q(t.desc[0])},${q(en(t.amt))},${t.amt < 0 ? "Db." : "Cr."},${q(en(BAL[i]))}`)].join("\n");
     expectAugust(await parseStatement("x.csv", Buffer.from(csv)));
+  });
+});
+
+describe("pockets and amounts read from the balance", () => {
+  it("reads each Jago pocket as its own statement, with its own number", async () => {
+    const jago = LAYOUTS.find((l) => l.bank === "JAGO")!;
+    const sections = await parseStatementSections(jago.file, await jago.build());
+    expect(sections.map((s) => [s.accountNumber, s.section?.label, s.rows.length])).toEqual([
+      ["100200300400", "Kantong Utama", 5],
+      ["100200300411", "Kantong Operasional", 5],
+    ]);
+  });
+
+  it("reads an unsigned amount as money out when the balance went down, also on the first row", async () => {
+    const head: [number, string][] = [[40, "TANGGAL TRANSAKSI"], [140, "DESKRIPSI"], [400, "JUMLAH"], [495, "SALDO"]];
+    const pdf = makePdf([
+      [
+        ...table(800, [[[40, "PT Bank Seabank Indonesia"]], [[40, "PERIODE: 01 AUG 2026 - 31 AUG 2026"]]]),
+        ...table(760, [head, [[40, "01 AUG"], [140, "SALDO AWAL"], [480, "1.000.000"]], [[40, "02 AUG"], [140, "QRIS TOKO"], [400, "250.000"], [480, "750.000"]], [[40, "03 AUG"], [140, "TRANSFER MASUK"], [400, "100.000"], [480, "850.000"]]]),
+      ],
+    ]);
+    const st = await parseStatement("seabank.pdf", pdf);
+    expect(st.rows.map((r) => r.amount)).toEqual([-250_000n, 100_000n]);
+    expect(st.openingBalance).toBe(1_000_000n);
   });
 });

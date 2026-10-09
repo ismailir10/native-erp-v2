@@ -44,6 +44,17 @@ const NUMBER = /^[+-]?\s*(?:(?:Rp\.?|IDR)\s*)?\(?[+-]?\d{1,3}(?:[.,]\d{3})*(?:[.
 const looksLikeAmount = (t: string) => /\d/.test(t) && /[.,+()-]|^(?:Rp|IDR)/i.test(t) && !/[A-Za-z]{3,}/.test(t.replace(/^(?:Rp\.?|IDR)/i, ""));
 /** "Aktivitas Rekening / Account Activities – <name> (<CCY>) <number>" — any separator after the last title word. */
 const SECTION = /.*(?:account activities|aktivitas rekening)[^\p{L}\p{N}]+(.+?)\s*\(([A-Za-z]{3})\)\s*([0-9A-Za-z]{6,})\s*$/iu;
+/** A pocket of a digital bank account (Bank Jago "Kantong Utama · 100200300400"): its own number, its own table. */
+const POCKET = /^((?:kantong|pocket)\b.*?)\s*[·:–-]\s*(\d{8,})\s*$/iu;
+
+/** The account section a line opens, if any: SMBC-style "Account Activities – <name> (<CCY>) <number>" or a Jago pocket. */
+function sectionOf(line: Line): { label: string; currency: string; number: string } | null {
+  const text = lineText(line);
+  const m = text.match(SECTION);
+  if (m) return { label: m[1].trim(), currency: m[2].toUpperCase(), number: m[3] };
+  const p = text.trim().match(POCKET);
+  return p ? { label: p[1].trim(), currency: "IDR", number: p[2] } : null;
+}
 const OPENING = /saldo\s*awal|opening\s*balance|beginning\s*balance|saldo\s*sebelumnya|previous\s*balance|initial\s*balance|last\s*bal(?:ance)?/i;
 const CLOSING = /saldo\s*akhir|closing\s*balance|ending\s*balance|current\s*balance/i;
 const FOOTER = /^(saldo\s*awal|saldo\s*akhir|mutasi\s*(cr|db|kredit|debet)|total|jumlah|bersambung|halaman|page|opening|closing|ending)\b/i;
@@ -64,7 +75,7 @@ export async function parsePdfSections(data: Buffer, opts: { password?: string }
   }
   const deposits = depositProducts(lines);
   const withDeposits = (st: ParsedStatement): ParsedStatement => (deposits.length ? { ...st, deposits } : st);
-  const starts = lines.map((l, i) => ({ i, m: lineText(l).match(SECTION) })).filter((x) => x.m);
+  const starts = lines.map((l, i) => ({ i, m: sectionOf(l) })).filter((x) => x.m);
   if (starts.length === 0) return [withDeposits(parseLines(lines))];
   const docText = lines.map(lineText).join("\n");
   const format = detectFormat(lines.slice(0, starts[0].i).map(lineText).join("\n"));
@@ -74,7 +85,7 @@ export async function parsePdfSections(data: Buffer, opts: { password?: string }
     const segment = lines.slice(i + 1, k + 1 < starts.length ? starts[k + 1].i : lines.length);
     if (!segment.some((l) => headerColumns(l))) return; // a section title without a transaction table
     const st = parseLines(segment, { period, format, allowEmpty: true });
-    out.push(withDeposits({ ...st, accountNumber: m![3], section: { label: m![1].trim(), currency: m![2].toUpperCase() } }));
+    out.push(withDeposits({ ...st, accountNumber: m!.number, section: { label: m!.label, currency: m!.currency } }));
   });
   if (!out.length) return [withDeposits(parseLines(lines))];
   return out;
@@ -332,7 +343,7 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
     }
     const text = lineText(line);
     // "Saldo Awal : 1.000", bilingual "Saldo Awal/Initial Balance 1.000", BTN "Last Bal : 1,000.00".
-    const labelled = text.match(/(saldo\s*awal|opening\s*balance|beginning\s*balance|starting\s*balance|previous\s*balance|initial\s*balance|last\s*bal(?:ance)?|saldo\s*akhir|closing\s*balance|ending\s*balance|current\s*balance)(?:\s*\/\s*[A-Za-z ]+?)?\s*:?\s*(?:rp\.?\s*)?([\d.,()-]*\d[\d.,()-]*)/i);
+    const labelled = text.match(/(saldo\s*awal|saldo\s*sebelumnya|opening\s*balance|beginning\s*balance|starting\s*balance|previous\s*balance|initial\s*balance|last\s*bal(?:ance)?|saldo\s*akhir|closing\s*balance|ending\s*balance|current\s*balance)(?:\s*\/\s*[A-Za-z ]+?)?\s*:?\s*(?:rp\.?\s*)?([\d.,()-]*\d[\d.,()-]*)/i);
     if (labelled && !(cols && parseDate(line.cells[0]?.text ?? "", period))) {
       const v = parseRupiah(labelled[2]);
       if (OPENING.test(labelled[1])) opening ??= v;
@@ -454,8 +465,10 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
     }
 
     // Continuation of the previous row's description (same page, close below, not a footer).
-    if (current && line.page === current.page && current.lastY - line.y < 30 && !FOOTER.test(text) && descParts.length) {
-      current.parts.push(descParts.join(" "));
+    // A line holding only the row's amount (blu prints it below the date and description) continues it too.
+    const amountOnly = !descParts.length && !!current && !current.moneySeen && nums.some((n) => n.kind !== "balance");
+    if (current && line.page === current.page && current.lastY - line.y < 30 && !FOOTER.test(text) && (descParts.length || amountOnly)) {
+      if (descParts.length) current.parts.push(descParts.join(" "));
       current.description = current.parts.join(" ").replace(/\s+/g, " ").trim();
       current.rawRow += ` / ${line.cells.map((c) => c.text).join(" | ")}`;
       current.lastY = line.y;
@@ -463,7 +476,7 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
       if (current.amount === 0n && nums.length) {
         const amt = nums.find((n) => n.kind === "amount" || n.kind === "credit" || n.kind === "debit");
         if (amt) current.moneySeen = true;
-        if (amt) current.amount = amt.kind === "debit" ? -amt.value : amt.value;
+        if (amt) current.amount = amt.kind === "debit" ? -(amt.value < 0n ? -amt.value : amt.value) : amt.kind === "credit" && amt.value < 0n ? -amt.value : amt.value;
         if (amt?.flag) current.flag = amt.flag;
         current.balance ??= nums.find((n) => n.kind === "balance")?.value ?? null;
       }

@@ -114,7 +114,7 @@ grows — re-checked with `verify:books`).
   fixture each → `expectAugust` + right bank.
 - [x] T5 PDF: bilingual headers, row-number column, `Db./Cr.` and `D/K` markers, signed amounts; Mandiri Livin', Mandiri savings,
   MCM/Kopra, BNI old/corporate/wondr, BRI Rincian/IBBIZ, BSI, BTN fixtures — accept: each → `expectAugust` + right bank.
-- [ ] T6 PDF: time on next line, amount on next line (blu), pocket sections (Jago), year-less `DD MON` (SeaBank) — accept: Jago (2 pockets
+- [x] T6 PDF: time on next line, amount on next line (blu), pocket sections (Jago), year-less `DD MON` (SeaBank) — accept: Jago (2 pockets
   → 2 sections), SeaBank, blu fixtures → continuous.
 - [ ] T7 MT940 parser + upload accept list — accept: single statement, multi-page `:60M/:62M`, multi-account → sections, USD section
   listed not imported, `RD`/`RC` reversals, `:86:` multi-line, BIC → bank; malformed tag → clear Bahasa error.
@@ -155,6 +155,10 @@ grows — re-checked with `verify:books`).
   BNI corporate + savings + wondr, BRI Rincian + IBBIZ, BSI, BTN, CIMB, Sinarmas (inferred). The layout test also checks every
   description starts with the bank's text (the BNI file failed that before the skip columns). Real files (BCA, SMBC) and the 26 private
   audit fixtures: same row hashes before and after (local check, `data/private/scratch/`, not committed).
+- T6: `parsers/pdf.ts` (a line holding only the row's amount continues the row — blu; a pocket title `Kantong … · <number>` opens a
+  section like SMBC's account titles — Jago; `Saldo Sebelumnya` as an opening label). Layouts: Livin' with the time on its own line, blu,
+  Jago (two pockets), SeaBank (`DD MON` without a year, one unsigned whole-Rupiah amount). Tests: Jago → two sections with their numbers;
+  an unsigned first-row debit read from the balance.
 
 ## Verification
 - T1: `npm run lint` 0 errors (1 existing warning in `public/deck/deck.js`) · typecheck clean · `npm test` 185 files, 1218 passed.- T2: `npm test` 186 files, 1224 passed · `npm run demo:reset && npm run verify:books` → ALL PASS — 1765 pemeriksaan saldo cocok
@@ -162,5 +166,6 @@ grows — re-checked with `verify:books`).
 - T3: `npm test` 188 files, 1235 passed; lint 0 errors; typecheck clean.
 - T4: `npm test` 188 files, 1253 passed (`bank-layouts.test.ts` 20 layouts); lint 0 errors; typecheck clean.
 - T5: `npm test` 188 files, 1267 passed (34 layouts); lint 0 errors; typecheck clean; real-file and private-fixture row hashes unchanged.
+- T6: `npm test` 188 files, 1273 passed (38 layouts); lint 0 errors; typecheck clean; real-file and private-fixture hashes unchanged.
 
 ## Ship Notes

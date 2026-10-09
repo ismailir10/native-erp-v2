@@ -14,6 +14,8 @@ export type Layout = {
   format: string;
   file: string;
   build: () => Buffer | Promise<Buffer>;
+  /** The description starts with a counterparty column (Jago's Sumber/Tujuan) rather than the bank's transaction text. */
+  counterpartyFirst?: boolean;
 };
 
 const q = (s: string) => `"${s}"`;
@@ -442,6 +444,70 @@ export const LAYOUTS: Layout[] = [
         ["PT Bank Sinarmas Tbk", "Rekening Koran", "No. Rekening : 0051234567", "Periode : 01/08/2026 - 31/08/2026"],
         [[40, "Tanggal"], [110, "Keterangan"], [360, "Debet"], [440, "Kredit"], [520, "Saldo"]],
         [[[40, "01/08/2026"], [110, "SALDO AWAL"], [500, idn(OPEN)]], ...TX.flatMap((t, i) => wrapped(t, 110, [[40, `${p2(t.d)}/08/2026`], [110, t.desc[0]], [345, t.amt < 0 ? idn(t.amt) : ""], [425, t.amt > 0 ? idn(t.amt) : ""], [500, idn(BAL[i])]]))],
+      ),
+  },
+  {
+    bank: "MANDIRI",
+    format: "e-statement Livin'",
+    file: "mandiri-livin-estatement-time-below.pdf",
+    // The same e-Statement as extracted from some PDFs: the time on its own line under the date.
+    build: () =>
+      pdfPage(
+        ["e-Statement", "PT Bank Mandiri (Persero) Tbk", "Nomor Rekening 1370000123456", "Periode/Period : 01 Agu 2026 - 31 Agu 2026", `Saldo Awal/Initial Balance ${idn(OPEN)}`],
+        [[40, "No"], [62, "Tanggal/Date"], [190, "Keterangan/Remarks"], [400, "Nominal/Amount"], [495, "Saldo/Balance"]],
+        TX.flatMap((t, i) => [
+          [[40, String(i + 1)], [62, `${p2(t.d)} ${ID_MON[7]} 2026`], [190, t.desc[0]], [400, (t.amt < 0 ? "-" : "") + idn(t.amt)], [495, idn(BAL[i])]] as Cells,
+          [[62, "10:15:30 WIB"], ...(t.desc[1] ? ([[190, t.desc[1]]] as Cells) : [])] as Cells,
+        ]),
+      ),
+  },
+  {
+    bank: "BLU",
+    format: "e-statement blu",
+    file: "blu.pdf",
+    // blu by BCA Digital: the amount and balance on the line after the date and description.
+    build: () =>
+      pdfPage(
+        ["blu by BCA Digital", "Rekening Koran", "No. Rekening : 001234567890", "Periode : 01 Agu 2026 - 31 Agu 2026", `Saldo Awal ${idn(OPEN)}`],
+        [[40, "Tanggal"], [110, "Keterangan"], [390, "Nominal"], [490, "Saldo"]],
+        TX.flatMap((t, i) => [
+          [[40, `${p2(t.d)}/08/2026`], [110, t.desc[0]]] as Cells,
+          [...(t.desc[1] ? ([[110, t.desc[1]]] as Cells) : []), [390, `${t.amt < 0 ? "-" : "+"}${idn(t.amt)}`], [480, idn(BAL[i])]] as Cells,
+        ]),
+        [`Saldo Akhir ${idn(CLOSE)}`],
+      ),
+  },
+  {
+    bank: "JAGO",
+    format: "e-statement Jago (per kantong)",
+    file: "jago.pdf",
+    counterpartyFirst: true,
+    // One statement, two pockets, each with its own number and table: Tanggal & Waktu | Sumber/Tujuan | Rincian Transaksi | Catatan | Jumlah | Saldo.
+    build: () => {
+      const head: Cells = [[30, "Tanggal & Waktu"], [110, "Sumber/Tujuan"], [215, "Rincian Transaksi"], [380, "Catatan"], [425, "Jumlah"], [505, "Saldo"]];
+      const pocket = (title: string): Cells[] => [
+        [[30, title]],
+        [[30, `Saldo Sebelumnya ${idn(OPEN)}`]],
+        head,
+        ...TX.map((t, i) => [[30, `${t.d} ${ID_MON[7]} 2026 10:15`], [110, t.desc[1] ?? "-"], [215, t.desc[0]], [380, `ID#${4100 + i}`], [425, `${t.amt < 0 ? "-" : "+"}${idn(t.amt)}`], [500, idn(BAL[i])]] as Cells),
+        [[30, `Saldo Akhir ${idn(CLOSE)}`]],
+      ];
+      return makePdf([
+        [...table(800, [[[30, "PT Bank Jago Tbk"]], [[30, "Laporan Rekening · Periode 01 Agu 2026 - 31 Agu 2026"]]]), ...table(760, [...pocket("Kantong Utama · 100200300400"), [], ...pocket("Kantong Operasional · 100200300411")])],
+      ]);
+    },
+  },
+  {
+    bank: "SEABANK",
+    format: "rekening koran SeaBank",
+    file: "seabank.pdf",
+    // "DD MON" with an English month and no year, whole Rupiah, one unsigned amount: the direction comes from the balance.
+    build: () =>
+      pdfPage(
+        ["REKENING KORAN", "PT Bank Seabank Indonesia", "NO. REKENING SEABANK: 9000123456", "PERIODE: 01 AUG 2026 - 31 AUG 2026", "TABUNGAN - RINCIAN TRANSAKSI"],
+        [[40, "TANGGAL TRANSAKSI"], [140, "DESKRIPSI"], [400, "JUMLAH"], [495, "SALDO"]],
+        [[[40, "01 AUG"], [140, "SALDO AWAL"], [480, OPEN.toLocaleString("id-ID")]], ...TX.flatMap((t, i) => wrapped(t, 140, [[40, `${p2(t.d)} AUG`], [140, t.desc[0]], [400, Math.abs(t.amt).toLocaleString("id-ID")], [480, BAL[i].toLocaleString("id-ID")]]))],
+        ["Ketentuan Umum"],
       ),
   },
 ];
