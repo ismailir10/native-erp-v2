@@ -5,7 +5,7 @@ import { fiscalEndMonth, fiscalSpan, periodFrom } from "@/lib/fiscal";
 import { reportPeriods } from "@/lib/reports/periods";
 import { formatMoney } from "@/lib/money";
 import { balanceSheet, incomeStatement, type FsItem, type Scope } from "@/lib/reports/ledger";
-import { MixedScopeError, otherComprehensiveIncome } from "@/lib/reports/statements";
+import { fixedAssetMovement, MixedScopeError, otherComprehensiveIncome } from "@/lib/reports/statements";
 import { isMixed, scopeEntities } from "@/lib/reports/fx";
 import { assetRegister } from "@/lib/assets/register";
 import { BUCKETS, BUCKET_LABEL, invoicesAt } from "@/lib/receivables/aging";
@@ -184,6 +184,34 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
     });
   }
 
+  // Aset tetap: the movement schedule from the GL (PSAK 216's reconciliation of the carrying amount) replaces the two balance notes; the
+  // accumulated depreciation is part of it, not a note of its own.
+  const movement = await fixedAssetMovement(db, scope, asOf);
+  if (movement.rows.length) {
+    const accumulated = lineByKey.get("AKUM_PENYUSUTAN");
+    if (accumulated) {
+      notes.splice(notes.indexOf(accumulated), 1);
+      lineByKey.delete("AKUM_PENYUSUTAN");
+      notes.forEach((x, i) => (x.number = String(i + 1)));
+      n = notes.length;
+    }
+    const note = lineByKey.get("ASET_TETAP") ?? add("Aset tetap");
+    note.title = "Aset tetap";
+    const sum = (rows: typeof movement.rows, pick: (r: (typeof movement.rows)[number]) => bigint) => rows.reduce((t, r) => t + pick(r), 0n);
+    const line = (r: (typeof movement.rows)[number]): NoteCell[] => [`${r.code} ${r.name}`, r.opening, r.additions, r.deductions, r.closing];
+    const cost = movement.rows.filter((r) => r.kind === "COST");
+    const acc = movement.rows.filter((r) => r.kind === "ACCUMULATED");
+    note.paragraphs = [`Mutasi aset tetap ${formatDateLong(movement.openedAt)} – ${formatDateLong(asOf)}: penambahan harga perolehan adalah pembelian, penambahan akumulasi penyusutan adalah beban penyusutan periode ini; pengurangan adalah pelepasan.`];
+    note.tables = [{
+      columns: ["Uraian", `Saldo ${formatDateLong(movement.openedAt)}`, "Penambahan", "Pengurangan", `Saldo ${formatDateLong(asOf)}`],
+      rows: [
+        ...(cost.length ? [["Harga perolehan", null, null, null, null] as NoteCell[], ...cost.map(line)] : []),
+        ...(acc.length ? [["Akumulasi penyusutan", null, null, null, null] as NoteCell[], ...acc.map(line)] : []),
+      ],
+      total: ["Nilai buku", sum(movement.rows, (r) => r.opening), sum(movement.rows, (r) => r.additions), sum(movement.rows, (r) => r.deductions), sum(movement.rows, (r) => r.closing)],
+    }];
+  }
+
   // Detail from the registers, attached to their line.
   const reg = await assetRegister(db, scope.clientId, year, month, scope.entityIds);
   const register = reg.filter((r) => r.cost !== 0n);
@@ -339,20 +367,27 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
     asOf,
     comparativeLabel: per.balanceComparative?.label ?? null,
     notes,
-    directors: directorsStatement(title, asOf, framework, signatory),
+    directors: directorsStatement(title, asOf, framework, signatory, entities.every((e) => e.kind === "PERORANGAN")),
     framework,
     signatory,
   };
 }
 
-/** The statement of responsibility (a template: name and signature are left blank), for the framework and whoever signs for the entity. */
-export function directorsStatement(entity: string, asOf: Date, framework: Framework = "SAK_EP", signatory: Signatory = signatoryOf([{ kind: "PT" }])): string[] {
+/**
+ * The statement of responsibility (a template: the signer's details and the signature are left to fill), for the framework and whoever
+ * signs for the entity. The last line is always the signer's role. An individual signs for themselves, not "atas nama" an entity.
+ */
+export function directorsStatement(entity: string, asOf: Date, framework: Framework = "SAK_EP", signatory: Signatory = signatoryOf([{ kind: "PT" }]), person = false): string[] {
+  const blank = "____________________";
   return [
     signatory.title,
     `TENTANG TANGGUNG JAWAB ATAS LAPORAN KEUANGAN ${entity.toUpperCase()}`,
     `UNTUK PERIODE YANG BERAKHIR ${formatDateLong(asOf).toUpperCase()}`,
     "Kami yang bertanda tangan di bawah ini:",
-    `Nama: ____________________    Jabatan: ${signatory.role}`,
+    `Nama: ${blank}    Jabatan: ${signatory.role}`,
+    `Alamat kantor: ${blank}`,
+    `Alamat domisili sesuai KTP: ${blank}`,
+    `Nomor telepon: ${blank}`,
     "menyatakan bahwa:",
     `1. Kami bertanggung jawab atas penyusunan dan penyajian laporan keuangan ${entity};`,
     `2. Laporan keuangan telah disusun dan disajikan sesuai dengan ${standardOf(framework).full};`,
@@ -360,7 +395,10 @@ export function directorsStatement(entity: string, asOf: Date, framework: Framew
     "   b. Laporan keuangan tidak mengandung informasi atau fakta material yang tidak benar, dan tidak menghilangkan informasi atau fakta material;",
     `4. Kami bertanggung jawab atas sistem pengendalian intern dalam ${entity}.`,
     "Demikian pernyataan ini dibuat dengan sebenarnya.",
-    "____________________, ____________________",
+    `${blank}, ${blank}`,
+    ...(person ? [] : [`Atas nama dan mewakili ${entity}`]),
+    "Meterai Rp10.000",
+    `( ${blank} )`,
     signatory.role,
   ];
 }

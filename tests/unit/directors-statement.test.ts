@@ -15,6 +15,9 @@ describe("directors' statement per framework x signatory", () => {
         expect(t.at(-1)).toBe(role);
         expect(t.find((l) => l.startsWith("Nama:"))).toContain(`Jabatan: ${role}`);
         if (kind !== "PT") expect(t.join("\n")).not.toMatch(/Direksi|Direktur/);
+        for (const field of ["Alamat kantor: ", "Alamat domisili sesuai KTP: ", "Nomor telepon: ", "Meterai Rp10.000"]) expect(t.some((l) => l.startsWith(field)), field).toBe(true);
+        expect(t).toContain("Atas nama dan mewakili Usaha Maju");
+        expect(directorsStatement("Budi", asOf, fw, signatoryOf([{ kind }]), true).join("\n")).not.toContain("Atas nama");
       });
     }
   }

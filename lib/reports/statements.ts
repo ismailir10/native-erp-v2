@@ -130,6 +130,55 @@ export async function equityChanges(db: Db, scope: Scope, to: Date): Promise<Equ
   return { from, to, openedAt: start.openedOn ?? before, columns: used.map(({ fs }) => ({ fsLine: fs, label: FS_LINES[fs].label, codes: codesOf(fs) })), values: picked, totals, balanceSheetEquity: bs.totals.equity };
 }
 
+// ─── Mutasi aset tetap (CALK) ─────────────────────────────────────────────────
+
+export type AssetMovementRow = { code: string; name: string; kind: "COST" | "ACCUMULATED"; opening: bigint; additions: bigint; deductions: bigint; closing: bigint };
+export type AssetMovement = { openedAt: Date; to: Date; rows: AssetMovementRow[] };
+
+/**
+ * The carrying amount's reconciliation (PSAK 216 / SAK EP): every account on the Aset tetap and Akumulasi penyusutan lines, from the year's
+ * opening (the previous year end plus the year's Saldo Awal, as in the changes in equity and the cash flow) to `to`. Signed as on the Neraca:
+ * cost positive, accumulation negative; additions are debits to cost and credits to the accumulation (the depreciation charge), deductions the
+ * other side, so opening + additions + deductions = closing on every row and the rows add up to the Neraca's book value.
+ */
+export async function fixedAssetMovement(db: Db, scope: Scope, to: Date): Promise<AssetMovement> {
+  await single(db, scope);
+  const from = fiscalYearStart(await fiscalEndMonth(db, scope.clientId), to);
+  const [start, movedAll] = await Promise.all([yearOpening(db, scope, from, to), movements(db, scope, from, to, "exclude")]);
+  // The Neraca's own test: an asset account on those lines (a mistyped account is shown by its type, not here).
+  const isLine = (a: Account) => a.type === "ASET" && (a.fsLine === "ASET_TETAP" || a.fsLine === "AKUM_PENYUSUTAN");
+  // A manual entry reversed inside the period (*Balik jurnal*) was neither a purchase nor a disposal: both entries leave the columns
+  // (they cancel on every account, so the closing balance is the same).
+  const pairs = await db.journalEntry.findMany({
+    where: { entityId: { in: scope.entityIds }, date: { gte: from, lte: to }, reversesId: { not: null }, reverses: { date: { gte: from, lte: to } } },
+    select: { id: true, reversesId: true },
+  });
+  const reversed = pairs.length
+    ? new Map((await db.journalLine.groupBy({ by: ["accountId"], where: { entryId: { in: pairs.flatMap((p) => [p.id, p.reversesId!]) } }, _sum: { debit: true, credit: true } })).map((r) => [r.accountId, { debit: r._sum.debit ?? 0n, credit: r._sum.credit ?? 0n }]))
+    : new Map<string, { debit: bigint; credit: bigint }>();
+  const moved = movedAll.map((m) => {
+    const x = reversed.get(m.account.id);
+    return x ? { ...m, debit: m.debit - x.debit, credit: m.credit - x.credit } : m;
+  });
+  const rows: AssetMovementRow[] = [];
+  start.rows.forEach((o, i) => {
+    const m = moved[i];
+    if (!isLine(o.account) || (o.net === 0n && m.debit === 0n && m.credit === 0n && movedAll[i].net === 0n)) return;
+    const cost = o.account.fsLine === "ASET_TETAP";
+    rows.push({
+      code: o.account.code,
+      name: o.account.name,
+      kind: cost ? "COST" : "ACCUMULATED",
+      opening: o.net,
+      additions: cost ? m.debit : -m.credit,
+      deductions: cost ? -m.credit : m.debit,
+      closing: o.net + movedAll[i].net,
+    });
+  });
+  rows.sort((a, b) => (a.kind === b.kind ? a.code.localeCompare(b.code) : a.kind === "COST" ? -1 : 1));
+  return { openedAt: start.openedOn ?? new Date(+from - 86_400_000), to, rows };
+}
+
 // ─── Laporan Arus Kas (tidak langsung) ────────────────────────────────────────
 
 export type CashSection = "OPERATING" | "INVESTING" | "FINANCING";
