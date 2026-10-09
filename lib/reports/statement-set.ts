@@ -115,9 +115,10 @@ export async function statementSet(db: Db, scope: Scope, year: number, month: nu
   const pl = <T,>(a: T, pick: () => T) => [a, ...(isPrior ? [pick()] : [])];
   if (!mixed && framework !== "SAK_EMKM") {
     const [oci, ociPrior] = await Promise.all([otherComprehensiveIncome(db, scope, fy.start, asOf), per.priorPl ? otherComprehensiveIncome(db, scope, per.priorPl.start, per.priorPl.end) : null]);
-    lr.push({ label: "Penghasilan komprehensif lain", values: [], bold: true });
     const ociRows = itemRows(pl(oci.items, () => ociPrior!.items), "oci:");
-    lr.push(...ociRows);
+    // No OCI in the period: one line with a dash, not a heading with nothing under it.
+    if (ociRows.length) lr.push({ label: "Penghasilan komprehensif lain", values: [], bold: true }, ...ociRows);
+    else lr.push({ label: "Penghasilan komprehensif lain", values: pl(0n, () => 0n) });
     // Net profit (the format's last total) plus each OCI line: a formula in Excel, the printed lines' sum in the PDF.
     const net = format.labaRugi.filter((l) => l.kind === "TOTAL").at(-1)!.key;
     lr.push({

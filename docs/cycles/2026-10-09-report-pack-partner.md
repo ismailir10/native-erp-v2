@@ -48,7 +48,7 @@ Approval: the owner's brief in-session ("continue improving Buku until we are pr
   - The CALK subtitle carries "(draf)" only while the set is a draft.
   - The income-tax note never instructs the app user. While the current tax is not journaled it reads as a disclosure: "Beban pajak
     penghasilan kini periode ini belum dicatat dalam laporan laba rugi; estimasinya disajikan di bawah."
-- [ ] **P3 PDF layout.**
+- [x] **P3 PDF layout.**
   - A note heading stays with its table's column header and at least two rows.
   - A table or statement that continues on a new page repeats its column header and keeps its row font.
   - Punctuation after a management blank stays on its line.
@@ -89,7 +89,7 @@ it prints.
   with "Saldo awal 28 Februari 2026" (not dashes), and the CALK agrees. The existing statements/report-pdf tests stay green.
 - [x] T2 Status-aware CALK wording (xlsx "(draf)", the tax note). Accept: unit/db test that a closed month's workbook and notes carry no
   "draf" and no "Catat jurnalnya".
-- [ ] T3 PDF layout fixes. Accept: a db test on extracted PDF text (header repeated on a continued note page, no line that is only
+- [x] T3 PDF layout fixes. Accept: a db test on extracted PDF text (header repeated on a continued note page, no line that is only
   "."). The rendered pages are inspected by eye.
 - [ ] T4 Arus Kas presentation + intercompany by side. Accept: db test (a debit 1190 → investing, credit → financing; the totals still
   equal the change in cash); export labels carry no "(1130)".
@@ -105,8 +105,14 @@ it prints.
   copy of the rule replaced), `pdf.ts` (CALK and Surat Pernyataan dates). Tests: `tests/db/report-periods.test.ts` (new, 2), wording updated in
   `statements`, `fiscal-statements`, `notes-manual`, `report-pdf` tests.- T2: `notes.ts` (the unbooked current tax is disclosed — "Beban pajak penghasilan kini periode ini belum dicatat …; estimasinya disajikan
   di bawah." — not "Catat jurnalnya di Pajak Badan sebelum laporan ini final"), `workbook.ts` (CALK subtitle "(draf)" only with `meta.draft`;
-  `newWorkbook` returns `draft`). Test: `tests/db/report-final-wording.test.ts` (new, 2).
+  `newWorkbook` returns `draft`). Test: `tests/db/report-final-wording.test.ts` (new, 2).- T3: `pdf.ts` (a note heading keeps its first paragraph or its table's header and two rows; a table continued on a new page repeats its
+  column header; the row font is set after a page break, so the page header's italics no longer leak; a management blank keeps the
+  punctuation after it; the draft reasons on page 1, "DRAF — lihat halaman 1" after; statement and note columns wide enough for
+  "1 Januari – 31 Maret 2026" on one line), `statement-set.ts` (no OCI in the period: one "Penghasilan komprehensif lain –" line instead of
+  an empty heading). Tests: `tests/db/report-pdf-layout.test.ts` (new: 70-account note across pages), `report-pdf.test.ts` (draft line per
+  page). Pages rendered and looked at.
 ## Verification
 - T1: lint clean · typecheck clean · `npm test` 195 files, 1311 passed.
 - T2: lint + typecheck clean · report-final-wording, statements, report-pdf: all passed (full suite at T3).
+- T3: lint clean · typecheck clean · `npm test` 196 files, 1312 passed.
 ## Ship Notes
