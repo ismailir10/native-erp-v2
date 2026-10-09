@@ -2,7 +2,6 @@ import { getCurrentMember } from "@/lib/tenant";
 import { RemoveImportButton } from "@/components/app/remove-import";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { loadClientPage } from "@/lib/client-page";
 import type { SearchParams } from "@/lib/scope";
@@ -52,9 +51,6 @@ export default async function LedgerImportPage({ params, searchParams }: { param
 
   return (
     <div className="space-y-6">
-      <Link href={`${base}/import?tab=ledger`} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-        <ChevronLeft className="size-4" /> Impor
-      </Link>
       <PageHeader
         title={`Impor ${kind}: ${imp.sheetName}`}
         description={`${imp.fileName} · ${formatDate(imp.periodStart)}${+imp.periodEnd !== +imp.periodStart ? ` – ${formatDate(imp.periodEnd)}` : ""} · ${imp.currencyMode === "CONVERT" ? "baris valas dikonversi dengan kurs" : "jumlah dicatat apa adanya"}`}

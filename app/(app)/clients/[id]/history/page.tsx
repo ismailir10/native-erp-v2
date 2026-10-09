@@ -30,7 +30,7 @@ export default async function HistoryPage({ params, searchParams }: { params: Pr
   );
   return (
     <div className="space-y-6">
-      <PageHeader title="Riwayat perubahan" description={`${client.name} · siapa mengubah apa, kapan, dari apa ke apa`} />
+      <PageHeader title="Riwayat perubahan" description="Siapa mengubah apa, kapan, dari apa ke apa" />
       <NextStep>Setiap perubahan klasifikasi, pasangan transfer, impor yang dihapus, catatan kontrol, pemetaan akun dan temuan tercatat di sini dan tidak bisa diubah.</NextStep>
       <nav className="flex flex-wrap gap-2" aria-label="Jenis perubahan">
         {chip(undefined, "Semua")}

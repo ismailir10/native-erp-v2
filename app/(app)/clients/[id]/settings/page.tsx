@@ -58,7 +58,7 @@ export default async function SettingsPage({ params, searchParams }: { params: P
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Pengaturan klien" description={`${client.name} · perusahaan dan rekening, kerangka pelaporan, lalu aturan klasifikasi.`} />
+      <PageHeader title="Pengaturan klien" description="Perusahaan dan rekening, kerangka pelaporan, lalu aturan klasifikasi." />
       <LinkTabs label="Bagian pengaturan" items={TABS.map((t) => ({ href: withParams(`/clients/${client.id}/settings`, t.key === TABS[0].key ? {} : { tab: t.key }), label: t.label, active: t.key === tab.key }))} />
       <NextStep>{tab.next}</NextStep>
       {tab.key === "perusahaan" ? (

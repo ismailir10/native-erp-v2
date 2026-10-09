@@ -76,7 +76,7 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
   const monthKey = (m: { year: number; month: number }) => `${m.year}-${String(m.month).padStart(2, "0")}`;
   return (
     <div className="space-y-6">
-      <PageHeader title="Tutup Buku" description={`${client.name} · ${label}`} actions={<ScopeBar entities={[]} periods={periodOptions} period={period.key} />} />
+      <PageHeader title="Tutup Buku" description={`${label}`} actions={<ScopeBar entities={[]} periods={periodOptions} period={period.key} />} />
       {locked ? (
         <NextStep tone="done">Buku {label} sudah ditutup. Laporan siap dikirim ke klien.</NextStep>
       ) : before ? (
