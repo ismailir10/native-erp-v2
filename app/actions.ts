@@ -51,6 +51,7 @@ import { OpeningError, postOpening, type OpeningLineInput } from "@/lib/opening"
 import { FindingError, resolveOpeningFinding } from "@/lib/findings";
 import { removeLedgerImport, removeStatementImport, RemoveImportError } from "@/lib/imports/remove";
 import { saveControlNote } from "@/lib/controls/ack";
+import { closeHistoryMonth, historyPreview, type HistoryPreview, type YearMonth } from "@/lib/controls/history";
 import type { TaxTag, WithholdingKind } from "@/lib/generated/prisma/enums";
 import { RateError, upsertRate, validateRateInput } from "@/lib/fx/rates";
 import { MAX_UPLOAD_BYTES } from "@/lib/upload";
@@ -326,6 +327,32 @@ export async function unlockAction(clientId: string, year: number, month: number
     revalidatePath("/", "layout");
     return { ok: true };
   } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Tutup bulan-bulan sebelumnya (lib/controls/history): what each open month before the selected one still flags, earliest first. */
+export async function historyPreviewAction(clientId: string, year: number, month: number): Promise<Result<{ preview: HistoryPreview }>> {
+  try {
+    await getClientForFirm(clientId);
+    return { ok: true, preview: await historyPreview(prisma, clientId, { year, month }) };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/**
+ * One month of that run (the browser calls it month by month, so each call stays short and shows progress). Admin only; the month's
+ * controls must still read as previewed. `last` revalidates the pages once at the end instead of after every month.
+ */
+export async function closeHistoryMonthAction(clientId: string, until: YearMonth, target: YearMonth, note: string, fingerprint: string, last: boolean): Promise<Result> {
+  try {
+    await getClientForFirm(clientId);
+    await closeHistoryMonth(prisma, { clientId, until, month: { year: target.year, month: target.month }, note, fingerprint, actor: await getCurrentMember() });
+    if (last) revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (e) {
+    if (last) revalidatePath("/", "layout");
     return fail(e);
   }
 }
