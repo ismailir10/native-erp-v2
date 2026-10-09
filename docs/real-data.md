@@ -26,9 +26,12 @@ npm run inspect:statement -- data/private/belifi-mei-juli.xls --year=2026       
 Look for `Kesinambungan NYAMBUNG ✓`. That means opening + every row = every printed balance = closing, so no row was
 lost or misread. `ADA CELAH ✗` names the broken rows. Exit code 2 means a gap.
 
-Supported: text PDF e-statements (BCA / Mandiri / BRI-style layouts), KlikBCA CSV, Mandiri XLSX, BRI CSV, and any
-CSV/TSV/XLSX/XLS with tanggal / keterangan / debet-kredit (or mutasi) / saldo columns. `.xls` may be old Excel or an HTML
-table saved as .xls (common in internet-banking exports); the kind is read from the bytes, not the name. Combined PDFs with
+Supported: **25 Indonesian banks** and the formats each one exports — the list, with how Buku knows each layout (`REAL` file,
+`PUBLISHED` by the bank or public parser code, `INFERRED` common layout), lives in [`lib/banks.ts`](../lib/banks.ts); every
+format there has a synthetic fixture in `tests/bank-layouts.ts` that must read with a continuous balance. Besides those: **SWIFT
+MT940** from any bank (`.txt`, `.sta`, `.940`, `.mt940`; several accounts become sections), and any CSV/TSV/XLSX/XLS with tanggal /
+keterangan / debet-kredit (or mutasi, with a D/K column or a CR/DB marker in the amount) / saldo columns. `.xls` may be old Excel or
+an HTML table saved as .xls (common in internet-banking exports); the kind is read from the bytes, not the name. Combined PDFs with
 several accounts (e.g. SMBC "Laporan Konsolidasi Rekening") print one block per account; each is checked on its own and the
 import takes the section whose number matches the selected bank account. Foreign-currency sections are listed but not imported.
 

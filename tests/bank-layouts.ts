@@ -1,6 +1,9 @@
+import { expect } from "vitest";
 import type { BankCode } from "@/lib/generated/prisma/enums";
+import type { ParsedStatement } from "@/lib/import/types";
+import { checkContinuity } from "@/lib/import/normalize";
 import { BAL, CLOSE, MON_EN, OPEN, TX, bniDirectCsv, bniDirectXlsx, cimbOctoCsv, cimbPdf, en, idn, mandiriLivinXlsx, p2, permataCsv, xlsxBuffer } from "./bank-fixture";
-import { makePdf, table, type PdfText } from "./pdf-fixture";
+import { makePdf, smbcCombinedPdf, table, type PdfText } from "./pdf-fixture";
 
 /**
  * One synthetic file per bank export Buku claims to read (`lib/banks.ts` formats), each holding the same five August 2026
@@ -16,6 +19,8 @@ export type Layout = {
   build: () => Buffer | Promise<Buffer>;
   /** The description starts with a counterparty column (Jago's Sumber/Tujuan) rather than the bank's transaction text. */
   counterpartyFirst?: boolean;
+  /** A file that isn't the five August rows (a real layout reproduced as it was): its own check instead of `expectAugust`. */
+  check?: (sections: ParsedStatement[]) => void;
 };
 
 const q = (s: string) => `"${s}"`;
@@ -549,4 +554,15 @@ export const LAYOUTS: Layout[] = [
   { bank: "HSBC", format: "MT940", file: "hsbc.mt940", build: () => mt940("HSBCIDJA", "001123456069") },
   { bank: "CITI", format: "MT940", file: "citi.mt940", build: () => mt940("CITIIDJX", "0101234567", { daily: true }) },
   { bank: "JATIM", format: "MT940", file: "jatim.txt", build: () => mt940("PDJTIDJ1", "0011223344") },
+  // ---- Reproduced from a real file (positions as printed), not the August rows ----
+  {
+    bank: "SMBC",
+    format: "Laporan Konsolidasi Rekening (Touchbiz / Jenius)",
+    file: "smbc-konsolidasi.pdf",
+    build: smbcCombinedPdf,
+    check: (sections) => {
+      expect(sections.map((s) => [s.accountNumber, s.section?.currency])).toEqual([["90022152088", "IDR"], ["05243002879", "IDR"], ["90022164251", "JPY"]]);
+      for (const s of sections) expect(checkContinuity(s).ok).toBe(true);
+    },
+  },
 ];

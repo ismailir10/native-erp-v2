@@ -118,7 +118,7 @@ grows — re-checked with `verify:books`).
   → 2 sections), SeaBank, blu fixtures → continuous.
 - [x] T7 MT940 parser + upload accept list — accept: single statement, multi-page `:60M/:62M`, multi-account → sections, USD section
   listed not imported, `RD`/`RC` reversals, `:86:` multi-line, BIC → bank; malformed tag → clear Bahasa error.
-- [ ] T8 Coverage test + docs — registry × formats test; `docs/real-data.md` + README supported list point to the registry —
+- [x] T8 Coverage test + docs — registry × formats test; `docs/real-data.md` + README supported list point to the registry —
   accept: removing a fixture fails the test.
 - [ ] T9 Import UI: supported-files text + bank list disclosure, detected bank on the result, mismatch note — accept: e2e step imports
   a BNI fixture into a BNI account and sees "BNI"; screenshot 1440 + 390.
@@ -165,6 +165,10 @@ grows — re-checked with `verify:books`).
   doesn't continue is refused; several accounts or a foreign currency → sections; bank from the BIC in blocks 1/2 or `:25:`), routed in
   `parsers/index.ts` before the CSV readers; upload accepts `.txt/.sta/.940/.mt940`. Layouts: MT940 for BCA, Mandiri (daily), BRI
   (daily, BIC in `:25:`), CIMB, OCBC, Maybank (daily), UOB, DBS, HSBC, Citi (daily), Bank Jatim. Tests: `tests/unit/mt940.test.ts`.
+- T8: `tests/unit/bank-coverage.test.ts` (every registry format has a layout fixture; every fixture is a registry format; every bank has a
+  format; the inferred-only banks are named: BJB, Danamon, DKI, Mega, Panin, Sinarmas), the SMBC combined PDF (REAL layout) joins the
+  catalog with its own check (`Layout.check`); `docs/real-data.md`, `README.md` (Import row) and `AGENTS.md` (repo map) point to
+  `lib/banks.ts` instead of a hand-kept bank list.
 
 ## Verification
 - T1: `npm run lint` 0 errors (1 existing warning in `public/deck/deck.js`) · typecheck clean · `npm test` 185 files, 1218 passed.- T2: `npm test` 186 files, 1224 passed · `npm run demo:reset && npm run verify:books` → ALL PASS — 1765 pemeriksaan saldo cocok
@@ -174,5 +178,6 @@ grows — re-checked with `verify:books`).
 - T5: `npm test` 188 files, 1267 passed (34 layouts); lint 0 errors; typecheck clean; real-file and private-fixture row hashes unchanged.
 - T6: `npm test` 188 files, 1273 passed (38 layouts); lint 0 errors; typecheck clean; real-file and private-fixture hashes unchanged.
 - T7: `npm test` 189 files, 1291 passed (49 layouts, 7 MT940 cases); lint 0 errors; typecheck clean; real-file/fixture hashes unchanged.
+- T8: `npm test` 190 files, 1295 passed; removing the Bank Jatim MT940 fixture fails `bank-coverage.test.ts` with `JATIM · MT940` (then restored).
 
 ## Ship Notes
