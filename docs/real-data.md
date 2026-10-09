@@ -38,6 +38,8 @@ A text file none of these read gets **Atur kolom**: the accountant marks its col
 by the running balance on *Periksa baris*, and the layout is remembered for the firm by its header. A real client's layout read this
 way is worth a fixture in `tests/bank-layouts.ts` (synthetic, same columns) so the next firm doesn't have to map it.
 
+Several statements can be chosen or dropped at once (up to 24): Buku reads each first, matches it to the client's bank account by the account number in the file, and imports oldest first per account. Nothing is written until *Impor N file*; a file it can't place or read is named and left out.
+
 **Accountants' working copies** are read as they are: one sheet per month (joined into one import when the sheets print the
 same account number or none), `SALDO AWAL` rows, an unlabeled column with the transaction type, a formula balance. Two
 choices are made from the file and shown as notes (`Catatan` here, *Cara file dibaca* in the app, kept in the import history):

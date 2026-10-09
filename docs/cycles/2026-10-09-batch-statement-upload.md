@@ -81,7 +81,7 @@ accounting invariant.
   progress, result) — accept: e2e `statement-batch.spec.ts` (three months of one account in scrambled order + a second account's file
   + a duplicate → imported oldest first, *Saldo nyambung*, rerun = "sudah ada"; an unreadable file doesn't block the others; 390 px
   without page scroll); screenshots looked at, desktop and 390 px.
-- [ ] T4 End-of-cycle gates, README Import row + `docs/real-data.md` mention, Ship Notes, production check (B8), deck review.
+- [x] T4 End-of-cycle gates, README Import row + `docs/real-data.md` mention, Ship Notes, production check (B8), deck review.
 
 ## Implementation
 - Plan: T1–T3 sequential, inline (peek module → action → table; each builds on the last, no independent slice worth delegating).
@@ -104,4 +104,12 @@ accounting invariant.
 ## Verification
 - T1–T3: lint clean · typecheck clean · `npm test` 205 files, 1365 passed · `npm run build` ok · e2e statement-batch, statements,
   statement-column-mapping, early-input, ledger-import: 6 passed.
+- End of cycle: lint clean · typecheck clean · `npm test` 205 files, 1365 passed · `npm run build` ok · `demo:reset && verify:books` → ALL PASS —
+  1765 pemeriksaan saldo cocok dengan ground truth · `npm run test:e2e` → 65 passed (5.9m).
+- Deck (ship step 3): `public/deck/kantor.html` slide 05, first bullet gains "Banyak file sekaligus: rekeningnya dikenali, diimpor dari bulan
+  terlama."; PDF regenerated (`npm run deck:pdf`, 17 slides; the client deck is unchanged), slide looked at. README Import row and
+  `docs/real-data.md` name the batch.
 ## Ship Notes
+- **Migration:** none. No env var, no new dependency, no AI calls beyond what the same imports make one by one.
+- Manual steps: none. Production check (B8) after merge on a throwaway client *Uji Banyak File (hapus)*, deleted afterwards.
+- Rollback: revert the merge; nothing is stored by the read step.
