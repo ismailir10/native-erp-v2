@@ -381,13 +381,13 @@ async function collectControls(db: Db, clientId: string, year: number, month: nu
     }
 
     // Employee benefits (rule 5g): in the year-end month (December unless the tahun buku ends elsewhere), once the entity has assumptions,
-    // 2310 should equal the PSAK 24 obligation.
+    // 2310 should equal the PSAK 219 obligation.
     if (month === yearEnd && (await db.benefitSetting.findUnique({ where: { entityId: e.id }, select: { id: true } }))) {
       const v = await valuation(db, clientId, e.id, year, month);
       const ebKey = `eb:${e.id}`;
       controls.push({
         key: ebKey,
-        title: "Imbalan kerja (PSAK 24) = valuasi",
+        title: "Imbalan kerja (PSAK 219) = valuasi",
         scope: e.shortName,
         status: !v.blocker && !v.lines.length ? "PASS" : "REVIEW",
         detail: v.blocker ?? (v.lines.length ? `Liabilitas imbalan kerja ${fmt(v.dbo)} vs buku besar ${fmt(v.ledger.liability)} (2310); jurnal valuasi belum dicatat${v.later ? ` (sudah dijurnal per ${formatDate(v.later)})` : ""}` : `Liabilitas imbalan kerja ${fmt(v.dbo)} sesuai valuasi (${v.employees.length} karyawan)`),

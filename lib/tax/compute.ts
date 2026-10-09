@@ -6,7 +6,7 @@ import type { TaxRegime } from "@/lib/generated/prisma/enums";
  * - Normal regime: 22 % (UU HPP). Pasal 31E: with turnover ≤ Rp 50 M, the part of PKP from turnover up to Rp 4,8 M (PKP × 4,8 M ÷
  *   turnover; all of it when turnover ≤ 4,8 M) is taxed at half the rate (11 %), the rest at 22 %; each part rounded down to Rupiah.
  *   Both tests are on the year's turnover: an interim estimate over `months` (< 12) annualises it (× 12 ÷ months), so the share at 11 %
- *   is the one the year is heading for (PSAK 3: interim tax at the expected annual effective rate; a short first year is annualised too).
+ *   is the one the year is heading for (PSAK 234: interim tax at the expected annual effective rate; a short first year is annualised too).
  * - PP 55/2022 final: 0,5 % of turnover (the accountant chooses it; eligibility isn't judged here).
  */
 export const CORPORATE_RATE_PERCENT = 22n;

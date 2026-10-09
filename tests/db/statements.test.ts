@@ -15,7 +15,7 @@ import { dateOnly } from "@/lib/format";
 type G = Awaited<ReturnType<typeof makeGroup>>;
 const J = 1_000_000n;
 
-/** A small invented book: 2025 capital and a cash sale; 2026 credit sale, receipt, asset, depreciation, loan, dividend, lease, PSAK 24. */
+/** A small invented book: 2025 capital and a cash sale; 2026 credit sale, receipt, asset, depreciation, loan, dividend, lease, PSAK 219. */
 async function book(g: G) {
   const id = async (code: string) => (await db.account.findFirstOrThrow({ where: { clientId: g.client.id, code } })).id;
   const post = async (y: number, m: number, d: number, memo: string, lines: [string, bigint][]) =>

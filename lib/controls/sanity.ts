@@ -88,7 +88,7 @@ export async function sanityControls(db: Db, a: Args): Promise<Control[]> {
     control("guess", "Tebakan diterima tanpa diubah", "REVIEW", `${guesses.length} transaksi (${fmt(total)}${share}) disetujui persis seperti tebakan dengan keyakinan rendah`, `${a.base}/ledger?entity=${e.id}`);
   }
 
-  // 6. Capital deficiency: a company whose liabilities exceed its assets (going concern, SAK EP / PSAK 1).
+  // 6. Capital deficiency: a company whose liabilities exceed its assets (going concern, SAK EP / PSAK 201).
   if (e.kind !== "PERORANGAN" && assets >= 0n) {
     const { liabilities, equity } = a.bsTotals;
     if (equity < 0n) {

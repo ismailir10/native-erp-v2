@@ -3,7 +3,7 @@ import { COA_TEMPLATE } from "@/lib/coa/template";
 import { formatDate, toIsoDate } from "@/lib/format";
 import { valuation } from "@/lib/benefits/valuation";
 
-/** Serialisable views for the Imbalan Kerja (PSAK 24) page (bigint as string across the server → client boundary, rule 6). */
+/** Serialisable views for the Imbalan Kerja (PSAK 219) page (bigint as string across the server → client boundary, rule 6). */
 
 const pct = (bp: number) => (bp / 100).toLocaleString("id-ID", { maximumFractionDigits: 2 });
 

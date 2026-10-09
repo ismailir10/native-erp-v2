@@ -18,16 +18,22 @@
   h1 { font-size: 6.4rem; }
   .lead { font-size: 2rem; margin: 2rem 0 4.4rem; max-width: 62rem; }
   .choose { display: grid; grid-template-columns: 1fr 1fr; gap: 2.4rem; }
-  a.card { display: flex; flex-direction: column; background: #fff; border: 1px solid var(--line); border-radius: 1.8rem; padding: 1.2rem 1.2rem 2.6rem; text-decoration: none; color: var(--ink); transition: border-color 0.15s ease; }
-  a.card:hover { border-color: var(--blue); }
-  a.card:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+  .card { position: relative; display: flex; flex-direction: column; background: #fff; border: 1px solid var(--line); border-radius: 1.8rem; padding: 1.2rem 1.2rem 2.6rem; color: var(--ink); transition: border-color 0.15s ease; }
+  .card:hover, .card:focus-within { border-color: var(--blue); }
+  .card h2 a { color: inherit; text-decoration: none; }
+  /* the title link covers the card, so the whole card opens the deck; the PDF link sits above it */
+  .card h2 a::after { content: ""; position: absolute; inset: 0; border-radius: 1.8rem; }
+  .card h2 a:focus-visible { outline: none; }
+  .card h2 a:focus-visible::after { outline: 2px solid var(--blue); outline-offset: 3px; }
+  .acts { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 1rem; margin: 2.4rem 1.6rem 0; }
+  .acts .btn { height: 4.4rem; font-size: 1.6rem; }
+  .acts .btn svg { width: 1.8rem; height: 1.8rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .acts .btn.o:hover { border-color: var(--blue); color: var(--blue); }
   .card-thumb { display: block; position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 1.1rem; background: var(--dk); }
   .card-thumb iframe { position: absolute; left: 0; top: 0; width: 1600px; height: 900px; border: 0; transform-origin: 0 0; pointer-events: none; }
-  a.card .meta { margin: 2.4rem 1.6rem 0; font-size: 1.45rem; font-weight: 500; color: var(--muted); }
-  a.card h2 { margin: 0.6rem 1.6rem 0; font-size: 3rem; }
-  a.card p { margin: 1.2rem 1.6rem 0; color: var(--muted); font-size: 1.7rem; line-height: 1.5; flex: 1; }
-  a.card .go { margin: 2.2rem 1.6rem 0; display: inline-flex; align-items: center; gap: 0.8rem; color: var(--blue); font-weight: 600; font-size: 1.7rem; }
-  a.card .go svg { width: 1.8rem; height: 1.8rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .card .meta { margin: 2.4rem 1.6rem 0; font-size: 1.45rem; font-weight: 500; color: var(--muted); }
+  .card h2 { margin: 0.6rem 1.6rem 0; font-size: 3rem; }
+  .card p { margin: 1.2rem 1.6rem 0; color: var(--muted); font-size: 1.7rem; line-height: 1.5; flex: 1; }
   .foot { margin-top: 4rem; font-size: 1.45rem; color: var(--muted); }
   @media (max-width: 720px) { .choose { grid-template-columns: 1fr; } h1 { font-size: 4.6rem; } .brand { margin-bottom: 4rem; } }
 </style>
@@ -38,22 +44,22 @@
   <h1>Presentasi Buku</h1>
   <p class="lead">Tutup buku bulanan dari rekening koran, dengan laporan yang setiap angkanya bisa ditelusuri. Pilih yang sesuai dengan pembacanya.</p>
   <div class="choose">
-    <a class="card" href="/deck/kantor">
+    <div class="card">
       <span class="card-thumb" aria-hidden="true"><iframe src="/deck/kantor.html#1" tabindex="-1" loading="lazy" title=""></iframe></span>
-      <span class="meta">17 slide</span>
-      <h2>Untuk kantor akuntan</h2>
+      <span class="meta">17 slide · PDF 1,3 MB</span>
+      <h2><a href="/deck/kantor">Untuk kantor akuntan</a></h2>
       <p>Banyak klien setiap bulan: papan kemajuan semua klien, file yang kurang, review, tutup buku, dan laporan untuk setiap pembaca.</p>
-      <span class="go">Buka presentasi <svg viewBox="0 0 16 16"><path d="M3 8h10M9 4l4 4-4 4"/></svg></span>
-    </a>
-    <a class="card" href="/deck/perusahaan">
+      <div class="acts"><a class="btn" href="/deck/kantor">Buka presentasi <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg></a><a class="btn o" href="/deck/buku-kantor-akuntan.pdf" download><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M4.5 7L8 10.5 11.5 7M3 13.5h10"/></svg>Unduh PDF</a></div>
+    </div>
+    <div class="card">
       <span class="card-thumb" aria-hidden="true"><iframe src="/deck/perusahaan.html#1" tabindex="-1" loading="lazy" title=""></iframe></span>
-      <span class="meta">14 slide</span>
-      <h2>Untuk perusahaan</h2>
+      <span class="meta">14 slide · PDF 1,1 MB</span>
+      <h2><a href="/deck/perusahaan">Untuk perusahaan</a></h2>
       <p>Laporan bulanan dari rekening koran sendiri, bersama akuntan Anda: untuk pemilik, bank, dan pajak.</p>
-      <span class="go">Buka presentasi <svg viewBox="0 0 16 16"><path d="M3 8h10M9 4l4 4-4 4"/></svg></span>
-    </a>
+      <div class="acts"><a class="btn" href="/deck/perusahaan">Buka presentasi <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg></a><a class="btn o" href="/deck/buku-perusahaan.pdf" download><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M4.5 7L8 10.5 11.5 7M3 13.5h10"/></svg>Unduh PDF</a></div>
+    </div>
   </div>
-  <p class="foot">Panah kiri/kanan untuk berpindah slide · F untuk layar penuh · Cetak ke PDF dari browser</p>
+  <p class="foot">Panah kiri/kanan untuk berpindah slide · F untuk layar penuh</p>
 </main>
 <script src="/deck/chooser.js"></script>
 </body>

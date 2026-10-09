@@ -28,7 +28,7 @@ export type AssetInput = {
   /** Typed in major units of the entity's functional currency (rule 6). */
   cost: string;
   residual?: string;
-  /** Book useful life (PSAK 16 estimate); ignored for land. */
+  /** Book useful life (PSAK 216 estimate); ignored for land. */
   usefulLifeMonths?: number | null;
   /** Assets from Saldo Awal: accumulated book depreciation at the opening date, and the months of life left to depreciate. */
   openingAccumulated?: string;

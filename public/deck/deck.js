@@ -30,11 +30,14 @@
 
   var ctrl = el("div", "ctrl", '<span class="cnt" aria-hidden="true"></span><button type="button" id="prev" aria-label="Slide sebelumnya"><svg viewBox="0 0 16 16"><path d="M10 3L5 8l5 5"/></svg></button><button type="button" id="next" aria-label="Slide berikutnya"><svg viewBox="0 0 16 16"><path d="M6 3l5 5-5 5"/></svg></button>');
   var bar = el("div", "bar");
+  var pdf = document.body.getAttribute("data-pdf");
+  if (pdf) ctrl.insertBefore(el("a", "pdf", '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M4.5 7L8 10.5 11.5 7M3 13.5h10"/></svg>PDF'), ctrl.children[1]);
+  if (pdf) { var dl = ctrl.querySelector("a.pdf"); dl.href = pdf; dl.setAttribute("download", ""); dl.setAttribute("aria-label", "Unduh presentasi sebagai PDF"); }
   document.body.appendChild(ctrl); document.body.appendChild(bar);
   // inside the /deck chooser thumbnail: no controls
-  var framed = false; try { framed = window.self !== window.top; } catch (e) { framed = true; }
+  var framed = false; try { framed = window.self !== window.top; } catch { framed = true; }
   if (framed) { ctrl.style.display = "none"; bar.style.display = "none"; }
-  var cnt = ctrl.children[0], prev = ctrl.children[1], next = ctrl.children[2];
+  var cnt = ctrl.querySelector(".cnt"), prev = ctrl.querySelector("#prev"), next = ctrl.querySelector("#next");
 
   function fromHash() {
     var m = /^#(\d+)$/.exec(location.hash);

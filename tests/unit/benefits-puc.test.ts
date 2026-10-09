@@ -15,7 +15,7 @@ describe("PP 35/2021 benefit months", () => {
   });
 });
 
-describe("PUC factors (PSAK 24)", () => {
+describe("PUC factors (PSAK 219)", () => {
   it("without decrements or discounting: the retirement benefit × the share of service earned", () => {
     // 46 years old, 10 years of service, retiring at 56 with 20 years: 22,75 months, half earned; next year earns 1/20 more.
     const f = factors({ age: 46, service: 10, sex: "MALE" }, none);

@@ -23,7 +23,7 @@ export default async function BenefitsPage({ params, searchParams }: { params: P
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Imbalan Kerja (PSAK 24)"
+        title="Imbalan Kerja (PSAK 219)"
         description={`${client.name} · liabilitas imbalan pasca kerja UU Cipta Kerja / PP 35/2021 per ${label}`}
         actions={<ScopeBar entities={entityOptions} periods={periodOptions} entity={scope.value} period={period.key} />}
       />

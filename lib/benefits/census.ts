@@ -9,7 +9,7 @@ import { dateOnly, percentToBp } from "@/lib/format";
 import { MoneyError, parseMinor, parseMoney } from "@/lib/money";
 
 /**
- * The PSAK 24 inputs an accountant keeps (accounting-rules 5g): the entity's census (imported from Excel / CSV or typed), the firm's
+ * The PSAK 219 inputs an accountant keeps (accounting-rules 5g): the entity's census (imported from Excel / CSV or typed), the firm's
  * mortality table (uploaded — Buku ships none it can't verify) and the entity's assumptions. Nothing here posts.
  */
 

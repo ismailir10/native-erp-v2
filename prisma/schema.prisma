@@ -1215,7 +1215,7 @@ model FixedAsset {
   acquiredOn           DateTime            @db.Date
   cost                 BigInt
   residual             BigInt              @default(0)
-  /// Book useful life (PSAK 16, the entity's estimate); null for land.
+  /// Book useful life (PSAK 216, the entity's estimate); null for land.
   usefulLifeMonths     Int?
   /// Assets from Saldo Awal: accumulated book depreciation at the opening date (already in the opening entry).
   openingAccumulated   BigInt              @default(0)
@@ -1567,7 +1567,7 @@ model MortalityTable {
   @@unique([firmId, name])
 }
 
-/// An employee of an entity for the PSAK 24 census: monthly wage (upah) in minor units; leftOn when they left.
+/// An employee of an entity for the PSAK 219 census: monthly wage (upah) in minor units; leftOn when they left.
 model Employee {
   id         String      @id @default(cuid())
   firmId     String
@@ -1589,7 +1589,7 @@ model Employee {
   @@index([clientId])
 }
 
-/// PSAK 24 assumptions of an entity. Rates in basis points a year; resignation falls linearly from resignFlatUntil to 0 at resignZeroAge.
+/// PSAK 219 assumptions of an entity. Rates in basis points a year; resignation falls linearly from resignFlatUntil to 0 at resignZeroAge.
 model BenefitSetting {
   id               String          @id @default(cuid())
   firmId           String
@@ -1607,7 +1607,7 @@ model BenefitSetting {
   updatedAt        DateTime        @updatedAt
 }
 
-/// A PSAK 24 valuation journal of an entity (the first one decides whether the opening obligation goes to Saldo Laba).
+/// A PSAK 219 valuation journal of an entity (the first one decides whether the opening obligation goes to Saldo Laba).
 model BenefitPosting {
   id        String       @id @default(cuid())
   firmId    String

@@ -116,7 +116,7 @@ export async function taxWorkpaper(db: Db, pack: TaxPack, meta: { firm: string; 
           ["Aset tetap (nilai fiskal − nilai buku)", n(d.assets), "Aset Tetap"],
           ["Cadangan kerugian penurunan nilai piutang", n(d.allowance), "Buku besar 1135"],
           ["Sewa PSAK 116 (sewa fiskal dibayar di muka − (hak guna − liabilitas sewa))", n(d.leases), "Daftar Sewa"],
-          ["Liabilitas imbalan kerja (PSAK 24)", n(d.employeeBenefits), "Buku besar 2310"],
+          ["Liabilitas imbalan kerja (PSAK 219)", n(d.employeeBenefits), "Buku besar 2310"],
           ["Beda temporer", n(d.temporaryDifference), null],
           [d.amount >= 0n ? "Aset pajak tangguhan (22%)" : "Liabilitas pajak tangguhan (22%)", n(d.amount < 0n ? -d.amount : d.amount), null],
           ["  bagian atas pengukuran kembali imbalan kerja (ke 3920, bukan 8110)", n(d.oci), "Buku besar 3920"],

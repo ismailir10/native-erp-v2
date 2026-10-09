@@ -294,7 +294,7 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
     const deferred = await deferredRows(e.id, p.deferred?.amount ?? null);
     // The note computes the tax; the statements carry only what is journaled. Say so while they differ.
     const unbooked = p.proposals.CURRENT.length > 0 && !p.laterPosting.CURRENT;
-    // A deferred tax asset needs taxable profit to use it (SAK EP Bab 29, PSAK 46): with a fiscal loss, losses carried forward or a capital
+    // A deferred tax asset needs taxable profit to use it (SAK EP Bab 29, PSAK 212): with a fiscal loss, losses carried forward or a capital
     // deficiency, the estimate is not to be booked as it stands.
     const dta = (p.deferred?.amount ?? 0n) > 0n;
     const ownEquity = entities.length === 1 ? bs.totals.equity : (await balanceSheet(db, { clientId: scope.clientId, entityIds: [e.id] }, asOf)).totals.equity; // this entity's, not the group's

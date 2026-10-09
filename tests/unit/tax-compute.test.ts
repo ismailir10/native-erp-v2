@@ -26,7 +26,7 @@ describe("PPh badan arithmetic", () => {
     expect(corporateTax({ regime: "NORMAL", pkp: 1_000n, turnover: 7_000_000_000n })).toMatchObject({ facilityPkp: 685n, facilityTax: 75n, regularPkp: 315n, regularTax: 69n, due: 144n });
   });
 
-  it("annualises an interim turnover for both 31E tests (PSAK 3: the rate the year is heading for)", () => {
+  it("annualises an interim turnover for both 31E tests (PSAK 234: the rate the year is heading for)", () => {
     // 3,2 M in 8 months is 4,8 M a year: all at 11 %; 8 M in 8 months is 12 M a year: 4,8 ÷ 12 at 11 %.
     expect(corporateTax({ regime: "NORMAL", pkp: 1_000_000_000n, turnover: 3_200_000_000n, months: 8 })).toMatchObject({ annualTurnover: 4_800_000_000n, facilityPkp: 1_000_000_000n });
     expect(corporateTax({ regime: "NORMAL", pkp: 1_000_000_000n, turnover: 8_000_000_000n, months: 8 })).toMatchObject({ annualTurnover: 12_000_000_000n, facilityPkp: 400_000_000n, regularPkp: 600_000_000n });

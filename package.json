@@ -16,6 +16,7 @@
     "demo:reset": "tsx scripts/seed.ts",
     "verify:books": "tsx scripts/verify-books.ts",
     "close:timeline": "tsx scripts/close-timeline.ts",
+    "deck:pdf": "tsx scripts/deck-pdf.ts",
     "auth:local": "bash scripts/local-auth.sh",
     "ai:smoke": "tsx scripts/ai-smoke.ts",
     "inspect:statement": "tsx scripts/inspect-statement.ts",

@@ -1,5 +1,5 @@
 /**
- * Synthetic PSAK 24 fixtures (never a real census or a copy of TMI IV): a smooth made-up mortality table as CSV, and a small census.
+ * Synthetic PSAK 219 fixtures (never a real census or a copy of TMI IV): a smooth made-up mortality table as CSV, and a small census.
  */
 export const syntheticQx = (age: number, female: boolean) => Math.min(1, (female ? 0.0003 : 0.0005) * Math.exp(0.08 * Math.max(0, age - 20)) + 0.0002);
 

@@ -12,7 +12,7 @@ export const MODULES = [
   { key: "inventory", href: "/inventory", label: "Persediaan", description: "Stock opname akhir bulan dan HPP metode periodik." },
   { key: "assets", href: "/assets", label: "Aset Tetap", description: "Register aset, penyusutan komersial dan fiskal, pelepasan aset." },
   { key: "leases", href: "/leases", label: "Sewa (PSAK 116)", description: "Aset hak guna dan liabilitas sewa dengan jadwalnya." },
-  { key: "benefits", href: "/benefits", label: "Imbalan Kerja", description: "Liabilitas imbalan kerja PSAK 24 dari data karyawan." },
+  { key: "benefits", href: "/benefits", label: "Imbalan Kerja", description: "Liabilitas imbalan kerja PSAK 219 dari data karyawan." },
 ] as const;
 
 export type ModuleKey = (typeof MODULES)[number]["key"];

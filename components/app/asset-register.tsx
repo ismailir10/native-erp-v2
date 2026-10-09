@@ -349,7 +349,7 @@ export function AssetRegister(props: {
                   <Field>
                     <FieldLabel htmlFor="asset-life">Masa manfaat buku (bulan)</FieldLabel>
                     <Input id="asset-life" type="number" min={1} max={600} className="num" value={form.life} onChange={(e) => set({ life: e.target.value })} />
-                    <FieldDescription>Estimasi entitas (PSAK 16); saran dari kelompok fiskal.</FieldDescription>
+                    <FieldDescription>Estimasi entitas (PSAK 216); saran dari kelompok fiskal.</FieldDescription>
                   </Field>
                   {form.mode.kind !== "schedule" && (
                     <Field>
