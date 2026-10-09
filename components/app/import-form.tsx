@@ -6,7 +6,7 @@ import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ChevronDown, FileText, FileUp, Loader2, ScanText, TableProperties } from "lucide-react";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,13 +14,13 @@ import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { StatusPill } from "@/components/app/status";
 import { forgetLayoutAction, importAction, importSampleAction, ocrAction, setBankAccountBankAction } from "@/app/actions";
 import { ColumnMapper } from "@/components/app/column-mapper";
+import { BatchImport, type BankOption } from "@/components/app/batch-import";
+import { NextAfterImport } from "@/components/app/next-after-import";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { BANKS, GROUP_ORDER, bankName } from "@/lib/banks";
 import type { ImportSummary } from "@/lib/import/pipeline";
 import { cn } from "@/lib/utils";
 import { MAX_UPLOAD_BYTES, UPLOAD_TOO_BIG } from "@/lib/upload";
-
-type BankOption = { id: string; label: string; entity: string; bank: string; number: string };
 
 const METHOD_LABEL: Record<string, string> = { TRANSFER: "Transfer antar rekening", RULE: "Aturan", MEMORY: "Pilihan yang diingat", AI: "Usulan AI", HEURISTIC: "Tebakan sederhana", MANUAL: "Manual" };
 
@@ -40,6 +40,19 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
   const [mapping, setMapping] = useState(false);
   // The remembered layout the shown result was read with, until forgotten.
   const [layoutShown, setLayoutShown] = useState(true);
+  // Two or more files chosen at once: the batch table reads, orders and imports them (a single file keeps this form).
+  const [batch, setBatch] = useState<File[] | null>(null);
+  const chooseFiles = (list: File[]) => {
+    if (list.length > 1) {
+      setFile(null);
+      setResult(null);
+      setBatch(list);
+      if (inputRef.current) inputRef.current.value = "";
+      return;
+    }
+    setBatch(null);
+    setFile(list[0] ?? null);
+  };
   const setFile = (f: File | null) => {
     if (f && f.size > MAX_UPLOAD_BYTES) {
       toast.error(UPLOAD_TOO_BIG);
@@ -72,7 +85,7 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
   const [pending, start] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
   // A file chosen before the form hydrated is picked up.
-  useKeepEarlyFile(inputRef, (f) => setFileState(f));
+  useKeepEarlyFile(inputRef, (list) => (list.length > 1 ? setBatch(list) : setFileState(list[0])));
   const entities = [...new Set(banks.map((b) => b.entity))];
 
   const done = (r: Awaited<ReturnType<typeof importAction>>, sent: { file: File; password: string } | null = null, sentTo: string = bankId) => {
@@ -178,6 +191,9 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
 
   return (
     <div className="grid gap-4 lg:grid-cols-5">
+      {batch && <BatchImport key={batch.map((f) => `${f.name}:${f.size}:${f.lastModified}`).join("|")} clientId={clientId} banks={banks} files={batch} defaultBankId={bankId} openingPending={openingPending.length > 0} onClear={() => setBatch(null)} onSingle={(f) => chooseFiles([f])} />}
+      {!batch && (
+      <>
       <Card className="lg:col-span-3">
         <CardHeader>
           <CardTitle>Unggah rekening koran</CardTitle>
@@ -235,7 +251,7 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
               onDrop={(e) => {
                 e.preventDefault();
                 setDrag(false);
-                setFile(e.dataTransfer.files[0] ?? null);
+                chooseFiles([...e.dataTransfer.files]);
               }}
               className={cn(
                 "flex w-full flex-col items-center gap-2 rounded-lg border border-dashed px-4 py-8 text-sm transition-colors",
@@ -243,10 +259,10 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
               )}
             >
               <FileUp className="size-6 text-primary" aria-hidden />
-              {file ? <span className="font-medium">{file.name}</span> : <span><span className="font-medium text-primary">Pilih file</span> atau tarik ke sini</span>}
+              {file ? <span className="font-medium">{file.name}</span> : <span><span className="font-medium text-primary">Pilih file</span> atau tarik ke sini (boleh beberapa sekaligus)</span>}
               <span className="text-xs text-muted-foreground">Maks. 5 MB · baris yang sudah pernah diimpor otomatis dilewati</span>
             </button>
-            <input ref={inputRef} type="file" accept=".pdf,.csv,.xlsx,.xls,.txt,.sta,.940,.mt940,.jpg,.jpeg,.png" className="sr-only" data-testid="file-input" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            <input ref={inputRef} type="file" multiple accept=".pdf,.csv,.xlsx,.xls,.txt,.sta,.940,.mt940,.jpg,.jpeg,.png" className="sr-only" data-testid="file-input" onChange={(e) => chooseFiles([...(e.target.files ?? [])])} />
             <FieldDescription>Saldo berjalan dicek di setiap baris. Kalau ada baris yang hilang, hasilnya ditandai Ada celah.</FieldDescription>
           </Field>
           {needsPassword && (
@@ -400,23 +416,9 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
           )}
         </CardContent>
       </Card>
+      </>
+      )}
       {mapping && file && mappable && <ColumnMapper clientId={clientId} bankId={bankId} file={file} password={password} reason={mappable.error} onCancel={() => setMapping(false)} />}
     </div>
   );
-}
-
-/** One primary button: the next first-run step. Saldo Awal leads while it's missing (its bank lines are prefilled from this file). */
-function NextAfterImport({ clientId, toReview, openingPending }: { clientId: string; toReview: number; openingPending: boolean }) {
-  const review = { href: `/clients/${clientId}/review`, label: `Review ${toReview} transaksi` };
-  if (openingPending) {
-    return (
-      <>
-        <Link href={`/clients/${clientId}/opening`} className={buttonVariants({ className: "w-full" })}>Isi saldo awal</Link>
-        {toReview > 0 && <Link href={review.href} className={buttonVariants({ variant: "outline", className: "w-full" })}>{review.label}</Link>}
-      </>
-    );
-  }
-  return toReview > 0
-    ? <Link href={review.href} className={buttonVariants({ className: "w-full" })}>{review.label}</Link>
-    : <Link href={`/clients/${clientId}/close`} className={buttonVariants({ variant: "outline", className: "w-full" })}>Buka Tutup Buku</Link>;
 }
