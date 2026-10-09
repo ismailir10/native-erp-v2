@@ -63,5 +63,11 @@ model; changing how 1999 is used.
 ## Verification
 - T1: lint clean · typecheck clean · `npm test` 192 files, 1303 passed · `demo:reset && verify:books` → ALL PASS — 1765 pemeriksaan.- T2: lint clean · typecheck clean · `npm test` 192 files, 1303 passed · e2e opening-tidy, delete-client, real-client, opening-deposit: 4 passed.
 - T3: lint clean · typecheck clean · `npm test` 193 files · e2e ocr-scan 1 passed.
+- End of cycle: `npm run build` ok · `demo:reset && verify:books` → ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth ·
+  `npm run test:e2e` → 60 passed (3.4m). After merging main (#126): typecheck clean, AI/bank/MT940 tests 17 passed.
 
 ## Ship Notes
+- No migration, no env var change by the code. Separately, the user raised production `AI_MONTHLY_TOKEN_BUDGET` to 2.000.000 (takes effect
+  with this deploy).
+- Deck: n/a — fixes, no claim changes.
+- Rollback: revert; nothing stored changes shape (a demoted suggestion is only a lower confidence and a longer reason on a review line).
