@@ -13,9 +13,17 @@ const validDate = (s: string) => {
   return !Number.isNaN(+d) && d.toISOString().slice(0, 10) === s;
 };
 
-export function proveRows(rows: OcrRow[], opening: bigint | null, closing: bigint | null): Proof {
+/**
+ * `chained`: a file read deterministically (*Atur kolom*) whose bank prints a balance only once a day (BCA: the day's last row). A row
+ * without one is proved by the next printed balance **of the same date**: the stretch is OK when that balance ties and breaks with it when
+ * not; a day that ends without a printed balance stays unproved (so a Saldo column mapped to a sparse column can't prove the file).
+ * A scan read by AI is never chained: each of its rows must print its own balance (ADR 0014 I2).
+ */
+export function proveRows(rows: OcrRow[], opening: bigint | null, closing: bigint | null, opts: { chained?: boolean } = {}): Proof {
   let prev = opening;
   const out: Proof["rows"] = [];
+  // Rows waiting for the next printed balance (chained only).
+  let pending: number[] = [];
   for (const r of rows) {
     const amount = (r.credit ?? 0n) - (r.debit ?? 0n);
     let state: RowProof;
@@ -27,6 +35,15 @@ export function proveRows(rows: OcrRow[], opening: bigint | null, closing: bigin
     else state = expected === r.balance ? "OK" : "BREAK";
     if (state === "NO_AMOUNT") expected = prev;
     out.push({ state, expected });
+    if (opts.chained) {
+      // A new day: the rows still waiting were never proved by a balance of their own day.
+      if (pending.length && rows[pending[0]].date !== r.date) pending = [];
+      if (state === "NO_BALANCE") pending.push(out.length - 1);
+      else if (state === "OK" || state === "BREAK") {
+        for (const i of pending) out[i].state = state;
+        pending = [];
+      } else pending = [];
+    }
     // Continue from the printed balance (so one misread amount breaks one row); without one, from the computed balance.
     prev = r.balance ?? expected;
   }

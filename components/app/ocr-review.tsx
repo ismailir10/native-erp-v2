@@ -19,16 +19,21 @@ import { cn } from "@/lib/utils";
 type Row = { date: string; description: string; debit: string; credit: string; balance: string };
 type Draft = { opening: string; closing: string; rows: Row[] };
 
-/** The accountant's side of a scan (I2a): every row's proof by running balance, live as cells are fixed; Impor only when all tie. */
-export function OcrReview({ clientId, draftId, imported, openingSource, initial }: { clientId: string; draftId: string; imported: boolean; openingSource: string | null; initial: Draft }) {
+/**
+ * The accountant's side of a draft (I2a scan, or a file read with *Atur kolom*): every row's proof by running balance, live as cells are
+ * fixed; Impor only when all tie. A mapped file's rows without a printed balance are proved by the next one (`chained`), as on the server.
+ */
+export function OcrReview({ clientId, draftId, imported, openingSource, source = "OCR", initial }: { clientId: string; draftId: string; imported: boolean; openingSource: string | null; source?: "OCR" | "MAPPING"; initial: Draft }) {
+  const mapped = source === "MAPPING";
+  const from = mapped ? "file" : "scan";
   const router = useRouter();
   const fmt = (v: string) => (v === "" ? "" : formatRupiah(BigInt(v), { bare: true }));
   const [d, setD] = useState<Draft>({ opening: fmt(initial.opening), closing: fmt(initial.closing), rows: initial.rows.map((r) => ({ ...r, debit: fmt(r.debit), credit: fmt(r.credit), balance: fmt(r.balance) })) });
   const [onlyProblems, setOnlyProblems] = useState(false);
   const [busy, setBusy] = useState(false);
   const proof = useMemo(
-    () => proveRows(d.rows.map((r) => ({ date: r.date, description: r.description, debit: readAmount(r.debit), credit: readAmount(r.credit), balance: readAmount(r.balance) })), readAmount(d.opening), readAmount(d.closing)),
-    [d],
+    () => proveRows(d.rows.map((r) => ({ date: r.date, description: r.description, debit: readAmount(r.debit), credit: readAmount(r.credit), balance: readAmount(r.balance) })), readAmount(d.opening), readAmount(d.closing), { chained: mapped }),
+    [d, mapped],
   );
   const unreadable = d.rows.some((r) => [r.debit, r.credit, r.balance].some((v) => v.trim() !== "" && readAmount(v) === null)) || [d.opening, d.closing].some((v) => v.trim() !== "" && readAmount(v) === null);
   const set = (i: number, patch: Partial<Row>) => setD({ ...d, rows: d.rows.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
@@ -48,7 +53,7 @@ export function OcrReview({ clientId, draftId, imported, openingSource, initial 
       }
       const r = await importOcrDraftAction(clientId, draftId);
       if (!r.ok) return toast.error(r.error);
-      toast.success(`${r.summary.rows - r.summary.duplicates} transaksi diimpor dari scan`);
+      toast.success(`${r.summary.rows - r.summary.duplicates} transaksi diimpor dari ${from}`);
       router.refresh();
     } finally {
       setBusy(false);
@@ -59,16 +64,19 @@ export function OcrReview({ clientId, draftId, imported, openingSource, initial 
     <Card data-testid="ocr-review">
       <CardHeader>
         <CardTitle className="flex flex-wrap items-center gap-2">
-          Baris dari scan <StatusPill status={proof.importable && !unreadable ? "PASS" : "REVIEW"} label={proof.importable && !unreadable ? "Semua terbukti" : `${proof.problems} perlu dicek`} />
+          Baris dari {from} <StatusPill status={proof.importable && !unreadable ? "PASS" : "REVIEW"} label={proof.importable && !unreadable ? "Semua terbukti" : `${proof.problems} perlu dicek`} />
         </CardTitle>
-        <CardDescription>Setiap baris terbukti bila saldo sebelumnya + kredit − debet sama dengan saldo yang tercetak. Angka dibaca AI dari gambar; bandingkan dengan scan bila tidak nyambung.</CardDescription>
+        <CardDescription>
+          Setiap baris terbukti bila saldo sebelumnya + kredit − debet sama dengan saldo yang tercetak.{" "}
+          {mapped ? "Baris tanpa saldo tercetak terbukti oleh saldo tercetak berikutnya. Angka dibaca dari kolom yang Anda tunjuk; bandingkan dengan file bila tidak nyambung." : "Angka dibaca AI dari gambar; bandingkan dengan scan bila tidak nyambung."}
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4 text-sm">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field>
             <FieldLabel htmlFor="ocr-opening">Saldo awal</FieldLabel>
             <Input id="ocr-opening" inputMode="decimal" className="num text-right" disabled={imported} value={d.opening} onChange={(e) => setD({ ...d, opening: e.target.value })} />
-            <FieldDescription>{openingSource === "PRINTED" ? "Tercetak di scan." : openingSource === "PREVIOUS" ? "Dari saldo akhir impor sebelumnya rekening ini (tidak tercetak di scan)." : openingSource === "MANUAL" ? "Diisi akuntan." : "Isi dari scan atau dari saldo akhir bulan sebelumnya."}</FieldDescription>
+            <FieldDescription>{openingSource === "PRINTED" ? (mapped ? "Dari baris saldo awal di file." : "Tercetak di scan.") : openingSource === "DERIVED" ? "Dihitung dari saldo pertama di file dikurangi mutasinya, jadi baris pertama belum teruji sendiri. Bandingkan dengan saldo akhir bulan sebelumnya." : openingSource === "PREVIOUS" ? "Dari saldo akhir impor sebelumnya rekening ini (tidak tercetak di scan)." : openingSource === "MANUAL" ? "Diisi akuntan." : "Isi dari scan atau dari saldo akhir bulan sebelumnya."}</FieldDescription>
           </Field>
           <Field>
             <FieldLabel htmlFor="ocr-closing">Saldo akhir (bila tercetak)</FieldLabel>

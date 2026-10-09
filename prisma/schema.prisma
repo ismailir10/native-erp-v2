@@ -1674,8 +1674,9 @@ model InventoryCount {
 /// only — numbers stay derived from the GL. `format` is validated on write (lib/reports/format.ts); no row = the standard format.
 /// Catatan bulan ini of a company's management report (I5b), saved only by the accountant's click. `facts` is the computed commentary
 /// it was checked against: when the books change and the computed sentences differ, the note is stale and left out of the report.
-/// A scanned statement read by AI (I2a), awaiting the accountant: the transcribed header and rows (amounts as minor-unit strings),
-/// proved by the running balance on every view. Imported only by the accountant's click, through the normal statement pipeline.
+/// A statement awaiting the accountant on *Periksa baris*: a scan read by AI (I2a) or a text file read with *Atur kolom* (`source`); the
+/// header and rows (amounts as minor-unit strings), proved by the running balance on every view. Imported only by the accountant's
+/// click, through the normal statement pipeline.
 model OcrDraft {
   id            String   @id @default(cuid())
   firmId        String
@@ -1685,6 +1686,8 @@ model OcrDraft {
   fileHash      String
   pages         Int
   model         String
+  /// OCR (a scan read by AI) | MAPPING (a text file read with the accountant's column mapping, no AI).
+  source        String   @default("OCR")
   /// { bank, accountNumber, periodStart, periodEnd } as read.
   header        Json
   /// [{ date, description, debit, credit, balance }]: dates ISO, amounts minor-unit strings or null.
@@ -1699,6 +1702,28 @@ model OcrDraft {
   updatedAt     DateTime @updatedAt
 
   @@index([clientId])
+}
+
+/// A statement layout the accountant mapped in *Atur kolom*, remembered for the firm and bank under its header's signature
+/// (`lib/import/grid.ts`) so the next file of that layout, at that bank for any client of the firm, is read without asking (Rupiah accounts). A reading aid only: every row still goes through
+/// the import's running-balance check. `mapping` is a `ColumnMapping` (`lib/import/mapped.ts`) less the sheet, rows counted from the header.
+model StatementLayout {
+  id          String    @id @default(cuid())
+  firmId      String
+  /// The bank of the account it was mapped on: applied only to accounts at that bank (two banks may share a generic header but not
+  /// their date convention).
+  bank        BankCode
+  signature   String
+  /// CSV | XLSX | PDF
+  kind        String
+  mapping     Json
+  /// The file it was mapped from, for the accountant to recognise it.
+  label       String
+  createdById String?
+  createdAt   DateTime  @default(now())
+  lastUsedAt  DateTime?
+
+  @@unique([firmId, bank, signature])
 }
 
 model ReportComment {

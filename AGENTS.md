@@ -85,7 +85,7 @@ components/ui/             shadcn (base-nova on @base-ui/react), vendored — ed
 components/app/            product components (Money, StatusPill, NextStep, charts, forms)
 components/motion/         the few approved motions (CountUp, CheckDraw, DotGrid, ProgressFill), ported from React Bits
 lib/ledger/                postJournal, bank posting + reclass
-lib/import/                parsers (25 banks from lib/banks.ts, MT940, generic, combined PDFs), normalize (merchant key, continuity), pipeline
+lib/import/                parsers (25 banks from lib/banks.ts, MT940, generic, combined PDFs), Atur kolom (grid, mapped), normalize (merchant key, continuity), pipeline
 lib/ledger-import/         ledger/Neraca files: read → check → map (source accounts) → post
 lib/fx/                    currency registry + exact rate math, Kurs table, revaluation
 lib/classify/  lib/ai/     transfer matcher, rules, memory; OpenAI-compatible LLM provider + cache + budget

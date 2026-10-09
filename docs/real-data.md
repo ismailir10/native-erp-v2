@@ -34,6 +34,9 @@ keterangan / debet-kredit (or mutasi, with a D/K column or a CR/DB marker in the
 an HTML table saved as .xls (common in internet-banking exports); the kind is read from the bytes, not the name. Combined PDFs with
 several accounts (e.g. SMBC "Laporan Konsolidasi Rekening") print one block per account; each is checked on its own and the
 import takes the section whose number matches the selected bank account. Foreign-currency sections are listed but not imported.
+A text file none of these read gets **Atur kolom**: the accountant marks its columns once (one account per file), the rows are proved
+by the running balance on *Periksa baris*, and the layout is remembered for the firm by its header. A real client's layout read this
+way is worth a fixture in `tests/bank-layouts.ts` (synthetic, same columns) so the next firm doesn't have to map it.
 
 **Accountants' working copies** are read as they are: one sheet per month (joined into one import when the sheets print the
 same account number or none), `SALDO AWAL` rows, an unlabeled column with the transaction type, a formula balance. Two

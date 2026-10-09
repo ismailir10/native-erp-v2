@@ -34,6 +34,8 @@ export type ParsedStatement = {
   error?: string;
   /** Time deposits the file lists besides the transactions (SMBC "Detail Produk Deposito"): file-level, same on every section. */
   deposits?: DepositProduct[];
+  /** Read with a layout the firm mapped in *Atur kolom* (no reader knew it): which one, so the result can offer to forget it. */
+  layout?: { id: string; label: string };
 };
 
 /** A time deposit printed on a statement. `idrBalance` is the bank's IDR equivalent in whole Rupiah. */
@@ -43,6 +45,9 @@ export class ParseError extends Error {}
 
 /** A scan or photo with no text to read (I2a): the import page offers *Baca scan dengan AI* when the workspace switch is on. */
 export class ScanError extends ParseError {}
+
+/** A text file no reader (and no remembered layout) could read: the import page offers *Atur kolom*. Same message as the reader's. */
+export class UnreadableFileError extends ParseError {}
 
 /** The file's account number(s) aren't the selected account: the action can offer the client's matching account instead. */
 export class AccountMismatchError extends ParseError {

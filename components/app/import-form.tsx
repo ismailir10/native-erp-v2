@@ -5,14 +5,15 @@ import Link from "next/link";
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronDown, FileText, FileUp, Loader2, ScanText } from "lucide-react";
+import { ChevronDown, FileText, FileUp, Loader2, ScanText, TableProperties } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { StatusPill } from "@/components/app/status";
-import { importAction, importSampleAction, ocrAction, setBankAccountBankAction } from "@/app/actions";
+import { forgetLayoutAction, importAction, importSampleAction, ocrAction, setBankAccountBankAction } from "@/app/actions";
+import { ColumnMapper } from "@/components/app/column-mapper";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { BANKS, GROUP_ORDER, bankName } from "@/lib/banks";
 import type { ImportSummary } from "@/lib/import/pipeline";
@@ -34,6 +35,11 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
   const [yearHint, setYearHint] = useState<{ guessed: boolean } | null>(null);
   // A scan or photo (I2a): the error offers Baca scan dengan AI when the workspace switch is on.
   const [scan, setScan] = useState<{ error: string; ocrReady: boolean } | null>(null);
+  // A text file no reader knows: the error offers Atur kolom, which opens the mapper below the form.
+  const [mappable, setMappable] = useState<{ error: string } | null>(null);
+  const [mapping, setMapping] = useState(false);
+  // The remembered layout the shown result was read with, until forgotten.
+  const [layoutShown, setLayoutShown] = useState(true);
   const setFile = (f: File | null) => {
     if (f && f.size > MAX_UPLOAD_BYTES) {
       toast.error(UPLOAD_TOO_BIG);
@@ -46,6 +52,8 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
     setYear("");
     setYearHint(null);
     setScan(null);
+    setMappable(null);
+    setMapping(false);
   };
   const [drag, setDrag] = useState(false);
   const [result, setResult] = useState<ImportSummary | null>(null);
@@ -70,7 +78,12 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
   const done = (r: Awaited<ReturnType<typeof importAction>>, sent: { file: File; password: string } | null = null, sentTo: string = bankId) => {
     setMismatch(null);
     setScan(null);
+    setMappable(null);
     if (!r.ok) {
+      if (r.mappable) {
+        setMappable({ error: r.error });
+        return;
+      }
       if (r.scanned) {
         setScan({ error: r.error, ocrReady: r.scanned.ocrReady });
         return;
@@ -93,6 +106,7 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
       return;
     }
     setResult(r.summary);
+    setLayoutShown(true);
     setResultBankId(sentTo);
     if (sent) setLastFile(sent);
     setFile(null);
@@ -136,6 +150,18 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
     submit({ bankId: id, file: f, password: pw });
   };
   const resultBank = banks.find((b) => b.id === resultBankId) ?? null;
+  // The remembered layout has its own line (with *Lupakan*): its note isn't repeated under "Cara file dibaca".
+  const notesShown = result ? (result.layout ? result.notes.filter((n) => !n.startsWith("Dibaca dengan pemetaan kolom tersimpan")) : result.notes) : [];
+  const forget = (layoutId: string) =>
+    start(async () => {
+      const r = await forgetLayoutAction(clientId, layoutId);
+      if (!r.ok) {
+        toast.error(r.error);
+        return;
+      }
+      setLayoutShown(false);
+      toast.success("Pemetaan kolom dilupakan. File berikutnya dengan susunan ini perlu diatur lagi.");
+    });
   const recordBank = (id: string, bank: string) =>
     start(async () => {
       const r = await setBankAccountBankAction(clientId, id, bank);
@@ -254,6 +280,19 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
               )}
             </div>
           )}
+          {mappable && file && !mapping && (
+            <div role="alert" className="space-y-2 rounded-md border border-review/40 bg-review-subtle px-3 py-2 text-sm" data-testid="mappable-notice">
+              <p>{mappable.error}</p>
+              <p className="text-muted-foreground">Buku bisa membacanya bila Anda menunjuk kolom tanggal, keterangan, nominal dan saldonya sekali. Susunan ini lalu diingat untuk file berikutnya.</p>
+              <Button size="sm" variant="outline" disabled={pending} onClick={() => {
+                  // The last result belongs to another file; its primary next step would compete with the mapper's.
+                  setResult(null);
+                  setMapping(true);
+                }}>
+                <TableProperties /> Atur kolom
+              </Button>
+            </div>
+          )}
           {mismatch && file && (
             <div role="alert" className="space-y-2 rounded-md border border-review/40 bg-review-subtle px-3 py-2 text-sm" data-testid="account-mismatch">
               <p>{mismatch.error}</p>
@@ -263,7 +302,7 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
             </div>
           )}
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant={result ? "outline" : "default"} onClick={() => submit()} disabled={!file || !bankId || pending || (needsPassword && !password) || (!!yearHint && year.length !== 4)}>
+            <Button variant={result || mapping ? "outline" : "default"} onClick={() => submit()} disabled={!file || !bankId || pending || (needsPassword && !password) || (!!yearHint && year.length !== 4)}>
               {pending ? <Loader2 className="animate-spin" /> : <FileUp />} Proses mutasi
             </Button>
             {sample && (
@@ -319,10 +358,18 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
                 <span className="text-muted-foreground">Periode</span>
                 <span className="text-right">{result.months.length > 1 ? `${result.months[0]} – ${result.months.at(-1)} (${result.months.length} bulan)` : result.months[0]}</span>
               </div>
-              {result.notes.length > 0 && (
+              {result.layout && layoutShown && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted px-3 py-2 text-xs" data-testid="layout-used">
+                  <span>Dibaca dengan pemetaan kolom tersimpan (dari {result.layout.label}).</span>
+                  <Button size="xs" variant="ghost" disabled={pending} onClick={() => forget(result.layout!.id)}>
+                    Lupakan pemetaan ini
+                  </Button>
+                </div>
+              )}
+              {notesShown.length > 0 && (
                 <div className="space-y-1 rounded-md border px-3 py-2 text-xs" data-testid="import-notes">
                   <div className="eyebrow">Cara file dibaca</div>
-                  <ul className="list-disc space-y-1 pl-4 text-muted-foreground">{result.notes.map((n) => <li key={n}>{n}</li>)}</ul>
+                  <ul className="list-disc space-y-1 pl-4 text-muted-foreground">{notesShown.map((n) => <li key={n}>{n}</li>)}</ul>
                 </div>
               )}
               <div className="flex items-center justify-between">
@@ -353,6 +400,7 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
           )}
         </CardContent>
       </Card>
+      {mapping && file && mappable && <ColumnMapper clientId={clientId} bankId={bankId} file={file} password={password} reason={mappable.error} onCancel={() => setMapping(false)} />}
     </div>
   );
 }
