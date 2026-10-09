@@ -1,6 +1,6 @@
 import ExcelJS from "exceljs";
 import type { Db } from "@/lib/db";
-import { formatDate, formatDateTime, formatPeriod, periodBounds } from "@/lib/format";
+import { formatDateLong, formatDateTime, formatPeriod, periodBounds } from "@/lib/format";
 import type { Scope } from "@/lib/reports/ledger";
 import type { NoteCell } from "@/lib/reports/notes";
 import { statementSet, type SetStatement } from "@/lib/reports/statement-set";
@@ -20,6 +20,9 @@ export const n = (v: bigint) => (v <= BigInt(Number.MAX_SAFE_INTEGER) && v >= -B
 /** `meta.draft`: why the statements are not final yet (lib/reports/status.ts); printed in red under every sheet's title. Absent = final. */
 export type WorkbookMeta = { firm: string; title: string; draft?: string };
 
+/** A4, one page wide (as many pages tall as it needs): `fitToPage` makes Excel honour the width. */
+export const PRINT_SETUP = { paperSize: 9, orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0 } as const;
+
 /** A workbook whose sheets open with the title block every Buku export uses (client, sheet title, subtitle, unit, firm, draft). */
 export function newWorkbook(meta: WorkbookMeta) {
   const wb = new ExcelJS.Workbook();
@@ -27,13 +30,20 @@ export function newWorkbook(meta: WorkbookMeta) {
   // Totals are formulas; a cached 0 is not written, so Excel recalculates every formula when the file opens.
   wb.calcProperties.fullCalcOnLoad = true;
   const sheet = (name: string, title: string, subtitle: string, widths: number[], unit: "RUPIAH" | "RIBUAN" = "RUPIAH") => {
-    const ws = wb.addWorksheet(name);
+    const ws = wb.addWorksheet(name, { pageSetup: { ...PRINT_SETUP } });
     ws.addRow([meta.title]).font = { bold: true, size: 13 };
     ws.addRow([title]).font = { bold: true };
     ws.addRow([subtitle]);
     ws.addRow([`Dinyatakan dalam ${unit === "RIBUAN" ? "ribuan " : ""}Rupiah`]).font = { italic: true };
     ws.addRow([`${meta.firm} · dibuat ${formatDateTime(new Date())}`]).font = { italic: true, color: { argb: "FF4B5768" } };
-    if (meta.draft) ws.addRow([`DRAF — ${meta.draft}`]).font = { bold: true, color: { argb: "FFC4213A" } };
+    if (meta.draft) {
+      // The reasons can be long: wrapped across the sheet's columns, not one line running off the page.
+      const r = ws.addRow([`DRAF — ${meta.draft}`]);
+      r.font = { bold: true, color: { argb: "FFC4213A" } };
+      r.alignment = { wrapText: true, vertical: "top" };
+      if (widths.length > 1) ws.mergeCells(r.number, 1, r.number, widths.length);
+      r.height = 15 * Math.max(1, Math.ceil(`DRAF — ${meta.draft}`.length / Math.max(40, widths.reduce((t, w) => t + w, 0))));
+    }
     ws.addRow([]);
     widths.forEach((w, i) => {
       ws.getColumn(i + 1).width = w;
@@ -46,7 +56,7 @@ export function newWorkbook(meta: WorkbookMeta) {
     r.font = { bold: true };
     r.eachCell((c) => (c.border = { bottom: { style: "thin" } }));
   };
-  return { wb, sheet, head };
+  return { wb, sheet, head, draft: Boolean(meta.draft) };
 }
 
 export async function financialStatementsWorkbook(db: Db, scope: Scope, year: number, month: number, meta: WorkbookMeta): Promise<Buffer> {
@@ -57,7 +67,7 @@ export async function financialStatementsWorkbook(db: Db, scope: Scope, year: nu
 
 /** The statement set's sheets (and CALK + directors' statement when the scope has them) added to `book`. */
 export async function addStatementSheets(db: Db, book: ReturnType<typeof newWorkbook>, scope: Scope, year: number, month: number) {
-  const { wb, sheet, head } = book;
+  const { wb, sheet, head, draft } = book;
   const set = await statementSet(db, scope, year, month);
   const cur = periodBounds(year, month).end;
 
@@ -84,7 +94,7 @@ export async function addStatementSheets(db: Db, book: ReturnType<typeof newWork
   if (!notes) return;
 
   // CALK
-  const ck = sheet("CALK", "Catatan atas Laporan Keuangan", `Per ${formatDate(cur)} dan untuk periode yang berakhir pada tanggal tersebut (draf)`, [60, 20, 20, 20, 20]);
+  const ck = sheet("CALK", "Catatan atas Laporan Keuangan", `Per ${formatDateLong(cur)} dan untuk periode yang berakhir pada tanggal tersebut${draft ? " (draf)" : ""}`, [60, 20, 20, 20, 20]);
   const cell = (c: NoteCell) => (typeof c === "bigint" ? n(c) : c);
   for (const note of notes.notes) {
     ck.addRow([`${note.number}. ${note.title.toUpperCase()}`]).font = { bold: true };
@@ -102,7 +112,7 @@ export async function addStatementSheets(db: Db, book: ReturnType<typeof newWork
   }
 
   // Pernyataan Direksi (Pemilik/Pengurus for a CV, a firm or an individual)
-  const pd = wb.addWorksheet(set.signatory.sheet);
+  const pd = wb.addWorksheet(set.signatory.sheet, { pageSetup: { ...PRINT_SETUP } });
   pd.getColumn(1).width = 100;
   notes.directors.forEach((text, i) => {
     const r = pd.addRow([text]);

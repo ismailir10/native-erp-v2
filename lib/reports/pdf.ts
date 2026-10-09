@@ -1,6 +1,6 @@
 import PDFDocument from "pdfkit";
 import type { Db } from "@/lib/db";
-import { formatDate, formatDateTime, periodBounds } from "@/lib/format";
+import { formatDateLong, formatDateTime, periodBounds } from "@/lib/format";
 import { formatRupiah } from "@/lib/money";
 import type { Scope } from "@/lib/reports/ledger";
 import { toUnit } from "@/lib/reports/format";
@@ -21,7 +21,8 @@ const MUTED = "#4B5768";
 const FAIL = "#C4213A";
 const RULE = "#C9CFD8";
 const REVIEW = "#8A5300";
-const MANUAL_ONE = /^\[isi oleh manajemen: [^\]]*\]$/;
+/** A management blank, with the punctuation right after it (so a closing "." never wraps onto a line of its own). */
+const MANUAL_ONE = /^\[isi oleh manajemen: [^\]]*\][.,;:]?$/;
 
 /**
  * The standard PDF fonts speak WinAnsi only: "−", "≤" or "→" would print as garbage. Known signs get their ASCII spelling; anything else
@@ -60,7 +61,7 @@ export function printedValues(rows: SetRow[], unit: StatementSet["unit"]): (bigi
 export async function financialStatementsPdf(db: Db, scope: Scope, year: number, month: number, rawMeta: { firm: string; title: string; draft?: string }): Promise<Buffer> {
   const set = clean(await statementSet(db, scope, year, month));
   const meta = clean(rawMeta);
-  const asOf = formatDate(periodBounds(year, month).end);
+  const asOf = formatDateLong(periodBounds(year, month).end);
   const doc = new PDFDocument({ size: "A4", margins: M, autoFirstPage: false, bufferPages: true, info: { Title: `Laporan keuangan ${meta.title} ${asOf}`, Author: meta.firm, Creator: "Buku" } });
   const chunks: Buffer[] = [];
   doc.on("data", (c: Buffer) => chunks.push(c));
@@ -70,15 +71,18 @@ export async function financialStatementsPdf(db: Db, scope: Scope, year: number,
 
   // The page header follows the part being printed; every new page (one per part, and overflow) draws it.
   let header = { title: "", subtitle: "", unit: "", columns: [] as string[], colWidth: 0, size: 9 };
+  let pages = 0;
   doc.on("pageAdded", () => drawHeader());
   function drawHeader() {
+    pages += 1;
     doc.x = M.left;
     doc.y = M.top;
     doc.fillColor(INK).font("Helvetica-Bold").fontSize(12).text(meta.title, { width });
     doc.font("Helvetica-Bold").fontSize(10).text(header.title, { width });
     doc.font("Helvetica").fontSize(9).fillColor(MUTED).text(header.subtitle, { width });
     if (header.unit) doc.font("Helvetica-Oblique").text(header.unit, { width });
-    if (meta.draft) doc.moveDown(0.3).font("Helvetica-Bold").fillColor(FAIL).text(`DRAF — ${meta.draft}`, { width });
+    // The reasons once, on the first page; every later page still says DRAF.
+    if (meta.draft) doc.moveDown(0.3).font("Helvetica-Bold").fillColor(FAIL).text(pages === 1 ? `DRAF — ${meta.draft}` : "DRAF — lihat halaman 1", { width });
     doc.moveDown(0.6).fillColor(INK);
     if (header.columns.length) {
       const y = doc.y;
@@ -107,7 +111,12 @@ export async function financialStatementsPdf(db: Db, scope: Scope, year: number,
     const values = printedValues(st.rows, set.unit);
     // Columns as wide as the widest printed amount (bold, at 9 pt); when they'd squeeze the labels below 30% of the line, the type shrinks.
     doc.font("Helvetica-Bold").fontSize(9);
-    const widest = Math.max(0, ...values.flatMap((vs, i) => (st.rows[i].detail ? [] : vs.map((v) => doc.widthOfString(amount(v)))))) + 8;
+    const amounts = Math.max(0, ...values.flatMap((vs, i) => (st.rows[i].detail ? [] : vs.map((v) => doc.widthOfString(amount(v))))));
+    // A column header ("1 Maret – 31 Juli 2026") on one line when it fits the room a column may take.
+    doc.fontSize(8.5);
+    const heads = Math.max(0, ...st.columns.map((c) => doc.widthOfString(c)));
+    doc.fontSize(9);
+    const widest = Math.max(amounts, heads) + 8;
     const room = (width * 0.7) / n;
     const size = widest > room ? Math.max(6, (9 * room) / widest) : 9;
     const colWidth = Math.min(room, Math.max(widest, Math.min(95, (width * 0.55) / n)));
@@ -123,6 +132,7 @@ export async function financialStatementsPdf(db: Db, scope: Scope, year: number,
       // A section heading (a bold line without figures) gets air above it.
       if (i > 0 && row.bold && row.values.length === 0) doc.y += 5;
       ensure(h + (total ? 4 : 0));
+      doc.font(font).fontSize(size); // a new page's header leaves its own font
       if (total) {
         doc.moveTo(A4.width - M.right - n * colWidth + 10, doc.y).lineTo(A4.width - M.right, doc.y).strokeColor(RULE).lineWidth(0.5).stroke();
         doc.y += 2;
@@ -141,14 +151,18 @@ export async function financialStatementsPdf(db: Db, scope: Scope, year: number,
     startPart({ title: "Catatan atas Laporan Keuangan", subtitle: `Per ${asOf} dan untuk periode yang berakhir pada tanggal tersebut`, unit: "Dinyatakan dalam Rupiah" });
     const cell = (c: NoteCell) => (typeof c === "bigint" ? amount(c) : (c ?? ""));
     for (const note of notes.notes) {
-      ensure(40);
+      // The heading stays with what follows it: a short note whole; else its paragraphs (up to two) and its table's header and two rows.
+      doc.font("Helvetica").fontSize(9);
+      const lead = note.paragraphs.slice(0, 2).reduce((t, p) => t + doc.heightOfString(p, { width }) + 4, 0);
+      const rows = note.tables.reduce((t, x) => t + x.rows.length + (x.total ? 1 : 0) + 1, 0);
+      ensure(18 + lead + (rows <= 8 ? rows * 13 + note.tables.length * 8 : note.tables.length ? 3 * 13 : 0));
       doc.font("Helvetica-Bold").fontSize(9.5).fillColor(INK).text(`${note.number}. ${note.title.toUpperCase()}`, M.left, doc.y, { width });
       doc.moveDown(0.3);
       for (const p of note.paragraphs) {
         doc.font("Helvetica").fontSize(9);
         ensure(doc.heightOfString(p, { width }) + 4);
         // *[isi oleh manajemen: …]* in review colour, so the blank is seen before the PDF goes out.
-        const parts = p.split(/(\[isi oleh manajemen: [^\]]*\])/).filter(Boolean);
+        const parts = p.split(/(\[isi oleh manajemen: [^\]]*\][.,;:]?)/).filter(Boolean);
         if (parts.length === 1 && !MANUAL_ONE.test(p)) doc.text(p, M.left, doc.y, { width, align: "justify" });
         else
           parts.forEach((part, k) =>
@@ -172,21 +186,35 @@ export async function financialStatementsPdf(db: Db, scope: Scope, year: number,
   }
 
   function table(columns: string[], rows: string[][], total?: string[]) {
-    const first = Math.max(width * 0.34, width - (columns.length - 1) * 90);
+    const first = Math.max(width * 0.34, width - (columns.length - 1) * 115); // "1 Januari – 31 Maret 2026" fits one line
     const rest = columns.length > 1 ? (width - first) / (columns.length - 1) : 0;
     const x = (i: number) => (i === 0 ? M.left : M.left + first + (i - 1) * rest);
     const w = (i: number) => (i === 0 ? first - 6 : rest);
-    const line = (cells: string[], bold: boolean) => {
+    const heightOf = (cells: string[], bold: boolean) => {
+      doc.font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(8.5);
+      return Math.max(...cells.map((c, i) => doc.heightOfString(c || " ", { width: w(i) }))) + 3;
+    };
+    const rule = () => {
+      doc.moveTo(M.left, doc.y).lineTo(A4.width - M.right, doc.y).strokeColor(RULE).lineWidth(0.5).stroke();
+      doc.y += 2;
+    };
+    const line = (cells: string[], bold: boolean, head = false) => {
+      const h = heightOf(cells, bold);
+      // A table that runs onto a new page repeats its column header there.
+      if (!head && doc.y + h > bottom) {
+        doc.addPage();
+        line(columns, true, true);
+        rule();
+      }
       doc.font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(8.5).fillColor(INK);
-      const h = Math.max(...cells.map((c, i) => doc.heightOfString(c || " ", { width: w(i) }))) + 3;
-      ensure(h);
       const y = doc.y;
       cells.forEach((c, i) => doc.text(c, x(i), y, { width: w(i), align: i === 0 ? "left" : "right" }));
       doc.y = y + h;
     };
-    line(columns, true);
-    doc.moveTo(M.left, doc.y).lineTo(A4.width - M.right, doc.y).strokeColor(RULE).lineWidth(0.5).stroke();
-    doc.y += 2;
+    // The header never ends a page: it starts where two rows fit under it.
+    ensure(heightOf(columns, true) + 2 + rows.slice(0, 2).reduce((t, r) => t + heightOf(r, false), 0));
+    line(columns, true, true);
+    rule();
     for (const r of rows) line(r, false);
     if (total) line(total, true);
     doc.x = M.left;

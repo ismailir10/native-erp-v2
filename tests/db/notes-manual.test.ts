@@ -17,7 +17,7 @@ describe("CALK manual parts", () => {
     expect(umum).toContain("Kegiatan usaha: [isi oleh manajemen:");
     const last = pt.notes.at(-1)!;
     expect([last.title, last.paragraphs[0].match(MANUAL_MARK)?.length]).toEqual(["Peristiwa setelah periode pelaporan", 1]);
-    expect(last.paragraphs[0]).toContain("setelah 30 Jun 2026");
+    expect(last.paragraphs[0]).toContain("setelah 30 Juni 2026");
     expect(manualCount(pt)).toBe(4);
 
     const person = await financialNotes(db, { clientId: g.client.id, entityIds: [g.owner.entity.id] }, 2026, 6);
@@ -36,6 +36,6 @@ describe("CALK manual parts", () => {
     await db.$transaction(async (tx) => postJournal(tx, { entityId: g.pt.entity.id, date: dateOnly(2026, 5, 31), kind: "OPENING", memo: "Saldo awal", lines: [{ accountId: g.pt.banks[0].accountId, debit: 100n }, { accountId: await id("3200"), credit: 100n }] }));
     const umum = async (month: number) => (await financialNotes(db, { clientId: g.client.id, entityIds: [g.pt.entity.id] }, 2026, month)).notes[0].paragraphs[0];
     expect(await umum(5)).toBe(`${g.pt.entity.name} ("Entitas") menyajikan laporan keuangan untuk posisi keuangan per 31 Mei 2026, saldo awal pembukuan.`);
-    expect(await umum(8)).toBe(`${g.pt.entity.name} ("Entitas") menyajikan laporan keuangan untuk periode 1 Juni – 31 Agu 2026.`);
+    expect(await umum(8)).toBe(`${g.pt.entity.name} ("Entitas") menyajikan laporan keuangan untuk periode 1 Juni – 31 Agustus 2026.`);
   });
 });

@@ -30,11 +30,11 @@ describe("statements PDF", () => {
     const pdf = await getDocumentProxy(new Uint8Array(buf));
     const { totalPages, text } = await extractText(pdf, { mergePages: false });
     const all = text.join("\n");
-    for (const s of ["Laporan Posisi Keuangan", "Laporan Laba Rugi", "Catatan atas Laporan Keuangan", "Dinyatakan dalam ribuan Rupiah", "LABA BERSIH TAHUN BERJALAN", "Total aset", "Per 31 Mar 2026"]) expect(all, s).toContain(s);
-    // Every page: the entity, the DRAF line and its number.
+    for (const s of ["Laporan Posisi Keuangan", "Laporan Laba Rugi", "Catatan atas Laporan Keuangan", "Dinyatakan dalam ribuan Rupiah", "LABA BERSIH TAHUN BERJALAN", "Jumlah aset", "Per 31 Maret 2026"]) expect(all, s).toContain(s);
+    // Every page: the entity, a DRAF line (the reasons on the first page) and its number.
     text.forEach((page, i) => {
       expect(page).toContain("PT Uji Coba");
-      expect(page).toContain("DRAF — bulan belum ditutup.");
+      expect(page).toContain(i === 0 ? "DRAF — bulan belum ditutup." : "DRAF — lihat halaman 1");
       expect(page).toContain(`Halaman ${i + 1} dari ${totalPages}`);
     });
     // In thousands each line rounds and the total adds the printed lines: 5.001 − 2.000 = 3.001 (the exact 3.000.200 would print 3.000).

@@ -152,10 +152,13 @@ export type CashFlow = {
 const LEASE_CODES = new Set<string>([C.ROU_ASSET, C.LEASE_CURRENT, C.LEASE_NON_CURRENT]);
 const DEFERRED_TAX_CODES = new Set<string>([C.DEFERRED_TAX_ASSET, C.DEFERRED_TAX_LIABILITY]);
 
-/** Where a balance-sheet account's movement goes in the cash flow, and under which line; null for cash itself. */
-export function cashLine(a: Pick<Account, "code" | "fsLine" | "isIntercompany">): { section: CashSection; key: string; label: string } | null {
+/**
+ * Where a balance-sheet account's movement goes in the cash flow, and under which line; null for cash itself. An intercompany account
+ * (1190) is a loan given when it ends the period with a debit balance (`lentOut`, investing) and a loan received otherwise (financing).
+ */
+export function cashLine(a: Pick<Account, "code" | "fsLine" | "isIntercompany">, lentOut = false): { section: CashSection; key: string; label: string } | null {
   if (a.fsLine === "KAS_SETARA_KAS") return null;
-  if (a.isIntercompany) return { section: "FINANCING", key: "INTERCOMPANY", label: "Pinjaman antar entitas" };
+  if (a.isIntercompany) return lentOut ? { section: "INVESTING", key: "INTERCOMPANY_LENT", label: "Pinjaman kepada pihak berelasi" } : { section: "FINANCING", key: "INTERCOMPANY", label: "Pinjaman dari pihak berelasi" };
   if (LEASE_CODES.has(a.code)) return { section: "FINANCING", key: "LEASES", label: "Pembayaran liabilitas sewa" };
   if (a.code === C.ROU_ACCUMULATED) return { section: "OPERATING", key: "AKUM_PENYUSUTAN", label: "Penyusutan dan amortisasi" };
   if (a.code === C.BENEFIT_LIABILITY) return { section: "OPERATING", key: "BENEFITS", label: "Liabilitas imbalan kerja" };
@@ -291,10 +294,14 @@ export async function cashFlow(db: Db, scope: Scope, to: Date): Promise<CashFlow
   const opening = start.rows;
   const isPl = (a: Account) => a.type === "PENDAPATAN" || a.type === "BEBAN";
   const netProfit = moved.filter((m) => isPl(m.account)).reduce((t, m) => t - m.net, 0n);
+  // Each intercompany account's side at the period end decides its section (cashLine).
+  const icNet = new Map<string, bigint>();
+  for (const m of [...opening, ...moved]) if (m.account.isIntercompany) icNet.set(m.account.code, (icNet.get(m.account.code) ?? 0n) + m.net);
+  const lineOf = (a: Pick<Account, "code" | "fsLine" | "isIntercompany">) => cashLine(a, a.isIntercompany && (icNet.get(a.code) ?? 0n) > 0n);
   const groups = new Map<string, CashItem & { section: CashSection }>();
   for (const m of moved) {
     if (isPl(m.account) || m.net === 0n) continue;
-    const line = cashLine(m.account);
+    const line = lineOf(m.account);
     if (!line) continue;
     const g = groups.get(line.key) ?? { key: line.key, label: line.label, amount: 0n, codes: [], section: line.section };
     g.amount -= m.net; // an asset that grew used cash; a liability or equity that grew brought it
@@ -326,7 +333,7 @@ export async function cashFlow(db: Db, scope: Scope, to: Date): Promise<CashFlow
   const disposals = new Set((await db.fixedAsset.findMany({ where: { entityId: { in: scope.entityIds }, disposalEntryId: { in: [...byEntry.keys()] } }, select: { disposalEntryId: true } })).map((d) => d.disposalEntryId!));
   const isProceeds = (l: (typeof lines)[number]) => l.account.fsLine !== "ASET_TETAP" && l.account.fsLine !== "AKUM_PENYUSUTAN" && l.account.type !== "PENDAPATAN" && l.account.type !== "BEBAN";
   const collectedBy = await collectedProceeds(db, scope.entityIds, to, [...byEntry.values()].filter((e) => disposals.has(e[0].entryId)).flat().filter((l) => isProceeds(l) && l.debit - l.credit > 0n));
-  const sectionOf = (a: (typeof lines)[number]["account"]) => (a.type === "PENDAPATAN" || a.type === "BEBAN" ? "OPERATING" : (cashLine(a)?.section ?? "CASH"));
+  const sectionOf = (a: (typeof lines)[number]["account"]) => (a.type === "PENDAPATAN" || a.type === "BEBAN" ? "OPERATING" : (lineOf(a)?.section ?? "CASH"));
   for (const entry of byEntry.values()) {
     // A bank-derived entry is cash even without a cash line: a statement row is posted to 1999 first and moved by a RECLASS entry.
     if (entry[0].entry.bankTransactionId) continue;
@@ -335,7 +342,7 @@ export async function cashFlow(db: Db, scope: Scope, to: Date): Promise<CashFlow
       const cost = -assetLines.reduce((t, l) => t + l.debit - l.credit, 0n);
       if (cost > 0n) {
         for (const l of assetLines) {
-          const line = cashLine(l.account)!;
+          const line = lineOf(l.account)!;
           add(line.key, line.label, line.section, l.debit - l.credit); // undo the cost's investing effect …
         }
         let proceeds = 0n;
@@ -356,7 +363,7 @@ export async function cashFlow(db: Db, scope: Scope, to: Date): Promise<CashFlow
     const sections = new Set(entry.map((l) => sectionOf(l.account)));
     if (sections.has("CASH") || sections.size < 2) continue;
     for (const l of entry) {
-      const line = cashLine(l.account);
+      const line = lineOf(l.account);
       if (!line || line.section === "OPERATING" || l.account.type === "PENDAPATAN" || l.account.type === "BEBAN") continue;
       const net = l.debit - l.credit;
       add(line.key, line.label, line.section, net); // undo its investing/financing effect …
@@ -377,7 +384,7 @@ export async function cashFlow(db: Db, scope: Scope, to: Date): Promise<CashFlow
     for (const bill of bills) {
       const paid = bill.settlements.filter((x) => +x.bankTransaction.date >= +from && +x.bankTransaction.date <= +to).reduce((t, x) => t + x.amount - x.withheld, 0n); // cash only: the withheld part of a settlement is tax owed, not paid to the supplier
       for (const l of debits.filter((d) => d.entryId === bill.entryId)) {
-        const line = cashLine(l.account);
+        const line = lineOf(l.account);
         if (!line || line.section !== "INVESTING" || bill.total <= 0n) continue;
         const part = (paid * l.debit) / bill.total;
         add(line.key, line.label, "INVESTING", -part);

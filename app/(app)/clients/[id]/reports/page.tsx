@@ -8,6 +8,7 @@ import { cashFlow, equityChanges, otherComprehensiveIncome } from "@/lib/reports
 import { CashFlowTable, EquityTable, NotesView } from "@/components/app/statements";
 import { financialNotes, manualCount } from "@/lib/reports/notes";
 import { financialYear, periodKeyOf, priorYearEnd, samePeriodLastYear } from "@/lib/fiscal";
+import { reportPeriods } from "@/lib/reports/periods";
 import { formatDateLong, formatDateTime, formatPeriod, monthName } from "@/lib/format";
 import { computedFacts, reportComment } from "@/lib/reports/report-comment";
 import { resolveAiConfig } from "@/lib/settings/ai";
@@ -111,28 +112,27 @@ export default async function ReportsPage({ params, searchParams }: { params: Pr
     const r = await withFx(() => balanceSheet(prisma, s, d));
     return { label: formatPeriod(d.getUTCFullYear(), d.getUTCMonth() + 1), bs: r instanceof FxMissingError ? null : r };
   };
-  // A comparative column only where the books hold something by then (no column of dashes before the books start). When the books
-  // start inside this year, the Saldo Awal position stands in for the previous year end.
+  // A comparative column only where the books hold something by then (lib/reports/periods.ts, the rule the PDF, Excel and CALK share): no
+  // column of dashes before the books start; when the books start inside this year, the Saldo Awal position stands in for the year end.
   const entryBy = async (to: Date, from?: Date) => !!(await prisma.journalLine.findFirst({ where: { entityId: { in: scope.entityIds }, date: { gte: from, lte: to } }, select: { id: true } }));
-  const firstOpening = await prisma.journalEntry.findFirst({ where: { entityId: { in: scope.entityIds }, kind: "OPENING", date: { gte: lastYearEnd, lte: period.end } }, orderBy: { date: "asc" }, select: { date: true } });
-  const booksStart = firstOpening && +firstOpening.date >= +yearStart && !(await entryBy(new Date(+firstOpening.date - 86_400_000))) ? new Date(+firstOpening.date + 86_400_000) : yearStart;
+  const per = await reportPeriods(prisma, s, period.year, period.month, client.fiscalYearEndMonth);
+  const booksStart = per.booksStart;
   // A month at or before the Saldo Awal (the Neraca imported per 31 Mei, opened on Mei): no income yet, not "1 Juni – akhir Mei".
-  const ytdLabel = +booksStart > +period.end
+  const ytdLabel = per.beforeBooks
     ? `pembukuan di Buku dimulai ${formatDateLong(booksStart)}`
     : `${formatDateLong(booksStart).replace(` ${period.year}`, "")} – akhir ${formatPeriod(period.year, period.month)}`;
-  const openingAt = firstOpening?.date;
+  const openingAt = per.openingAt;
   const labelFor = (d: Date) => (openingAt && +d === +openingAt ? `Saldo awal ${formatDateLong(d)}` : undefined);
   const compareDates: { date: Date; label?: string }[] = [];
   if (await entryBy(prevEnd)) compareDates.push({ date: prevEnd, label: labelFor(prevEnd) });
-  if (+lastYearEnd !== +prevEnd) {
-    if (await entryBy(lastYearEnd)) compareDates.push({ date: lastYearEnd, label: labelFor(lastYearEnd) });
-    else if (openingAt && +openingAt > +lastYearEnd && +openingAt < +prevEnd) compareDates.push({ date: openingAt, label: labelFor(openingAt) });
-  }
+  // The year-end comparative (or the Saldo Awal in its place), unless it is last month's end already shown.
+  const yearEnd = per.balanceComparative;
+  if (yearEnd && +yearEnd.date !== +prevEnd && +yearEnd.date < +prevEnd) compareDates.push({ date: yearEnd.date, label: labelFor(yearEnd.date) });
   const comparisons = await Promise.all(compareDates.map(async (c) => ({ ...(await compare(c.date)), ...(c.label ? { label: c.label } : {}) })));
   const shown = comparisons.filter((c): c is { label: string; bs: BalanceSheet } => c.bs !== null);
   const missingLabels = comparisons.filter((c) => !c.bs).map((c) => c.label);
   // Laba Rugi: the same months of last year, and other comprehensive income (single-currency scopes).
-  const prior = (await entryBy(priorTo, priorFrom)) ? await withFx(() => incomeStatement(prisma, s, priorFrom, priorTo)) : null;
+  const prior = per.priorPl ? await withFx(() => incomeStatement(prisma, s, priorFrom, priorTo)) : null;
   const isPrior = prior instanceof FxMissingError ? null : prior;
   // Last month beside this one (UC-K3): a comparative even when the books start this year.
   const prevMonth = (await entryBy(prevEnd, prevStart)) ? await withFx(() => incomeStatement(prisma, s, prevStart, prevEnd)) : null;

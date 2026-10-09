@@ -34,7 +34,7 @@ describe("report format over the books", () => {
     const pl = renderFormat(standard.labaRugi, [incomeItems(is)]);
     expect(last(pl, "Laba bersih")).toBe(is.totals.netProfit);
     const nr = renderFormat(standard.neraca, [balanceItems(bs)]);
-    expect([last(nr, "Total aset"), last(nr, "Total liabilitas & ekuitas")]).toEqual([bs.totals.assets, bs.totals.liabilities + bs.totals.equity]);
+    expect([last(nr, "Jumlah aset"), last(nr, "Jumlah liabilitas dan ekuitas")]).toEqual([bs.totals.assets, bs.totals.liabilities + bs.totals.equity]);
 
     const mine = standardFormat();
     mine.source = "Laporan Keuangan 2025 final";
@@ -102,10 +102,10 @@ describe("report format over the books", () => {
     // Thousands are a display format over exact Rupiah, so the formulas stay exact.
     expect(net.cells[0].numFmt).toBe('#,##0,;(#,##0,);"–"');
     const nr = rows("Neraca");
-    expect([value(nr.find((r) => r.label === "Total aset")!.cells[0]), value(nr.find((r) => r.label === "Total liabilitas & ekuitas")!.cells[0])]).toEqual([12_300_400, 12_300_400]);
+    expect([value(nr.find((r) => r.label === "Jumlah aset")!.cells[0]), value(nr.find((r) => r.label === "Jumlah liabilitas dan ekuitas")!.cells[0])]).toEqual([12_300_400, 12_300_400]);
   });
 
-  it("a subtotal over lines above its heading still counts: page, Excel and PDF agree on Total aset", async () => {
+  it("a subtotal over lines above its heading still counts: page, Excel and PDF agree on Jumlah aset", async () => {
     const g = await makeGroup();
     const acc = async (code: string) => (await db.account.findUniqueOrThrow({ where: { clientId_code: { clientId: g.client.id, code } } })).id;
     await db.$transaction(async (tx) =>
@@ -147,10 +147,10 @@ describe("report format over the books", () => {
         return sum + (sign === "-" ? -1 : 1) * x;
       }, 0);
     };
-    expect([valueOf(cell("Jumlah aset tidak lancar")), recalc(cell("Total aset"))]).toEqual([50_000_000, 150_000_000]);
+    expect([valueOf(cell("Jumlah aset tidak lancar")), recalc(cell("Jumlah aset"))]).toEqual([50_000_000, 150_000_000]);
 
     const pdf = await getDocumentProxy(new Uint8Array(await financialStatementsPdf(db, scope, 2026, 3, { firm: "KJA Uji", title: "PT Uji" })));
     const { text } = await extractText(pdf, { mergePages: true });
-    expect(text).toMatch(/Total aset\s+150\.000\.000/);
+    expect(text).toMatch(/Jumlah aset\s+150\.000\.000/);
   });
 });

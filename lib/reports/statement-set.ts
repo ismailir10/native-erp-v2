@@ -1,6 +1,7 @@
 import type { Db } from "@/lib/db";
-import { formatDate, periodBounds } from "@/lib/format";
-import { financialYear, fiscalEndMonth, periodFrom, priorYearEnd, samePeriodLastYear } from "@/lib/fiscal";
+import { formatDateLong, periodBounds } from "@/lib/format";
+import { financialYear, fiscalEndMonth, periodFrom } from "@/lib/fiscal";
+import { reportPeriods } from "@/lib/reports/periods";
 import { balanceSheet, incomeStatement, type FsItem, type Scope } from "@/lib/reports/ledger";
 import { balanceItems, incomeItems, loadReportFormat, renderFormat, type FormatSection, type ReportFormat } from "@/lib/reports/format";
 import { cashFlow, equityChanges, otherComprehensiveIncome, EQUITY_ROWS, EQUITY_ROW_LABEL } from "@/lib/reports/statements";
@@ -74,15 +75,18 @@ const itemRows = (cols: (FsItem[] | undefined)[], prefix: string): SetRow[] => {
   return rows;
 };
 
+/** Operating lines that are not cash movements of working capital: depreciation, non-cash and deferred items (cashFlow's keys). */
+const NON_CASH_KEYS = new Set(["AKUM_PENYUSUTAN", "BENEFITS", "DEFERRED_TAX", "OCI", "NONCASH", "DISPOSAL_NONCASH", "LEASE_INTEREST"]);
+
 export async function statementSet(db: Db, scope: Scope, year: number, month: number): Promise<StatementSet> {
   const asOf = periodBounds(year, month).end;
   // The client's financial year (lib/fiscal.ts): 1 January – 31 December unless it closes in another month.
   const endMonth = await fiscalEndMonth(db, scope.clientId);
   const fy = financialYear(endMonth, year, month);
-  const lastYearEnd = priorYearEnd(endMonth, year, month);
-  const prior = samePeriodLastYear(endMonth, year, month);
-  const priorTo = prior.end;
-  const from = periodFrom(fy.start, asOf, true);
+  // One period rule with the page and the CALK (lib/reports/periods.ts): no comparative column of dashes, books opened inside the year
+  // reported from their Saldo Awal.
+  const per = await reportPeriods(db, scope, year, month, endMonth);
+  const from = periodFrom(per.ytdFrom, asOf, true);
   const mixed = isMixed(await scopeEntities(db, scope.entityIds));
   // Names and the signatory follow the entities' reporting framework (reports/framework.ts); no figure does.
   const entities = await db.entity.findMany({ where: { id: { in: scope.entityIds } }, select: { kind: true, reportingFramework: true } });
@@ -90,20 +94,20 @@ export async function statementSet(db: Db, scope: Scope, year: number, month: nu
   const names = statementNames(framework);
   const [bs, bsPrior, is, isPrior, format] = await Promise.all([
     balanceSheet(db, scope, asOf),
-    balanceSheet(db, scope, lastYearEnd).catch(() => null),
+    per.balanceComparative ? balanceSheet(db, scope, per.balanceComparative.date).catch(() => null) : null,
     incomeStatement(db, scope, fy.start, asOf),
-    incomeStatement(db, scope, prior.start, priorTo).catch(() => null),
+    per.priorPl ? incomeStatement(db, scope, per.priorPl.start, per.priorPl.end).catch(() => null) : null,
     loadReportFormat(db, scope.clientId),
   ]);
   const statements: SetStatement[] = [];
 
   // Neraca
-  const cur = formatDate(asOf);
-  const old = formatDate(lastYearEnd);
+  const cur = formatDateLong(asOf);
+  const old = per.balanceComparative?.label ?? "";
   statements.push({
     name: "Neraca",
     title: names.position,
-    subtitle: `Per ${cur}${bsPrior ? ` dan ${old}` : ""}`,
+    subtitle: `Per ${cur}${bsPrior ? ` dan ${per.balanceComparative!.opening ? `saldo awal ${formatDateLong(per.balanceComparative!.date)}` : old}` : ""}`,
     columns: [cur, ...(bsPrior ? [old] : [])],
     widths: [56, 20, 20],
     rows: formatRows(renderFormat(format.neraca, [bs, ...(bsPrior ? [bsPrior] : [])].map(balanceItems))),
@@ -113,15 +117,16 @@ export async function statementSet(db: Db, scope: Scope, year: number, month: nu
   const lr: SetRow[] = formatRows(renderFormat(format.labaRugi, [is, ...(isPrior ? [isPrior] : [])].map(incomeItems)));
   const pl = <T,>(a: T, pick: () => T) => [a, ...(isPrior ? [pick()] : [])];
   if (!mixed && framework !== "SAK_EMKM") {
-    const [oci, ociPrior] = await Promise.all([otherComprehensiveIncome(db, scope, fy.start, asOf), otherComprehensiveIncome(db, scope, prior.start, priorTo)]);
-    lr.push({ label: "Penghasilan komprehensif lain", values: [], bold: true });
-    const ociRows = itemRows(pl(oci.items, () => ociPrior.items), "oci:");
-    lr.push(...ociRows);
+    const [oci, ociPrior] = await Promise.all([otherComprehensiveIncome(db, scope, fy.start, asOf), per.priorPl ? otherComprehensiveIncome(db, scope, per.priorPl.start, per.priorPl.end) : null]);
+    const ociRows = itemRows(pl(oci.items, () => ociPrior!.items), "oci:");
+    // No OCI in the period: one line with a dash, not a heading with nothing under it.
+    if (ociRows.length) lr.push({ label: "Penghasilan komprehensif lain", values: [], bold: true }, ...ociRows);
+    else lr.push({ label: "Penghasilan komprehensif lain", values: pl(0n, () => 0n) });
     // Net profit (the format's last total) plus each OCI line: a formula in Excel, the printed lines' sum in the PDF.
     const net = format.labaRugi.filter((l) => l.kind === "TOTAL").at(-1)!.key;
     lr.push({
       label: "Total penghasilan komprehensif",
-      values: pl(is.totals.netProfit + oci.total, () => isPrior!.totals.netProfit + ociPrior.total),
+      values: pl(is.totals.netProfit + oci.total, () => isPrior!.totals.netProfit + ociPrior!.total),
       bold: true,
       key: "oci:total",
       terms: [{ key: net, sign: 1 }, ...ociRows.filter((r) => r.key).map((r) => ({ key: r.key!, sign: 1 as const }))],
@@ -131,7 +136,7 @@ export async function statementSet(db: Db, scope: Scope, year: number, month: nu
     name: "Laba Rugi",
     title: names.income,
     subtitle: `Untuk periode ${from} – ${cur}${isPrior ? `, dibandingkan periode yang sama ${endMonth === 12 ? year - 1 : "tahun buku sebelumnya"}` : ""}`,
-    columns: [`${periodFrom(fy.start, asOf)} – ${cur}`, ...(isPrior ? [`${periodFrom(prior.start, priorTo)} – ${formatDate(priorTo)}`] : [])],
+    columns: [`${from} – ${cur}`, ...(isPrior ? [`${periodFrom(per.priorPl!.start, per.priorPl!.end, true)} – ${formatDateLong(per.priorPl!.end)}`] : [])],
     widths: [56, 20, 20],
     rows: lr,
   });
@@ -143,14 +148,18 @@ export async function statementSet(db: Db, scope: Scope, year: number, month: nu
   const pe: SetRow[] = [];
   for (const r of EQUITY_ROWS) {
     if (r !== "opening" && r !== "closing" && eq.totals[r] === 0n) continue;
-    const label = r === "opening" ? `Saldo ${formatDate(eq.openedAt)}` : r === "closing" ? `Saldo ${cur}` : frameworkLabel(framework, EQUITY_ROW_LABEL[r]);
+    const label = r === "opening" ? `Saldo ${formatDateLong(eq.openedAt)}` : r === "closing" ? `Saldo ${cur}` : frameworkLabel(framework, EQUITY_ROW_LABEL[r]);
     pe.push({ label, values: [...eq.values[r], eq.totals[r]], bold: r === "opening" || r === "closing" });
   }
   statements.push({ name: "Perubahan Ekuitas", title: names.equity, subtitle: `Untuk periode ${from} – ${cur}`, columns: [...eq.columns.map((c) => c.label), "Jumlah"], widths: [40, ...eq.columns.map(() => 20), 20], rows: pe });
 
   // Arus Kas
   const cf = await cashFlow(db, scope, asOf);
-  const flows = (items: typeof cf.operating) => items.map((i): SetRow => ({ label: `${frameworkLabel(framework, i.label)} (${i.codes.join(", ")})`, values: [i.amount], indent: 1 }));
+  // A published statement names the line, not the ledger's account codes (the page keeps them, to drill into).
+  const flows = (items: typeof cf.operating, indent = 1) => items.map((i): SetRow => ({ label: frameworkLabel(framework, i.label), values: [i.amount], indent }));
+  // Indirect method: profit, then the non-cash items, then the changes in working capital.
+  const adjustments = cf.operating.filter((i) => NON_CASH_KEYS.has(i.key));
+  const workingCapital = cf.operating.filter((i) => !NON_CASH_KEYS.has(i.key));
   statements.push({
     name: "Arus Kas",
     title: names.cashFlow,
@@ -160,7 +169,8 @@ export async function statementSet(db: Db, scope: Scope, year: number, month: nu
     rows: [
       { label: "ARUS KAS DARI AKTIVITAS OPERASI", values: [], bold: true },
       { label: "Laba bersih", values: [cf.netProfit], indent: 1 },
-      ...flows(cf.operating),
+      ...(adjustments.length ? [{ label: "Penyesuaian:", values: [], indent: 1 }, ...flows(adjustments, 2)] : []),
+      ...(workingCapital.length ? [{ label: "Perubahan modal kerja:", values: [], indent: 1 }, ...flows(workingCapital, 2)] : []),
       { label: "Kas bersih dari aktivitas operasi", values: [cf.totals.OPERATING], bold: true },
       { label: "ARUS KAS DARI AKTIVITAS INVESTASI", values: [], bold: true },
       ...flows(cf.investing),
@@ -169,7 +179,7 @@ export async function statementSet(db: Db, scope: Scope, year: number, month: nu
       ...flows(cf.financing),
       { label: "Kas bersih dari aktivitas pendanaan", values: [cf.totals.FINANCING], bold: true },
       { label: "Kenaikan (penurunan) bersih kas dan setara kas", values: [cf.net], bold: true },
-      { label: `Kas dan setara kas ${formatDate(cf.openedAt)}`, values: [cf.openingCash] },
+      { label: `Kas dan setara kas ${formatDateLong(cf.openedAt)}`, values: [cf.openingCash] },
       { label: `Kas dan setara kas ${cur}`, values: [cf.closingCash], bold: true },
     ],
   });
