@@ -57,11 +57,15 @@ Approval: the owner's brief in-session ("continue improving Buku until we are pr
   "Atas nama dan mewakili <entitas>" — not for an individual —, "Meterai Rp10.000", the name line and the role last), `pdf.ts` (the
   statement opens the PDF; its header carries the entity only; the draft reasons move to the Neraca's page and later pages point to it;
   room to sign over the meterai; a sub-item keeps its indent). Tests: `tests/unit/directors-statement.test.ts` (fields, atas nama),
-  `report-pdf` / `report-pdf-layout` (page order and draft lines). Page 1 rendered and looked at.
+  `report-pdf` / `report-pdf-layout` (page order and draft lines). Page 1 rendered and looked at.- Review (Codex on #131): the schedule takes only `type === "ASET"` accounts on the two lines (the Neraca's own test), and a manual entry
+  reversed inside the period (*Balik jurnal*, `reversesId`) leaves both entries out of the additions / deductions (they cancel; closing
+  unchanged). Test: `asset-movement.test.ts` (+1).
 ## Verification
 - T1: lint clean · typecheck clean · `npm test` 198 files, 1316 passed.
 - T2 + end of cycle: lint clean · typecheck clean · `npm test` 198 files, 1316 passed · `npm run build` ok · `npm run test:e2e` 61 passed
   (6.4m) · `demo:reset && verify:books` → ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.
+
+- Review fix: lint clean · typecheck clean · `npm test` 198 files, 1317 passed.
 
 ## Ship Notes
 - Stacked on `task/report-pack-partner` (PR #130): it merges after that one (GitHub retargets it to `main` when #130's branch goes).

@@ -5,6 +5,7 @@ import { dateOnly } from "@/lib/format";
 import { balanceSheet } from "@/lib/reports/ledger";
 import { fixedAssetMovement } from "@/lib/reports/statements";
 import { financialNotes } from "@/lib/reports/notes";
+import { reverseEntry } from "@/lib/ledger/reverse";
 
 /** PSAK 216's reconciliation of the carrying amount, from the GL: opening (Saldo Awal), purchase, depreciation, disposal → the Neraca. */
 describe("fixed-asset movement schedule", () => {
@@ -41,5 +42,26 @@ describe("fixed-asset movement schedule", () => {
     expect(at.tables[0].columns).toEqual(["Uraian", "Saldo 28 Februari 2026", "Penambahan", "Pengurangan", "Saldo 30 Juni 2026"]);
     expect(at.tables[0].rows.map((r) => r[0])).toEqual(["Harga perolehan", "1210 Aset Tetap", "Akumulasi penyusutan", "1219 Akumulasi Penyusutan"]);
     expect(at.tables[0].total).toEqual(["Nilai buku", 80_000_000n, 38_000_000n, -20_000_000n, 98_000_000n]);
+  });
+
+  it("a manual entry reversed in the period is neither a purchase nor a disposal; a mistyped account stays out, as on the Neraca", async () => {
+    const g = await makeGroup();
+    const id = async (code: string) => (await db.account.findFirstOrThrow({ where: { clientId: g.client.id, code } })).id;
+    const bank = g.pt.banks[0].accountId;
+    const post = (date: Date, lines: [string, bigint, bigint][]) =>
+      db.$transaction(async (tx) => postJournal(tx, { entityId: g.pt.entity.id, date, kind: "ADJUSTMENT", memo: "uji", lines: await Promise.all(lines.map(async ([c, d, k]) => ({ accountId: c === "bank" ? bank : await id(c), debit: d, credit: k }))) }));
+    await post(dateOnly(2026, 1, 5), [["bank", 100_000_000n, 0n], ["3100", 0n, 100_000_000n]]);
+    await post(dateOnly(2026, 2, 10), [["1210", 40_000_000n, 0n], ["bank", 0n, 40_000_000n]]);
+    // Booked to 1210 by mistake, reversed the next month.
+    const wrong = await post(dateOnly(2026, 3, 10), [["1210", 7_000_000n, 0n], ["2110", 0n, 7_000_000n]]);
+    await reverseEntry(db, { clientId: g.client.id, entryId: wrong.id, date: dateOnly(2026, 4, 1) });
+    // An expense account someone put on the fixed-asset line: the Neraca shows it by its type, so the schedule leaves it out.
+    const odd = await db.account.create({ data: { firmId: g.firm.id, clientId: g.client.id, code: "6999", name: "Beban salah petakan", type: "BEBAN", normalBalance: "DEBIT", fsLine: "ASET_TETAP" } });
+    await db.$transaction(async (tx) => postJournal(tx, { entityId: g.pt.entity.id, date: dateOnly(2026, 5, 2), kind: "ADJUSTMENT", memo: "uji", lines: [{ accountId: odd.id, debit: 1_000_000n }, { accountId: bank, credit: 1_000_000n }] }));
+    const scope = { clientId: g.client.id, entityIds: [g.pt.entity.id] };
+    const mv = await fixedAssetMovement(db, scope, dateOnly(2026, 6, 30));
+    expect(mv.rows.map((r) => [r.code, r.opening, r.additions, r.deductions, r.closing])).toEqual([["1210", 0n, 40_000_000n, 0n, 40_000_000n]]);
+    const bs = await balanceSheet(db, scope, dateOnly(2026, 6, 30));
+    expect(bs.nonCurrentAssets.filter((i) => i.fsLine === "ASET_TETAP" || i.fsLine === "AKUM_PENYUSUTAN").reduce((t, i) => t + i.amount, 0n)).toBe(40_000_000n);
   });
 });
