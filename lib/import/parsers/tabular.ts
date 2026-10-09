@@ -3,7 +3,7 @@ import { parseRupiah } from "@/lib/money";
 import { dateOnly } from "@/lib/format";
 import type { BankCode } from "@/lib/generated/prisma/enums";
 import { ParseError, YearNeededError, type ParsedRow, type ParsedStatement } from "@/lib/import/types";
-import { chronologicalOrder, closingFromRows, dateParts as baseDateParts, dayMonthEvidence, MONTHS as MONTH_NUMBER, periodFromText, SenWatch, type DateParts, type DayMonthOrder } from "@/lib/import/parsers/common";
+import { chronologicalOrder, closingFromRows, dateParts as baseDateParts, dayMonthEvidence, MONTHS as MONTH_NUMBER, periodFromText, SenWatch, splitMarker, type DateParts, type DayMonthOrder } from "@/lib/import/parsers/common";
 import { detectFormat, periodOf } from "@/lib/import/parsers/pdf";
 
 /**
@@ -12,20 +12,30 @@ import { detectFormat, periodOf } from "@/lib/import/parsers/pdf";
  * month opening with a SALDO AWAL row, `dd/MM` dates without a year, debet = money in (the books' side), a formula balance.
  */
 const HEADER_PATTERNS = {
-  date: /^(tanggal|tgl|date|post(ing)? date|trans(action)? date)/i,
-  desc: /(keterangan|deskripsi|description|\bdesc\b|remark|uraian|narasi|berita|detail transaksi|transaction detail)/i,
-  debit: /^(debet|debit|mutasi debet|mutasi debit|(uang )?keluar|withdrawal|pengeluaran)/i,
-  credit: /^(kredit|credit|mutasi kredit|(uang )?masuk|deposit|pemasukan)/i,
-  amount: /^(jumlah|nominal|amount|mutasi)$/i,
-  balance: /^(saldo|balance|sisa saldo)/i,
+  date: /^(tanggal|tgl|date|post(ing)? date|trans(action)? date|txn date)/i,
+  desc: /(keterangan|deskripsi|description|\bdesc\b|remark|uraian|narasi|narrative|berita|detail transaksi|transaction details?|rincian transaksi|particulars|^details?$)/i,
+  debit: /^(debet|debit|mutasi debet|mutasi debit|(uang |dana )?keluar|withdrawals?|pengeluaran|outgoing)/i,
+  credit: /^(kredit|credit|mutasi kredit|(uang |dana )?masuk|deposits?|pemasukan|incoming)/i,
+  amount: /^(jumlah|nominal|amount|mutasi|transaction amount)$/i,
+  balance: /^(saldo|balance|sisa saldo|running balance|ledger balance)/i,
 };
 /** "Debit (IDR)", "Jumlah (Rp)", "Saldo (IDR)": the currency in brackets after a label isn't part of the label. */
 const withoutUnit = (h: string) => h.replace(/\s*\((?:idr|rp\.?|rupiah|[a-z]{3})\)\s*$/i, "").trim();
+/**
+ * A header cell as a label: the unit dropped, and of a bilingual label ("Tanggal/Date", "Nominal/Amount", "Saldo / Balance") the part a
+ * pattern knows. "Sumber/Tujuan" and "D/K" stay as they are (no part is a column word).
+ */
+const headerLabel = (h: string) => {
+  const t = withoutUnit(h);
+  const parts = t.split(/\s*\/\s*/);
+  if (parts.length < 2) return t;
+  return parts.find((p) => Object.values(HEADER_PATTERNS).some((re) => re.test(p))) ?? t;
+};
 /** The values of a D/K column: only these, in a column beside an unsigned amount. Debit = money out of the account (the bank's way). */
-const FLAG_VALUE = /^(d|k|db|cr|dr|c|debet|debit|kredit|credit)$/i;
-const FLAG_OUT = /^(d|db|dr|debet|debit)$/i;
-const OPENING_ROW = /^(saldo\s*awal|opening\s*balance|beginning\s*balance|saldo\s*sebelumnya)\b/i;
-const CLOSING_ROW = /^(saldo\s*akhir|closing\s*balance|ending\s*balance)\b/i;
+const FLAG_VALUE = /^(d|k|db|cr|dr|c|debet|debit|kredit|credit)\.?$/i;
+const FLAG_OUT = /^(d|db|dr|debet|debit)\.?$/i;
+const OPENING_ROW = /^(saldo\s*awal|opening\s*balance|beginning\s*balance|starting\s*balance|previous\s*balance|initial\s*balance|saldo\s*sebelumnya)\b/i;
+const CLOSING_ROW = /^(saldo\s*akhir|closing\s*balance|ending\s*balance|current\s*balance)\b/i;
 const TOTAL_ROW = /^(total|jumlah|mutasi\s*(debet|debit|kredit|credit))\b/i;
 /** Summary and balance-print text (a trailer "Mutasi Kredit 1.000 · 10.500", "SALDO PER 01/08"): checkpoints, never transactions. */
 const SUMMARY_TEXT = /\b(total|jumlah|saldo|rekap|sub\s*total|mutasi\s*(debet|debit|kredit|credit)|opening|closing|beginning|ending|balance)\b/i;
@@ -125,13 +135,13 @@ function flagColumn(body: string[][], candidates: number[]): number {
 export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}): Parsed {
   // A header names the date and the description in two different cells (one unsplit line of a wrongly split file names both in one).
   const isHeader = (r: string[]) => {
-    const d = r.findIndex((c) => HEADER_PATTERNS.date.test(withoutUnit(c)));
-    return d >= 0 && r.some((c, i) => i !== d && HEADER_PATTERNS.desc.test(withoutUnit(c)));
+    const d = r.findIndex((c) => HEADER_PATTERNS.date.test(headerLabel(c)));
+    return d >= 0 && r.some((c, i) => i !== d && HEADER_PATTERNS.desc.test(headerLabel(c)));
   };
   const headerIdx = rows.findIndex(isHeader);
   if (headerIdx < 0) throw new NoTableError();
   const rawHeader = rows[headerIdx];
-  const header = rawHeader.map(withoutUnit);
+  const header = rawHeader.map(headerLabel);
   const find = (re: RegExp) => header.findIndex((c) => re.test(c));
   const cDate = find(HEADER_PATTERNS.date);
   const cDesc = find(HEADER_PATTERNS.desc);
@@ -189,16 +199,21 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
   let printedClosing: bigint | null = null;
   const sen = new SenWatch();
   let at = 0; // the row being read (1-based), for the sen note
+  // An amount may carry its direction ("1,000.00 CR", "5.500,00 D", "1.000-"): the number is read without it.
   const num = (r: string[], c: number) => {
     if (c < 0 || !r[c]) return 0n;
     sen.check(r[c], at);
-    return parseRupiah(r[c]);
+    return parseRupiah(splitMarker(r[c]).text);
   };
+  // A balance marked DB / D is a debit balance (an overdrawn account): below zero.
   const bal = (r: string[]) => {
     if (cBal < 0 || !r[cBal]) return null;
     sen.check(r[cBal], at);
-    return parseRupiah(r[cBal]);
+    const { text, flag } = splitMarker(r[cBal]);
+    const v = parseRupiah(text);
+    return flag === "DB" ? -(v < 0n ? -v : v) : v;
   };
+  let markedAmounts = 0;
   for (let i = headerIdx + 1; i < rows.length; i++) {
     const r = rows[i];
     at = i + 1;
@@ -264,10 +279,15 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
     const debit = split ? num(r, cDb) : 0n;
     const credit = split ? num(r, cCr) : 0n;
     let amount = split ? credit - debit : num(r, cAmt);
-    if (cFlag >= 0) {
+    const abs = amount < 0n ? -amount : amount;
+    const marker = split ? null : splitMarker(r[cAmt] ?? "").flag;
+    if (marker) {
+      amount = marker === "DB" ? -abs : abs;
+      markedAmounts++;
+    } else if (cFlag >= 0) {
       const f = (r[cFlag] ?? "").trim();
       if (!FLAG_VALUE.test(f)) throw new ParseError(`Kolom D/K kosong di baris ${i + 1}: arah uang (masuk/keluar) tidak bisa ditentukan. Isi tandanya atau ekspor ulang.`);
-      amount = FLAG_OUT.test(f) ? -(amount < 0n ? -amount : amount) : amount < 0n ? -amount : amount;
+      amount = FLAG_OUT.test(f) ? -abs : abs;
     }
     drafts.push({
       parts,
@@ -337,6 +357,7 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
     const other = dates.filter((d, k) => !drafts[k].balanceOnly && d.getUTCMonth() + 1 !== sheetMonth);
     if (other.length) notes.push(`${other.length} baris di lembar ${ctx.sheet} bertanggal di luar bulan lembarnya (${[...new Set(other.map((d) => `${d.getUTCMonth() + 1}/${d.getUTCFullYear()}`))].join(", ")}); dicatat menurut tanggalnya.`);
   }
+  if (markedAmounts) notes.push(`Arah uang dibaca dari tanda di kolom "${header[cAmt] || "jumlah"}" (CR / K = masuk, DB / D = keluar).`);
   if (cFlag >= 0) notes.push(`Kolom "${header[cFlag] || "D/K"}" dipakai sebagai tanda D/K: D / DB / Debet = uang keluar, K / CR / Kredit = uang masuk.`);
   const opening = (flip: boolean): bigint | null => {
     if (openingRow?.balance !== undefined && openingRow?.balance !== null) return openingRow.balance;

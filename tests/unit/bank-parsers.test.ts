@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { parseStatement, parseStatementSections } from "@/lib/import/parsers";
 import { makePdf, table } from "../pdf-fixture";
+import { LAYOUTS } from "../bank-layouts";
 import { checkContinuity } from "@/lib/import/normalize";
-import { BAL, TX, bniDirectCsv, bniDirectXlsx, bniMobileXlsx, xlsxBuffer, briInternetBankingCsv, cimbPdf, idn, mandiriLivinPdf, mandiriLivinXlsx, serialDateXlsx, cimbOctoCsv, expectAugust, p2, permataCsv, titleWithCommasSemicolonCsv, utf16TabCsv } from "../bank-fixture";
+import { BAL, TX, en, bniDirectCsv, bniDirectXlsx, bniMobileXlsx, xlsxBuffer, briInternetBankingCsv, cimbPdf, idn, mandiriLivinPdf, mandiriLivinXlsx, serialDateXlsx, cimbOctoCsv, expectAugust, p2, permataCsv, titleWithCommasSemicolonCsv, utf16TabCsv } from "../bank-fixture";
 
 describe("routing: bank CSVs that borrow BCA's words", () => {
   it("reads a BRI internet-banking CSV titled 'Mutasi Rekening' with a 'Tanggal Transaksi' header", async () => {
@@ -248,7 +249,8 @@ describe("the bank is tagged from the statement's own words, not its transaction
     [["Informasi Rekening BCA"], "BCA"],
     [["PT Bank SMBC Indonesia Tbk"], "SMBC"],
     [["Laporan Mutasi Rekening", "Nama : PT SINAR MANDIRI ABADI"], "GENERIC"],
-    [["CIMB Niaga - Rekening Koran"], "GENERIC"],
+    [["CIMB Niaga - Rekening Koran"], "CIMB"],
+    [["Laporan Mutasi Rekening", "Nama : PT PERMATA HIJAU"], "GENERIC"],
   ] as const)("CSV preamble %j → %s", async (preamble, format) => {
     expect((await parseStatement("x.csv", csv(...preamble))).format).toBe(format);
   });
@@ -278,5 +280,63 @@ describe("the bank is tagged from the statement's own words, not its transaction
     ]);
     const [st] = await parseStatementSections("x.pdf", pdf);
     expect(st.format).toBe("MANDIRI");
+  });
+});
+
+describe("amounts that carry their direction", () => {
+  const rows = (cell: (amt: number) => string, balance: (b: number) => string = (b) => en(b)) =>
+    Buffer.from(["Tanggal,Keterangan,Jumlah,Saldo", ...TX.map((t, i) => `${p2(t.d)}/08/2026,${q(t.desc[0])},${q(cell(t.amt))},${q(balance(BAL[i]))}`)].join("\n"));
+  const q = (s: string) => `"${s}"`;
+
+  it.each([
+    ["CR / DB suffix", (a: number) => `${en(a)} ${a < 0 ? "DB" : "CR"}`],
+    ["D suffix on debits only (Mandiri savings)", (a: number) => `${en(a)}${a < 0 ? " D" : ""}`],
+    ["Db. / Cr. with a dot", (a: number) => `${idn(a)} ${a < 0 ? "Db." : "Cr."}`],
+    ["K / D (BNI)", (a: number) => `${idn(a)} ${a < 0 ? "D" : "K"}`],
+    ["trailing minus", (a: number) => `${idn(a)}${a < 0 ? "-" : ""}`],
+  ])("%s", async (_name, cell) => {
+    const st = await parseStatement("x.csv", rows(cell));
+    expectAugust(st);
+  });
+
+  it("says the direction was read from the amount's marker", async () => {
+    const st = await parseStatement("x.csv", rows((a) => `${en(a)} ${a < 0 ? "DB" : "CR"}`));
+    expect(st.notes?.some((n) => n.includes("Arah uang dibaca dari tanda"))).toBe(true);
+  });
+
+  it("reads a balance marked DB as overdrawn (below zero)", async () => {
+    const csv = ["Tanggal,Keterangan,Jumlah,Saldo", `01/08/2026,"TARIK",${q("1,500.00 DB")},${q("500.00 DB")}`, `02/08/2026,"SETOR",${q("2,000.00 CR")},${q("1,500.00 CR")}`].join("\n");
+    const st = await parseStatement("x.csv", Buffer.from(csv));
+    expect(st.rows.map((r) => [r.amount, r.balance])).toEqual([[-1500n, -500n], [2000n, 1500n]]);
+    expect(st.openingBalance).toBe(1000n);
+  });
+
+  it("reads a Db./Cr. flag column", async () => {
+    const csv = ["Tanggal,Keterangan,Jumlah,Tipe,Saldo", ...TX.map((t, i) => `${p2(t.d)}/08/2026,${q(t.desc[0])},${q(en(t.amt))},${t.amt < 0 ? "Db." : "Cr."},${q(en(BAL[i]))}`)].join("\n");
+    expectAugust(await parseStatement("x.csv", Buffer.from(csv)));
+  });
+});
+
+describe("pockets and amounts read from the balance", () => {
+  it("reads each Jago pocket as its own statement, with its own number", async () => {
+    const jago = LAYOUTS.find((l) => l.bank === "JAGO")!;
+    const sections = await parseStatementSections(jago.file, await jago.build());
+    expect(sections.map((s) => [s.accountNumber, s.section?.label, s.rows.length])).toEqual([
+      ["100200300400", "Kantong Utama", 5],
+      ["100200300411", "Kantong Operasional", 5],
+    ]);
+  });
+
+  it("reads an unsigned amount as money out when the balance went down, also on the first row", async () => {
+    const head: [number, string][] = [[40, "TANGGAL TRANSAKSI"], [140, "DESKRIPSI"], [400, "JUMLAH"], [495, "SALDO"]];
+    const pdf = makePdf([
+      [
+        ...table(800, [[[40, "PT Bank Seabank Indonesia"]], [[40, "PERIODE: 01 AUG 2026 - 31 AUG 2026"]]]),
+        ...table(760, [head, [[40, "01 AUG"], [140, "SALDO AWAL"], [480, "1.000.000"]], [[40, "02 AUG"], [140, "QRIS TOKO"], [400, "250.000"], [480, "750.000"]], [[40, "03 AUG"], [140, "TRANSFER MASUK"], [400, "100.000"], [480, "850.000"]]]),
+      ],
+    ]);
+    const st = await parseStatement("seabank.pdf", pdf);
+    expect(st.rows.map((r) => r.amount)).toEqual([-250_000n, 100_000n]);
+    expect(st.openingBalance).toBe(1_000_000n);
   });
 });

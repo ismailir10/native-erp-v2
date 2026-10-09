@@ -1,5 +1,5 @@
 import type { Db, Tx } from "@/lib/db";
-import type { ClassifyMethod, Direction } from "@/lib/generated/prisma/enums";
+import type { BankCode, ClassifyMethod, Direction } from "@/lib/generated/prisma/enums";
 import { ACCOUNT_CODES, isClassifiable } from "@/lib/coa/template";
 import { parseStatementSections } from "@/lib/import/parsers";
 import { checkContinuity, isGenericKey, merchantKey, rowHashes } from "@/lib/import/normalize";
@@ -36,6 +36,8 @@ export type ImportSummary = {
   notes: string[];
   /** The months the statement covers ("Mei 2026"), first to last. */
   months: string[];
+  /** The bank the file names (its heading, or an MT940 BIC); GENERIC when it names none. The form says so when it differs from the account's. */
+  fileBank: BankCode;
 };
 
 export async function importStatement(
@@ -158,6 +160,7 @@ export async function importStatement(
         otherAccounts,
         pendingReview: await pendingReviewCount(),
         notes,
+        fileBank: st.format,
         months: monthsOf(st.periodStart, st.periodEnd),
       };
     }
@@ -340,6 +343,7 @@ export async function importStatement(
     pendingReview: await pendingReviewCount(),
     notes,
     months: monthsOf(st.periodStart, st.periodEnd),
+    fileBank: st.format,
   };
 }
 

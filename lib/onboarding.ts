@@ -3,6 +3,8 @@ import { createBankAccount, createClient, createEntity, freeGlCodes, type Client
 import { isCurrency } from "@/lib/fx/currency";
 import { isFramework, type Framework } from "@/lib/reports/framework";
 import { isBlankBankRow } from "@/lib/blank-bank";
+import { BANK_CODES, bankName } from "@/lib/banks";
+import type { BankCode } from "@/lib/generated/prisma/enums";
 
 /**
  * "Tambah klien": a real client with its entities (PT/CV/owner), each with its functional currency and optional bank
@@ -18,13 +20,13 @@ export class OnboardingError extends Error {
 }
 
 const KINDS = ["PT", "CV", "BADAN_USAHA_ASING", "PERORANGAN"] as const;
-const BANKS = ["BCA", "MANDIRI", "BRI", "SMBC", "GENERIC"] as const;
-const BANK_NAME: Record<(typeof BANKS)[number], string> = { BCA: "BCA", MANDIRI: "Mandiri", BRI: "BRI", SMBC: "SMBC", GENERIC: "Bank" };
+/** The default account name: the bank's short name ("SMBC", not "SMBC / Jenius"), "Bank" for *Bank lain*. */
+const defaultName = (code: string) => (code === "GENERIC" ? "Bank" : bankName(code).split(" / ")[0]);
 
 export type NewClientInput = {
   name: string;
   industry: string;
-  entities: { name: string; shortName: string; kind: (typeof KINDS)[number]; npwp: string; currency?: string; reportingFramework?: Framework; banks: { bank: (typeof BANKS)[number]; number: string; label: string; isOverdraft?: boolean }[] }[];
+  entities: { name: string; shortName: string; kind: (typeof KINDS)[number]; npwp: string; currency?: string; reportingFramework?: Framework; banks: { bank: BankCode; number: string; label: string; isOverdraft?: boolean }[] }[];
 };
 
 type EntityInput = NewClientInput["entities"][number];
@@ -33,13 +35,13 @@ type BankInput = EntityInput["banks"][number];
 /** One bank row: a blank row is skipped (null); otherwise the cleaned account, with problems keyed under `bt`. `seen` holds the numbers already taken. */
 function cleanBank(b: BankInput, bt: string, fields: Record<string, string>, seen: Map<string, string>, duplicate = "Nomor ini sudah dimasukkan di atas.") {
   if (isBlankBankRow(b)) return null;
-  if (!BANKS.includes(b.bank)) fields[`${bt}.bank`] = "Pilih bank.";
+  if (!(BANK_CODES as readonly string[]).includes(b.bank)) fields[`${bt}.bank`] = "Pilih bank.";
   const number = b.number.replace(/[\s.\-]/g, "");
   if (!number) fields[`${bt}.number`] = "Isi nomor rekening.";
   else if (!/^\d{6,20}$/.test(number)) fields[`${bt}.number`] = "Nomor rekening berisi 6–20 angka.";
   else if (seen.has(number)) fields[`${bt}.number`] = duplicate;
   else seen.set(number, bt);
-  const label = b.label.trim() || `${BANK_NAME[b.bank] ?? "Bank"}${b.isOverdraft ? " PRK" : ""} ••${number.slice(-4)}`;
+  const label = b.label.trim() || `${defaultName(b.bank)}${b.isOverdraft ? " PRK" : ""} ••${number.slice(-4)}`;
   return { bank: b.bank, number, label: label.slice(0, 60), isOverdraft: Boolean(b.isOverdraft) };
 }
 
@@ -129,4 +131,15 @@ export async function addEntity(db: Db, firmId: string, clientId: string, input:
   const spec = cleanEntity(input, "entity", fields, await takenNumbers(db, clientId), TAKEN);
   if (Object.keys(fields).length) throw new OnboardingError(fields);
   return db.$transaction(async (tx) => (await createEntity(tx, firmId, clientId, spec, await freeGlCodes(tx, clientId))).entity).catch(limitReached("entity"));
+}
+
+/**
+ * The bank a bank account is recorded at, corrected (the import says when a file names another bank). Only the label: no number,
+ * GL account or posted line changes. The account must be one of the client's.
+ */
+export async function setBankAccountBank(db: Db, clientId: string, bankAccountId: string, bank: string) {
+  if (!(BANK_CODES as readonly string[]).includes(bank)) throw new OnboardingError({ bank: "Pilih bank." });
+  const account = await db.bankAccount.findFirst({ where: { id: bankAccountId, entity: { clientId } }, select: { id: true } });
+  if (!account) throw new OnboardingError({ bank: "Rekening tidak ditemukan di klien ini." });
+  return db.bankAccount.update({ where: { id: account.id }, data: { bank: bank as BankCode } });
 }

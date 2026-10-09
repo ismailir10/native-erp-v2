@@ -1,9 +1,10 @@
 import { extractTextItems, getDocumentProxy } from "unpdf";
 import type { BankCode } from "@/lib/generated/prisma/enums";
 import { dateOnly } from "@/lib/format";
+import { detectBank } from "@/lib/banks";
 import { parseRupiah } from "@/lib/money";
 import { ParseError, ScanError, type DepositProduct, type ParsedRow, type ParsedStatement } from "@/lib/import/types";
-import { closingFromRows, dateParts, MONTHS, monthBoundsOf, periodFromText, SenWatch } from "@/lib/import/parsers/common";
+import { closingFromRows, dateParts, MONTHS, monthBoundsOf, periodFromText, SenWatch, splitMarker } from "@/lib/import/parsers/common";
 
 /**
  * Text PDF e-statements (BCA / Mandiri / BRI and similar layouts). No AI: text + positions → table rows,
@@ -23,26 +24,39 @@ export class PdfPasswordError extends ParseError {
 
 type Cell = { x0: number; x1: number; text: string };
 export type Line = { page: number; y: number; cells: Cell[] };
-type ColKind = "date" | "desc" | "debit" | "credit" | "amount" | "balance" | "flag";
+/** `skip`: a column left of the description that is neither (row number, branch, journal, teller) — its cells are no description. */
+type ColKind = "date" | "desc" | "debit" | "credit" | "amount" | "balance" | "flag" | "skip";
 type Column = { kind: ColKind; x0: number; x1: number };
 
 const HEADER: Record<ColKind, RegExp> = {
-  date: /^(tanggal|tgl\.?|date|tanggal transaksi|post(ing)? date|tgl\.? transaksi|trans(action)? date)$/i,
-  desc: /^(keterangan|uraian|uraian transaksi|deskripsi|description|remark|remarks|transaction description|transaction desc|narasi|berita)$/i,
-  debit: /^(debet|debit|mutasi debet|mutasi debit|(uang )?keluar|withdrawal|pengeluaran)$/i,
-  credit: /^(kredit|credit|mutasi kredit|(uang )?masuk|deposit|pemasukan)$/i,
-  amount: /^(mutasi|jumlah|nominal|amount)$/i,
-  balance: /^(saldo|balance|saldo akhir)$/i,
-  flag: /^(db\/cr|d\/k|dk|cr\/db)$/i,
+  date: /^(tanggal|tgl\.?|date|tanggal transaksi|post(ing)? date|tgl\.? transaksi|trans(action)? date|tgl\.? txn|txn date|tanggal & (waktu|jam)|date & time)$/i,
+  desc: /^(keterangan|uraian|uraian transaksi|deskripsi|description|remark|remarks|trans(action)? description|transaction desc|transaction details?|rincian transaksi|narasi|berita)$/i,
+  debit: /^(debet|debit|mutasi debet|mutasi debit|(uang |dana )?keluar|withdrawals?|pengeluaran)$/i,
+  credit: /^(kredit|credit|mutasi kredit|(uang |dana )?masuk|deposits?|pemasukan)$/i,
+  amount: /^(mutasi|jumlah|nominal|amount|transaction amount)$/i,
+  balance: /^(saldo|balance|saldo akhir|running balance|ledger balance)$/i,
+  flag: /^(db\/cr|d\/k|dk|cr\/db|db\.?\s*\/\s*cr\.?)$/i,
+  skip: /^(no\.?|#|cabang|branch|journal( no\.?)?|jurnal|teller)$/i,
 };
 /** An amount: optional sign and "Rp"/"IDR" before it ("+1.000.000", "-Rp 2.500", "(2.500)"), a DB/CR marker after. */
-const NUMBER = /^[+-]?\s*(?:(?:Rp\.?|IDR)\s*)?\(?[+-]?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?\)?(?:\s*(DB|CR|DR|D|K|C))?$/i;
+const NUMBER = /^[+-]?\s*(?:(?:Rp\.?|IDR)\s*)?\(?[+-]?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?\)?(?:\s*(DB|CR|DR|D|K|C)\.?)?$/i;
 /** Digits with amount punctuation (a separator, sign, brackets or "Rp") and no word: what a damaged amount looks like. A bare "0998" is a code. */
 const looksLikeAmount = (t: string) => /\d/.test(t) && /[.,+()-]|^(?:Rp|IDR)/i.test(t) && !/[A-Za-z]{3,}/.test(t.replace(/^(?:Rp\.?|IDR)/i, ""));
 /** "Aktivitas Rekening / Account Activities – <name> (<CCY>) <number>" — any separator after the last title word. */
 const SECTION = /.*(?:account activities|aktivitas rekening)[^\p{L}\p{N}]+(.+?)\s*\(([A-Za-z]{3})\)\s*([0-9A-Za-z]{6,})\s*$/iu;
-const OPENING = /saldo\s*awal|opening\s*balance|beginning\s*balance|saldo\s*sebelumnya/i;
-const CLOSING = /saldo\s*akhir|closing\s*balance|ending\s*balance/i;
+/** A pocket of a digital bank account (Bank Jago "Kantong Utama · 100200300400"): its own number, its own table. */
+const POCKET = /^((?:kantong|pocket)\b.*?)\s*[·:–-]\s*(\d{8,})\s*$/iu;
+
+/** The account section a line opens, if any: SMBC-style "Account Activities – <name> (<CCY>) <number>" or a Jago pocket. */
+function sectionOf(line: Line): { label: string; currency: string; number: string } | null {
+  const text = lineText(line);
+  const m = text.match(SECTION);
+  if (m) return { label: m[1].trim(), currency: m[2].toUpperCase(), number: m[3] };
+  const p = text.trim().match(POCKET);
+  return p ? { label: p[1].trim(), currency: "IDR", number: p[2] } : null;
+}
+const OPENING = /saldo\s*awal|opening\s*balance|beginning\s*balance|saldo\s*sebelumnya|previous\s*balance|initial\s*balance|last\s*bal(?:ance)?/i;
+const CLOSING = /saldo\s*akhir|closing\s*balance|ending\s*balance|current\s*balance/i;
 const FOOTER = /^(saldo\s*awal|saldo\s*akhir|mutasi\s*(cr|db|kredit|debet)|total|jumlah|bersambung|halaman|page|opening|closing|ending)\b/i;
 
 export async function parsePdf(data: Buffer, opts: { password?: string } = {}): Promise<ParsedStatement> {
@@ -61,7 +75,7 @@ export async function parsePdfSections(data: Buffer, opts: { password?: string }
   }
   const deposits = depositProducts(lines);
   const withDeposits = (st: ParsedStatement): ParsedStatement => (deposits.length ? { ...st, deposits } : st);
-  const starts = lines.map((l, i) => ({ i, m: lineText(l).match(SECTION) })).filter((x) => x.m);
+  const starts = lines.map((l, i) => ({ i, m: sectionOf(l) })).filter((x) => x.m);
   if (starts.length === 0) return [withDeposits(parseLines(lines))];
   const docText = lines.map(lineText).join("\n");
   const format = detectFormat(lines.slice(0, starts[0].i).map(lineText).join("\n"));
@@ -71,7 +85,7 @@ export async function parsePdfSections(data: Buffer, opts: { password?: string }
     const segment = lines.slice(i + 1, k + 1 < starts.length ? starts[k + 1].i : lines.length);
     if (!segment.some((l) => headerColumns(l))) return; // a section title without a transaction table
     const st = parseLines(segment, { period, format, allowEmpty: true });
-    out.push(withDeposits({ ...st, accountNumber: m![3], section: { label: m![1].trim(), currency: m![2].toUpperCase() } }));
+    out.push(withDeposits({ ...st, accountNumber: m!.number, section: { label: m!.label, currency: m!.currency } }));
   });
   if (!out.length) return [withDeposits(parseLines(lines))];
   return out;
@@ -201,12 +215,17 @@ function headerColumns(line: Line): Column[] | null {
   for (const c of line.cells) {
     // "Debit (IDR)": the currency in brackets after a label isn't part of it.
     const t = c.text.replace(/\s+/g, " ").replace(/\s*\((?:idr|rp\.?|rupiah|[a-z]{3})\)$/i, "").trim();
-    const kind = (Object.keys(HEADER) as ColKind[]).find((k) => HEADER[k].test(t));
+    const kindOf = (x: string) => (Object.keys(HEADER) as ColKind[]).find((k) => HEADER[k].test(x));
+    // A bilingual label ("Nominal/Amount", "Saldo / Balance"): the part a column word names. "DB/CR" is a label of its own.
+    const kind = kindOf(t) ?? t.split(/\s*\/\s*/).map(kindOf).find(Boolean);
     if (kind) cols.push({ kind, x0: c.x0, x1: c.x1 });
   }
   const has = (k: ColKind) => cols.some((c) => c.kind === k);
   const hasMoney = (has("debit") && has("credit")) || has("amount");
-  return has("date") && has("desc") && hasMoney ? cols : null;
+  if (!(has("date") && has("desc") && hasMoney)) return null;
+  // Only columns left of the description are skipped (a row number, branch, journal): one right of it could pull an amount off its column.
+  const desc = cols.find((c) => c.kind === "desc")!;
+  return cols.filter((c) => c.kind !== "skip" || c.x1 <= desc.x0);
 }
 
 function nearest(cols: Column[], cell: Cell, kinds: ColKind[]): Column | null {
@@ -220,20 +239,9 @@ function nearest(cols: Column[], cell: Cell, kinds: ColKind[]): Column | null {
   return best && kinds.includes(best.kind) ? best : null;
 }
 
-/**
- * The bank a statement's heading names. Read only from the preamble (the lines above the first table), never from transactions.
- * Mandiri needs the bank's own names ("Bank Mandiri", Livin', Kopra …) because account holders are so often called "… Mandiri …".
- * Anything else (CIMB, BNI, Permata …) has no code: GENERIC.
- */
+/** The bank a statement's heading names (`lib/banks.ts`), read only from the preamble — never from transactions. GENERIC when none. */
 export function detectFormat(headerText: string): BankCode {
-  // BCA e-statements print their notes letter-spaced ("B C A b e r h a k …"), which loses the word breaks: collapsed, the
-  // capitals "BCA" still stand apart from the lowercase text around them.
-  const collapsed = headerText.replace(/(\p{L}) (?=\p{L}(?: |$))/gmu, "$1");
-  if (/\bSMBC\b|bank smbc indonesia|jenius|\bBTPN\b/i.test(headerText)) return "SMBC";
-  if (/bank\s+mandiri|livin|kopra|mandiri\s+(online|cash|cms|direct)|\bMCM\b/i.test(headerText)) return "MANDIRI";
-  if (/\bBRI\b|bank rakyat|\bbrimo\b/i.test(headerText)) return "BRI";
-  if (/\bBCA\b|bank central asia|klikbca/i.test(headerText) || /(?<![A-Z])BCA(?![A-Z])/.test(collapsed)) return "BCA";
-  return "GENERIC";
+  return detectBank(headerText);
 }
 
 export function periodOf(text: string): { start: Date; end: Date } | null {
@@ -269,8 +277,14 @@ function parseDate(text: string, period: { start: Date; end: Date } | null): Dat
 /** Points between a lead-in description line and the amount line below it (SMBC prints ~3 pt; rows are ≥ 9 pt apart). */
 const LEAD_GAP = 5;
 
-function startsWithDate(line: Line, descCol: Column, period: { start: Date; end: Date } | null): boolean {
-  const first = line.cells[0];
+/** A line's cells without those under a skipped column left of the description (row number, branch, journal). */
+function withoutSkipped(cells: Cell[], cols: Column[], descCol: Column): Cell[] {
+  if (!cols.some((c) => c.kind === "skip")) return [...cells];
+  return cells.filter((c) => !(c.x1 <= descCol.x0 + 1 && nearest(cols, c, ["skip"])));
+}
+
+function startsWithDate(line: Line, cols: Column[], descCol: Column, period: { start: Date; end: Date } | null): boolean {
+  const first = withoutSkipped(line.cells, cols, descCol)[0];
   if (!first || first.x0 >= descCol.x0 - 1) return false;
   const tokens = first.text.split(/\s+/);
   return Boolean(parseDate(tokens.slice(0, 3).join(" "), period) ?? parseDate(tokens[0], period));
@@ -280,7 +294,7 @@ function money(text: string): { value: bigint; flag: "DB" | "CR" | null } {
   const m = text.trim().match(NUMBER)!;
   const f = m[1]?.toUpperCase();
   const flag = f ? (["DB", "DR", "D"].includes(f) ? "DB" : "CR") : null;
-  return { value: parseRupiah(text.replace(/\s*(DB|CR|DR|D|K|C)$/i, "")), flag };
+  return { value: parseRupiah(splitMarker(text).text), flag };
 }
 
 function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | null; format?: BankCode; allowEmpty?: boolean } = {}): ParsedStatement {
@@ -328,7 +342,8 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
       continue;
     }
     const text = lineText(line);
-    const labelled = text.match(/(saldo\s*awal|opening\s*balance|beginning\s*balance|saldo\s*akhir|closing\s*balance|ending\s*balance)\s*:?\s*(?:rp\.?\s*)?([\d.,()-]+)/i);
+    // "Saldo Awal : 1.000", bilingual "Saldo Awal/Initial Balance 1.000", BTN "Last Bal : 1,000.00".
+    const labelled = text.match(/(saldo\s*awal|saldo\s*sebelumnya|opening\s*balance|beginning\s*balance|starting\s*balance|previous\s*balance|initial\s*balance|last\s*bal(?:ance)?|saldo\s*akhir|closing\s*balance|ending\s*balance|current\s*balance)(?:\s*\/\s*[A-Za-z ]+?)?\s*:?\s*(?:rp\.?\s*)?([\d.,()-]*\d[\d.,()-]*)/i);
     if (labelled && !(cols && parseDate(line.cells[0]?.text ?? "", period))) {
       const v = parseRupiah(labelled[2]);
       if (OPENING.test(labelled[1])) opening ??= v;
@@ -341,7 +356,7 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
     const dateCol = cols.find((c) => c.kind === "date")!;
     const descCol = cols.find((c) => c.kind === "desc")!;
     const moneyKinds: ColKind[] = ["debit", "credit", "amount", "balance"];
-    const cells = [...line.cells];
+    const cells = withoutSkipped(line.cells, cols, descCol);
     let date: Date | null = null;
     const first = cells[0];
     if (first && first.x0 < descCol.x0 - 1) {
@@ -350,7 +365,7 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
       const long = parseDate(tokens.slice(0, 3).join(" "), period);
       date = long ?? parseDate(tokens[0], period);
       if (date) {
-        const tail = tokens.slice(long ? 3 : 1).join(" ").replace(/^\d{1,2}[:.]\d{2}(?::\d{2})?\s*/, "");
+        const tail = tokens.slice(long ? 3 : 1).join(" ").replace(/^\d{1,2}[:.]\d{2}(?::\d{2})?\s*(?:WIB|WITA|WIT)?\s*/i, "");
         cells[0] = { ...first, text: tail };
         if (!tail) cells.shift();
       }
@@ -370,8 +385,8 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
           continue;
         }
       }
-      if (/^(DB|CR|DR|D|K)$/i.test(c.text) && c.x0 > descCol.x1) {
-        flag = /^(DB|DR|D)$/i.test(c.text) ? "DB" : "CR";
+      if (/^(DB|CR|DR|D|K|C)\.?$/i.test(c.text) && c.x0 > descCol.x1) {
+        flag = /^(DB|DR|D)\.?$/i.test(c.text) ? "DB" : "CR";
         continue;
       }
       if (c.x0 > descCol.x0 && looksLikeAmount(c.text) && !dateParts(c.text) && nearest(cols, c, moneyKinds)) unreadable ??= c.text;
@@ -403,8 +418,10 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
         current = null;
         continue;
       }
-      const dr = nums.find((n) => n.kind === "debit")?.value ?? 0n;
-      const cr = nums.find((n) => n.kind === "credit")?.value ?? 0n;
+      // The column says the direction: BSI prints debits "- 1,000.00" in the Debit column.
+      const unsigned = (v: bigint | undefined) => (v === undefined ? 0n : v < 0n ? -v : v);
+      const dr = unsigned(nums.find((n) => n.kind === "debit")?.value);
+      const cr = unsigned(nums.find((n) => n.kind === "credit")?.value);
       const amt = nums.find((n) => n.kind === "amount");
       current = {
         date,
@@ -427,7 +444,7 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
 
     // A text line sitting just above the next row's amounts, nearer to it than to the current row, starts that row's description.
     const next = lines[index + 1];
-    if (descParts.length && !nums.length && next && next.page === line.page && !FOOTER.test(text) && startsWithDate(next, descCol, period)) {
+    if (descParts.length && !nums.length && next && next.page === line.page && !FOOTER.test(text) && startsWithDate(next, cols, descCol, period)) {
       const gap = line.y - next.y;
       if (gap >= 0 && gap <= LEAD_GAP && (!current || current.page !== line.page || current.lastY - line.y > gap)) {
         lead.push(descParts.join(" "));
@@ -448,8 +465,10 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
     }
 
     // Continuation of the previous row's description (same page, close below, not a footer).
-    if (current && line.page === current.page && current.lastY - line.y < 30 && !FOOTER.test(text) && descParts.length) {
-      current.parts.push(descParts.join(" "));
+    // A line holding only the row's amount (blu prints it below the date and description) continues it too.
+    const amountOnly = !descParts.length && !!current && !current.moneySeen && nums.some((n) => n.kind !== "balance");
+    if (current && line.page === current.page && current.lastY - line.y < 30 && !FOOTER.test(text) && (descParts.length || amountOnly)) {
+      if (descParts.length) current.parts.push(descParts.join(" "));
       current.description = current.parts.join(" ").replace(/\s+/g, " ").trim();
       current.rawRow += ` / ${line.cells.map((c) => c.text).join(" | ")}`;
       current.lastY = line.y;
@@ -457,7 +476,7 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
       if (current.amount === 0n && nums.length) {
         const amt = nums.find((n) => n.kind === "amount" || n.kind === "credit" || n.kind === "debit");
         if (amt) current.moneySeen = true;
-        if (amt) current.amount = amt.kind === "debit" ? -amt.value : amt.value;
+        if (amt) current.amount = amt.kind === "debit" ? -(amt.value < 0n ? -amt.value : amt.value) : amt.kind === "credit" && amt.value < 0n ? -amt.value : amt.value;
         if (amt?.flag) current.flag = amt.flag;
         current.balance ??= nums.find((n) => n.kind === "balance")?.value ?? null;
       }
