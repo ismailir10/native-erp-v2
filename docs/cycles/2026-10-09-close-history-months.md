@@ -54,7 +54,7 @@ today; only the way the note and sign-offs are given changes (once for the run).
   akuntan refused at the action).
 - [x] T2 Server actions + `components/app/close-history-card.tsx` on the Tutup Buku page — accept: e2e `close-history.spec.ts` (a client
   with three open months closes the first two from the third month's page; Riwayat shows the events); screenshot looked at, desktop + 390 px.
-- [ ] T3 End-of-cycle gates, docs (README *Close* row, accounting-rules 23 line), Ship Notes.
+- [x] T3 End-of-cycle gates, docs (README *Close* row, accounting-rules 23 line), Ship Notes.
 
 ## Implementation
 - Plan: T1–T3 sequential, inline (one domain module, one card, docs; nothing independent enough to delegate).
@@ -74,4 +74,15 @@ today; only the way the note and sign-offs are given changes (once for the run).
 ## Verification
 - T1: lint clean · typecheck clean · `npm test` 194 files, 1312 passed.
 - T2: lint clean · typecheck clean · `npm test` 194 files, 1312 passed · e2e close-history 1 passed.
+- End of cycle: `npm run build` ok · `demo:reset && verify:books` → ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth ·
+  `npm run test:e2e` → 62 passed (6.7m).
+
 ## Ship Notes
+- No migration (`AuditEvent.kind` is a string; new kind `HISTORY_CLOSE`), no env var, no dependency, no AI call.
+- Behaviour: the card appears only on an open month with ≥ 2 open months with activity before it; nothing changes for clients closed
+  month by month (the demo's months are closed in order, so the demo never shows it).
+- Deck: no deck change — the decks say a month closes after the earlier one is locked and after its controls, which stays true; they make
+  no claim about closing history one month at a time.
+- Production check after merge: on a migrated client (e.g. *Chickin Group (uji E2E 8 Okt)*), open Tutup Buku on its latest month → *Periksa*
+  → read the months and groups; close only on the owner's word (it locks real months).
+- Rollback: revert; closed months stay closed (reopen through *Buka kembali*, admin, in reverse order).
