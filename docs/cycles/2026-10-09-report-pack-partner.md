@@ -95,7 +95,7 @@ it prints.
   equal the change in cash); export labels carry no "(1130)".
 - [x] T5 Wording + print (Jumlah …, expense-note signs, `fitToPage`). Accept: the updated tests; the workbook's sheets have
   `fitToPage`.
-- [ ] T6 End-of-cycle gates. Re-download the three packs and look at every page. Ship Notes.
+- [x] T6 End-of-cycle gates. Re-download the three packs and look at every page. Ship Notes.
 
 ## Implementation
 - Plan: T1–T6 sequential, inline (all in `lib/reports/*` and the PDF writer, each building on the last).
@@ -117,7 +117,11 @@ it prints.
   export order, no codes).- T5: `format.ts` (default Neraca totals *Jumlah aset*, *Jumlah liabilitas*, *Jumlah liabilitas dan ekuitas*; saved formats keep their
   labels), `notes.ts` (BEBAN_LAIN / UNMAPPED_EXPENSE notes positive: the Laba Rugi's "other" section nets them negative), `workbook.ts`
   (`PRINT_SETUP`: A4, `fitToPage`, one page wide, on every sheet incl. the directors' statement; the DRAF line wraps across the columns).
-  Tests: `report-final-wording.test.ts` (+1), labels updated in `report-format`, `statements`, `report-pdf` tests.
+  Tests: `report-final-wording.test.ts` (+1), labels updated in `report-format`, `statements`, `report-pdf` tests.- T6: re-downloaded the three packs and looked at every page. CV Sinar July: "1 Maret – 31 Juli 2026" in every statement and the CALK,
+  Neraca against *Saldo awal 28 Februari 2026* with its figures, no DRAF, *Jumlah*. PT Ayam August: DRAF reasons on page 1 only;
+  Arus Kas with *Penyesuaian* / *Perubahan modal kerja* and *Pinjaman kepada pihak berelasi* (197.000.000) under investing. Found while
+  looking: note 9 (heading + paragraph) still ended a page above its table, so `pdf.ts` now keeps a short note whole and a long one's
+  paragraphs with its table header and two rows. Re-checked: note 9 starts on page 6, complete.
 ## Verification
 - T1: lint clean · typecheck clean · `npm test` 195 files, 1311 passed.
 - T2: lint + typecheck clean · report-final-wording, statements, report-pdf: all passed (full suite at T3).
@@ -125,4 +129,14 @@ it prints.
 - T4: lint clean · typecheck clean · `npm test` 197 files, 1314 passed · `demo:reset && verify:books` → ALL PASS — 1765 (a run on the
   e2e-touched demo first showed CV Sinar 6190 off; reset → ALL PASS: data left by the e2e walk, not this change).
 - T5: lint clean · typecheck clean · `npm test` 197 files, 1315 passed.
+- End of cycle: lint clean · typecheck clean · `npm test` 197 files, 1315 passed · `npm run build` ok · `npm run test:e2e` 61 passed
+  (6.5m) · `demo:reset && verify:books` → ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.
+
 ## Ship Notes
+- No migration, no env var, no dependency, no AI call. No figure changes; presentation and period selection only.
+- Visible changes: report headings use full month names ("31 Juli 2026"); a set whose books open with a Saldo Awal inside the year reads
+  from the day after it and compares with the Saldo Awal position (the page did already); the default Neraca says *Jumlah aset* /
+  *Jumlah liabilitas dan ekuitas* (a client's saved *Format laporan* keeps its own labels); the Arus Kas line for 1190 is *Pinjaman
+  kepada / dari pihak berelasi* by the balance's side.
+- Deck: no deck change — fixes to the exported set; the decks claim "Excel dan PDF" and "angka bisa ditelusuri", both unchanged.
+- Rollback: revert; nothing stored changes.

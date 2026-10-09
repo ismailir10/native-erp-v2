@@ -151,10 +151,11 @@ export async function financialStatementsPdf(db: Db, scope: Scope, year: number,
     startPart({ title: "Catatan atas Laporan Keuangan", subtitle: `Per ${asOf} dan untuk periode yang berakhir pada tanggal tersebut`, unit: "Dinyatakan dalam Rupiah" });
     const cell = (c: NoteCell) => (typeof c === "bigint" ? amount(c) : (c ?? ""));
     for (const note of notes.notes) {
-      // The heading stays with what follows it: its first paragraph, or its table's header and two rows.
+      // The heading stays with what follows it: a short note whole; else its paragraphs (up to two) and its table's header and two rows.
       doc.font("Helvetica").fontSize(9);
-      const first = note.paragraphs[0];
-      ensure(18 + (first ? doc.heightOfString(first, { width }) : note.tables.length ? 3 * 14 : 0));
+      const lead = note.paragraphs.slice(0, 2).reduce((t, p) => t + doc.heightOfString(p, { width }) + 4, 0);
+      const rows = note.tables.reduce((t, x) => t + x.rows.length + (x.total ? 1 : 0) + 1, 0);
+      ensure(18 + lead + (rows <= 8 ? rows * 13 + note.tables.length * 8 : note.tables.length ? 3 * 13 : 0));
       doc.font("Helvetica-Bold").fontSize(9.5).fillColor(INK).text(`${note.number}. ${note.title.toUpperCase()}`, M.left, doc.y, { width });
       doc.moveDown(0.3);
       for (const p of note.paragraphs) {
