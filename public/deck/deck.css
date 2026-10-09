@@ -590,3 +590,7 @@ html.flow .inbox { transform: none; }
 /* phone: wide tables scroll sideways, and say so */
 .swipe { display: none; }
 html.flow .swipe { display: block; font-size: 2rem; color: var(--muted); margin-top: 1.2rem; }
+.ctrl a.pdf { display: inline-flex; align-items: center; gap: 0.6rem; height: 4.2rem; padding: 0 1.4rem; border-radius: 0.9rem; background: rgba(255, 255, 255, 0.9); border: 1px solid var(--line-2); color: var(--ink); font-size: 1.45rem; font-weight: 600; text-decoration: none; margin-right: 0.4rem; }
+.ctrl a.pdf svg { width: 1.7rem; height: 1.7rem; }
+.ctrl a.pdf:hover { border-color: var(--blue); color: var(--blue); }
+body.on-dark .ctrl a.pdf { background: rgba(36, 35, 34, 0.9); border-color: var(--dk-line); color: var(--on-dk); }
