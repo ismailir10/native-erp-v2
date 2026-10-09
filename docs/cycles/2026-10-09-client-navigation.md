@@ -24,9 +24,9 @@ Outcome: from any client page, two keystrokes (⌘K, a few letters, Enter) land 
 names its client and its place, and drill pages have a path back up. Works at 390px.
 
 ## Spec
-- [ ] **Client switcher** (`⌘K` / `Ctrl+K` anywhere in the app, plus a visible button): a command palette, built on the vendored
+- [x] **Client switcher** (`⌘K` / `Ctrl+K` anywhere in the app, plus a visible button): a command palette, built on the vendored
   `components/ui/command.tsx`, with search over client and company names (accent- and case-insensitive).
-  - Groups: *Klien* (current first), *Halaman* (the current client's pages, same list and order as the sidebar, modules included),
+  - Groups: *Klien* (the open client last, so Enter always goes to another one), *Halaman* (the current client's pages, same list and order as the sidebar, modules included),
     *Lainnya* (Beranda, Tambah klien).
   - **Choosing a client keeps the page.** On `/clients/A/trial-balance` it goes to `/clients/B/trial-balance`. Rules, in one tested
     pure function (`lib/nav.ts`): the top-level section is kept (`tax/masa` and `journals/new` count as sections; only pages in the client menu, Kurs, Pengaturan klien and Riwayat count);
@@ -38,22 +38,22 @@ names its client and its place, and drill pages have a path back up. Works at 39
     already treats it); scoped to *Semua klien* → B's Ringkasan.
   - Only pages in the client menu carry over (plus Kurs, Pengaturan klien, Riwayat); anything else goes to Ringkasan.
   - Keyboard only is enough: ↑↓ Enter Esc, focus returns to where it was.
-- [ ] **Client context bar on every client page** (`app/(app)/clients/[id]/layout.tsx`): `Semua klien › PT Contoh ▾ › Neraca Saldo`. *Semua klien* goes back to Beranda
-  (just a home icon at 390px), the name is the switcher trigger, so it works on a phone. A drill page shows its section as a link (`Buku Besar › …`), which is the way up. Landmark
+- [x] **Client context bar on every client page** (`app/(app)/clients/[id]/layout.tsx`): `Semua klien › PT Contoh ▾ › Neraca Saldo`. *Semua klien* goes back to Beranda
+  (just a home icon at 390px), the name is the switcher trigger, so it works on a phone. A page *under* a section (an account, an asset, an imported file) shows the section as a link, which is the way up; a section's own page doesn't repeat its title. Landmark
   `nav aria-label="Posisi"`; the last crumb has `aria-current="page"`.
-- [ ] **Sidebar says which scope each item is in:**
+- [x] **Sidebar says which scope each item is in:**
   - The firm-wide items sit under a *Semua klien* label (Beranda, Dokumen, Laporan), so *Laporan* there can't be mistaken for the
     client's *3 · Laporan*. The footer *Pengaturan* becomes *Pengaturan kantor* (page title too: "Berlaku untuk semua klien di kantor ini").
   - With a client open, the client is a **switcher block** at the head of its section: building icon tile, name (full name on hover),
     "Ganti klien ⌘K" and an up-down chevron. It reads as a control, not a label. With no client open, a *Cari klien* ⌘K button opens
     the same palette.
   - The existing *Daftar klien (N)* list and *Tambah klien* stay as they are. Active items get `aria-current="page"`.
-- [ ] **Recent clients:** the switcher lists the last 5 clients opened first (per browser, `localStorage` in try/catch). It renders
+- [x] **Recent clients:** with more than six clients, the switcher lists the last 5 opened first (moved out of the main list, not repeated) (per browser, `localStorage` in try/catch). It renders
   correctly without it.
-- [ ] **Show each fact once:** with the context bar naming the client, the `${client.name} · ` prefix is dropped from client page
+- [x] **Show each fact once:** with the context bar naming the client, the `${client.name} · ` prefix is dropped from client page
   descriptions (they keep entity, period and what the page is). The Ringkasan title stays the client name.
-- [ ] 390px: no horizontal scroll, the bar truncates a long name and the palette fits the screen.
-- [ ] No schema change, no new dependency (`cmdk` is already installed), no AI.
+- [x] 390px: no horizontal scroll, the bar truncates a long name and the palette fits the screen.
+- [x] No schema change, no new dependency (`cmdk` is already installed), no AI.
 
 **Non-goals:** a firm-wide search across transactions, journals or accounts; unread/blocker counts on sidebar items; changing the
 page order or the three-stage spine (ADR 0014); redesigning the Beranda scope select; entity switching (the `ScopeBar` stays);
@@ -70,19 +70,48 @@ persisting anything on the server.
 5. The e2e specs that click *Daftar klien (N)* keep working, since that button stays.
 
 ## Tasks
-- [ ] T0 Sidebar scope labels: *Semua klien* group, *Pengaturan kantor*. Accept: `workspace.spec` selectors still match.
-- [ ] T1 `lib/nav.ts`: nav items shared by sidebar and palette, `switchClientHref`, `sectionOf`, recents helper + unit tests.
+- [x] T0 Sidebar scope labels: *Semua klien* group, *Pengaturan kantor*. Accept: `workspace.spec` selectors still match.
+- [x] T1 `lib/nav.ts`: nav items shared by sidebar and palette, `switchClientHref`, `sectionOf`, recents helper + unit tests.
   Accept: `tests/unit/nav.test.ts` covers section kept, detail falls back, hidden module falls back, period kept, entity reset,
   `tax/masa`, Beranda target, recents dedupe/cap/garbage-in.
-- [ ] T2 `ClientSwitcher` palette + `⌘K`, mounted once in the app layout; sidebar trigger and `aria-current`. Depends on T1.
+- [x] T2 `ClientSwitcher` palette + `⌘K`, mounted once in the app layout; sidebar trigger and `aria-current`. Depends on T1.
   Accept: lint/typecheck; opens, filters, navigates (checked in a browser).
-- [ ] T3 Client layout with the context bar (name as trigger, section crumb, way up from drill pages). Depends on T1, T2.
+- [x] T3 Client layout with the context bar (name as trigger, section crumb, way up from drill pages). Depends on T1, T2.
   Accept: every client route shows it; 404 for another firm's client unchanged.
-- [ ] T4 Drop the `client.name · ` prefix from client page descriptions; fix any text asserted by tests/e2e. Accept: grep clean.
-- [ ] T5 e2e: switch client keeps the page (desktop and 390px), keyboard path. Depends on T2, T3. Accept: spec passes.
-- [ ] T6 Browser review at 1440 and 390 px, fix what looks wrong, repeat until clean; gates (lint, typecheck, test, build,
+- [x] T4 Drop the `client.name · ` prefix from client page descriptions; fix any text asserted by tests/e2e. Accept: grep clean.
+- [x] T5 e2e: switch client keeps the page (desktop and 390px), keyboard path. Depends on T2, T3. Accept: spec passes.
+- [x] T6 Browser review at 1440 and 390 px, fix what looks wrong, repeat until clean; gates (lint, typecheck, test, build,
   verify:books, e2e). Accept: all pass.
 
 ## Implementation
+- T0/T2 sidebar (`components/app/app-sidebar.tsx`): firm-wide items under a *Semua klien* label, footer *Pengaturan kantor* (page title too),
+  the open client is a switcher block (icon tile, name, "Ganti klien Ctrl K"), a *Cari klien* row when none is open, `aria-current` on
+  active items. The menu data moved to `lib/nav.ts`; the sidebar only adds icons. *Daftar klien (N)* and *Tambah klien* are unchanged.
+- T1 `lib/nav.ts` (pure, `tests/unit/nav.test.ts`): `clientStages`/`clientSections`, `sectionOf`, `switchTarget`, `resolveScope` (the
+  sidebar's scope logic, now shared), `searchScore`, recents helpers, `upQuery`.
+- T2 `components/app/client-switcher.tsx`: provider mounted once in the app layout; palette on the vendored `cmdk` command dialog; ⌘/Ctrl+K.
+  Each client row says where it lands ("Neraca Saldo", "Sekarang"); a company name finds its client; *Halaman* lists the open client's menu.
+- T3 `components/app/client-bar.tsx` in the app layout (outside `template.tsx`, so it doesn't re-animate): `Semua klien › Klien ▾`, plus the
+  section as a link when the page is under it. No client layout and no query: the names come from the layout's client list.
+- T4 `client.name · ` dropped from 11 descriptions. The five in-page "back" links on drill pages are gone (the bar is the one way up);
+  an imported ledger file goes up to `?tab=ledger`.
+- Changed while reviewing in a browser (1440 and 390 px):
+  - the bar doesn't repeat the section on the section's own page (it duplicated the title);
+  - the open client sorts **last** in the palette, so the highlighted row and Enter are always another client;
+  - recents only show for more than six clients and move out of the main list rather than repeating there;
+  - the sidebar block is compact so *Daftar klien* stays on screen at 900px.
 ## Verification
+- `npm run lint` and `npm run typecheck`: exit 0. `npm test`: 204 files, 1376 tests passed (19 new in `tests/unit/nav.test.ts`).
+- `npm run build` exit 0; `npm run verify:books` → `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.`
+- `npx playwright test` (production build, local Supabase Auth): 69 passed, including the five in `e2e/client-navigation.spec.ts`.
+- Seen in a browser at 1440 and 390 px (local stack): switch keeps page and period (Neraca Saldo, Review, `/reports?scope=client:…`),
+  a drill page and its way up, empty search, a company name finds its client, Esc returns focus to the trigger, Beranda opens Ringkasan,
+  the sidebar sheet on a phone, no horizontal scroll. Not seen: a firm with more than six clients (recents) beyond the unit tests.
 ## Ship Notes
+- No migration, no new dependency, no AI. `localStorage` key `buku:recent-clients` (client ids only, per browser).
+- The in-page "back" links on five drill pages were removed; the bar's section link is the one way up (an imported ledger file still
+  returns to the *Buku besar* tab of Impor). e2e that clicked *Kembali ke Impor Mutasi* now uses the bar.
+- Settings page title is now *Pengaturan kantor* (it was *Pengaturan*), matching the sidebar.
+- Left alone on purpose: Beranda, Dokumen and Laporan still pick a client with their header select (it filters that page); the palette
+  is the way to *open* a client.
+- Rollback: revert; nothing is stored server-side.
