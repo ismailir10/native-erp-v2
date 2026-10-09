@@ -26,7 +26,7 @@ On 2026-10-09 two accountant-style runs in production (upload → Saldo Awal →
 - [x] **A3** Saldo Awal amount fields tidy on blur like Jurnal Penyesuaian ("800000000" → "800.000.000"); unreadable text is left for its
   error message.
 - [x] **A4** Neraca Saldo shows *Perlu dicek* on 1999 only while it holds a balance (net ≠ 0), in both views.
-- [ ] **A5** The budget error says what it is and who changes it: the monthly AI token limit, set by whoever runs the deployment
+- [x] **A5** The budget error says what it is and who changes it: the monthly AI token limit, set by whoever runs the deployment
   (`AI_MONTHLY_TOKEN_BUDGET`); Pengaturan shows this month's use next to the limit so the number is visible before it runs out.
 
 **Non-goals:** making the AI budget editable in Pengaturan (it's a deployment cap by design, ADR-level change); changing the AI prompt or
@@ -43,7 +43,7 @@ model; changing how 1999 is used.
   no receivable → AI 1130 suggestion stored at ≤ 0.55 with the reason; with an opening receivable → unchanged.
 - [x] T2 A2 + A3 + A4 (UI) — accept: e2e delete-client lands on Beranda; opening-form tidy on blur (e2e or component test); TB 1999 badge
   only with a balance (db/page test).
-- [ ] T3 A5 budget message + monthly use in Pengaturan — accept: unit test of the message; Pengaturan shows "x dari y token bulan ini".
+- [x] T3 A5 budget message + monthly use in Pengaturan — accept: unit test of the message; Pengaturan shows "x dari y token bulan ini".
 - [ ] T4 End-of-cycle gates, Ship Notes; verify in production (Kopi Uji (hapus): run *Minta saran AI*/re-import check, delete-client).
 
 ## Implementation
@@ -56,8 +56,12 @@ model; changing how 1999 is used.
   layout; a hard `window.location` load is refused by the Next lint rule), `components/app/opening-form.tsx` (`tidy` on blur for bank, other
   and Saldo Laba amounts, negatives keep their sign, unreadable text stays), `trial-balance/page.tsx` (*Perlu dicek* on 1999 / suspense only
   with a balance, both views). Tests: `e2e/opening-tidy.spec.ts` (new), `e2e/delete-client.spec.ts` (existing, lands on Beranda).
+- T3: `lib/ai/budget.ts` (`spentThisMonth` shared by the reservation and the new `monthlyAiUse`; `budgetExceededMessage`: used, needed,
+  limit and who raises it — no longer "ubah batas di Pengaturan"), `app/(app)/settings/page.tsx` + `ai-settings-form.tsx` ("bulan ini terpakai
+  x dari y token (batas diatur pengelola aplikasi)"). Tests: `tests/unit/ai-budget-message.test.ts`, `e2e/ocr-scan.spec.ts` (usage line).
 
 ## Verification
 - T1: lint clean · typecheck clean · `npm test` 192 files, 1303 passed · `demo:reset && verify:books` → ALL PASS — 1765 pemeriksaan.- T2: lint clean · typecheck clean · `npm test` 192 files, 1303 passed · e2e opening-tidy, delete-client, real-client, opening-deposit: 4 passed.
+- T3: lint clean · typecheck clean · `npm test` 193 files · e2e ocr-scan 1 passed.
 
 ## Ship Notes

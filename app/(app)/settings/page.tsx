@@ -2,6 +2,7 @@ import { requireWorkspaceSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { resolveAiConfig } from "@/lib/settings/ai";
+import { monthlyAiUse } from "@/lib/ai/budget";
 import { settingsSecretConfigured } from "@/lib/settings/secret";
 import { PageHeader, NextStep } from "@/components/app/page-header";
 import { AiSettingsForm } from "@/components/app/ai-settings-form";
@@ -45,6 +46,7 @@ export default async function SettingsPage() {
           gatewayHost: new URL(cfg.baseUrl).host,
           maxCallsPerImport: cfg.maxCallsPerImport,
           monthlyTokenBudget: cfg.monthlyTokenBudget,
+          monthlyTokensUsed: (await monthlyAiUse(prisma, firm.id)).spent,
           lastCall: lastCall && { at: formatDateTime(lastCall.at), ok: lastCall.ok, model: lastCall.model, note: lastCall.note },
         }}
         canSave={isAdmin && secretReady}

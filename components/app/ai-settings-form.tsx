@@ -20,6 +20,8 @@ type Status = {
   gatewayHost: string;
   maxCallsPerImport: number;
   monthlyTokenBudget: number;
+  /** Tokens used this calendar month (logged + reserved). */
+  monthlyTokensUsed: number;
   /** Most recent real AI call, the only proof the key works (the model list is public). */
   lastCall: { at: string; ok: boolean; model: string; note: string | null } | null;
 };
@@ -51,8 +53,9 @@ export function AiSettingsForm({ status, canSave }: { status: Status; canSave: b
       <CardHeader>
         <CardTitle>AI untuk usulan akun</CardTitle>
         <CardDescription>
-          Dipakai hanya untuk mutasi yang belum dikenali aturan atau memori. Maks. {status.maxCallsPerImport} panggilan per impor,{" "}
-          {status.monthlyTokenBudget.toLocaleString("id-ID")} token per bulan. Tanpa kunci, Buku tetap jalan dengan aturan saja.
+          Dipakai hanya untuk mutasi yang belum dikenali aturan atau memori. Maks. {status.maxCallsPerImport} panggilan per impor; bulan ini terpakai{" "}
+          <span data-testid="ai-monthly-use">{status.monthlyTokensUsed.toLocaleString("id-ID")} dari {status.monthlyTokenBudget.toLocaleString("id-ID")} token</span>{" "}
+          (batas diatur pengelola aplikasi). Tanpa kunci, Buku tetap jalan dengan aturan saja.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
