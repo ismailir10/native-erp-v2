@@ -108,7 +108,7 @@ grows — re-checked with `verify:books`).
   picker) — accept: new client with a BNI and a Jago account saves; db test on onboarding; migration applies on a fresh DB.
 - [x] T2 Detection from the registry — `detectFormat` → registry; tabular/PDF tag every bank; transfer matcher words from the registry
   — accept: guard tests (company names) + one tag test per bank; `verify:books` ALL PASS.
-- [ ] T3 Tabular direction-in-cell + KlikBCA current/Individual CSV (depends T2) — accept: `bca-bisnis-2026.csv`,
+- [x] T3 Tabular direction-in-cell + KlikBCA current/Individual CSV (depends T2) — accept: `bca-bisnis-2026.csv`,
   `bca-individual.csv`, `mandiri-savings-dsuffix.csv`, trailing-minus fixture → `expectAugust`; old KlikBCA test unchanged.
 - [ ] T4 Tabular header/label synonyms + layouts: BRI QLola, BNIDirect, CIMB, Permata, Danamon, OCBC, MCM/Kopra CSV/XLSX — accept: one
   fixture each → `expectAugust` + right bank.
@@ -135,9 +135,16 @@ grows — re-checked with `verify:books`).
   `lib/classify/transfer.ts` (bank words = BANK/GIRO/TABUNGAN + the registry's words: a superset of the old list, adds BLU, OCTO, NISP,
   SINARMAS, DIGIBANK, CITI(BANK), DKI, JAKONE, BJB, JATIM). Tests: `tests/unit/bank-detect.test.ts` (a heading per bank, company-name
   guards, blu vs BCA, BSI vs Mandiri, BIC); `bank-parsers.test.ts` CIMB preamble now CIMB (was GENERIC: no code then) + a Permata guard.
+- T3: `parsers/common.ts` (`splitMarker`: CR/DB/DR/D/K/C with or without a dot or space, a trailing minus), `parsers/tabular.ts` (an amount
+  column's marker sets the sign, with a note; a balance marked DB is below zero; `Db.`/`Cr.` flag values), `parsers/bca.ts` (KlikBCA Bisnis
+  reads full dates and the direction inside the amount as well as the old `'DD/MM` + DB/CR column; new `parseBcaIndividual` for KlikBCA
+  Individual: `=` metadata, descriptions with commas read from both ends, Starting/Ending Balance), `parsers/index.ts` (routing).
+  Tests: `tests/bank-layouts.ts` (the layout catalog) + `tests/unit/bank-layouts.test.ts`, `bank-parsers.test.ts` (5 marker styles, note,
+  overdrawn balance, Db./Cr. column), `split-marker.test.ts`.
 
 ## Verification
 - T1: `npm run lint` 0 errors (1 existing warning in `public/deck/deck.js`) · typecheck clean · `npm test` 185 files, 1218 passed.- T2: `npm test` 186 files, 1224 passed · `npm run demo:reset && npm run verify:books` → ALL PASS — 1765 pemeriksaan saldo cocok
   (before the reseed the local DB was stale from earlier sessions and showed 4 CV Sinar Retail differences; the reseed runs the new code).
+- T3: `npm test` 188 files, 1235 passed; lint 0 errors; typecheck clean.
 
 ## Ship Notes

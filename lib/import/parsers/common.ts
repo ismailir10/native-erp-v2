@@ -173,6 +173,26 @@ export function openingFromBalances(rows: ParsedRow[]): bigint | null {
   return null;
 }
 
+/** A direction printed after an amount: "1,000.00 CR", "5.500,00 D", "250.000 Db.", "1.000,00 K". */
+const MARKER = /\s*\(?(?<![A-Za-z])(CR|DB|DR|D|K|C)\.?\)?\s*$/i;
+
+/**
+ * An amount cell that may carry its direction (KlikBCA Bisnis "3,528,964.00 CR", Mandiri savings "5,500.00 D", a trailing minus
+ * "1.000.000-"): the unsigned text to parse, and the direction it states — "DB" money out, "CR" money in, null when it states none.
+ * Text without a digit is returned as is (no marker taken from a word).
+ */
+export function splitMarker(text: string): { text: string; flag: "DB" | "CR" | null } {
+  const t = text.trim();
+  if (!/\d/.test(t)) return { text: t, flag: null };
+  const m = t.match(MARKER);
+  if (m && /\d/.test(t.slice(0, m.index))) {
+    const f = m[1].toUpperCase();
+    return { text: t.slice(0, m.index).trim(), flag: f === "DB" || f === "DR" || f === "D" ? "DB" : "CR" };
+  }
+  if (/^[\d.,\s]+-$/.test(t)) return { text: t.slice(0, -1).trim(), flag: "DB" };
+  return { text: t, flag: null };
+}
+
 /**
  * Amounts are whole Rupiah (accounting-rules §6a: sen round half-up per line), but a statement that prints sen must say so: the
  * running balance can then differ by a few Rupiah from the file's. Collects every value with a non-zero fraction.
@@ -182,7 +202,7 @@ export class SenWatch {
   check(text: string | undefined, row: number) {
     if (!text) return;
     try {
-      if (parseCents(text.replace(/\s*(DB|CR|DR|D|K|C)$/i, "")) % 100n !== 0n && !this.hits.some((h) => h.row === row && h.text === text.trim())) this.hits.push({ row, text: text.trim() });
+      if (parseCents(splitMarker(text).text) % 100n !== 0n && !this.hits.some((h) => h.row === row && h.text === text.trim())) this.hits.push({ row, text: text.trim() });
     } catch {
       // not a number: the amount reader reports it
     }

@@ -1,6 +1,6 @@
 import { ParseError, ScanError, YearNeededError, type ParsedStatement } from "@/lib/import/types";
 import { sniffImageFile } from "@/lib/ocr/pages";
-import { isBcaCsv, parseBca } from "@/lib/import/parsers/bca";
+import { isBcaCsv, isBcaIndividualCsv, parseBca, parseBcaIndividual } from "@/lib/import/parsers/bca";
 import { isBriCsv, parseBri } from "@/lib/import/parsers/bri";
 import { parseTabular, parseWorkbook, xlsxToSheets } from "@/lib/import/parsers/tabular";
 import { decodeText, detectDelimiter, readCsv } from "@/lib/import/parsers/common";
@@ -55,7 +55,7 @@ async function parseAny(fileName: string, data: Buffer, opts: ParseOptions): Pro
     void _verdict;
     return [st];
   };
-  const specific = isBcaCsv(text) ? () => [parseBca(text)] : isBriCsv(text) ? () => [parseBri(text)] : null;
+  const specific = isBcaCsv(text) ? () => [parseBca(text)] : isBcaIndividualCsv(text) ? () => [parseBcaIndividual(text)] : isBriCsv(text) ? () => [parseBri(text)] : null;
   if (!specific) return generic();
   try {
     return specific();

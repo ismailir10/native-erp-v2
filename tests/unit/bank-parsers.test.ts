@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseStatement, parseStatementSections } from "@/lib/import/parsers";
 import { makePdf, table } from "../pdf-fixture";
 import { checkContinuity } from "@/lib/import/normalize";
-import { BAL, TX, bniDirectCsv, bniDirectXlsx, bniMobileXlsx, xlsxBuffer, briInternetBankingCsv, cimbPdf, idn, mandiriLivinPdf, mandiriLivinXlsx, serialDateXlsx, cimbOctoCsv, expectAugust, p2, permataCsv, titleWithCommasSemicolonCsv, utf16TabCsv } from "../bank-fixture";
+import { BAL, TX, en, bniDirectCsv, bniDirectXlsx, bniMobileXlsx, xlsxBuffer, briInternetBankingCsv, cimbPdf, idn, mandiriLivinPdf, mandiriLivinXlsx, serialDateXlsx, cimbOctoCsv, expectAugust, p2, permataCsv, titleWithCommasSemicolonCsv, utf16TabCsv } from "../bank-fixture";
 
 describe("routing: bank CSVs that borrow BCA's words", () => {
   it("reads a BRI internet-banking CSV titled 'Mutasi Rekening' with a 'Tanggal Transaksi' header", async () => {
@@ -279,5 +279,39 @@ describe("the bank is tagged from the statement's own words, not its transaction
     ]);
     const [st] = await parseStatementSections("x.pdf", pdf);
     expect(st.format).toBe("MANDIRI");
+  });
+});
+
+describe("amounts that carry their direction", () => {
+  const rows = (cell: (amt: number) => string, balance: (b: number) => string = (b) => en(b)) =>
+    Buffer.from(["Tanggal,Keterangan,Jumlah,Saldo", ...TX.map((t, i) => `${p2(t.d)}/08/2026,${q(t.desc[0])},${q(cell(t.amt))},${q(balance(BAL[i]))}`)].join("\n"));
+  const q = (s: string) => `"${s}"`;
+
+  it.each([
+    ["CR / DB suffix", (a: number) => `${en(a)} ${a < 0 ? "DB" : "CR"}`],
+    ["D suffix on debits only (Mandiri savings)", (a: number) => `${en(a)}${a < 0 ? " D" : ""}`],
+    ["Db. / Cr. with a dot", (a: number) => `${idn(a)} ${a < 0 ? "Db." : "Cr."}`],
+    ["K / D (BNI)", (a: number) => `${idn(a)} ${a < 0 ? "D" : "K"}`],
+    ["trailing minus", (a: number) => `${idn(a)}${a < 0 ? "-" : ""}`],
+  ])("%s", async (_name, cell) => {
+    const st = await parseStatement("x.csv", rows(cell));
+    expectAugust(st);
+  });
+
+  it("says the direction was read from the amount's marker", async () => {
+    const st = await parseStatement("x.csv", rows((a) => `${en(a)} ${a < 0 ? "DB" : "CR"}`));
+    expect(st.notes?.some((n) => n.includes("Arah uang dibaca dari tanda"))).toBe(true);
+  });
+
+  it("reads a balance marked DB as overdrawn (below zero)", async () => {
+    const csv = ["Tanggal,Keterangan,Jumlah,Saldo", `01/08/2026,"TARIK",${q("1,500.00 DB")},${q("500.00 DB")}`, `02/08/2026,"SETOR",${q("2,000.00 CR")},${q("1,500.00 CR")}`].join("\n");
+    const st = await parseStatement("x.csv", Buffer.from(csv));
+    expect(st.rows.map((r) => [r.amount, r.balance])).toEqual([[-1500n, -500n], [2000n, 1500n]]);
+    expect(st.openingBalance).toBe(1000n);
+  });
+
+  it("reads a Db./Cr. flag column", async () => {
+    const csv = ["Tanggal,Keterangan,Jumlah,Tipe,Saldo", ...TX.map((t, i) => `${p2(t.d)}/08/2026,${q(t.desc[0])},${q(en(t.amt))},${t.amt < 0 ? "Db." : "Cr."},${q(en(BAL[i]))}`)].join("\n");
+    expectAugust(await parseStatement("x.csv", Buffer.from(csv)));
   });
 });

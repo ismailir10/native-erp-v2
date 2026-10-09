@@ -1,0 +1,14 @@
+import { describe, expect, it } from "vitest";
+import { parseStatementSections } from "@/lib/import/parsers";
+import { expectAugust } from "../bank-fixture";
+import { LAYOUTS } from "../bank-layouts";
+
+describe("every bank layout Buku claims reads to the same five August rows, tagged with its bank", () => {
+  it.each(LAYOUTS.map((l) => [l.bank, l.format, l]))("%s · %s", async (_bank, _format, layout) => {
+    const sections = await parseStatementSections(layout.file, await layout.build());
+    for (const st of sections) {
+      expect(st.format).toBe(layout.bank);
+      expectAugust(st);
+    }
+  });
+});
