@@ -66,7 +66,7 @@ rows were read. No new dependency, no AI credit, no accounting-invariant change 
 - [x] T2 Mapped reader (`lib/import/mapped.ts`): mapping → `ParsedStatement` (dates with guessed/overridden order, joined descriptions,
   Debet+Kredit / Jumlah+sign/marker/column, Saldo, continuation and empty rows) — accept: unit tests per amount style and date order;
   a fixture's rows chain NYAMBUNG.
-- [ ] T3 Schema + draft (migration `StatementLayout`, `OcrDraft.source`; `createMappedDraft` in `lib/ocr/draft.ts` reusing `proveRows` and
+- [x] T3 Schema + draft (migration `StatementLayout`, `OcrDraft.source`; `createMappedDraft` in `lib/ocr/draft.ts` reusing `proveRows` and
   `importOcrDraft`; layout saved on import) — accept: db test: unknown CSV → draft proves → import → layout stored; AI off works.
 - [ ] T4 Remembered layouts in `parseStatementSections` + *Lupakan pemetaan ini* — accept: db test: same-signature file imports directly
   with the note; another firm's layout never applies; forgetting deletes only the layout.
@@ -91,7 +91,14 @@ rows were read. No new dependency, no AI credit, no accounting-invariant change 
   `suggestMapping`: date column = most dates, numbers = digit columns that aren't written dates, balance = the right-most, a D/K column,
   every other text column joined as the description). Test: `tests/unit/statement-mapped.test.ts`. Checked locally (not committed)
   on the real BCA PDF in `data/private/`: the suggested mapping plus the year reads 31 rows and the running balance chains.
+- T3: migration `20261009150000_statement_layouts` (`StatementLayout` unique per firm + signature; `OcrDraft.source` default `OCR`);
+  `lib/ocr/draft.ts` `createMappedDraft` (bank account checked for the firm and client, grid and rows from the uploaded bytes, opening
+  from the file, no AI and no workspace switch) and `importOcrDraft` (file name "(pemetaan kolom)", its own note, the layout upserted
+  once the draft is imported: the mapping less sheet, first row and year); `draftCsv` keeps an unprinted balance empty; `proveRows`
+  `chained` for mapped drafts only (BCA prints a balance per day: a stretch is proved by the next printed balance, or breaks with it).
+  `accounting-rules` 16c. Test: `tests/db/mapped-draft.test.ts`.
 ## Verification
 - T1: lint clean · typecheck clean · `npm test` 200 files, 1329 passed.
 - T2: lint clean · typecheck clean · `npm test` 201 files, 1341 passed.
+- T3: lint clean · typecheck clean · `npm test` 202 files, 1346 passed.
 ## Ship Notes

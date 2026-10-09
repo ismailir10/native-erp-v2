@@ -367,6 +367,12 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     balance, with the printed opening (else the account's last imported closing, checked on the server) and closing; anything else is
     *perlu dicek* for the accountant to fix. Import needs every row proved and goes through `importStatement` as a CSV of the proved rows,
     so every rule here (repair, continuity, dedupe, classification, Review) applies unchanged.
+16c. **Atur kolom** (`lib/import/grid.ts`, `mapped.ts`, `createMappedDraft`): a text file the readers refuse is read with the accountant's
+    column mapping — no AI. The grid and the rows are built on the server from the uploaded bytes (never from cells the browser sends); Saldo
+    is required. The rows go to the same *Periksa baris* draft and proof as a scan, except that a row without a printed balance (a bank that
+    prints one per day) is proved by the next printed balance, and breaks with it (`proveRows` `chained`; scans stay strict). On import the
+    mapping is remembered for the firm under its header's signature (`StatementLayout`); a later file whose readers fail and whose header
+    matches is read with it inside `parseStatementSections` and goes through the import's continuity check like any file.
 17. LLM runs **outside** DB transactions, only for leftovers, **one request per unique merchant key + direction**,
     batched (≤40/call), cached in `AiSuggestion` with firm/client isolation (key implementation: `lib/ai/classify.ts`).
     Account mapping (rule 9a) follows the same discipline: names + type hints only (no amounts, no descriptions), ≤40 per call,
