@@ -89,6 +89,13 @@ export function OpeningForm({
   };
   const hasCapital = !company || others.some((l) => l.accountCode.startsWith("31"));
   const setOther = (i: number, patch: Partial<Line>) => setOthers((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
+  // A readable amount reads back formatted when the field is left ("800000000" → "800.000.000"), like Jurnal Penyesuaian; unreadable text
+  // stays as typed for its message.
+  const tidy = (text: string) => {
+    const r = read(text, currency);
+    if (r.error || r.value === 0n) return text;
+    return r.value < 0n ? `-${formatMoney(-r.value, currency, { bare: true })}` : formatMoney(r.value, currency, { bare: true });
+  };
 
   async function submit() {
     setBusy(true);
@@ -150,6 +157,7 @@ export function OpeningForm({
                     className="num text-right"
                     value={bankBalances[i]}
                     onChange={(e) => setBankBalances((vs) => vs.map((v, j) => (j === i ? e.target.value : v)))}
+                    onBlur={() => setBankBalances((vs) => vs.map((v, j) => (j === i ? tidy(v) : v)))}
                     placeholder={`Saldo di bank, mis. ${moneyExample(currency)}`}
                   />
                   {b.isOverdraft && <p className="mt-1 text-right text-xs text-muted-foreground">Negatif = utang ke bank (PRK), dicatat di kredit.</p>}
@@ -165,8 +173,8 @@ export function OpeningForm({
                     <SelectContent>{accounts.map((a) => <SelectItem key={a.code} value={a.code}>{a.code} {a.name}</SelectItem>)}</SelectContent>
                   </Select>
                 </TableCell>
-                <TableCell className="p-2"><Input aria-label="Debit" aria-invalid={!!otherParsed[i].debit.error || undefined} inputMode="decimal" className="num text-right" value={l.debit} onChange={(e) => setOther(i, { debit: e.target.value, credit: e.target.value ? "" : l.credit })} placeholder={formatMoney(0n, currency, { bare: true })} /></TableCell>
-                <TableCell className="p-2"><Input aria-label="Kredit" aria-invalid={!!otherParsed[i].credit.error || undefined} inputMode="decimal" className="num text-right" value={l.credit} onChange={(e) => setOther(i, { credit: e.target.value, debit: e.target.value ? "" : l.debit })} placeholder={formatMoney(0n, currency, { bare: true })} /></TableCell>
+                <TableCell className="p-2"><Input aria-label="Debit" aria-invalid={!!otherParsed[i].debit.error || undefined} inputMode="decimal" className="num text-right" value={l.debit} onBlur={() => setOther(i, { debit: tidy(l.debit) })} onChange={(e) => setOther(i, { debit: e.target.value, credit: e.target.value ? "" : l.credit })} placeholder={formatMoney(0n, currency, { bare: true })} /></TableCell>
+                <TableCell className="p-2"><Input aria-label="Kredit" aria-invalid={!!otherParsed[i].credit.error || undefined} inputMode="decimal" className="num text-right" value={l.credit} onBlur={() => setOther(i, { credit: tidy(l.credit) })} onChange={(e) => setOther(i, { credit: e.target.value, debit: e.target.value ? "" : l.debit })} placeholder={formatMoney(0n, currency, { bare: true })} /></TableCell>
                 <TableCell className="p-2"><Button variant="ghost" size="icon-sm" aria-label="Hapus baris" onClick={() => setOthers((ls) => ls.filter((_, j) => j !== i))}><Trash2 /></Button></TableCell>
               </TableRow>
             ))}
@@ -175,8 +183,8 @@ export function OpeningForm({
                 <div className="font-medium">{RETAINED} Saldo Laba</div>
                 <div className="text-xs text-muted-foreground">Dari neraca klien per tanggal di atas.</div>
               </TableCell>
-              <TableCell className="p-2"><Input aria-label="Saldo Laba debit" aria-invalid={!!retainedParsed.debit.error || undefined} inputMode="decimal" className="num text-right" value={retained.debit} onChange={(e) => setRetained({ debit: e.target.value, credit: e.target.value ? "" : retained.credit })} placeholder={formatMoney(0n, currency, { bare: true })} /></TableCell>
-              <TableCell className="p-2"><Input aria-label="Saldo Laba kredit" aria-invalid={!!retainedParsed.credit.error || undefined} inputMode="decimal" className="num text-right" value={retained.credit} onChange={(e) => setRetained({ credit: e.target.value, debit: e.target.value ? "" : retained.debit })} placeholder={formatMoney(0n, currency, { bare: true })} /></TableCell>
+              <TableCell className="p-2"><Input aria-label="Saldo Laba debit" aria-invalid={!!retainedParsed.debit.error || undefined} inputMode="decimal" className="num text-right" value={retained.debit} onBlur={() => setRetained((r) => ({ ...r, debit: tidy(r.debit) }))} onChange={(e) => setRetained({ debit: e.target.value, credit: e.target.value ? "" : retained.credit })} placeholder={formatMoney(0n, currency, { bare: true })} /></TableCell>
+              <TableCell className="p-2"><Input aria-label="Saldo Laba kredit" aria-invalid={!!retainedParsed.credit.error || undefined} inputMode="decimal" className="num text-right" value={retained.credit} onBlur={() => setRetained((r) => ({ ...r, credit: tidy(r.credit) }))} onChange={(e) => setRetained({ credit: e.target.value, debit: e.target.value ? "" : retained.debit })} placeholder={formatMoney(0n, currency, { bare: true })} /></TableCell>
               <TableCell />
             </TableRow>
             {diff !== 0n && (

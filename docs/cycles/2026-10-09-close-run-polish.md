@@ -22,10 +22,10 @@ On 2026-10-09 two accountant-style runs in production (upload → Saldo Awal →
   confidence capped at 0.55 (below the 0.8 bulk accept and the 0.6 *tebakan* line, so accepting it unchanged is a sanity REVIEW) and
   the reason says why ("Belum ada piutang usaha tercatat …"). Applied at import and on *Minta saran AI*; the cached answer is untouched
   (no extra AI call, rules 14 and 17–19 hold). Deterministic, unit + db tested.
-- [ ] **A2** *Hapus klien* lands on Beranda every time (hard navigation after the toast); e2e still green.
-- [ ] **A3** Saldo Awal amount fields tidy on blur like Jurnal Penyesuaian ("800000000" → "800.000.000"); unreadable text is left for its
+- [x] **A2** *Hapus klien* lands on Beranda every time (hard navigation after the toast); e2e still green.
+- [x] **A3** Saldo Awal amount fields tidy on blur like Jurnal Penyesuaian ("800000000" → "800.000.000"); unreadable text is left for its
   error message.
-- [ ] **A4** Neraca Saldo shows *Perlu dicek* on 1999 only while it holds a balance (net ≠ 0), in both views.
+- [x] **A4** Neraca Saldo shows *Perlu dicek* on 1999 only while it holds a balance (net ≠ 0), in both views.
 - [ ] **A5** The budget error says what it is and who changes it: the monthly AI token limit, set by whoever runs the deployment
   (`AI_MONTHLY_TOKEN_BUDGET`); Pengaturan shows this month's use next to the limit so the number is visible before it runs out.
 
@@ -41,7 +41,7 @@ model; changing how 1999 is used.
 ## Tasks
 - [x] T1 A1 guard (`lib/ai/` helper used by `pipeline.ts` and `retry.ts`) — accept: unit test of the rule; db test: import into an entity with
   no receivable → AI 1130 suggestion stored at ≤ 0.55 with the reason; with an opening receivable → unchanged.
-- [ ] T2 A2 + A3 + A4 (UI) — accept: e2e delete-client lands on Beranda; opening-form tidy on blur (e2e or component test); TB 1999 badge
+- [x] T2 A2 + A3 + A4 (UI) — accept: e2e delete-client lands on Beranda; opening-form tidy on blur (e2e or component test); TB 1999 badge
   only with a balance (db/page test).
 - [ ] T3 A5 budget message + monthly use in Pengaturan — accept: unit test of the message; Pengaturan shows "x dari y token bulan ini".
 - [ ] T4 End-of-cycle gates, Ship Notes; verify in production (Kopi Uji (hapus): run *Minta saran AI*/re-import check, delete-client).
@@ -52,7 +52,12 @@ model; changing how 1999 is used.
   money in / payable for money out with nothing on its normal side → confidence ≤ 0.55 + reason), used in `lib/import/pipeline.ts` (one
   query per import, only when the AI answered) and `lib/ai/retry.ts` (per entity). `accounting-rules` §14 names it. Test:
   `tests/db/ai-unbacked.test.ts` (import demotes both; with a receivable and a payable on the books nothing changes; *Minta saran AI*
-  demotes the same way; another entity's receivable doesn't count).
+  demotes the same way; another entity's receivable doesn't count).- T2: `components/app/delete-client.tsx` (only `router.replace("/")`, no `router.refresh()` racing it — the action already revalidates the
+  layout; a hard `window.location` load is refused by the Next lint rule), `components/app/opening-form.tsx` (`tidy` on blur for bank, other
+  and Saldo Laba amounts, negatives keep their sign, unreadable text stays), `trial-balance/page.tsx` (*Perlu dicek* on 1999 / suspense only
+  with a balance, both views). Tests: `e2e/opening-tidy.spec.ts` (new), `e2e/delete-client.spec.ts` (existing, lands on Beranda).
+
 ## Verification
-- T1: lint clean · typecheck clean · `npm test` 192 files, 1303 passed · `demo:reset && verify:books` → ALL PASS — 1765 pemeriksaan.
+- T1: lint clean · typecheck clean · `npm test` 192 files, 1303 passed · `demo:reset && verify:books` → ALL PASS — 1765 pemeriksaan.- T2: lint clean · typecheck clean · `npm test` 192 files, 1303 passed · e2e opening-tidy, delete-client, real-client, opening-deposit: 4 passed.
+
 ## Ship Notes
