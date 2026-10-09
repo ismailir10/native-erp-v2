@@ -186,9 +186,10 @@ export async function importOcrDraft(db: Db, input: { firmId: string; clientId: 
   // The layout is remembered once its reading has been proved and imported: the next file of it reads without asking.
   const layout = mapped ? (d.header as MappedHeader).layout : undefined;
   if (layout) {
+    const { bank } = await db.bankAccount.findUniqueOrThrow({ where: { id: d.bankAccountId }, select: { bank: true } });
     await db.statementLayout.upsert({
-      where: { firmId_signature: { firmId: input.firmId, signature: layout.signature } },
-      create: { firmId: input.firmId, signature: layout.signature, kind: layout.kind, mapping: json(layout.mapping), label: d.fileName.slice(0, 200), createdById: input.actorId ?? null, lastUsedAt: new Date() },
+      where: { firmId_bank_signature: { firmId: input.firmId, bank, signature: layout.signature } },
+      create: { firmId: input.firmId, bank, signature: layout.signature, kind: layout.kind, mapping: json(layout.mapping), label: d.fileName.slice(0, 200), createdById: input.actorId ?? null, lastUsedAt: new Date() },
       update: { kind: layout.kind, mapping: json(layout.mapping), label: d.fileName.slice(0, 200), lastUsedAt: new Date() },
     });
   }

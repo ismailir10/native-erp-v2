@@ -55,8 +55,12 @@ export async function importStatement(
   const entity = bankAccount.entity;
   const client = entity.client;
 
-  // The firm's Atur kolom layouts, tried only when every reader refuses the file (`parseStatementSections`).
-  const layouts = (await db.statementLayout.findMany({ where: { firmId: bankAccount.firmId }, select: { id: true, label: true, signature: true, mapping: true } })).map((l) => ({ ...l, mapping: l.mapping as unknown as RememberedLayout["mapping"] }));
+  // The firm's Atur kolom layouts for this account's bank, tried only when every reader refuses the file (`parseStatementSections`). Rupiah
+  // accounts only: a mapped read parses amounts as Rupiah, as the first mapping (`createMappedDraft`) requires too.
+  const rupiah = bankAccount.currency === "IDR" && entity.functionalCurrency === "IDR";
+  const layouts = rupiah
+    ? (await db.statementLayout.findMany({ where: { firmId: bankAccount.firmId, bank: bankAccount.bank }, select: { id: true, label: true, signature: true, mapping: true } })).map((l) => ({ ...l, mapping: l.mapping as unknown as RememberedLayout["mapping"] }))
+    : [];
   const sections = await parseStatementSections(args.fileName, args.data, { password: args.password, year: args.year, layouts });
   const digits = (s: string | null) => (s ?? "").replace(/\D/g, "");
   let st = sections.length === 1 ? sections[0] : sections.find((s) => digits(s.accountNumber) === digits(bankAccount.number));

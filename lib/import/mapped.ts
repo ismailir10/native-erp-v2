@@ -260,8 +260,8 @@ export type RememberedLayout = { id: string; label: string; signature: string; m
 const HEADER_SEARCH_ROWS = 80;
 
 /**
- * The file read with the first remembered layout whose header it carries (any sheet, any row in the first 80), or null when it carries
- * none. A matching header with rows the mapping can't read is refused with the reader's message: the accountant maps the file again.
+ * The file read with the first remembered layout whose header it carries (any sheet, any row in the first 80) and whose day/month order
+ * its dates don't contradict, or null when there is none. The caller passes only the layouts of the account's bank. A matching header with rows the mapping can't read is refused with the reader's message: the accountant maps the file again.
  */
 export function readWithLayout(grid: Grid, layouts: RememberedLayout[], ctx: { fileName?: string; year?: number } = {}): ParsedStatement | null {
   for (const sheet of grid.sheets) {
@@ -270,6 +270,9 @@ export function readWithLayout(grid: Grid, layouts: RememberedLayout[], ctx: { f
       const layout = sig && layouts.find((l) => l.signature === sig);
       if (!layout) continue;
       const mapping: ColumnMapping = { ...layout.mapping, sheet: grid.kind === "XLSX" ? sheet.name : null, firstRow: i + 2, year: ctx.year ?? null };
+      // A file whose own dates prove the other day/month order is another export that happens to share the header: not this layout.
+      const ev = dayMonthEvidence(sheet.rows.slice(i + 1).map((r) => r[mapping.date] ?? "").filter(Boolean));
+      if ((mapping.order === "DMY" && ev.mdy && !ev.dmy) || (mapping.order === "MDY" && ev.dmy && !ev.mdy)) continue;
       let st: ParsedStatement;
       try {
         st = readMapped(grid, mapping, ctx);

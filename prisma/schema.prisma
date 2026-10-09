@@ -1704,12 +1704,15 @@ model OcrDraft {
   @@index([clientId])
 }
 
-/// A statement layout the accountant mapped in *Atur kolom*, remembered for the firm under its header's signature (`lib/import/grid.ts`)
-/// so the next file of that layout, for any client of the firm, is read without asking. A reading aid only: every row still goes through
+/// A statement layout the accountant mapped in *Atur kolom*, remembered for the firm and bank under its header's signature
+/// (`lib/import/grid.ts`) so the next file of that layout, at that bank for any client of the firm, is read without asking (Rupiah accounts). A reading aid only: every row still goes through
 /// the import's running-balance check. `mapping` is a `ColumnMapping` (`lib/import/mapped.ts`) less the sheet, rows counted from the header.
 model StatementLayout {
   id          String    @id @default(cuid())
   firmId      String
+  /// The bank of the account it was mapped on: applied only to accounts at that bank (two banks may share a generic header but not
+  /// their date convention).
+  bank        BankCode
   signature   String
   /// CSV | XLSX | PDF
   kind        String
@@ -1720,7 +1723,7 @@ model StatementLayout {
   createdAt   DateTime  @default(now())
   lastUsedAt  DateTime?
 
-  @@unique([firmId, signature])
+  @@unique([firmId, bank, signature])
 }
 
 model ReportComment {

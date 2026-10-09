@@ -371,8 +371,9 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     column mapping — no AI. The grid and the rows are built on the server from the uploaded bytes (never from cells the browser sends); Saldo
     is required. The rows go to the same *Periksa baris* draft and proof as a scan, except that a row without a printed balance (a bank that
     prints one per day) is proved by the next printed balance, and breaks with it (`proveRows` `chained`; scans stay strict). On import the
-    mapping is remembered for the firm under its header's signature (`StatementLayout`); a later file whose readers fail and whose header
-    matches is read with it inside `parseStatementSections` and goes through the import's continuity check like any file.
+    mapping is remembered for the firm **and the account's bank** under its header's signature (`StatementLayout`); a later file for a Rupiah
+    account at that bank whose readers fail, whose header matches and whose dates don't prove the other day/month order is read with it
+    inside `parseStatementSections` and goes through the import's continuity check like any file.
 17. LLM runs **outside** DB transactions, only for leftovers, **one request per unique merchant key + direction**,
     batched (≤40/call), cached in `AiSuggestion` with firm/client isolation (key implementation: `lib/ai/classify.ts`).
     Account mapping (rule 9a) follows the same discipline: names + type hints only (no amounts, no descriptions), ≤40 per call,

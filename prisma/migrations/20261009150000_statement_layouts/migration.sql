@@ -4,6 +4,7 @@ ALTER TABLE "OcrDraft" ADD COLUMN "source" TEXT NOT NULL DEFAULT 'OCR';
 CREATE TABLE "StatementLayout" (
     "id" TEXT NOT NULL,
     "firmId" TEXT NOT NULL,
+    "bank" "BankCode" NOT NULL,
     "signature" TEXT NOT NULL,
     "kind" TEXT NOT NULL,
     "mapping" JSONB NOT NULL,
@@ -15,4 +16,4 @@ CREATE TABLE "StatementLayout" (
     CONSTRAINT "StatementLayout_pkey" PRIMARY KEY ("id")
 );
 
-CREATE UNIQUE INDEX "StatementLayout_firmId_signature_key" ON "StatementLayout"("firmId", "signature");
+CREATE UNIQUE INDEX "StatementLayout_firmId_bank_signature_key" ON "StatementLayout"("firmId", "bank", "signature");

@@ -123,6 +123,11 @@ rows were read. No new dependency, no AI credit, no accounting-invariant change 
   after. Also: *Baca semua baris* waits for the preview of the mapping on screen; opening the mapper clears the previous file's result (one
   primary button); comments corrected. Kept as is (stated): a rule-12 repair refusal also offers *Atur kolom* (mapping can't fix it — the
   draft then shows the same break); a year-less newest-first file spanning New Year is read in file order (rare; the proof still shows it).
+- PR review (Codex, #132): (1) a remembered layout could be applied to a foreign-currency account, whose amounts the mapped reader would
+  parse as Rupiah — layouts now load only for Rupiah accounts (as `createMappedDraft` already required); (2) a firm-wide signature could
+  apply one bank's day-first mapping to another bank's month-first export with the same generic header — `StatementLayout.bank` (the
+  account's bank, unique per firm + bank + signature; the unreleased migration edited) limits a layout to accounts at that bank, and a file
+  whose own dates prove the other order skips the layout. Tests in `tests/db/remembered-layout.test.ts`.
 - Deck (ship step 3): `public/deck/kantor.html` slide 05 — "CSV, Excel, dan file lain" becomes **"Bank lain: tunjuk kolomnya sekali"**, PDF
   regenerated (`npm run deck:pdf`, 17 slides). `perusahaan.html` unchanged (the client company never maps). README Import row,
   `docs/real-data.md` and the AGENTS repo map name Atur kolom.
@@ -137,6 +142,7 @@ rows were read. No new dependency, no AI credit, no accounting-invariant change 
   ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth · `npm run test:e2e` → 64 passed (3.6m).
 - After the review round: lint clean · typecheck clean · `npm test` 203 files, 1355 passed · build ok · e2e column-mapping, ocr-scan,
   qa-import-edge-cases: 9 passed.
+- After the PR review: lint clean · typecheck clean · `npm test` 203 files, 1357 passed · build ok · e2e column-mapping: 2 passed.
 ## Ship Notes
 - **Migration** `20261009150000_statement_layouts` (additive: `StatementLayout` table, `OcrDraft.source` default `OCR`); applied by the
   Vercel build (`prisma migrate deploy`). No env var, no new dependency, no AI calls.
