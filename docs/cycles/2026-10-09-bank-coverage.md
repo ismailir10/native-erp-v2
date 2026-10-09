@@ -110,7 +110,7 @@ grows — re-checked with `verify:books`).
   — accept: guard tests (company names) + one tag test per bank; `verify:books` ALL PASS.
 - [x] T3 Tabular direction-in-cell + KlikBCA current/Individual CSV (depends T2) — accept: `bca-bisnis-2026.csv`,
   `bca-individual.csv`, `mandiri-savings-dsuffix.csv`, trailing-minus fixture → `expectAugust`; old KlikBCA test unchanged.
-- [ ] T4 Tabular header/label synonyms + layouts: BRI QLola, BNIDirect, CIMB, Permata, Danamon, OCBC, MCM/Kopra CSV/XLSX — accept: one
+- [x] T4 Tabular header/label synonyms + layouts: BRI QLola, BNIDirect, CIMB, Permata, Danamon, OCBC, MCM/Kopra CSV/XLSX — accept: one
   fixture each → `expectAugust` + right bank.
 - [ ] T5 PDF: bilingual headers, row-number column, `Db./Cr.` and `D/K` markers, signed amounts; Mandiri Livin', Mandiri savings,
   MCM/Kopra, BNI old/corporate/wondr, BRI Rincian/IBBIZ, BSI, BTN fixtures — accept: each → `expectAugust` + right bank.
@@ -141,10 +141,17 @@ grows — re-checked with `verify:books`).
   Individual: `=` metadata, descriptions with commas read from both ends, Starting/Ending Balance), `parsers/index.ts` (routing).
   Tests: `tests/bank-layouts.ts` (the layout catalog) + `tests/unit/bank-layouts.test.ts`, `bank-parsers.test.ts` (5 marker styles, note,
   overdrawn balance, Db./Cr. column), `split-marker.test.ts`.
+- T4: `parsers/tabular.ts` (header words: `Txn Date`/`Tgl. Txn`, `Tanggal & Waktu`, `Rincian Transaksi`, `Transaction Details`, `Particulars`,
+  `Narrative`, `Withdrawal(s)`/`Deposit(s)`, `Dana Masuk/Keluar`, `Incoming/Outgoing`, `Running/Ledger Balance`, `Transaction Amount`;
+  bilingual cells read by the part a pattern knows (`headerLabel`); opening/closing rows `Starting/Previous/Initial Balance`,
+  `Current Balance`). Layouts added to the catalog: Mandiri Livin'/MCM Excel + Kopra/MCM CSV, BRI CMS (TGL_TRAN) + internet banking CSV
+  + QLola Excel, BNIDirect CSV/Excel + BNI Mobile Excel, CIMB OCTO CSV/Excel, PermataNet CSV/Excel; inferred: Danamon CSV, OCBC CSV,
+  Panin Excel, Mega Excel, Bank DKI CSV, bjb Excel.
 
 ## Verification
 - T1: `npm run lint` 0 errors (1 existing warning in `public/deck/deck.js`) · typecheck clean · `npm test` 185 files, 1218 passed.- T2: `npm test` 186 files, 1224 passed · `npm run demo:reset && npm run verify:books` → ALL PASS — 1765 pemeriksaan saldo cocok
   (before the reseed the local DB was stale from earlier sessions and showed 4 CV Sinar Retail differences; the reseed runs the new code).
 - T3: `npm test` 188 files, 1235 passed; lint 0 errors; typecheck clean.
+- T4: `npm test` 188 files, 1253 passed (`bank-layouts.test.ts` 20 layouts); lint 0 errors; typecheck clean.
 
 ## Ship Notes
