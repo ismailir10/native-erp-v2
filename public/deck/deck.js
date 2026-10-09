@@ -35,7 +35,7 @@
   if (pdf) { var dl = ctrl.querySelector("a.pdf"); dl.href = pdf; dl.setAttribute("download", ""); dl.setAttribute("aria-label", "Unduh presentasi sebagai PDF"); }
   document.body.appendChild(ctrl); document.body.appendChild(bar);
   // inside the /deck chooser thumbnail: no controls
-  var framed = false; try { framed = window.self !== window.top; } catch (e) { framed = true; }
+  var framed = false; try { framed = window.self !== window.top; } catch { framed = true; }
   if (framed) { ctrl.style.display = "none"; bar.style.display = "none"; }
   var cnt = ctrl.querySelector(".cnt"), prev = ctrl.querySelector("#prev"), next = ctrl.querySelector("#next");
 
