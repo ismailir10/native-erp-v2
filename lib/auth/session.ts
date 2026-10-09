@@ -3,8 +3,9 @@ import { authConfigured } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { MemberRole } from "@/lib/generated/prisma/enums";
+import { isAdminRole } from "@/lib/auth/permissions";
 
-export const ROLE_LABEL: Record<MemberRole, string> = { ADMIN: "Admin", AKUNTAN: "Akuntan" };
+export { ROLE_LABEL } from "@/lib/auth/permissions";
 
 /**
  * The verified Supabase session resolved to an active firm member. The JWT is verified locally
@@ -29,9 +30,9 @@ export async function requireWorkspaceSession() {
 }
 
 /** For server actions: an error, not a redirect, so the form can show it. */
-export async function requireMember(role?: MemberRole) {
+export async function requireMember(role?: Extract<MemberRole, "ADMIN">) {
   const session = await getWorkspaceSession();
   if (!session) throw new Error("Masuk terlebih dahulu.");
-  if (role && session.member.role !== role) throw new Error("Hanya admin kantor yang dapat mengubah ini.");
+  if (role && !isAdminRole(session.member.role)) throw new Error("Hanya admin kantor yang dapat mengubah ini.");
   return session.member;
 }

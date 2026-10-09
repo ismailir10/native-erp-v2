@@ -4,6 +4,8 @@ import { recordEvent } from "@/lib/audit";
 import { importKindLabel } from "@/lib/ledger-import/code";
 import { formatDate, formatPeriod } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
+import { isAdminRole } from "@/lib/auth/permissions";
+import type { MemberRole } from "@/lib/generated/prisma/enums";
 
 /**
  * Hapus impor (ADR 0013, use-case feedback UC-K4): an admin removes one posted import — a bank statement or a ledger/Neraca file — with
@@ -14,10 +16,10 @@ import { formatMoney } from "@/lib/money";
 export class RemoveImportError extends Error {}
 export const REMOVE_REASON_MIN = 10;
 
-type Actor = { id: string; role: "ADMIN" | "AKUNTAN" };
+type Actor = { id: string; role: MemberRole };
 
 function checkActor(actor: Actor, reason: string) {
-  if (actor.role !== "ADMIN") throw new RemoveImportError("Hanya admin kantor yang dapat menghapus impor.");
+  if (!isAdminRole(actor.role)) throw new RemoveImportError("Hanya admin kantor yang dapat menghapus impor.");
   const why = reason.trim();
   if (why.length < REMOVE_REASON_MIN) throw new RemoveImportError(`Tulis alasan menghapus impor ini (min. ${REMOVE_REASON_MIN} karakter), mis. "salah rekening" atau "file bulan yang sama dua kali".`);
   return why;

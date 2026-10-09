@@ -155,8 +155,10 @@ A grant ends at 23:59:59 Asia/Jakarta on its end date.
   card, and one visual shell that matches the app (ui-rules). A shared link previews as *Buku*.
 
 **Migration of what exists**
-- [ ] **M1** The existing production firm becomes KANTOR_AKUNTAN with one open-ended COMP grant. Its earliest-created ADMIN becomes
-  OWNER, and every AKUNTAN gets `ClientAccess` to every existing client. Nobody notices a change.
+- [ ] **M1** The existing production firm becomes KANTOR_AKUNTAN with one open-ended COMP grant, and every AKUNTAN gets `ClientAccess`
+  to every existing client. Nobody notices a change. Roles are not rewritten by the migration: `FirmMember` is protected from
+  migrations (`tests/unit/migration-protected-tables.test.ts`). Existing ADMINs keep ADMIN, which can do everything but transfer
+  ownership, and the operator names the first OWNER once with `npm run access -- set-role` (Ship Notes).
 
 **Gate-reopeners (flagged for approval):**
 - **Schema migration.** New: `Firm.kind`, `Firm.suspendedAt`, `Firm.aiMonthlyTokenBudget`, `Firm.seatLimit`, `MemberRole` + OWNER,
@@ -225,7 +227,7 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
 ```
 
 ## Tasks
-- [~] **T01 Schema + backfill migration.** After: none. Files: `prisma/schema.prisma`, `prisma/migrations/<ts>_trial_tenants/`,
+- [x] **T01 Schema + backfill migration.** After: none. Files: `prisma/schema.prisma`, `prisma/migrations/<ts>_trial_tenants/`,
   `lib/generated/**` (regenerated), `tests/db/tenancy-migration.test.ts`.
   `enum OrgKind { KANTOR_AKUNTAN PERUSAHAAN }` and `enum GrantKind { TRIAL PAID COMP }`. `MemberRole` gains `OWNER` and `VIEWER`.
   New `Firm` fields: `kind` (default KANTOR_AKUNTAN), `suspendedAt?`, `aiMonthlyTokenBudget Int?`, `seatLimit Int?`. Models:
@@ -237,7 +239,7 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   `PlatformAuditEvent { adminId?, firmId?, kind, summary, before?, after?, createdAt }`,
   `SupportSession { adminId, firmId, asMemberId, reason, startedAt, expiresAt, endedAt? }` and
   `SupportSessionView { sessionId, path, kind VIEW|EXPORT, at }` (the last three append-only). SQL backfill per M1 (COMP grant with `endsAt` null for every existing firm,
-  earliest ADMIN → OWNER, AKUNTAN × clients → ClientAccess). Add a CHECK `endsAt IS NULL OR endsAt > startsAt`.
+  AKUNTAN × clients → ClientAccess; no role rewrite, see M1). Add a CHECK `endsAt IS NULL OR endsAt > startsAt`.
   — accept: `npm run db:migrate` on the seeded demo DB succeeds; the test asserts the backfill (grant exists, one OWNER, AKUNTAN
   assigned to all clients); all existing tests stay green.
 - [~] **T02 Permissions + access state (pure).** After: T01. Files: `lib/auth/permissions.ts`, `lib/access/grant.ts`,
@@ -365,7 +367,18 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
 - Plan: the critical path T01 → T02 → T03 goes first, on this branch (claimed: driver). T15, T16 and T17 have no schema
   dependency and are open for a second agent to take in parallel. Wave 2+ is claimed task by task after T03 lands.
 
+- T01: `prisma/schema.prisma`, migrations `20261009232747_trial_tenants` (tables, CHECKs: grant period, seat limit, budget ≥ 0,
+  support session ≤ 60 min and reason ≥ 10 chars; append-only triggers on `PlatformAuditEvent`, `SupportSession` (only ending it)
+  and `SupportSessionView`) and `…_trial_tenants_backfill` (COMP grant per firm, AKUNTAN × clients), `lib/auth/permissions.ts`
+  (`ROLE_LABEL`, `isAdminRole`), `tests/db/tenancy-migration.test.ts`. **Changed from the plan:** the backfill does not promote an
+  ADMIN to OWNER, because `FirmMember` is protected from migrations and the guard test refused the UPDATE (see M1). **For later tasks:**
+  every existing `role === "ADMIN"` check now reads `isAdminRole(role)`, so an OWNER is never weaker than an ADMIN. A firm created by
+  `createFirm` after the migration has no grant yet; T03 gives `createFirm` a default open COMP grant.
+
 ## Verification
+- T01: full `npx vitest run`: 203 of 204 files passed; the one failure was `migration-protected-tables` refusing the backfill's role
+  UPDATE. After removing it: lint ✓, typecheck ✓, and `tenancy-migration`, `migration-protected-tables`, `period-lock`, `close-history`
+  and `remove-import` → 5 files, 51 tests passed.
 
 ## Ship Notes
 

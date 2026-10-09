@@ -24,6 +24,7 @@ import { loadReportFormat } from "@/lib/reports/format";
 import { formatUniverse } from "@/lib/reports/format-settings";
 import { ModulesCard } from "@/components/app/modules-card";
 import { clientModules, MODULES } from "@/lib/clients/modules";
+import { isAdminRole } from "@/lib/auth/permissions";
 
 export const metadata = { title: "Pengaturan klien" };
 
@@ -75,12 +76,12 @@ export default async function SettingsPage({ params, searchParams }: { params: P
           />
           {/* Keyed on what's saved: after a save or a reset the editor starts again from the server's format. */}
           <ReportFormatCard key={JSON.stringify(reportFormat)} clientId={client.id} initial={formatValue} custom={customFormat} stale={staleFormat} universe={formatUniverse()} />
-          {member.role === "ADMIN" && <DeleteClientCard clientId={client.id} name={client.name} />}
+          {isAdminRole(member.role) && <DeleteClientCard clientId={client.id} name={client.name} />}
         </>
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Stat label="Status AI" value={<StatusPill status={live ? "PASS" : "REVIEW"} label={live ? "Aktif" : "Aturan saja"} />} hint={live ? `Model ${cfg.model}` : member.role === "ADMIN" ? <>Atur kunci & model di <Link href="/settings" className="text-primary hover:underline">Pengaturan</Link></> : "Minta admin kantor mengatur kunci & model"} />
+            <Stat label="Status AI" value={<StatusPill status={live ? "PASS" : "REVIEW"} label={live ? "Aktif" : "Aturan saja"} />} hint={live ? `Model ${cfg.model}` : isAdminRole(member.role) ? <>Atur kunci & model di <Link href="/settings" className="text-primary hover:underline">Pengaturan</Link></> : "Minta admin kantor mengatur kunci & model"} />
             <Stat label="Dikode tanpa AI" value={`${total ? Math.round(((total - aiLines) / total) * 100) : 0}%`} hint={`${total} baris sejak awal`} />
             <Stat label="Panggilan AI (total)" value={usage._sum.calls ?? 0} hint={`${((usage._sum.promptTokens ?? 0) + (usage._sum.completionTokens ?? 0)).toLocaleString("id-ID")} token`} />
             <Stat label="Jawaban AI tersimpan" value={cacheSize} hint="Penerima atau pengirim yang sama tidak ditanyakan lagi" />

@@ -8,6 +8,7 @@ import { EvidenceHome } from "@/components/app/evidence-workspace";
 import { WorkspaceScopeBar } from "@/components/app/workspace-scope";
 import { resolveWorkspaceScope, workspaceHref, WorkspaceInputError } from "@/lib/workspace";
 import type { SearchParams } from "@/lib/scope";
+import { isAdminRole } from "@/lib/auth/permissions";
 
 export const metadata = { title: "Dokumen" };
 
@@ -29,5 +30,5 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Se
   return <EvidenceHome
     actions={<WorkspaceScopeBar key="documents-scope" scope={scope} />}
     note={<p key="documents-note" className="text-sm text-muted-foreground">Kumpulan dokumen dapat memuat beberapa periode. Periode terpilih digunakan saat bertanya dan membuka laporan.{scope.kind === "entity" && <> Hanya kumpulan dengan perusahaan terkonfirmasi ditampilkan. <Link className="text-primary underline" href={workspaceHref("/documents", { key: `client:${scope.clientIds[0]}`, period: scope.period })}>Lihat dokumen grup yang belum dikonfirmasi</Link>.</>}</p>}
-    googleResult={googleResult} googleReason={googleReason} intakes={intakes} clients={scope.clients.map(c => ({ id: c.id, name: c.name }))} clientId={scope.kind === "all" ? undefined : scope.clientIds[0]} connected={Boolean(connection)} googleConfigured={oauthConfigured()} isAdmin={member.role === "ADMIN"} />;
+    googleResult={googleResult} googleReason={googleReason} intakes={intakes} clients={scope.clients.map(c => ({ id: c.id, name: c.name }))} clientId={scope.kind === "all" ? undefined : scope.clientIds[0]} connected={Boolean(connection)} googleConfigured={oauthConfigured()} isAdmin={isAdminRole(member.role)} />;
 }

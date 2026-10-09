@@ -10,12 +10,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { planRejections } from "@/lib/evidence/plan-stats";
 import { ocrEnabled } from "@/lib/ocr/draft";
 import { OcrSettingCard } from "@/components/app/ocr-setting";
+import { isAdminRole } from "@/lib/auth/permissions";
 
 export const metadata = { title: "Pengaturan" };
 
 export default async function SettingsPage() {
   const { firm, member } = await requireWorkspaceSession();
-  const isAdmin = member.role === "ADMIN";
+  const isAdmin = isAdminRole(member.role);
   const [cfg, lastCall, plans, ocr] = await Promise.all([resolveAiConfig(prisma), prisma.aiUsage.findFirst({ where: { firmId: firm.id, model: { not: "demo-seed" } }, orderBy: { at: "desc" } }), planRejections(prisma, firm.id), ocrEnabled(prisma)]);
   const secretReady = settingsSecretConfigured();
   const live = Boolean(cfg.apiKey && cfg.model);

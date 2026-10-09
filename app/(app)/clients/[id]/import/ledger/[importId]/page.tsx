@@ -19,6 +19,7 @@ import { AcceptCheckButton, DiscardDraftButton, PostImportButton } from "@/compo
 import { importKindLabel } from "@/lib/ledger-import/code";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { isAdminRole } from "@/lib/auth/permissions";
 
 export const metadata = { title: "Impor buku besar" };
 
@@ -48,7 +49,7 @@ export default async function LedgerImportPage({ params, searchParams }: { param
   const entities = [...new Set(sources.map((s) => s.entityId))].map((id) => client.entities.find((e) => e.id === id)!).filter(Boolean);
   const ready = !posted && !openBlock.length && !unmapped.length;
   const kind = importKindLabel(imp).replace(/^./, (c) => c.toLowerCase());
-  const isAdmin = (await getCurrentMember()).role === "ADMIN";
+  const isAdmin = isAdminRole((await getCurrentMember()).role);
 
   return (
     <div className="space-y-6">
