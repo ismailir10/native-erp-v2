@@ -23,6 +23,8 @@ import { openingTargetOptions } from "@/lib/coa/options";
 import { FindingsCard } from "@/components/app/findings-card";
 import { completenessMatrix } from "@/lib/controls/completeness";
 import { CompletenessCard } from "@/components/app/completeness-card";
+import { CloseHistoryCard } from "@/components/app/close-history-card";
+import { HISTORY_MIN_MONTHS, historyMonths } from "@/lib/controls/history";
 
 export const metadata = { title: "Tutup Buku" };
 
@@ -68,6 +70,9 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
   const openFindings = findings.filter((f) => f.status === "OPEN" && f.kind === "OPENING_DIFFERENCE");
   const targets = openFindings.length ? openingTargetOptions(await prisma.account.findMany({ where: { clientId: client.id }, orderBy: { code: "asc" } })) : [];
 
+  // Many open months before this one (a migrated history): checked and closed together from here.
+  const history = before ? await historyMonths(prisma, client.id, period) : [];
+  const historyRange = history.length ? `${formatPeriod(history[0].year, history[0].month)} – ${formatPeriod(history.at(-1)!.year, history.at(-1)!.month)}` : "";
   const monthKey = (m: { year: number; month: number }) => `${m.year}-${String(m.month).padStart(2, "0")}`;
   return (
     <div className="space-y-6">
@@ -75,7 +80,7 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
       {locked ? (
         <NextStep tone="done">Buku {label} sudah ditutup. Laporan siap dikirim ke klien.</NextStep>
       ) : before ? (
-        <NextStep href={`${base}/close?period=${monthKey(before)}`} cta={`Buka ${formatPeriod(before.year, before.month)}`}>Tutup buku {formatPeriod(before.year, before.month)} dulu. Penutupan berurutan dari bulan paling awal.</NextStep>
+        <NextStep href={`${base}/close?period=${monthKey(before)}`} cta={`Buka ${formatPeriod(before.year, before.month)}`}>Tutup buku {formatPeriod(before.year, before.month)} dulu. Penutupan berurutan dari bulan paling awal{history.length >= HISTORY_MIN_MONTHS ? `; ${history.length} bulan sebelumnya bisa ditutup sekaligus di bawah` : ""}.</NextStep>
       ) : setup.current === "opening" && setup.next ? (
         <NextStep href={setup.next.href} cta={setup.next.cta}>{setup.next.text}</NextStep>
       ) : openFindings.length ? (
@@ -90,6 +95,19 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
         <NextStep>Centang checklist di kanan setelah Anda memeriksanya.</NextStep>
       ) : (
         <NextStep>Semua kontrol lolos dan checklist lengkap. Tutup buku {label}.</NextStep>
+      )}
+      {!locked && history.length >= HISTORY_MIN_MONTHS && (
+        <CloseHistoryCard
+          clientId={client.id}
+          year={period.year}
+          month={period.month}
+          periodLabel={label}
+          count={history.length}
+          range={historyRange}
+          signoffs={CLOSE_SIGNOFFS.map((s) => ({ key: s.key, label: s.label }))}
+          isAdmin={member.role === "ADMIN"}
+          base={base}
+        />
       )}
       {findings.length > 0 && (
         <div id="temuan" className="scroll-mt-20">

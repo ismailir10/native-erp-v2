@@ -420,6 +420,9 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     7190/7200 exempt from flux/flip. The AI close review may send the flagged accounts' month series and the month's journal lines behind
     them (memo ≤ 80 chars) under rule 20a's caps.
 23. Tutup Buku requires: no FAIL, every REVIEW acknowledged with a note, all sign-offs ticked.
+    *Tutup bulan-bulan sebelumnya* (`lib/controls/history.ts`, admin only) closes the open months before the selected one in order, one
+    month per call: the same rule per month, with one note written on each REVIEW still without a note and the sign-offs given by the
+    admin once for the run; a month whose open controls differ from what was previewed, or that fails, stops the run.
 
 ## Tenancy
 24. Every row has `firmId`. Server actions resolve the client through `getClientForFirm()` before any write.
