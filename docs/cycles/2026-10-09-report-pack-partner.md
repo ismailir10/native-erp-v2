@@ -44,7 +44,7 @@ Approval: the owner's brief in-session ("continue improving Buku until we are pr
     (labelled *Saldo awal <date>*) when that falls between the year end and this month. Otherwise there is none.
   - The Laba Rugi comparative (same months last year) appears only when those months hold entries.
   - The page, `statementSet` and `financialNotes` all use it. Formal headings use full month names ("31 Juli 2026").
-- [ ] **P2 A closed set reads as one.**
+- [x] **P2 A closed set reads as one.**
   - The CALK subtitle carries "(draf)" only while the set is a draft.
   - The income-tax note never instructs the app user. While the current tax is not journaled it reads as a disclosure: "Beban pajak
     penghasilan kini periode ini belum dicatat dalam laporan laba rugi; estimasinya disajikan di bawah."
@@ -87,7 +87,7 @@ it prints.
 - [x] T1 `lib/reports/periods.ts` + page, statement-set, notes on it; full month names in formal headings. Accept: a db test where a
   client opens with a Saldo Awal on 28 Feb: the set's Laba Rugi is "1 Maret – 31 Juli 2026" with no prior column, the Neraca compares
   with "Saldo awal 28 Februari 2026" (not dashes), and the CALK agrees. The existing statements/report-pdf tests stay green.
-- [ ] T2 Status-aware CALK wording (xlsx "(draf)", the tax note). Accept: unit/db test that a closed month's workbook and notes carry no
+- [x] T2 Status-aware CALK wording (xlsx "(draf)", the tax note). Accept: unit/db test that a closed month's workbook and notes carry no
   "draf" and no "Catat jurnalnya".
 - [ ] T3 PDF layout fixes. Accept: a db test on extracted PDF text (header repeated on a continued note page, no line that is only
   "."). The rendered pages are inspected by eye.
@@ -103,7 +103,10 @@ it prints.
   or the Saldo Awal position, the same months last year only with entries), used by `statement-set.ts` (subtitles, columns, OCI prior),
   `notes.ts` (note columns: two only with a comparative; note 1's period; every date in full: "31 Juli 2026"), `reports/page.tsx` (its own
   copy of the rule replaced), `pdf.ts` (CALK and Surat Pernyataan dates). Tests: `tests/db/report-periods.test.ts` (new, 2), wording updated in
-  `statements`, `fiscal-statements`, `notes-manual`, `report-pdf` tests.
+  `statements`, `fiscal-statements`, `notes-manual`, `report-pdf` tests.- T2: `notes.ts` (the unbooked current tax is disclosed — "Beban pajak penghasilan kini periode ini belum dicatat …; estimasinya disajikan
+  di bawah." — not "Catat jurnalnya di Pajak Badan sebelum laporan ini final"), `workbook.ts` (CALK subtitle "(draf)" only with `meta.draft`;
+  `newWorkbook` returns `draft`). Test: `tests/db/report-final-wording.test.ts` (new, 2).
 ## Verification
 - T1: lint clean · typecheck clean · `npm test` 195 files, 1311 passed.
+- T2: lint + typecheck clean · report-final-wording, statements, report-pdf: all passed (full suite at T3).
 ## Ship Notes

@@ -46,7 +46,7 @@ export function newWorkbook(meta: WorkbookMeta) {
     r.font = { bold: true };
     r.eachCell((c) => (c.border = { bottom: { style: "thin" } }));
   };
-  return { wb, sheet, head };
+  return { wb, sheet, head, draft: Boolean(meta.draft) };
 }
 
 export async function financialStatementsWorkbook(db: Db, scope: Scope, year: number, month: number, meta: WorkbookMeta): Promise<Buffer> {
@@ -57,7 +57,7 @@ export async function financialStatementsWorkbook(db: Db, scope: Scope, year: nu
 
 /** The statement set's sheets (and CALK + directors' statement when the scope has them) added to `book`. */
 export async function addStatementSheets(db: Db, book: ReturnType<typeof newWorkbook>, scope: Scope, year: number, month: number) {
-  const { wb, sheet, head } = book;
+  const { wb, sheet, head, draft } = book;
   const set = await statementSet(db, scope, year, month);
   const cur = periodBounds(year, month).end;
 
@@ -84,7 +84,7 @@ export async function addStatementSheets(db: Db, book: ReturnType<typeof newWork
   if (!notes) return;
 
   // CALK
-  const ck = sheet("CALK", "Catatan atas Laporan Keuangan", `Per ${formatDateLong(cur)} dan untuk periode yang berakhir pada tanggal tersebut(draf)`, [60, 20, 20, 20, 20]);
+  const ck = sheet("CALK", "Catatan atas Laporan Keuangan", `Per ${formatDateLong(cur)} dan untuk periode yang berakhir pada tanggal tersebut${draft ? " (draf)" : ""}`, [60, 20, 20, 20, 20]);
   const cell = (c: NoteCell) => (typeof c === "bigint" ? n(c) : c);
   for (const note of notes.notes) {
     ck.addRow([`${note.number}. ${note.title.toUpperCase()}`]).font = { bold: true };

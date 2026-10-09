@@ -303,7 +303,8 @@ export async function financialNotes(db: Db, scope: Scope, year: number, month: 
     const doubtful = dta && (p.fiscalProfit < 0n || p.losses.length > 0 || ownEquity < 0n);
     add(`Pajak penghasilan${entities.length > 1 ? ` · ${e.shortName}` : ""}`, [
       `Rekonsiliasi laba komersial ke laba fiskal ${year} s.d. ${cur} (estimasi, bukan SPT).`,
-      ...(unbooked ? [`Pajak penghasilan kini ini belum dijurnal, jadi Laba Rugi dan Neraca belum memuatnya. Catat jurnalnya di Pajak Badan sebelum laporan ini final.`] : []),
+      // A disclosure for the reader, never an instruction to the app's user (the set may be final: the tax is booked at the year end).
+      ...(unbooked ? ["Beban pajak penghasilan kini periode ini belum dicatat dalam laporan laba rugi dan laporan posisi keuangan; estimasinya disajikan di bawah."] : []),
       ...(emkm && deferred.length ? [EMKM_DEFERRED_REVIEW] : []),
       ...(doubtful && !emkm ? ["Estimasi aset pajak tangguhan hanya boleh diakui sejauh besar kemungkinan laba fiskal di masa depan cukup untuk memanfaatkannya. Entitas mencatat rugi fiskal, kompensasi kerugian atau defisiensi modal: dokumentasikan dasar pemulihannya sebelum mencatat, atau jangan diakui."] : []),
     ], [
