@@ -57,9 +57,11 @@ export function AccountPicker({
     <ComboboxPrimitive.Root
       items={groups}
       open={open}
-      onOpenChange={(next: boolean) => {
+      onOpenChange={(next: boolean, details?: { event?: Event }) => {
         // Choosing with Enter closes the list and returns focus to the trigger, where the same key press "clicks" it open again.
-        if (next && Date.now() - closedAt.current < 250) return;
+        // Only that keyboard echo is ignored: a mouse or touch reopen, however quick, opens.
+        const pointer = !!details?.event && /^(mouse|pointer|touch)/.test(details.event.type);
+        if (next && !pointer && Date.now() - closedAt.current < 250) return;
         setOpen(next);
         if (!next) {
           setQuery("");
