@@ -324,7 +324,7 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   and this doc. Deck per `/ship` step 3.
   — accept: lint + typecheck + test + build + verify:books + test:e2e all green, with the output pasted under Verification.
 
-- [ ] **T15 Branded auth emails + scanner-safe callback.** After: none. Files: `supabase/templates/*.html` (invite, recovery,
+- [~] **T15 Branded auth emails + scanner-safe callback.** (claimed: agent-b) After: none. Files: `supabase/templates/*.html` (invite, recovery,
   password-changed, email-change, magic-link and reauthentication, so every mail Supabase could send is branded), `supabase/config.toml`
   (template paths, subjects, `otp_expiry` matching the copy), `app/auth/callback/**` (GET renders a confirm page and POST verifies),
   `app/auth/callback/confirm-form.tsx`, plus `tests/unit/email-templates.test.ts` and `e2e/auth-links.spec.ts`.
