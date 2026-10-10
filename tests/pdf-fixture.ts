@@ -80,13 +80,14 @@ export function table(startY: number, rows: [number, string][][], lead = 12): Pd
 }
 
 /** SMBC "Laporan Konsolidasi Rekening": several accounts in one PDF, each under its own section header. */
-export function smbcCombinedPdf() {
+export function smbcCombinedPdf(opts: { holder?: string; holderNextLine?: boolean; sectionHolders?: (string | undefined)[] } = {}) {
   const header: [number, string][] = [[37, "Tanggal Transaksi"], [119, "Tanggal Pembukuan"], [246, "Keterangan"], [353, "Mutasi Debet"], [437, "Mutasi Kredit"], [531, "Saldo"]];
   return makePdf([
     [
-      ...table(800, [[[32, "Kepada Yth:"], [318, "Periode Laporan"], [398, ": 01 MEI 2026 - 31 MEI 2026"]], [[32, "PT Bank SMBC Indonesia Tbk"]]]),
+      ...table(800, [[[32, opts.holder && !opts.holderNextLine ? `Kepada Yth: ${opts.holder}` : "Kepada Yth:"], [318, "Periode Laporan"], [398, ": 01 MEI 2026 - 31 MEI 2026"]], ...(opts.holder && opts.holderNextLine ? [[[32, opts.holder]] as [number, string][]] : []), [[32, "PT Bank SMBC Indonesia Tbk"]]]),
       ...table(740, [
         [[25, "Aktivitas Rekening / Account Activities – Jenius Main Account (IDR) 90022152088"]],
+        ...(opts.sectionHolders?.[0] ? [[[32, `Nama Nasabah: ${opts.sectionHolders[0]}`]] as [number, string][]] : []),
         header,
         [[45, "01-05-2026"], [132, "01-05-2026"], [199, "Saldo Awal - Beginning Balance"], [531, "5,646,633.00"]],
         [[45, "18-05-2026"], [132, "18-05-2026"], [199, "Cr BI fast Incoming"], [436, "250,000,000.00"], [523, "255,646,633.00"]],
@@ -95,6 +96,7 @@ export function smbcCombinedPdf() {
       ]),
       ...table(560, [
         [[24, "Aktivitas Rekening / Account Activities - Pinjaman Rekening Koran BTB (IDR) 05243002879"]],
+        ...(opts.sectionHolders?.[1] ? [[[32, `Nama Nasabah: ${opts.sectionHolders[1]}`]] as [number, string][]] : []),
         header,
         [[45, "01-05-2026"], [131, "01-05-2026"], [195, "Saldo Awal - Beginning Balance"], [517, "-3,598,843,911.00"]],
         [[44, "20-05-2026"], [130, "20-05-2026"], [195, "Transfer Masuk - Incoming Transfer"], [439, "35,000,000.00"], [517, "-3,563,843,911.00"]],
@@ -104,6 +106,7 @@ export function smbcCombinedPdf() {
     [
       ...table(800, [
         [[24, "Aktivitas Rekening / Account Activities – JENIUS JPY ACCOUNT (JPY) 90022164251"]],
+        ...(opts.sectionHolders?.[2] ? [[[32, `Nama Nasabah: ${opts.sectionHolders[2]}`]] as [number, string][]] : []),
         header,
         [[45, "01-05-2026"], [132, "01-05-2026"], [199, "Saldo Awal - Beginning Balance"], [531, "12,750.00"]],
       ]),
@@ -144,7 +147,7 @@ export function smbcGiroDepositPdf() {
 }
 
 /** BRImo financial report: five pages, zero-filled sides, bilingual headers and the printed summary only on page five. */
-export function brimoPdf(opts: { debit?: string; credit?: string; opening?: string; closing?: string; totalDebit?: string; totalCredit?: string } = {}): Buffer {
+export function brimoPdf(opts: { debit?: string; credit?: string; opening?: string; closing?: string; totalDebit?: string; totalCredit?: string; holder?: string | null } = {}): Buffer {
   const rows: [string, string, string, string, string][] = [
     ["01/01/26 09:35:08", "Transfer Ke Andi via BRImo", opts.debit ?? "5,000,000.00", opts.credit ?? "0.00", "52,400,000.00"],
     ["01/01/26 12:58:17", "Transfer Dari Sari via BRImo", "0.00", "185,000.00", "52,585,000.00"],
@@ -160,7 +163,7 @@ export function brimoPdf(opts: { debit?: string; credit?: string; opening?: stri
       [[30, `Halaman ${page + 1} dari 5`]], [[30, `Page ${page + 1} of 5`]],
       [[30, "Tanggal Laporan"], [170, ":"], [190, "02/02/26"]],
       [[30, "Kepada Yth. / To :"], [190, "Statement Date"]],
-      [[30, "BUDI CONTOH"], [300, "Periode Transaksi"], [400, ":"], [420, "01/01/26 - 31/01/26"]],
+      [[30, opts.holder === null ? "" : opts.holder ?? "BUDI CONTOH"], [300, "Periode Transaksi"], [400, ":"], [420, "01/01/26 - 31/01/26"]],
       [[300, "Transaction Period"]],
       [[30, "JL CONTOH NO 1"]],
       [[30, "No. Rekening"], [170, ": 123401000012345"], [350, "Unit Kerja"], [420, ": KCP Contoh"]],
@@ -200,7 +203,7 @@ export function brimoPdf(opts: { debit?: string; credit?: string; opening?: stri
 }
 
 /** Password-protected Mandiri e-Statement with the address/product header and its split date/amount rows. */
-export function mandiriEstatementPdf(opts: { product?: string; bankAddress?: string } = {}): Buffer {
+export function mandiriEstatementPdf(opts: { product?: string; bankAddress?: string; holder?: string | null } = {}): Buffer {
   const amounts = [-5_000_000, 1_000_000, -3_000_000, 1_000_000, -4_000_000, 1_000_000, -3_000_000, 2_000_000, 5_000_000];
   const id = (value: number) => Math.abs(value).toLocaleString("de-DE") + ",00";
   let balance = 80_000_000;
@@ -211,7 +214,7 @@ export function mandiriEstatementPdf(opts: { product?: string; bankAddress?: str
       ...table(800, [
         [[30, "e-Statement"]],
         [[30, opts.bankAddress ?? "Menara Mandiri 1 Jalan Jenderal Sudirman Kav. 54-55, Jakarta 12190, Indonesia"]],
-        [[30, "Nama/Name"], [105, ":"], [125, "BUDI CONTOH"], [280, "Periode/Period"], [355, ":"], [375, "01 Jan 2026 - 31 Jan 2026"], [535, `${page + 1} dari 9`]],
+        [[30, "Nama/Name"], [105, ":"], [125, opts.holder === null ? "" : opts.holder ?? "BUDI CONTOH"], [280, "Periode/Period"], [355, ":"], [375, "01 Jan 2026 - 31 Jan 2026"], [535, `${page + 1} dari 9`]],
         [[535, `${page + 1} of 9`]],
         [[30, "Cabang/Branch"], [105, ":"], [125, "KCP Contoh"], [280, "Dicetak pada/Issued on :"], [420, "02 Feb 2026"]],
         [[30, opts.product ?? "Tabungan Mandiri"]],
@@ -234,7 +237,7 @@ export function mandiriEstatementPdf(opts: { product?: string; bankAddress?: str
 }
 
 /** Password-protected wondr mutation report: holder/product cells, shared-month period and split amount/time rows. */
-export function bniWondrPdf(opts: { productCell?: string; title?: string; holder?: string; period?: string; transactionDescription?: string } = {}): Buffer {
+export function bniWondrPdf(opts: { productCell?: string; title?: string; holder?: string | null; period?: string; transactionDescription?: string } = {}): Buffer {
   const amounts = [1_000_000, 1_000_000, -2_000_000, 1_000_000, -5_000_000, 2_000_000];
   const comma = (value: number) => Math.abs(value).toLocaleString("en-US");
   let balance = 20_000_000;
@@ -244,7 +247,7 @@ export function bniWondrPdf(opts: { productCell?: string; title?: string; holder
       ...table(800, [
         [[30, opts.title ?? "Laporan Mutasi Rekening"]],
         [[30, opts.period ?? "Periode: 1 - 31 Januari 2026"]],
-        [[30, opts.holder ?? "BUDI CONTOH"], [360, opts.productCell ?? "TAPLUS BISNIS - 8311100000"]],
+        [[30, opts.holder === null ? "" : opts.holder ?? "BUDI CONTOH"], [360, opts.productCell ?? "TAPLUS BISNIS - 8311100000"]],
         [[30, "JL CONTOH NO 1"], [360, "Kantor Cabang: CONTOH • Mata Uang: IDR"]],
         [[30, "KOTA CONTOH"]],
         [[30, "Saldo Awal"], [160, "Total Pemasukan"], [310, "Total Pengeluaran"], [460, "Saldo Akhir"]],
@@ -262,4 +265,21 @@ export function bniWondrPdf(opts: { productCell?: string; title?: string; holder
     ];
   });
   return makePdf(pages, { userPassword: "synthetic-password" });
+}
+
+/** BCA holder field: either labelled, or left of the account metadata on the same header row. */
+export function bcaHolderPdf(opts: { holder?: string | null; labelled?: boolean; candidate?: string; bank?: string } = {}): Buffer {
+  const holder = opts.holder === null ? "" : opts.holder ?? "PT CONTOH FIKTIF";
+  return makePdf([[
+    ...table(800, [
+      [[30, opts.bank ?? "BCA"]], [[30, "REKENING TAHAPAN"]],
+      ...(opts.labelled ? [[[30, "Nama Nasabah"], [140, ":"], [170, holder]] as [number, string][]] : []),
+      [[30, opts.labelled ? "" : opts.candidate ?? holder], [350, "NO. REKENING : 0000012345"]],
+      [[30, "PERIODE : JANUARI 2026"]], [[30, "Saldo Awal : 1,000.00"]],
+    ]),
+    ...table(700, [
+      [[30, "Tanggal"], [130, "Keterangan"], [400, "Nominal"], [500, "Saldo"]],
+      [[30, "13/01/2026"], [130, "Nama Nasabah: PT TRANSAKSI CONTOH"], [400, "100.00"], [500, "1,100.00"]],
+    ]),
+  ]]);
 }

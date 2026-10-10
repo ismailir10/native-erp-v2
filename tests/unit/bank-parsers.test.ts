@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseStatement, parseStatementSections } from "@/lib/import/parsers";
-import { bniWondrPdf, brimoPdf, mandiriEstatementPdf, makePdf, table } from "../pdf-fixture";
+import { bcaHolderPdf, bniWondrPdf, brimoPdf, mandiriEstatementPdf, makePdf, smbcCombinedPdf, table } from "../pdf-fixture";
 import { LAYOUTS } from "../bank-layouts";
 import { parsePdf, PdfPasswordError } from "@/lib/import/parsers/pdf";
 import { assertSingleSide } from "@/lib/import/parsers/common";
@@ -436,9 +436,11 @@ describe("address/product-only password statement layouts", () => {
   });
   it("keeps Mandiri's existing rows and metadata when only detection evidence changes", async () => {
     const read = (opts = {}) => parseStatement("statement.pdf", mandiriEstatementPdf(opts), { password: "synthetic-password" });
-    const { format: branded, ...source } = await read();
-    const { format: generic, ...unchanged } = await read({ product: "Unbranded savings", bankAddress: "Jalan Contoh 1" });
+    const { format: branded, holder: brandedHolder, ...source } = await read();
+    const { format: generic, holder: genericHolder, ...unchanged } = await read({ product: "Unbranded savings", bankAddress: "Jalan Contoh 1" });
     expect(branded).toBe("MANDIRI");
+    expect(brandedHolder).toBe("BUDI CONTOH");
+    expect(genericHolder).toBeUndefined();
     expect(generic).toBe("GENERIC");
     expect(unchanged).toEqual(source);
   });
@@ -451,5 +453,63 @@ describe("address/product-only password statement layouts", () => {
     const bni = await parseStatement("statement.pdf", bniWondrPdf({ productCell: "UNRELATED PRODUCT - 8311100000", transactionDescription: "TAPLUS BISNIS - 8311100000 TRANSFER KE BANK MANDIRI" }), { password: "synthetic-password" });
     expect(bni.format).toBe("GENERIC");
     expect(bni.accountNumber).toBeNull();
+  });
+});
+
+describe("printed account holders belong to headers only", () => {
+  it.each([false, true])("reads BCA's labelled or known header position (labelled=%s)", async (labelled) => {
+    const st = await parseStatement("statement.pdf", bcaHolderPdf({ labelled, holder: "  PT CONTOH FIKTIF  " }));
+    expect(st.holder).toBe("PT CONTOH FIKTIF");
+  });
+  it("reads BRImo's holder at the left of its period field", async () => {
+    expect((await parseStatement("statement.pdf", brimoPdf())).holder).toBe("BUDI CONTOH");
+  });
+  it.each(["Britama-IDR", "BRI", "JL CONTOH NO 1", "Alamat: JL CONTOH NO 1"])("never substitutes product/bank/address text %s for a BRImo holder", async (holder) => {
+    expect((await parseStatement("statement.pdf", brimoPdf({ holder }))).holder).toBeUndefined();
+  });
+  it("reads Mandiri's labelled holder without the period or branch metadata", async () => {
+    expect((await parseStatement("statement.pdf", mandiriEstatementPdf(), { password: "synthetic-password" })).holder).toBe("BUDI CONTOH");
+  });
+  it("reads BNI's holder even when it starts with a product name", async () => {
+    expect((await parseStatement("statement.pdf", bniWondrPdf({ holder: "TAPLUS CONTOH" }), { password: "synthetic-password" })).holder).toBe("TAPLUS CONTOH");
+  });
+  it.each(["BCA", "REKENING TAHAPAN", "JL CONTOH NO 1", "JL. CONTOH NO 1", "Alamat: JL CONTOH NO 1", "PT Bank Central Asia Tbk"])("never substitutes bank/product/address text %s for a BCA holder", async (candidate) => {
+    expect((await parseStatement("statement.pdf", bcaHolderPdf({ candidate }))).holder).toBeUndefined();
+  });
+  it.each([
+    ["bca", () => bcaHolderPdf({ holder: null })],
+    ["brimo", () => brimoPdf({ holder: null })],
+    ["mandiri", () => mandiriEstatementPdf({ holder: null })],
+    ["bni", () => bniWondrPdf({ holder: null })],
+  ] as const)("leaves an absent %s holder undefined", async (_layout, build) => {
+    expect((await parseStatement("statement.pdf", build(), { password: "synthetic-password" })).holder).toBeUndefined();
+  });
+  it("keeps BNI's right-hand account number when the holder cell is absent", async () => {
+    const st = await parseStatement("statement.pdf", bniWondrPdf({ holder: null }), { password: "synthetic-password" });
+    expect(st.accountNumber).toBe("8311100000");
+    expect(st.holder).toBeUndefined();
+  });
+  it("leaves unsupported layouts undefined even when their header has a name", async () => {
+    expect((await parseStatement("statement.pdf", bcaHolderPdf({ labelled: true, bank: "Bank Danamon" }))).holder).toBeUndefined();
+  });
+  it("does not read a transaction's labelled name when the header has none", async () => {
+    expect((await parseStatement("statement.pdf", bcaHolderPdf({ holder: null }))).holder).toBeUndefined();
+  });
+  it("propagates the SMBC document holder, including a disabled foreign-currency section", async () => {
+    const sections = await parseStatementSections("statement.pdf", smbcCombinedPdf({ holder: "PT INDUK CONTOH" }));
+    expect(sections.map((st) => st.holder)).toEqual(["PT INDUK CONTOH", "PT INDUK CONTOH", "PT INDUK CONTOH"]);
+    expect(sections[2].error).toMatch(/JPY/);
+  });
+  it("reads SMBC's recipient immediately below its standalone label", async () => {
+    const sections = await parseStatementSections("statement.pdf", smbcCombinedPdf({ holder: "PT INDUK CONTOH", holderNextLine: true }));
+    expect(sections.map((st) => st.holder)).toEqual(["PT INDUK CONTOH", "PT INDUK CONTOH", "PT INDUK CONTOH"]);
+  });
+  it("keeps SMBC section holders isolated and overrides the shared header per section", async () => {
+    const sections = await parseStatementSections("statement.pdf", smbcCombinedPdf({ holder: "PT INDUK CONTOH", sectionHolders: ["PT REKENING SATU", undefined, "PT REKENING JPY"] }));
+    expect(sections.map((st) => st.holder)).toEqual(["PT REKENING SATU", "PT INDUK CONTOH", "PT REKENING JPY"]);
+  });
+  it("never inherits another SMBC section's holder or the bank's own name", async () => {
+    const sections = await parseStatementSections("statement.pdf", smbcCombinedPdf({ sectionHolders: ["PT REKENING SATU"] }));
+    expect(sections.map((st) => st.holder)).toEqual(["PT REKENING SATU", undefined, undefined]);
   });
 });

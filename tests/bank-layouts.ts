@@ -314,7 +314,7 @@ export const LAYOUTS: Layout[] = [
     // Year-less DD/MM, CBG column, one MUTASI column with DB/CR after it, SALDO AWAL row, the summary block at the end.
     build: () =>
       pdfPage(
-        ["REKENING GIRO", "BCA", "NO. REKENING : 0000012345", "PERIODE : AGUSTUS 2026", "MATA UANG : IDR"],
+        ["REKENING GIRO", "BCA", "NAMA : PT CONTOH FIKTIF", "NO. REKENING : 0000012345", "PERIODE : AGUSTUS 2026", "MATA UANG : IDR"],
         [[40, "TANGGAL"], [100, "KETERANGAN"], [330, "CBG"], [410, "MUTASI"], [510, "SALDO"]],
         [
           [[40, "01/08"], [100, "SALDO AWAL"], [490, en(OPEN)]],
@@ -360,6 +360,7 @@ export const LAYOUTS: Layout[] = [
     check: (sections) => {
       expect(sections).toHaveLength(1);
       const st = sections[0];
+      expect(st.holder).toBe("BUDI CONTOH");
       expect(st.accountNumber).toBe("1110001234567");
       expect(st.currency).toBe("IDR");
       expect(st.openingBalance).toBe(80_000_001n);
@@ -439,6 +440,7 @@ export const LAYOUTS: Layout[] = [
     check: (sections) => {
       expect(sections).toHaveLength(1);
       const st = sections[0];
+      expect(st.holder).toBe("BUDI CONTOH");
       expect(st.accountNumber).toBe("8311100000");
       expect(st.currency).toBe("IDR");
       expect(st.periodStart.toISOString().slice(0, 10)).toBe("2026-01-01");
@@ -471,6 +473,7 @@ export const LAYOUTS: Layout[] = [
     check: (sections) => {
       expect(sections).toHaveLength(1);
       const st = sections[0];
+      expect(st.holder).toBe("BUDI CONTOH");
       expect(st.accountNumber).toBe("123401000012345");
       expect(st.currency).toBe("IDR");
       expect(st.periodStart.toISOString().slice(0, 10)).toBe("2026-01-01");

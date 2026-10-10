@@ -8,6 +8,10 @@ describe("every bank layout Buku claims reads to the same five August rows, tagg
     const sections = await parseStatementSections(layout.file, await layout.build(), { password: layout.password });
     expect(sections.length).toBeGreaterThan(0);
     for (const st of sections) expect(st.format).toBe(layout.bank);
+    for (const st of sections) {
+      const holder = layout.file === "bca-estatement.pdf" ? "PT CONTOH FIKTIF" : ["bri-brimo.pdf", "mandiri-estatement-password.pdf", "bni-wondr-password.pdf"].includes(layout.file) ? "BUDI CONTOH" : undefined;
+      expect(st.holder).toBe(holder);
+    }
     if (layout.check) return layout.check(sections);
     for (const st of sections) {
       expectAugust(st);

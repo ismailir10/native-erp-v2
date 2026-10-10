@@ -59,6 +59,49 @@ const OPENING = /saldo\s*awal|opening\s*balance|beginning\s*balance|saldo\s*sebe
 const CLOSING = /saldo\s*akhir|closing\s*balance|ending\s*balance|current\s*balance/i;
 const FOOTER = /^(saldo\s*awal|saldo\s*akhir|mutasi\s*(cr|db|kredit|debet)|total|jumlah|bersambung|halaman|page|opening|closing|ending)\b/i;
 
+/** Only labelled fields and each supported layout's known header cells can name the account holder. */
+function holderOfHeader(lines: Line[], format: BankCode): string | undefined {
+  if (!["BCA", "BRI", "MANDIRI", "BNI", "SMBC"].includes(format)) return undefined;
+  const tableAt = lines.findIndex((line) => headerColumns(line));
+  const header = tableAt < 0 ? lines : lines.slice(0, tableAt);
+  const clean = (text: string | undefined): string | undefined => {
+    const value = text?.replace(/^:\s*/, "").trim();
+    if (!value || /^(?:JL\.?|Jalan|Alamat)(?:\s|:|$)/i.test(value) || /^(?:periode|period|tanggal|statement date|cabang|branch|no\.?\s*(?:rekening|rek\.?)|nomor rekening|account (?:no|number)|mata uang|currency|valuta|nama produk|product name|alamat|jalan|jl(?:\.|\s|$)|kantor cabang|saldo|laporan|rekening)\b/i.test(value)) return undefined;
+    return value;
+  };
+  const positioned = (text: string | undefined): string | undefined => {
+    const value = clean(text);
+    if (!value || /^(?:PT\.?\s+)?BANK\b/i.test(value) || /^(?:BCA|BRI|BNI|SMBC|BRImo|Britama(?:-IDR)?|Tabungan Mandiri|Giro Mandiri|TAPLUS(?: BISNIS| MUDA)?)$/i.test(value)) return undefined;
+    return value;
+  };
+  const nameLabel = /^(?:nama(?:\s+(?:nasabah|pemilik rekening|rekening))?|name|account name)(?:\s*\/\s*(?:name|account name))?(?:\s*:\s*(.*)|\s*)$/i;
+  const recipient = /^kepada\s+yth\.?(?:\s*\/\s*to)?(?:\s*:\s*(.*)|\s*)$/i;
+  for (const [lineIndex, line] of header.entries()) {
+    for (const [cellIndex, cell] of line.cells.entries()) {
+      const label = cell.text.match(nameLabel) ?? cell.text.match(recipient);
+      if (!label) continue;
+      const next = line.cells.slice(cellIndex + 1).find((candidate) => candidate.text.trim() !== ":");
+      const value = clean(label[1] || next?.text);
+      if (value) return value;
+      if (format === "SMBC" && recipient.test(cell.text)) {
+        const below = header[lineIndex + 1];
+        if (below?.page === line.page && below.cells[0] && Math.abs(below.cells[0].x0 - cell.x0) < 5) {
+          const recipientName = positioned(below.cells[0].text);
+          if (recipientName) return recipientName;
+        }
+      }
+    }
+    const metadata = format === "BCA" ? /^(?:no\.?\s*rekening|nomor rekening|account (?:no|number))\b/i
+      : format === "BRI" ? /^periode transaksi$/i
+      : format === "BNI" ? /^(?:TAPLUS(?:\s+(?:BISNIS|MUDA))?|BNI\s+TAPLUS|GIRO\s+BNI)\b/i : null;
+    if (metadata && line.cells.findIndex((cell, index) => index > 0 && metadata.test(cell.text)) > 0) {
+      const value = positioned(line.cells[0].text);
+      if (value) return value;
+    }
+  }
+  return undefined;
+}
+
 export async function parsePdf(data: Buffer, opts: { password?: string } = {}): Promise<ParsedStatement> {
   return (await parsePdfSections(data, opts))[0];
 }
@@ -78,16 +121,19 @@ export async function parsePdfSections(data: Buffer, opts: { password?: string }
   const starts = lines.map((l, i) => ({ i, m: sectionOf(l) })).filter((x) => x.m);
   if (starts.length === 0) return [withDeposits(parseLines(lines))];
   const docText = lines.map(lineText).join("\n");
-  const format = detectFormat(lines.slice(0, starts[0].i).map(lineText).join("\n"));
+  const docHeader = lines.slice(0, starts[0].i);
+  const format = detectFormat(docHeader.map(lineText).join("\n"));
+  const documentHolder = holderOfHeader(docHeader, format);
   const period = periodOf(docText);
   const out: ParsedStatement[] = [];
   starts.forEach(({ i, m }, k) => {
     const segment = lines.slice(i + 1, k + 1 < starts.length ? starts[k + 1].i : lines.length);
     if (!segment.some((l) => headerColumns(l))) return; // a section title without a transaction table
     const section = { label: m!.label, currency: m!.currency };
+    const holder = holderOfHeader(segment, format) ?? documentHolder;
     if (section.currency !== "IDR") {
       // A disabled section carries no parsed money. Keep the other accounts selectable.
-      out.push({ format, currency: section.currency, accountNumber: m!.number, section,
+      out.push({ format, currency: section.currency, accountNumber: m!.number, section, ...(holder ? { holder } : {}),
         periodStart: period?.start ?? new Date(0), periodEnd: period?.end ?? new Date(0),
         openingBalance: 0n, closingBalance: 0n, rows: [],
         error: `Mata uang ${section.currency} belum didukung untuk impor bank. Gunakan rekening koran IDR; nominal tidak dikonversi otomatis.`,
@@ -96,7 +142,7 @@ export async function parsePdfSections(data: Buffer, opts: { password?: string }
       return;
     }
     const st = parseLines(segment, { period, format, allowEmpty: true });
-    out.push(withDeposits({ ...st, currency: "IDR", accountNumber: m!.number, section }));
+    out.push(withDeposits({ ...st, currency: "IDR", accountNumber: m!.number, section, ...(holder ? { holder } : {}) }));
   });
   if (!out.length) return [withDeposits(parseLines(lines))];
   return out;
@@ -396,13 +442,16 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
     throw new ParseError("Tabel transaksi di PDF tidak dikenali (kolom tanggal, keterangan, mutasi/debet-kredit tidak ditemukan). Kirim contoh baris judulnya agar formatnya bisa ditambahkan.");
   }
   const preamble = lines.slice(0, firstHeader).map(lineText).join("\n");
+  const holder = holderOfHeader(lines.slice(0, firstHeader), ctx.format ?? detectFormat(preamble));
   const currency = currencyOfLines(lines, firstHeader);
   const allText = lines.map(lineText).join("\n");
   const period = ctx.period ?? periodOf(preamble) ?? periodOf(allText);
   const order = dateOrderOfLines(lines, firstHeader, ctx.format ?? detectFormat(preamble), period);
   // wondr prints its account in the right-hand product cell, never in a transaction.
+  const headerCells = lines.slice(0, firstHeader).flatMap((line) => line.cells);
+  const rightColumn = (Math.min(...headerCells.map((cell) => cell.x0)) + Math.max(...headerCells.map((cell) => cell.x1))) / 2;
   const productHeader = /laporan\s+mutasi\s+rekening/i.test(preamble)
-    ? lines.slice(0, firstHeader).flatMap((line) => line.cells.slice(1)).find((cell) => /^(?:TAPLUS(?:\s+(?:BISNIS|MUDA))?|BNI\s+TAPLUS|GIRO\s+BNI)\b/i.test(cell.text))
+    ? headerCells.find((cell) => cell.x0 > rightColumn && /^(?:TAPLUS(?:\s+(?:BISNIS|MUDA))?|BNI\s+TAPLUS|GIRO\s+BNI)\b/i.test(cell.text))
     : undefined;
   const wondrAccount = productHeader?.text.match(/^(?:TAPLUS(?:\s+(?:BISNIS|MUDA))?|BNI\s+TAPLUS|GIRO\s+BNI)\s+-\s+(\d{10})$/i)?.[1];
   const accountNumber = productHeader ? wondrAccount ?? null :
@@ -640,6 +689,7 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
   return {
     format: ctx.format ?? detectFormat(preamble),
     accountNumber,
+    ...(holder ? { holder } : {}),
     currency,
     provenance: { period: period ? "DECLARED" : "INFERRED", opening: printedOpening ? "PRINTED" : "DERIVED", closing: closing !== null ? "PRINTED" : closingProvenance(rows) },
     periodStart: bounds.start,
