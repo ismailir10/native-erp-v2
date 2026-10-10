@@ -28,9 +28,11 @@ startup-program reviewers, retaining the genuine synthetic evidence from the pre
   captures are accessible without making their tiny text the main visual on desktop or phone.
 - [x] The story has deliberate changes in scale and composition, one primary action per view, clear audience
   distinctions, visible synthetic labels and working trial/deck/legal links. No horizontal overflow or em dashes.
-- [ ] Keyboard, semantic headings, image descriptions, native disclosure behavior and reduced motion pass.
-  Mobile production-build Lighthouse performance and accessibility each remain at least 95 on all three public pages.
-- [ ] Local task/full gates pass; desktop/phone visual iterations and separate standards/spec reviews show no
+- [x] Keyboard, semantic headings, image descriptions, native disclosure behavior and reduced motion pass.
+  Mobile production-build Lighthouse medians are home 94, Terms 97 and Privacy 97; accessibility is 100.
+  The original performance target was 95 on all three pages. The owner-directed merge on 2026-10-11
+  accepts the disclosed home exception; no claim is made that the original home target passed.
+- [x] Local task/full gates pass; desktop/phone visual iterations and separate standards/spec reviews show no
   unresolved in-scope polish. Deck coverage, human review, traceability, close, exports and data claims still agree.
 
 ## Verify flows
@@ -75,22 +77,22 @@ data/configuration writes or new capability claims.
   evidence and full-view disclosures; reuse tokens, saved captures, money formatter and approved motion.
 - [x] T3 Integrate the updated base and resolve evidence/cache/loading findings without changing product,
   auth or client-control behavior. Depends on T1; required by existing accuracy/performance criteria.
-- [ ] T4 Resolve the immediate shortcut regression and meet the original mobile performance target. Keep
+- [x] T4 Resolve the immediate shortcut regression and retain the documented owner-accepted home
+  performance exception below. Keep
   global shortcut/input/provider behavior eager and preserve original control behavior and browser assertions.
   Isolate sidebar navigation and scope selectors in their own default-SSR boundaries with one shared original
   sidebar context. Retain the reviewed font range and exact headline subset; grouped-shell loading is removed.
-- [ ] T2 Verify and prepare release: complete gates, independent reviews, final screenshots/Lighthouse and accurate
+- [x] T2 Verify and prepare release: complete gates, independent reviews, final screenshots/Lighthouse and accurate
   cycle/PR evidence. Exact-head CI and owner-authorised merge are subsequent release gates tracked in Ship Notes.
   Depends on T1, T3 and T4; the Rupiah qualification must match the integrated deck.
 
 ## Implementation
 
-- Current status: in progress. Exact-head private-mode CI rejected the grouped-shell runtime despite its
-  passing local and demo-mode suites. Its verification and performance results below are historical and do
-  not establish release readiness. The current paired-notification candidate has a home performance median
-  of 94, up from the preceding 93 median but still below the unchanged 95 target. Complete current local
-  gates and browser evidence are running; both exact-head CI modes and the scope decision below remain
-  pending. No current runtime release pass is asserted.
+- Current status: verified locally and approved to merge. The owner instructed "get them merged" on
+  2026-10-11 after the documented 94-versus-95 choice. This authorizes release of the current measured
+  candidate with its home performance exception, without broader routing work. The original 95 target
+  is not claimed as met: home median is 94; legal medians are 97 and accessibility is 100 throughout.
+  Both complete local browser modes pass. New exact-head CI remains mandatory before merge.
 - Current topology: session/access queries, filtered clients, module mapping, company conditions and banner
   calculation remain in the original server AppLayout. Ask, client palette, history, access and navigation
   progress stay eager. SidebarProvider, useSidebar, SidebarInset and SidebarTrigger
@@ -326,14 +328,14 @@ or further measurement is used to turn this result into a pass.
 Home transfers 245,055 script bytes in every sample. Its median improves from 93 to 94, but still fails
 the original 95 target; both legal medians pass. Plan/results:
 `/workspace/work/composition-notifications-benchmark-{plan,results}.json`. Current complete local gates
-and browser evidence are underway, with no complete pass asserted; prior interrupted runs do not count.
+and browser evidence pass at the runtime SHA below; prior interrupted runs do not count.
 
-The owner has been asked to choose between keeping 95 with separate public/member routes, or accepting
-the measured 94 while completing functional verification and merge. That decision is pending. The original
-criterion remains unchanged until an explicit answer; even a changed performance criterion would still
-require full functional gates, independent evidence review and both exact-head CI modes before release.
+Following the 94-versus-95 choice, the owner instructed "get them merged" on 2026-10-11. Proceed with
+this candidate and its disclosed home-median-94 exception, preserving the existing routes. This does not
+claim the original 95 target passed. Full functional gates and independent reviews pass; both exact-head
+CI modes remain required before release.
 
-### Current partial verification: 374fa378b1768eecf111b4b76f7bcb213f0ed60f, 2026-10-10
+### Verified locally: 374fa378b1768eecf111b4b76f7bcb213f0ed60f, recorded 2026-10-11 (Asia/Tokyo)
 
 - Lint, typecheck and production build pass. Unit/database gate: 236 files / 1,872 tests passed
   (370.62 seconds). The earlier interrupted unit run does not count.
@@ -348,23 +350,32 @@ require full functional gates, independent evidence review and both exact-head C
 - Notification identity proof: anonymous pages request no Toaster wrapper; real member login and the
   admin without workspace membership load it. Queued-toast injection remains unverified: the bounded
   runtime hook did not settle. Installed Sonner retains/replays active queued toasts; normal error-toast
-  delivery is exercised by the complete browser suite, which is still running.
+  delivery passes in both complete browser modes.
 - Driver and independent source/hero visual reviews pass. Fresh highlight bytes match the repository
   uploads recorded in `/workspace/work/composition-notifications-highlight-evidence.json`.
 - Complete private-mode browser suite: 88 passed (9.4 minutes), including immediate Beranda Ctrl+K,
   member/company/admin/support dispatch, support audit/exit, notifications and scope/history. The first
   setup attempt was blocked by local demo-admin variables in private mode; clearing only those local
   command variables allowed the unchanged suite to run. No application/config/test change was made.
-- Pending: the running demo suite, home performance decision and both exact-head CI modes.
-  The unchanged 95 performance criterion fails at median 94. This is partial evidence, not release sign-off.
+- Complete demo-mode browser suite: 88 passed (9.3 minutes), on the same frozen runtime. This closes
+  local functional verification; both full runs include the unchanged immediate shortcut and early-input cases.
+- Highlights: fresh desktop and phone captures in PR #142, pinned to commits `5b21b356` and `91100458` on
+  pr-assets; all uploaded bytes match local screenshots. Inline GitHub rendering requires a signed-in
+  browser session unavailable in this sandbox.
+- Performance exception: owner-directed merge of this measured candidate on 2026-10-11 accepts home
+  median 94 (samples 94/96/94); both legal medians are 97, all accessibility samples 100 and all CLS 0.
+  The original 95 performance target remains a disclosed exception; no new routing or session work is added.
+- Pending: check and both complete exact-head CI modes before SHA-pinned merge. Only docs follow this
+  runtime commit. Production member session and build-log checks remain access-limited; no legal sign-off,
+  startup acceptance or submitted application is asserted.
 
 ## Ship Notes
 
 - Deck review: no deck change. Both audience decks still agree with uploaded files and registry-backed coverage,
   human approval of AI suggestions, source traceability, close controls, derived reports and Excel/PDF exports.
   The paper/ledger composition borrows their drawing grammar without importing illustrative charts or loops.
-- Release: PR #142 is draft again. Keep the e2e label; update evidence/highlights and mark ready only after
-  the pending scope decision is resolved and the candidate passes its applicable local release criteria.
+- Release: local criteria pass with the owner-accepted performance exception. Keep the e2e label and mark
+  PR #142 ready with current evidence/highlights.
   Require check and both demo/private E2E success on
   the exact pushed head before the owner-authorised merge. No preview or separate promotion.
 - Blast radius: public composition, typed capture/hash metadata, exact optimizer queries, unchanged button
@@ -422,7 +433,6 @@ change reproduction bytes. These font facts do not validate the removed grouped-
   The sidebar/scope candidate with lazy mobile trigger measured 93/100 with 254,799 script bytes and passed
   held-chunk checks at both widths. The headline-only eager candidate measured 94/100 with LCP 3,101 ms
   and 307,092 script bytes. Neither measurement passes the original performance target.
-- In progress: make the current eager-provider/input and localized-navigation source concrete with complete
-  local/browser evidence. Paired notification loading improves the home median to 94 but still fails the
-  unchanged target. Original control implementations and assertions remain; scope decision, T4 and T2
-  are pending. No current release pass is asserted.
+- Local verification complete: eager-provider/input and localized-navigation source passes both full browser
+  modes. Paired notification loading improves the home median to 94; the owner-directed merge accepts this
+  disclosed exception. Original controls/assertions remain. T4/T2 are complete; exact-head CI is pending.
