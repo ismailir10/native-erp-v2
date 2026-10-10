@@ -11,9 +11,7 @@ and a startup-program reviewer assessing a working business. The intended outcom
 surface: Rekening Koran in, laporan keuangan out, with every bank-derived figure traceable to its source row.
 An accountant still reviews uncertain suggestions and decides when the books can close.
 
-The prerequisite access PR is merged. This cycle starts from the latest main on task/public-site. This record is
-the spec only; implementation begins after the owner's approval. The owner explicitly requested a draft PR for
-this spec before that approval.
+The prerequisite access PR is merged. This cycle starts from the latest main on task/public-site. The owner requested the initial spec as a draft PR, then approved implementation and completion through merge.
 
 ## Spec
 
@@ -222,9 +220,9 @@ use, accounting-invariant change, promised deletion schedule, production write, 
 - [x] T6 Complete local verification and polish — accept: public/session/form/email flows pass; five public
   pages at 1440/390 and thank-you are inspected; anti-slop, accessibility and mobile Lighthouse thresholds pass;
   task/full gates and verify-local evidence are recorded for the head. Deps: T3, T5. Reuse existing access tests.
-- [ ] T7 Documentation and review handoff — accept: capture/run instructions and route/docs changes are current,
-  cycle record contains implementation/verification/ship evidence, PR has highlight screenshots, required CI
-  passes and the feature is ready for the owner's merge. Deps: T6. Review deck claims during ship; change decks
+- [x] T7 Documentation and review handoff — accept: capture/run instructions and route/docs changes are current,
+  cycle record contains implementation/verification/ship evidence and the PR has highlight screenshots. Required
+  CI must pass before the owner-authorised merge; those release gates are followed in Ship Notes and the PR. Deps: T6. Review deck claims during ship; change decks
   only if a claim changed. Record owner prerequisites: legal confirmation, domain/support and email config.
 
 Tasks are sequential implementation commits; T4 can be researched while T2/T3 are underway but shares the local
@@ -284,6 +282,72 @@ demo capture environment. This spec stage has one tightly connected document and
   disclosures and the trial thank-you were inspected. No further visual or flow fix is outstanding.
   Gate: lint/typecheck/build pass; 226 files / 1,540 tests pass; ALL PASS / 1,765 book checks; 86 browser tests pass.
 
+- T7: README documents public/session destinations, legal/contact prerequisites and the guarded local capture
+  command. Verification records the final runtime commit; this task changes documentation only. Highlight
+  images are uploaded and commit-pinned in PR #140. Documentation and evidence reviews pass. Required CI and
+  the owner-authorised merge are the subsequent release gates, not claims of an already completed deployment.
+
 ## Verification
 
+### Verified locally: 77393fa4d9dc805ffa65fe77c5fb41239da952e4, 2026-10-10
+
+- Gate: `npm run lint && npm run typecheck && npm test` passes: 226 files / 1,540 tests.
+  `npm run build && npm run demo:reset && npm run verify:books && npm run test:e2e` passes.
+  Book-check tail: `ALL PASS` / 1,765 checks. Browser-suite tail: `86 passed (9.8m)`.
+- App: final production build at http://localhost:3200; local Postgres 16, real local GoTrue/Mailpit/Kong,
+  existing synthetic demo password login. The full Supabase image exceeded this sandbox's disk capacity;
+  the disposable Auth stack uses the pinned GoTrue version and the standard verification route semantics.
+  Paid model keys are blank; tests use MockProvider. No hosted data/configuration was written.
+- Walked: prospect home/product evidence/deck/trial/legal navigation at desktop and phone; trial validation,
+  acknowledgement, duplicate/throttle behavior, email legal links and scanner-safe invitation/recovery;
+  firm Beranda with persistent question history/scope/period, company own-books, admin Backoffice and real MFA
+  read-only support; expired-trial read/export with writes/AI refused; tenant isolation and protected routes.
+  A live password-session walk temporarily suspended then disabled a separate synthetic member, verified
+  closed-access and public/login destinations, and restored the fixture. No-auth configuration still serves
+  public/legal pages, blocks protected access, and shows the neutral contact fallback.
+- Accessibility: keyboard skip/focus, single h1/main, label/error/thank-you focus, descriptive images, native
+  full-report disclosures, no 390 px overflow, and reduced-motion rules pass. Inspected DOM accessibility
+  snapshots for reading order; this is not a separate human screen-reader-device audit.
+- Lighthouse: default mobile simulated slow 4G, 412 × 823, CPU slowdown 4×, Lighthouse 13.5.0 / Chromium 146,
+  production app. Performance/accessibility: home 96/100, Terms 96/100, Privacy 95/100. Reports:
+  `/workspace/work/lighthouse-{home,syarat,kebijakan-privasi}-ready.json`. No relaxed throttling.
+- Console/network: all five public pages, phone disclosures, no-auth fallback and live access-edge walks
+  have no unexpected errors or failed resources. Tenant-denial and invalid/expired auth responses in negative
+  tests are expected. The final public browser evidence records ten successful page/viewport checks.
+- Screenshots: `/workspace/work/final-{home,terms,privacy,login,trial}-{1440,390}.png`, plus expanded phone
+  checklist/trial-balance views; `test-results/daftar-terima-kasih-390.png` for the submitted trial.
+  All public views and the thank-you state were inspected. Hanken Grotesk/tokens, one clear action, readable
+  evidence and deliberate whitespace pass the anti-slop review; no em dashes, vendor branding, invented
+  metrics, stock art, decorative gradients or unapproved motion appear in public copy.
+- Highlights: desktop and phone home shots uploaded to PR #140's private `pr-assets` branch, pinned by commit.
+  Authenticated content reads match both uploaded PNGs byte-for-byte. Anonymous GitHub image access returns
+  404 because the repository is private; signed-in PR rendering could not be inspected in this browser.
+- Rounds: three passes with progress; performance and visual polish preloaded the existing font, isolated the history context, scoped
+  arrival motion to the illustration and added the existing-mark favicon; the full flow found and fixed
+  adoption of text typed before hydration. Local Auth route/proxy configuration was corrected without repo
+  or hosted changes. Root metadata preserves the member title; canonical and trial-error assertions now compare equivalent URLs
+  and distinguish the form alert from the framework route announcement.
+- Reviews: separate standards/spec reviews passed the final source and all desktop/phone captures; security
+  review passed the routing/trial/email changes. Final gates were completed after the runtime fixes.
+- Not checked: signed-in production workspace and production build-log migration line require access to the
+  target Vercel project/real member session. Startup-program private application fields and legal sign-off
+  remain outside this cycle. The public site does not claim program acceptance or provider affiliation.
+
 ## Ship Notes
+
+- Deck review: no deck change. Both current decks agree with registry-backed bank/formats coverage, human
+  review, source traceability, genuine close blockers, firm/company roles, Excel/PDF exports, Singapore
+  application/database hosting and task-specific Data dan AI wording. The presentation changes no capability
+  claim; no PDF regeneration is needed.
+- Release: PR #140 targets main. After this docs-only task, mark ready, add the e2e label and require both
+  `check` and `e2e` to pass on the exact pushed head before merging. The owner explicitly authorised merge.
+  Main triggers the one production deploy; no separate preview/promotion or hosted configuration apply.
+- Blast radius: public home/navigation and root layout. No schema migration, dependency, provider integration,
+  accounting-write behavior or hosted Auth configuration change. Rollback: revert this feature merge.
+- Operator prerequisites: confirm the legal operator identity and wording, public APP_URL and a monitored
+  BUKU_SUPPORT_EMAIL before external trials/application use. Apply the documented hosted email templates and
+  SMTP configuration as an operator task; publishing checked-in templates does not apply them remotely.
+- Post-merge: check public home, real product assets, both legal pages, trial, login form and metadata/icon
+  responses. Confirm deployment status from the merge commit. The target Vercel project is unavailable through
+  this session's connector, and no real member credentials were supplied, so its build-log migration line and
+  signed-in real-firm Beranda require an operator check. No production test account or data write is authorised.
