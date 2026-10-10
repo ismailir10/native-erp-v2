@@ -170,6 +170,15 @@ them and asks only what it truly cannot know, once.
     without it (no mismatch warning).
 - T1: `docs/adrs/0018-pdf-password-keyring.md` + ADR index — per-client encrypted keyring, server-only, clearable by
   admins; replaces "never stored".
+- T2 (build regrouping: inbox store + check + keyring): migration `20261010170721_unggah_inbox` (EvidenceIntake.isInbox +
+  partial unique "one inbox per client", UploadItem, ClientPdfPassword, enums), `lib/inbox/store.ts` (inbox intake,
+  server-side chunked store), `lib/inbox/keyring.ts` (try without → offered → stored, most recent first; encrypted,
+  stored once under an advisory lock; never logged/returned), `lib/inbox/check.ts` (store + classify BANK/LEDGER/OTHER
+  with sections, books nothing), `postableTables` exported from evidence extract, `StatementRepairError` (a subclass of
+  UnreadableFileError so a real statement with a broken balance is FAILED with its reason, not kept as "other"),
+  tests `inbox-store`, `inbox-keyring`, `inbox-check`. Known gaps kept for later: year-less / ambiguous-date statements
+  end FAILED with the reader's message (the old import page keeps its year prompt and *Atur kolom*); locked Excel files
+  are kept as documents; the inbox has Dokumen's per-intake limits (500 files / 100 MiB).
 
 ## Verification
 
