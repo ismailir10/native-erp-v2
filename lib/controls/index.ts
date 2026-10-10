@@ -167,8 +167,8 @@ async function collectControls(db: Db, clientId: string, year: number, month: nu
         continue;
       }
       const { coverage } = cover;
-      const evidence = statementEvidence(coverage, end);
-      const checkpointConflicts = await sourceCheckpointConflicts(db, e.id, ba.accountId, coverage, end);
+      const evidence = statementEvidence(coverage, end, opening);
+      const checkpointConflicts = await sourceCheckpointConflicts(db, e.id, ba.accountId, coverage, end, opening);
       evidence.conflict ||= checkpointConflicts.length > 0;
       evidence.messages.push(...checkpointConflicts);
       const { checkpoint } = evidence;
@@ -183,7 +183,7 @@ async function collectControls(db: Db, clientId: string, year: number, month: nu
         detail: differs ? `Bank ${fmt(checkpoint.closingBalance)} vs buku besar ${fmt(gl)}`
           : evidence.conflict ? "Saldo pada sumber bertentangan; periksa kelengkapan mutasi."
           : verified ? `Saldo bank = buku besar = ${fmt(gl)}`
-          : "Cakupan atau saldo akhir bulan belum terbukti dari sumber. Impor rekening koran lengkap sampai akhir bulan.",
+          : "Cakupan atau saldo sumber belum sepenuhnya terbukti. Periksa rincian kelengkapan mutasi dan bukti saldo.",
         href: `${base}/ledger/${ba.account.code}?entity=${e.id}`,
         ack: acks.get(key),
       });

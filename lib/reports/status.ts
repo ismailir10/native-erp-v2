@@ -60,8 +60,8 @@ export async function reportStatus(db: Db, clientId: string, entityIds: string[]
     for (const ba of e.bankAccounts) {
       const cover = await statementCoverage(db, ba.id, opening, start, end);
       if (cover.state === "before") continue;
-      const evidence = cover.state === "missing" ? null : statementEvidence(cover.coverage, end);
-      if (cover.state !== "covered" || !evidence?.checkpoint || evidence.uncertain || evidence.conflict || (await sourceCheckpointConflicts(db, e.id, ba.accountId, cover.coverage, end)).length) missing.push(ba.label);
+      const evidence = cover.state === "missing" ? null : statementEvidence(cover.coverage, end, opening);
+      if (cover.state !== "covered" || !evidence?.checkpoint || evidence.uncertain || evidence.conflict || (await sourceCheckpointConflicts(db, e.id, ba.accountId, cover.coverage, end, opening)).length) missing.push(ba.label);
     }
   }
   if (missing.length) reasons.push({ kind: "statements", accounts: missing });

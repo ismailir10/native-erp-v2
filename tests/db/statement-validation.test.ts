@@ -166,6 +166,48 @@ describe("source validation reaches controls and report status", () => {
     expect(await hasStatementReason(g, bank.label)).toBe(false);
   });
 
+  it.each(["01/08/2026", "10/08/2026"])("fails a duplicate-only source with an inflated opening on %s even when every closing agrees", async (start) => {
+    const { g, bank, load } = await setup();
+    await load(bca([receipt("15/08/2026", 100, 1100), receipt("20/08/2026", 200, 1300, "CUSTOMER B")], { closing: 1300 }), "complete.csv");
+    const journals = await db.journalEntry.count();
+    const second = await load(bca([receipt("20/08/2026", 200, 1300, "CUSTOMER B")], { start, opening: 1100, closing: 1300 }), "inflated-opening.csv");
+    expect(second.duplicates).toBe(1);
+    expect(await db.journalEntry.count()).toBe(journals);
+    const status = await statuses(g.client.id, bank.id);
+    expect(status.bank?.status).toBe("FAIL");
+    expect(status.continuity?.status).toBe("FAIL");
+    expect(await hasStatementReason(g, bank.label)).toBe(true);
+  });
+
+  it("compares source openings at book start without assuming a zero prehistory", async () => {
+    const g = await makeGroup();
+    await postOpening(db, { clientId: g.client.id, entityId: g.pt.entity.id, date: dateOnly(2026, 8, 1), lines: [{ accountCode: "1101", debit: "1000", credit: "0" }, { accountCode: "3100", debit: "0", credit: "1000" }] });
+    const bank = g.pt.banks[0];
+    await importStatement(db, { bankAccountId: bank.id, fileName: "complete.csv", data: bca([receipt("15/08/2026", 100, 1100), receipt("20/08/2026", 200, 1300, "CUSTOMER B")], { closing: 1300 }), provider: null });
+    const status = await statuses(g.client.id, bank.id);
+    expect(status.bank?.status).toBe("REVIEW");
+    expect(status.continuity?.status).toBe("REVIEW");
+    expect(await hasStatementReason(g, bank.label)).toBe(true);
+    await importStatement(db, { bankAccountId: bank.id, fileName: "inflated-opening.csv", data: bca([receipt("20/08/2026", 200, 1300, "CUSTOMER B")], { opening: 1100, closing: 1300 }), provider: null });
+    const conflict = await statuses(g.client.id, bank.id);
+    expect(conflict.bank?.status).toBe("FAIL");
+    expect(conflict.continuity?.status).toBe("FAIL");
+    expect(await hasStatementReason(g, bank.label)).toBe(true);
+  });
+
+  it("does not bless an unverifiable pre-book opening when another source starts on a different day", async () => {
+    const g = await makeGroup();
+    await postOpening(db, { clientId: g.client.id, entityId: g.pt.entity.id, date: dateOnly(2026, 8, 1), lines: [{ accountCode: "1101", debit: "1000", credit: "0" }, { accountCode: "3100", debit: "0", credit: "1000" }] });
+    const bank = g.pt.banks[0];
+    await importStatement(db, { bankAccountId: bank.id, fileName: "complete.csv", data: bca([receipt("15/08/2026", 100, 1100), receipt("20/08/2026", 200, 1300, "CUSTOMER B")], { start: "02/08/2026", closing: 1300 }), provider: null });
+    expect((await statuses(g.client.id, bank.id)).bank?.status).toBe("PASS");
+    await importStatement(db, { bankAccountId: bank.id, fileName: "unverifiable-opening.csv", data: bca([receipt("20/08/2026", 200, 1300, "CUSTOMER B")], { opening: 1100, closing: 1300 }), provider: null });
+    const status = await statuses(g.client.id, bank.id);
+    expect(status.bank?.status).toBe("REVIEW");
+    expect(status.continuity?.status).toBe("REVIEW");
+    expect(await hasStatementReason(g, bank.label)).toBe(true);
+  });
+
   it("keeps reports marked incomplete when a multi-month file lacks an August closing checkpoint", async () => {
     const { g, bank, load } = await setup();
     await load(bca([receipt("01/08/2026", 100, 1100), receipt("30/09/2026", 200, 1300, "CUSTOMER B")], { end: "30/09/2026", closing: 1300 }));
