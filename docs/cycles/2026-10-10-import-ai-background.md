@@ -167,6 +167,11 @@ lines with no useful suggestion.
     accounting-rules rule 18 ("no retry loops") is updated to say exactly that.
 
 ## Verification
+**Verified locally — d89c703** (after rebasing on main `6b30e50`: lint, typecheck, `npm test` 240 files / 1909 tests,
+`npm run build`, `demo:reset` + `verify:books` ALL PASS; production build `next start -p 3200` + fake endpoint: the
+October file imported at once, "Saran AI diproses · 0 dari 45" → "selesai · 45 saran" in ~30 s). Highlight shots:
+import result with the live "Saran AI" row; Review mid-run.
+
 Local, synthetic data (demo "Grup Ayam Nusantara"), `npm run dev` with a local fake OpenAI-compatible endpoint
 (`/chat/completions`, 4–8 s per call, answers over 10 items cut off with `finish_reason: "length"`) — the real provider
 code path, no credit:
