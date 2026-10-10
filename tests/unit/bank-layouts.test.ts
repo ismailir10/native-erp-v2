@@ -5,7 +5,7 @@ import { LAYOUTS } from "../bank-layouts";
 
 describe("every bank layout Buku claims reads to the same five August rows, tagged with its bank", () => {
   it.each(LAYOUTS.map((l) => [l.bank, l.format, l]))("%s · %s", async (_bank, _format, layout) => {
-    const sections = await parseStatementSections(layout.file, await layout.build());
+    const sections = await parseStatementSections(layout.file, await layout.build(), { password: layout.password });
     expect(sections.length).toBeGreaterThan(0);
     for (const st of sections) expect(st.format).toBe(layout.bank);
     if (layout.check) return layout.check(sections);

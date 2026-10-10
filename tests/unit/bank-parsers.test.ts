@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { parseStatement, parseStatementSections } from "@/lib/import/parsers";
-import { brimoPdf, makePdf, table } from "../pdf-fixture";
+import { bniWondrPdf, brimoPdf, mandiriEstatementPdf, makePdf, table } from "../pdf-fixture";
 import { LAYOUTS } from "../bank-layouts";
-import { parsePdf } from "@/lib/import/parsers/pdf";
+import { parsePdf, PdfPasswordError } from "@/lib/import/parsers/pdf";
 import { assertSingleSide } from "@/lib/import/parsers/common";
-import { SourceAmountError } from "@/lib/import/types";
+import { SourceAmountError, SourceDateError } from "@/lib/import/types";
 import { checkContinuity } from "@/lib/import/normalize";
 import { BAL, TX, en, bniDirectCsv, bniDirectXlsx, bniMobileXlsx, xlsxBuffer, briInternetBankingCsv, cimbPdf, idn, mandiriLivinPdf, mandiriLivinXlsx, serialDateXlsx, cimbOctoCsv, expectAugust, p2, permataCsv, titleWithCommasSemicolonCsv, utf16TabCsv } from "../bank-fixture";
 
@@ -397,5 +397,59 @@ describe("two-column zero sides and BRImo financial reports", () => {
     expect(st.openingBalance).toBe(58_400_000n);
     expect(st.provenance?.opening).toBe("PRINTED");
     expect(checkContinuity(st).ok).toBe(false);
+  });
+});
+
+describe("address/product-only password statement layouts", () => {
+  it.each(["mandiri-estatement-password.pdf", "bni-wondr-password.pdf"])("reads %s with the correct password", async (file) => {
+    const layout = LAYOUTS.find((l) => l.file === file)!;
+    const sections = await parseStatementSections(file, await layout.build(), { password: layout.password });
+    expect(sections[0].format).toBe(layout.bank);
+    layout.check!(sections);
+  });
+  it.each([mandiriEstatementPdf, bniWondrPdf])("requests a password and refuses a wrong password", async (build) => {
+    const file = build();
+    await expect(parseStatement("statement.pdf", file)).rejects.toMatchObject({ reason: "needed" });
+    await expect(parseStatement("statement.pdf", file, { password: "wrong" })).rejects.toBeInstanceOf(PdfPasswordError);
+    await expect(parseStatement("statement.pdf", file, { password: "wrong" })).rejects.toMatchObject({ reason: "wrong" });
+  });
+  it.each(["TAPLUS - 8311100000", "TAPLUS BISNIS - 8311100000", "TAPLUS MUDA - 8311100000", "BNI Taplus - 8311100000", "Giro BNI - 8311100000"])("reads only the account number in the product header %s", async (productCell) => {
+    const st = await parseStatement("statement.pdf", bniWondrPdf({ productCell }), { password: "synthetic-password" });
+    expect(st.format).toBe("BNI");
+    expect(st.accountNumber).toBe("8311100000");
+  });
+  it("reads the right-hand product cell when the holder also starts with a product word", async () => {
+    const st = await parseStatement("statement.pdf", bniWondrPdf({ holder: "TAPLUS CONTOH" }), { password: "synthetic-password" });
+    expect(st.accountNumber).toBe("8311100000");
+  });
+  it.each(["TAPLUS BISNIS", "TAPLUS BISNIS - 831110000", "TAPLUS BISNIS - 83111000001", "TAPLUS BISNIS 8311100000", "TAPLUS BISNIS-8311100000", "UNRELATED PRODUCT - 8311100000"])("does not guess an account from malformed/absent product number %s", async (productCell) => {
+    const st = await parseStatement("statement.pdf", bniWondrPdf({ productCell }), { password: "synthetic-password" });
+    expect(st.accountNumber).toBeNull();
+    if (productCell !== "UNRELATED PRODUCT - 8311100000") expect(st.format).toBe("BNI");
+  });
+  it.each([
+    { holder: "PT REKENING CONTOH", productCell: "TAPLUS BISNIS-8311100000" },
+    { title: "Laporan Mutasi Rekening 9876543210", productCell: "TAPLUS BISNIS" },
+  ])("never falls back to arbitrary holder/title digits in a product layout %j", async (opts) => {
+    const st = await parseStatement("statement.pdf", bniWondrPdf(opts), { password: "synthetic-password" });
+    expect(st.accountNumber).toBeNull();
+  });
+  it("keeps Mandiri's existing rows and metadata when only detection evidence changes", async () => {
+    const read = (opts = {}) => parseStatement("statement.pdf", mandiriEstatementPdf(opts), { password: "synthetic-password" });
+    const { format: branded, ...source } = await read();
+    const { format: generic, ...unchanged } = await read({ product: "Unbranded savings", bankAddress: "Jalan Contoh 1" });
+    expect(branded).toBe("MANDIRI");
+    expect(generic).toBe("GENERIC");
+    expect(unchanged).toEqual(source);
+  });
+  it("refuses an impossible declared shared-month period", async () => {
+    await expect(parseStatement("statement.pdf", bniWondrPdf({ period: "Periode: 1 - 31 Februari 2026" }), { password: "synthetic-password" })).rejects.toThrow(SourceDateError);
+  });
+  it("does not use transaction or footer bank names for either layout", async () => {
+    const mandiri = await parseStatement("statement.pdf", mandiriEstatementPdf({ product: "Unbranded savings", bankAddress: "Jalan Contoh 1" }), { password: "synthetic-password" });
+    expect(mandiri.format).toBe("GENERIC");
+    const bni = await parseStatement("statement.pdf", bniWondrPdf({ productCell: "UNRELATED PRODUCT - 8311100000", transactionDescription: "TAPLUS BISNIS - 8311100000 TRANSFER KE BANK MANDIRI" }), { password: "synthetic-password" });
+    expect(bni.format).toBe("GENERIC");
+    expect(bni.accountNumber).toBeNull();
   });
 });

@@ -289,6 +289,13 @@ export function periodOf(text: string): { start: Date; end: Date } | null {
     const end = parseDate(short[2], null);
     if (start && end) return { start, end };
   }
+  // wondr shares the month/year across both day bounds: "Periode: 1 - 31 Januari 2026".
+  const shared = text.match(/periode\s*:\s*(\d{1,2})\s*[-–]\s*(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/i);
+  if (shared) {
+    const start = parseDate(`${shared[1]} ${shared[3]} ${shared[4]}`, null);
+    const end = parseDate(`${shared[2]} ${shared[3]} ${shared[4]}`, null);
+    if (start && end) return { start, end };
+  }
   // "01 MEI 2026 - 31 MEI 2026" (SMBC and others print month names)
   const long = text.match(/(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})\s*[-–]\s*(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})/);
   if (long) {
@@ -393,7 +400,12 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
   const allText = lines.map(lineText).join("\n");
   const period = ctx.period ?? periodOf(preamble) ?? periodOf(allText);
   const order = dateOrderOfLines(lines, firstHeader, ctx.format ?? detectFormat(preamble), period);
-  const accountNumber =
+  // wondr prints its account in the right-hand product cell, never in a transaction.
+  const productHeader = /laporan\s+mutasi\s+rekening/i.test(preamble)
+    ? lines.slice(0, firstHeader).flatMap((line) => line.cells.slice(1)).find((cell) => /^(?:TAPLUS(?:\s+(?:BISNIS|MUDA))?|BNI\s+TAPLUS|GIRO\s+BNI)\b/i.test(cell.text))
+    : undefined;
+  const wondrAccount = productHeader?.text.match(/^(?:TAPLUS(?:\s+(?:BISNIS|MUDA))?|BNI\s+TAPLUS|GIRO\s+BNI)\s+-\s+(\d{10})$/i)?.[1];
+  const accountNumber = productHeader ? wondrAccount ?? null :
     preamble
       .split("\n")
       .filter((t) => /(no\.?\s*rek|nomor rekening|rekening|account)/i.test(t))

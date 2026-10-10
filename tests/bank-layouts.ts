@@ -3,7 +3,7 @@ import type { BankCode } from "@/lib/generated/prisma/enums";
 import type { ParsedStatement } from "@/lib/import/types";
 import { checkContinuity } from "@/lib/import/normalize";
 import { BAL, CLOSE, MON_EN, OPEN, TX, bniDirectCsv, bniDirectXlsx, cimbOctoCsv, cimbPdf, en, idn, mandiriLivinXlsx, p2, permataCsv, xlsxBuffer } from "./bank-fixture";
-import { brimoPdf, makePdf, smbcCombinedPdf, table, type PdfText } from "./pdf-fixture";
+import { bniWondrPdf, brimoPdf, mandiriEstatementPdf, makePdf, smbcCombinedPdf, table, type PdfText } from "./pdf-fixture";
 
 /**
  * One synthetic file per bank export Buku claims to read (`lib/banks.ts` formats), each holding the same five August 2026
@@ -17,6 +17,7 @@ export type Layout = {
   format: string;
   file: string;
   build: () => Buffer | Promise<Buffer>;
+  password?: string;
   /** The description starts with a counterparty column (Jago's Sumber/Tujuan) rather than the bank's transaction text. */
   counterpartyFirst?: boolean;
   /** A file that isn't the five August rows (a real layout reproduced as it was): its own check instead of `expectAugust`. */
@@ -355,6 +356,22 @@ export const LAYOUTS: Layout[] = [
       ),
   },
   {
+    bank: "MANDIRI", format: "e-statement Livin'", file: "mandiri-estatement-password.pdf", build: mandiriEstatementPdf, password: "synthetic-password",
+    check: (sections) => {
+      expect(sections).toHaveLength(1);
+      const st = sections[0];
+      expect(st.accountNumber).toBe("1110001234567");
+      expect(st.currency).toBe("IDR");
+      expect(st.openingBalance).toBe(80_000_001n);
+      expect(st.closingBalance).toBe(75_000_001n);
+      expect(st.rows.map((r) => r.amount)).toEqual([-5_000_000n, 1_000_000n, -3_000_000n, 1_000_000n, -4_000_000n, 1_000_000n, -3_000_000n, 2_000_000n, 5_000_000n]);
+      expect(st.rows[0].description).toBe("Transfer ke BANK MANDIRI ANDI CONTOH 1010000000001");
+      expect(st.rows.every((r) => !/WIB|Disclaimer/.test(r.description))).toBe(true);
+      expect(st.provenance).toEqual({ period: "DECLARED", opening: "PRINTED", closing: "PRINTED" });
+      expect(checkContinuity(st).ok).toBe(true);
+    },
+  },
+  {
     bank: "MANDIRI",
     format: "rekening koran tabungan",
     file: "mandiri-tabungan.pdf",
@@ -416,6 +433,23 @@ export const LAYOUTS: Layout[] = [
         TX.flatMap((t, i) => wrapped(t, 170, [[40, `${p2(t.d)} ${MON_EN[7]} 2026 08:14:47 WIB`], [170, t.desc[0]], [400, `${t.amt < 0 ? "-" : "+"}${Math.abs(t.amt).toLocaleString("en-US")}`], [490, BAL[i].toLocaleString("en-US")]])),
         [`Saldo Akhir ${CLOSE.toLocaleString("en-US")}`],
       ),
+  },
+  {
+    bank: "BNI", format: "wondr laporan mutasi", file: "bni-wondr-password.pdf", build: bniWondrPdf, password: "synthetic-password",
+    check: (sections) => {
+      expect(sections).toHaveLength(1);
+      const st = sections[0];
+      expect(st.accountNumber).toBe("8311100000");
+      expect(st.currency).toBe("IDR");
+      expect(st.periodStart.toISOString().slice(0, 10)).toBe("2026-01-01");
+      expect(st.periodEnd.toISOString().slice(0, 10)).toBe("2026-01-31");
+      expect(st.provenance).toEqual({ period: "DECLARED", opening: "PRINTED", closing: "PRINTED" });
+      expect(st.openingBalance).toBe(20_000_000n);
+      expect(st.closingBalance).toBe(18_000_000n);
+      expect(st.rows.map((r) => r.amount)).toEqual([1_000_000n, 1_000_000n, -2_000_000n, 1_000_000n, -5_000_000n, 2_000_000n]);
+      expect(st.rows.every((r) => /^Lainnya TRANSFER/.test(r.description) && !/WIB|Informasi/.test(r.description))).toBe(true);
+      expect(checkContinuity(st).ok).toBe(true);
+    },
   },
   {
     bank: "BRI",

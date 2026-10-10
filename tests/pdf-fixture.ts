@@ -198,3 +198,68 @@ export function brimoPdf(opts: { debit?: string; credit?: string; opening?: stri
   });
   return makePdf(pages);
 }
+
+/** Password-protected Mandiri e-Statement with the address/product header and its split date/amount rows. */
+export function mandiriEstatementPdf(opts: { product?: string; bankAddress?: string } = {}): Buffer {
+  const amounts = [-5_000_000, 1_000_000, -3_000_000, 1_000_000, -4_000_000, 1_000_000, -3_000_000, 2_000_000, 5_000_000];
+  const id = (value: number) => Math.abs(value).toLocaleString("de-DE") + ",00";
+  let balance = 80_000_000;
+  const pages = amounts.map((amount, page) => {
+    balance += amount;
+    const day = String(page + 1).padStart(2, "0");
+    return [
+      ...table(800, [
+        [[30, "e-Statement"]],
+        [[30, opts.bankAddress ?? "Menara Mandiri 1 Jalan Jenderal Sudirman Kav. 54-55, Jakarta 12190, Indonesia"]],
+        [[30, "Nama/Name"], [105, ":"], [125, "BUDI CONTOH"], [280, "Periode/Period"], [355, ":"], [375, "01 Jan 2026 - 31 Jan 2026"], [535, `${page + 1} dari 9`]],
+        [[535, `${page + 1} of 9`]],
+        [[30, "Cabang/Branch"], [105, ":"], [125, "KCP Contoh"], [280, "Dicetak pada/Issued on :"], [420, "02 Feb 2026"]],
+        [[30, opts.product ?? "Tabungan Mandiri"]],
+        [[30, "Saldo Awal/Initial Balance"], [185, ":"], [205, "80.000.000,50"]],
+        [[30, "Nomor Rekening/Account Number :"], [220, "1110001234567"], [330, "Dana Masuk/Incoming Transactions"], [525, "+ 10.000.000,00"]],
+        [[30, "Mata Uang/Currency"], [185, ":"], [205, "IDR"]],
+        [[330, "Dana Keluar/Outgoing Transactions"], [525, "- 15.000.000,00"]],
+        [[30, "Saldo Akhir/Closing Balance"], [185, ":"], [205, "75.000.000,50"]],
+        [[30, "No"], [60, "Tanggal"], [190, "Keterangan"], [400, "Nominal (IDR)"], [500, "Saldo (IDR)"]],
+        [[30, "No"], [60, "Date"], [190, "Remarks"], [400, "Amount (IDR)"], [500, "Balance (IDR)"]],
+      ]),
+      { x: 190, y: 620, text: amount < 0 ? "Transfer ke BANK MANDIRI" : "Transfer dari BANK BCA" },
+      { x: 60, y: 616, text: `${day} Jan 2026` },
+      ...table(612, [[[30, String(page + 1)], [190, "ANDI CONTOH 1010000000001"], [400, (amount < 0 ? "-" : "+") + id(amount)], [500, id(balance).replace(/,00$/, ",50")]]]),
+      { x: 60, y: 600, text: "21:41:32 WIB" },
+      ...(page === 8 ? [{ x: 30, y: 60, text: "Disclaimer ... Bank Mandiri ... Livin' ..." }] : []),
+    ];
+  });
+  return makePdf(pages, { userPassword: "synthetic-password" });
+}
+
+/** Password-protected wondr mutation report: holder/product cells, shared-month period and split amount/time rows. */
+export function bniWondrPdf(opts: { productCell?: string; title?: string; holder?: string; period?: string; transactionDescription?: string } = {}): Buffer {
+  const amounts = [1_000_000, 1_000_000, -2_000_000, 1_000_000, -5_000_000, 2_000_000];
+  const comma = (value: number) => Math.abs(value).toLocaleString("en-US");
+  let balance = 20_000_000;
+  const pages = amounts.map((amount, page) => {
+    balance += amount;
+    return [
+      ...table(800, [
+        [[30, opts.title ?? "Laporan Mutasi Rekening"]],
+        [[30, opts.period ?? "Periode: 1 - 31 Januari 2026"]],
+        [[30, opts.holder ?? "BUDI CONTOH"], [360, opts.productCell ?? "TAPLUS BISNIS - 8311100000"]],
+        [[30, "JL CONTOH NO 1"], [360, "Kantor Cabang: CONTOH • Mata Uang: IDR"]],
+        [[30, "KOTA CONTOH"]],
+        [[30, "Saldo Awal"], [160, "Total Pemasukan"], [310, "Total Pengeluaran"], [460, "Saldo Akhir"]],
+        [[30, "20,000,000"], [160, "+5,000,000"], [310, "-7,000,000"], [460, "18,000,000"]],
+        [[30, "Tanggal & Waktu"], [170, "Rincian Transaksi"], [400, "Nominal (IDR)"], [500, "Saldo (IDR)"]],
+        ...(page === 0 ? [[[170, "Saldo Awal"], [500, "20,000,000"]] as [number, string][]] : []),
+      ]),
+      ...table(660, [
+        [[30, `${String(page + 2).padStart(2, "0")} Jan 2026`], [170, "Lainnya"]],
+        [[400, (amount < 0 ? "-" : "+") + comma(amount)], [500, comma(balance)]],
+        [[30, "05:31:09 WIB"], [170, opts.transactionDescription ?? (amount < 0 ? "TRANSFER KE BANK MANDIRI 1234567890" : "TRANSFER DARI BANK BCA 1234567890")]],
+      ]),
+      ...(page === 5 ? table(600, [[[170, "Saldo Akhir"], [500, "18,000,000"]]]) : []),
+      { x: 30, y: 60, text: "Informasi Lainnya ... BNI dapat ..." },
+    ];
+  });
+  return makePdf(pages, { userPassword: "synthetic-password" });
+}
