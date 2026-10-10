@@ -54,6 +54,22 @@ describe("background AI run", () => {
     expect(await latestAiRun(db, g.client.id)).toBeNull();
   });
 
+  it("progress moves batch by batch: the second call already sees the first batch counted and applied", async () => {
+    const g = await makeGroup();
+    await lines(g, "pt", keys(30)); // two batches of 15
+    const started = (await startAiRun(db, { firmId: g.firm.id, clientId: g.client.id }))!;
+    const seen: { asked: number; suggested: number; applied: number }[] = [];
+    const provider = new RunProvider({
+      onCall: async () => {
+        const r = await run(started.id);
+        seen.push({ asked: r.askedLines, suggested: r.suggestedLines, applied: await db.bankTransaction.count({ where: { method: "AI" } }) });
+      },
+    });
+    await driveAiRun(db, started.id, { provider });
+    expect(seen).toEqual([{ asked: 0, suggested: 0, applied: 0 }, { asked: 15, suggested: 15, applied: 15 }]);
+    expect(await run(started.id)).toMatchObject({ status: "DONE", totalLines: 30, askedLines: 30, suggestedLines: 30, calls: 2 });
+  });
+
   it("runs to completion: suggestions on every line, nothing posted", async () => {
     const g = await makeGroup();
     const created = await lines(g, "pt", [...keys(20), "TOKO 00"]); // 21 lines, 20 unique keys

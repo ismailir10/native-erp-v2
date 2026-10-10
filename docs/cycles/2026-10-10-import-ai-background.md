@@ -110,7 +110,7 @@ lines with no useful suggestion.
 - [x] T3 Import answers without AI — pipeline books deterministically, schedules the run after the response; *Minta
       saran AI* schedules a run too — accept: DB test that no provider call happens inside the import; demo seed and
       `verify:books` unchanged. (deps: T2)
-- [ ] T4 Progress UI — "Saran AI" line on the import result and Review, auto-refresh until done — accept: verify flows
+- [x] T4 Progress UI — "Saran AI" line on the import result and Review, auto-refresh until done — accept: verify flows
       1–4 locally. (deps: T3)
 - [ ] T5 e2e + docs (README AI section, accounting-rules AI note) + full gate; production walk after merge recorded in
       Ship Notes — accept: full gate green.
@@ -150,6 +150,14 @@ lines with no useful suggestion.
   `aiRunStatusAction` — read access sees progress, only writers resume a stalled run), import and Review pages resume
   stalled runs for writers, `tests/db/ai-background.test.ts`. A second drive after a run finishes happens only for
   lines created after it started (a cap-stopped run doesn't immediately spend another 20 calls).
+- T4: `components/app/ai-run-status.tsx` (`useAiRun` polling 4 s → 10 s after 2 min, paused on hidden tabs, one
+  refresh per new suggestions/finish; `AiRunStatus` polite live region), `lib/ai/run-status.ts` (pure copy),
+  `components/app/import-form.tsx` (result row: run status / cached answers / today's no-model line unchanged),
+  `components/app/review-queue.tsx` (status line; *Minta saran AI* hidden while a run works), `tests/unit/ai-run-status.test.ts`.
+  The worker flagged that progress was only written at slice end ("0 dari N" → "selesai"); the driver added an
+  `onBatch` hook to `suggestWithAi` (outside its try, so an apply failure isn't taken for an AI failure),
+  `suggestForRows` applies each batch's answers as they settle and `runAiSlice` counts progress per batch —
+  regression test "progress moves batch by batch".
   - Split-once on truncation is bounded (one extra pair of calls per cut-off batch, counted in the cap):
     accounting-rules rule 18 ("no retry loops") is updated to say exactly that.
 

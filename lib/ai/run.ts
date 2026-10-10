@@ -81,19 +81,24 @@ export async function runAiSlice(db: Db, runId: string, opts: { provider: AiProv
       return { status: "DONE", done: true, claimed: true, progressed: false };
     }
     const rows = await pendingRows(db, run.clientId, run.skippedKeys);
-    const r = await suggestForRows(db, { clientId: run.clientId, rows, provider: opts.provider, deadline: opts.deadline, maxCalls: Math.max(0, aiConfig().maxCallsPerRun - run.calls) });
+    // Progress is written per batch, so "45 dari 150" moves while the slice works.
+    const onProgress = async (p: { settledLines: number; updatedLines: number }) => {
+      if (!p.settledLines && !p.updatedLines) return;
+      await db.aiRun.update({ where: { id: runId }, data: { askedLines: { increment: p.settledLines }, suggestedLines: { increment: p.updatedLines }, heartbeatAt: new Date() } });
+    };
+    const r = await suggestForRows(db, { clientId: run.clientId, rows, provider: opts.provider, deadline: opts.deadline, maxCalls: Math.max(0, aiConfig().maxCallsPerRun - run.calls), onProgress });
     const skippedKeys = [...run.skippedKeys, ...r.unansweredKeys];
     const settledLines = rows.filter((row) => r.settled.has(lineKey(row))).length;
     // Recounted, not taken from `remaining`: lines a concurrent import added during this slice keep the run going.
     const left = (await pendingRows(db, run.clientId, skippedKeys)).length;
     const done = r.stopped || left === 0;
+    // askedLines already counts this slice's settled lines (written per batch): what is left completes the total.
+    const { askedLines } = await db.aiRun.findUniqueOrThrow({ where: { id: runId }, select: { askedLines: true } });
     await db.aiRun.update({
       where: { id: runId },
       data: {
+        totalLines: askedLines + left,
         calls: { increment: r.calls },
-        askedLines: { increment: settledLines },
-        suggestedLines: { increment: r.updated },
-        totalLines: run.askedLines + settledLines + left,
         ...(r.unansweredKeys.length ? { skippedKeys: { push: r.unansweredKeys } } : {}),
         note: r.notes.at(-1) ?? run.note, // the latest; a stop is always the last note of its slice
         heartbeatAt: new Date(),

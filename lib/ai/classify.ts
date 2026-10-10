@@ -85,6 +85,8 @@ export async function suggestWithAi(
     provider: AiProvider | null;
     deadline?: number;
     maxCalls?: number;
+    /** Called as answers settle — once for cached answers, then after every batch — so a caller can apply them and show progress. */
+    onBatch?: (settled: { suggestions: Map<string, Classification>; unansweredKeys: string[] }) => Promise<void>;
   },
 ): Promise<{ suggestions: Map<string, Classification>; usage: AiRunUsage; unansweredKeys: string[] }> {
   args = { ...args, accounts: aiAccounts(args.accounts) };
@@ -105,6 +107,7 @@ export async function suggestWithAi(
     else misses.push(p);
   }
   const cacheHits = suggestions.size;
+  if (cacheHits && args.onBatch) await args.onBatch({ suggestions: new Map(suggestions), unansweredKeys: [] });
   if (misses.length === 0 || !args.provider) {
     return { suggestions, usage: { calls: 0, cacheHits, note: !args.provider && misses.length ? "AI tidak aktif" : undefined, remaining: misses.length, unanswered: 0, stopped: !args.provider && misses.length > 0 }, unansweredKeys: [] };
   }
@@ -126,6 +129,7 @@ export async function suggestWithAi(
     if (args.deadline !== undefined && Date.now() >= args.deadline) break;
     const { items, half } = queue[0];
     const batch: AiItem[] = items.map((p) => ({ key: p.key, direction: p.direction, sample: p.sample }));
+    let answered: { suggestions: Map<string, Classification>; unansweredKeys: string[] } | null = null;
     try {
       const res = await runBudgetedAi(tx, { firmId: args.firmId, scope: `classify:${args.clientId}`, prompt: buildPrompt(batch, args.accounts, args.clientName), maxCompletionTokens: maxTokensFor(batch.length), model: args.provider.model, keysRequested: batch.length, cacheHits }, () => {
         calls++;
@@ -144,7 +148,16 @@ export async function suggestWithAi(
         });
         suggestions.set(`${a.key}|${p.direction}`, { method: "AI", accountCode: a.accountCode, taxTag: a.taxTag, confidence: a.confidence, reason: `AI: ${a.reason}` });
       }
-      for (const p of items) if (!suggestions.has(`${p.key}|${p.direction}`)) unansweredKeys.push(`${p.key}|${p.direction}`);
+      const got = new Map<string, Classification>();
+      const missed: string[] = [];
+      for (const p of items) {
+        const k = `${p.key}|${p.direction}`;
+        const s = suggestions.get(k);
+        if (s) got.set(k, s);
+        else missed.push(k);
+      }
+      unansweredKeys.push(...missed);
+      answered = { suggestions: got, unansweredKeys: missed };
     } catch (e) {
       if (e instanceof AiBudgetError) { stopNote = e.message; break; } // refused before any call: the batch stays unasked
       queue.shift();
@@ -156,7 +169,9 @@ export async function suggestWithAi(
         continue;
       }
       asked += items.length;
-      for (const p of items) unansweredKeys.push(`${p.key}|${p.direction}`);
+      const missed = items.map((p) => `${p.key}|${p.direction}`);
+      unansweredKeys.push(...missed);
+      await args.onBatch?.({ suggestions: new Map(), unansweredKeys: missed });
       if (e instanceof AiTruncatedError) { truncated += items.length; timeoutsInRow = 0; continue; }
       if (isConfigFailure(e)) { stopNote = aiFailureNote(e); break; }
       if (isTimeout(e)) {
@@ -164,6 +179,8 @@ export async function suggestWithAi(
       } else timeoutsInRow = 0;
       failureNote = aiFailureNote(e); // this batch keeps its simple guesses; the run moves on
     }
+    // Outside the try: a failure while the caller applies answers is not the AI's failure.
+    if (answered) await args.onBatch?.(answered);
   }
   const note = stopNote
     ?? (capped ? "Batas panggilan AI per proses tercapai." : undefined)

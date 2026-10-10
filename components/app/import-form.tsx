@@ -14,6 +14,7 @@ import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { StatusPill } from "@/components/app/status";
 import { forgetLayoutAction, importAction, importSampleAction, ocrAction, setBankAccountBankAction } from "@/app/actions";
 import { ColumnMapper } from "@/components/app/column-mapper";
+import { AiRunStatus, useAiRun } from "@/components/app/ai-run-status";
 import { useAccess, WriteBlockedNote } from "@/components/app/access-context";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { BANKS, GROUP_ORDER, bankName } from "@/lib/banks";
@@ -27,8 +28,11 @@ type BankOption = { id: string; label: string; entity: string; bank: string; num
 const METHOD_LABEL: Record<string, string> = { TRANSFER: "Transfer antar rekening", RULE: "Aturan", MEMORY: "Pilihan yang diingat", AI: "Usulan AI", HEURISTIC: "Tebakan sederhana", MANUAL: "Manual" };
 
 /** `openingPending`: short names of the entities whose Saldo Awal is still missing; the result then leads with it (the bank balance is prefilled from this upload). */
-export function ImportForm({ clientId, banks, sample, openingPending = [] }: { clientId: string; banks: BankOption[]; sample?: { bankAccountId: string; fileName: string }; openingPending?: string[]; /** The client's background AI run (shown from T4 of cycle 2026-10-10-import-ai-background). */ aiRun?: AiRunView | null }) {
+export function ImportForm({ clientId, banks, sample, openingPending = [], aiRun: pageRun = null }: { clientId: string; banks: BankOption[]; sample?: { bankAccountId: string; fileName: string }; openingPending?: string[]; /** The client's background AI run: shown on the result, or before any upload while it is still running. */ aiRun?: AiRunView | null }) {
   const router = useRouter();
+  const ai = useAiRun(clientId, pageRun);
+  // The shown result handed lines to the background run (the import action answered with it).
+  const [resultRun, setResultRun] = useState(false);
   const { canWrite } = useAccess();
   const [bankId, setBankId] = useState<string>(sample?.bankAccountId ?? banks[0]?.id ?? "");
   const [file, setFileState] = useState<File | null>(null);
@@ -109,6 +113,8 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
       return;
     }
     setResult(r.summary);
+    setResultRun(!!r.aiRun);
+    if (r.aiRun) ai.adopt(r.aiRun);
     setLayoutShown(true);
     setResultBankId(sentTo);
     if (sent) setLastFile(sent);
@@ -376,11 +382,25 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
                   <ul className="list-disc space-y-1 pl-4 text-muted-foreground">{notesShown.map((n) => <li key={n}>{n}</li>)}</ul>
                 </div>
               )}
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Panggilan AI</span>
-                <span className="num">{result.ai.calls} panggilan · {result.ai.cacheHits} dari jawaban tersimpan</span>
-              </div>
-              {result.ai.note && <p className="text-xs text-muted-foreground">{result.ai.note}</p>}
+              {resultRun ? (
+                ai.run && <AiRunStatus run={ai.run} variant="row" />
+              ) : result.ai.later !== undefined ? (
+                // A model is set and nothing was left for the background: the cache answered (or no line needed AI).
+                result.ai.cacheHits > 0 && (
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-muted-foreground">Saran AI</span>
+                    <span className="num">{result.ai.cacheHits} dari jawaban tersimpan</span>
+                  </div>
+                )
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Panggilan AI</span>
+                    <span className="num">{result.ai.calls} panggilan · {result.ai.cacheHits} dari jawaban tersimpan</span>
+                  </div>
+                  {result.ai.note && <p className="text-xs text-muted-foreground">{result.ai.note}</p>}
+                </>
+              )}
               {result.duplicates > 0 && <p className="text-xs text-muted-foreground">{result.duplicates} baris dilewati karena sudah pernah diimpor.</p>}
               {result.otherSections.length > 0 && (
                 <div className="space-y-2 text-xs text-muted-foreground">
@@ -400,7 +420,10 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
               <NextAfterImport clientId={clientId} toReview={result.needsReview || result.pendingReview} openingPending={openingPending.length > 0} />
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">Belum ada file yang diproses di sesi ini.</p>
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">Belum ada file yang diproses di sesi ini.</p>
+              {ai.run && ai.watched && <AiRunStatus run={ai.run} variant="line" className="border-t pt-3" />}
+            </div>
           )}
         </CardContent>
       </Card>
