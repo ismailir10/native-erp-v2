@@ -30,7 +30,7 @@ startup-program reviewers, retaining the genuine synthetic evidence from the pre
   distinctions, visible synthetic labels and working trial/deck/legal links. No horizontal overflow or em dashes.
 - [x] Keyboard, semantic headings, image descriptions, native disclosure behavior and reduced motion pass.
   Mobile production-build Lighthouse performance and accessibility each remain at least 95 on all three public pages.
-- [ ] Local task/full gates pass; desktop/phone visual iterations and separate standards/spec reviews show no
+- [x] Local task/full gates pass; desktop/phone visual iterations and separate standards/spec reviews show no
   unresolved in-scope polish. Deck coverage, human review, traceability, close, exports and data claims still agree.
 
 ## Verify flows
@@ -79,7 +79,7 @@ data/configuration writes or new capability claims.
   remaining passive-effect timing gap. Stabilize the existing switcher context value. Preserve default SSR,
   original control behavior and unchanged browser assertions. Group the original member shell behind one
   default-SSR boundary and trim only unused font weights to retain the original mobile performance target.
-- [ ] T2 Verify and prepare release: complete gates, independent reviews, final screenshots/Lighthouse and accurate
+- [x] T2 Verify and prepare release: complete gates, independent reviews, final screenshots/Lighthouse and accurate
   cycle/PR evidence. Exact-head CI and owner-authorised merge are subsequent release gates tracked in Ship Notes.
   Depends on T1, T3 and T4; the Rupiah qualification must match the integrated deck.
 
@@ -218,12 +218,54 @@ Historical runtime evidence; shared screenshot paths now hold the final integrat
   access. Existing legal/domain/contact operator prerequisites remain; no legal sign-off, startup eligibility
   or submitted application is asserted.
 
+### Verified locally: e18d4016bf5191ff4b3bb45a1ba29cb30f79638a, 2026-10-10
+
+- Gate: lint, typecheck and production build pass. Unit/database suite: 236 files / 1,871 tests
+  passed (581.16 seconds). Synthetic reset and book verification pass: `ALL PASS` / 1,765 checks.
+  Complete unchanged browser suite: `88 passed (10.9m)`. Logs: `/workspace/work/composition-font-*.log`.
+  The built runtime is identical to this commit; subsequent verification-record edits change no runtime file.
+- App: production build at http://localhost:3200, synthetic Postgres 16 books and local GoTrue/Mailpit/Kong Auth.
+  Unit/database tests use `buku_test`; browser tests use `buku`. Paid model keys remain blank. No production writes.
+- Walked: all five public/auth pages at 1440/390 px, source/journal proof, current 9 REVIEW / 12 PASS close,
+  readable report totals and both complete native disclosures, deck/trial/legal links, skip/focus, headings,
+  anchors at 1440/1024/768/390 and reduced motion. Ten browser checks have no errors, failed resources or overflow.
+  Reading order was inspected through browser accessibility snapshots, not a separate assistive-device audit.
+- Member regression: original company/admin/support dispatch, scanner-safe invitations/recovery, tenant roles,
+  protected writes, expiry/revocation, client palette/sidebar, early typed input and scope/history all pass.
+  The grouped shell passes nine unchanged focused cases (45.4 seconds). Holding actual shell/Ask/Scope chunks
+  preserves SSR question text at both widths; after the real Ask control hydrates, shortcut, canonical scope
+  and navigation work. The probe does not assert global shortcut readiness before hydration commit.
+- Source: server guards, filtered client queries, module mapping and access/banner calculation stay server-side.
+  The original client shell imports its providers/controls together behind one default-SSR boundary. Context
+  identities, JSX, props and input adoption remain; only shortcut registration phase and its context value
+  stability change. Rejected local Suspense and individual-shell-leaf experiments are not in this runtime.
+- Evidence: source row 11 and its balanced Rp 335.350.000 journal, actual Mandiri review findings, all-entity
+  close and exact Rp 12.552.852.217 TB totals remain synthetic genuine captures. All fourteen saved hashes
+  match bytes; guarded scratch regeneration verifies 222 source rows / 1,765 checks without book/model writes.
+- Font: the same Hanken typeface retains every glyph and used weight, including 450 headings; licensed source,
+  asset hash and transformation recipe are recorded in `app/fonts/`. No dependency added. Fresh desktop/phone
+  screenshots retain headline wraps, spacing and readable evidence. The served 23,184-byte font matches the asset.
+- Lighthouse: required optimized images, default simulated mobile slow 4G, 412 × 823, CPU slowdown 4×,
+  Lighthouse 13.5.0 / Chromium 151.0.7922.173. Performance/accessibility: home 95/100, Terms 97/100,
+  Privacy 96/100; all CLS 0. Home LCP 2,958 ms, TBT 46.5 ms and 196,142 script bytes.
+  Reports: `/workspace/work/composition-font-lighthouse-{home,syarat,kebijakan-privasi}.json`.
+  No relaxed settings or repeat-until-green measurements. Older reports above are historical.
+- Screenshots: `/workspace/work/composition-production-{home,terms,privacy,login,trial}-{1440,390}.png`,
+  expanded close/TB views and current trial acknowledgement `test-results/daftar-terima-kasih-390.png`.
+  Final PR highlights are pinned uploads from 12:28 UTC; authenticated repository bytes match both local files.
+  Inline rendering needs a signed-in GitHub browser session unavailable here, so no rendering claim is made.
+- Review: driver and separate standards/spec reviewers clear the frozen source, final desktop/phone views,
+  font provenance and public measurements. Both final independent gate/record reviews pass without findings.
+- Not checked: signed-in production real-firm view and target Vercel build logs require unavailable project/member
+  access. Existing legal/domain/contact operator prerequisites remain. No legal sign-off, startup acceptance
+  or submitted application is asserted. Exact-head CI is a subsequent release gate, not a local test result.
+
 ## Ship Notes
 
 - Deck review: no deck change. Both audience decks still agree with uploaded files and registry-backed coverage,
   human approval of AI suggestions, source traceability, close controls, derived reports and Excel/PDF exports.
   The paper/ledger composition borrows their drawing grammar without importing illustrative charts or loops.
-- Release: open a draft PR to main with final highlights, then add the e2e label and mark ready. Require check
+- Release: update existing draft PR #142 with final evidence/highlights, retain the e2e label and mark ready. Require check
   and e2e success on the exact pushed head before the owner-authorised merge. No preview or separate promotion.
 - Blast radius: public composition, typed capture/hash metadata, exact optimizer queries, unchanged button
   styles, member UI import boundaries, switcher listener/context-value timing and equivalent font delivery, existing evidence assertions, three refreshed close assets and this
@@ -288,7 +330,7 @@ Historical runtime evidence; shared screenshot paths now hold the final integrat
   Fresh screenshots preserve heading wraps, spacing and readability. Final default mobile scores are home
   95/100, Terms 97/100 and Privacy 96/100, all CLS 0; scripts are 196,142 bytes. Ten browser page checks and
   four-width anchors, native disclosures and reduced-motion checks pass without errors/failures or overflow.
-  Complete new task/full gates are running; exact-head CI remains required.
+  Complete new task/full gates pass; fresh exact-head CI remains required.
 
 - T4 task gate: final grouped-shell/font source is frozen. Lint, typecheck and production build pass;
   236 files / 1,871 unit/database tests pass (581.16 seconds). Independent standards/spec source and
