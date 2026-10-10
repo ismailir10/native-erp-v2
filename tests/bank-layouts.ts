@@ -3,7 +3,7 @@ import type { BankCode } from "@/lib/generated/prisma/enums";
 import type { ParsedStatement } from "@/lib/import/types";
 import { checkContinuity } from "@/lib/import/normalize";
 import { BAL, CLOSE, MON_EN, OPEN, TX, bniDirectCsv, bniDirectXlsx, cimbOctoCsv, cimbPdf, en, idn, mandiriLivinXlsx, p2, permataCsv, xlsxBuffer } from "./bank-fixture";
-import { makePdf, smbcCombinedPdf, table, type PdfText } from "./pdf-fixture";
+import { brimoPdf, makePdf, smbcCombinedPdf, table, type PdfText } from "./pdf-fixture";
 
 /**
  * One synthetic file per bank export Buku claims to read (`lib/banks.ts` formats), each holding the same five August 2026
@@ -428,6 +428,27 @@ export const LAYOUTS: Layout[] = [
         TX.flatMap((t, i) => wrapped(t, 125, [[40, `${p2(t.d)}/08/26`], [125, t.desc[0]], [330, "8888"], [370, t.amt < 0 ? idn(t.amt) : "0,00"], [440, t.amt > 0 ? idn(t.amt) : "0,00"], [505, idn(BAL[i])]])),
         [`Total Mutasi Debet : ${idn(total(-1))}`, `Saldo Akhir : ${idn(CLOSE)}`],
       ),
+  },
+  {
+    bank: "BRI",
+    format: "IBBIZ Laporan Transaksi Finansial",
+    file: "bri-brimo.pdf",
+    build: brimoPdf,
+    check: (sections) => {
+      expect(sections).toHaveLength(1);
+      const st = sections[0];
+      expect(st.accountNumber).toBe("123401000012345");
+      expect(st.currency).toBe("IDR");
+      expect(st.periodStart.toISOString().slice(0, 10)).toBe("2026-01-01");
+      expect(st.periodEnd.toISOString().slice(0, 10)).toBe("2026-01-31");
+      expect(st.provenance).toEqual({ period: "DECLARED", opening: "PRINTED", closing: "PRINTED" });
+      expect(st.openingBalance).toBe(57_400_000n);
+      expect(st.closingBalance).toBe(47_400_000n);
+      expect(st.rows.map((r) => r.amount)).toEqual([-5_000_000n, 185_000n, -1_469_322n, 99_815_000n, -113_530_678n, 10_000_000n]);
+      expect(st.rows[2].description).toBe("Pembayaran Tagihan Kartu Kredit 5100xxxx001 via BRImo");
+      expect(st.rows.every((r) => !/Created By|StatementBRImo|88880/.test(r.description))).toBe(true);
+      expect(checkContinuity(st).ok).toBe(true);
+    },
   },
   {
     bank: "BRI",

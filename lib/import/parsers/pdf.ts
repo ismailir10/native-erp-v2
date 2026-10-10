@@ -36,7 +36,7 @@ const HEADER: Record<ColKind, RegExp> = {
   balance: /^(saldo|balance|saldo akhir|running balance|ledger balance)$/i,
   flag: /^(db\/cr|d\/k|dk|cr\/db|db\.?\s*\/\s*cr\.?)$/i,
   currency: CURRENCY_HEADER,
-  skip: /^(no\.?|#|cbg|cabang|branch|journal( no\.?)?|jurnal|teller)$/i,
+  skip: /^(no\.?|#|cbg|cabang|branch|journal( no\.?)?|jurnal|teller|user id)$/i,
 };
 /** An amount: optional sign and "Rp"/"IDR" before it ("+1.000.000", "-Rp 2.500", "(2.500)"), a DB/CR marker after. */
 const NUMBER = /^[+-]?\s*(?:(?:Rp\.?|IDR)\s*)?\(?[+-]?\d+(?:[.,]\d{3})*(?:[.,]\d{1,2})?\)?(?:\s*(DB|CR|DR|D|K|C)\.?)?$/i;
@@ -282,6 +282,13 @@ export function detectFormat(headerText: string): BankCode {
 export function periodOf(text: string): { start: Date; end: Date } | null {
   const range = periodFromText(text);
   if (range) return range;
+  // BRImo declares both bounds with two-digit years, just like its transaction dates.
+  const short = text.match(/(\d{1,2}\/\d{1,2}\/\d{2})\s*[-–]\s*(\d{1,2}\/\d{1,2}\/\d{2})(?!\d)/);
+  if (short) {
+    const start = parseDate(short[1], null);
+    const end = parseDate(short[2], null);
+    if (start && end) return { start, end };
+  }
   // "01 MEI 2026 - 31 MEI 2026" (SMBC and others print month names)
   const long = text.match(/(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})\s*[-–]\s*(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})/);
   if (long) {
@@ -394,6 +401,7 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
       .find(Boolean)
       ?.replace(/-/g, "") ?? null;
 
+  const brimo = /laporan\s+transaksi\s+finansial/i.test(preamble) && /nama\s+produk\s*:?\s*britama(?:-IDR)?\b/i.test(preamble);
   const sen = new SenWatch();
   type Draft = ParsedRow & { flag: "DB" | "CR" | null; parts: string[]; page: number; lastY: number; moneySeen: boolean; unreadable: string | null };
   const drafts: Draft[] = [];
@@ -402,6 +410,7 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
   let opening: bigint | null = null;
   let closing: bigint | null = null;
   let lineNo = 0;
+  let footerPage: number | null = null;
   // Description text printed just above a row's amount line (SMBC centres a two-line description on it): held for that row.
   let lead: string[] = [];
   // BCA prints a row's counterparty below it, and across a page break under the repeated header (UC-B1g): the row a new page continues.
@@ -423,6 +432,25 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
       continue;
     }
     const text = lineText(line);
+    if (brimo && line.cells.some((cell) => /^created by brimo$/i.test(cell.text)) && !parseDate(line.cells[0]?.text.split(/\s+/)[0] ?? "", period, order)) footerPage = line.page;
+    if (footerPage === line.page) { current = null; continue; }
+    // BRImo prints opening and closing in a horizontal summary only on the last page.
+    // Read their own cells, independently of the running balances in the transaction table.
+    if (brimo && line.cells.some((cell) => /^saldo awal$/i.test(cell.text)) && line.cells.some((cell) => /^saldo akhir$/i.test(cell.text))) {
+      const next = lines[index + 1];
+      const bilingual = next?.cells.some((cell) => /^opening balance$/i.test(cell.text));
+      const values = lines[index + (bilingual ? 2 : 1)];
+      if (!values || values.page !== line.page || values.cells.length !== line.cells.length) {
+        throw new SourceAmountError("Nominal ringkasan BRImo tidak lengkap. Periksa Saldo Awal, total Debet/Kredit, dan Saldo Akhir pada file.");
+      }
+      const first = line.cells.findIndex((cell) => /^saldo awal$/i.test(cell.text));
+      const last = line.cells.findIndex((cell) => /^saldo akhir$/i.test(cell.text));
+      values.cells.forEach((cell) => { parseBankAmount(cell.text); sen.check(cell.text, lineNo); });
+      opening ??= parseBankAmount(values.cells[first].text);
+      closing = parseBankAmount(values.cells[last].text);
+      current = null;
+      continue;
+    }
     // "Saldo Awal : 1.000", bilingual "Saldo Awal/Initial Balance 1.000", BTN "Last Bal : 1,000.00".
     const labelled = text.match(/(saldo\s*awal|saldo\s*sebelumnya|opening\s*balance|beginning\s*balance|starting\s*balance|previous\s*balance|initial\s*balance|last\s*bal(?:ance)?|saldo\s*akhir|closing\s*balance|ending\s*balance|current\s*balance)(?:\s*\/\s*[A-Za-z ]+?)?\s*:?\s*(?:rp\.?\s*)?([\d.,()-]*\d[\d.,()-]*)/i);
     if (labelled && !(cols && parseDate(line.cells[0]?.text ?? "", period, order))) {
@@ -557,7 +585,9 @@ function parseLines(lines: Line[], ctx: { period?: { start: Date; end: Date } | 
       if (unreadable && !current.moneySeen) current.unreadable ??= unreadable;
       if (current.amount === 0n && nums.length) {
         assertSingleSide(nums.find((n) => n.kind === "debit")?.text, nums.find((n) => n.kind === "credit")?.text, lineNo);
-        const amt = nums.find((n) => n.kind === "amount" || n.kind === "credit" || n.kind === "debit");
+        const amt = nums.find((n) => n.kind === "amount")
+          ?? nums.find((n) => (n.kind === "credit" || n.kind === "debit") && n.value !== 0n)
+          ?? nums.find((n) => n.kind === "credit" || n.kind === "debit");
         if (amt) current.moneySeen = true;
         if (amt) current.amount = amt.kind === "debit" ? -(amt.value < 0n ? -amt.value : amt.value) : amt.kind === "credit" && amt.value < 0n ? -amt.value : amt.value;
         if (amt?.flag) current.flag = amt.flag;

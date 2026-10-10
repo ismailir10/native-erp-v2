@@ -62,7 +62,7 @@ export const BANKS: BankInfo[] = [
   },
   {
     code: "BRI", name: "BRI", fullName: "PT Bank Rakyat Indonesia (Persero) Tbk", group: "Bank besar", bic: ["BRINIDJA"],
-    detect: /\bBRI\b|bank rakyat|\bbrimo\b|\bqlola\b|\bibbiz\b/i, words: ["BRI", "SIMPEDES", "BRITAMA"],
+    detect: /\bBRI\b|bank rakyat|\bbrimo\b|\bqlola\b|\bibbiz\b|nama\s+produk\s*:?\s*britama(?:-IDR)?\b/i, words: ["BRI", "SIMPEDES", "BRITAMA"],
     formats: [csv("BRImo / CMS (CSV)"), csv("internet banking (CSV)"), pdf("Rincian Rekening Koran"), pdf("IBBIZ Laporan Transaksi Finansial"), xlsx("QLola (Excel)"), mt940],
   },
   {

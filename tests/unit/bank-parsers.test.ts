@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { parseStatement, parseStatementSections } from "@/lib/import/parsers";
-import { makePdf, table } from "../pdf-fixture";
+import { brimoPdf, makePdf, table } from "../pdf-fixture";
 import { LAYOUTS } from "../bank-layouts";
+import { parsePdf } from "@/lib/import/parsers/pdf";
+import { assertSingleSide } from "@/lib/import/parsers/common";
+import { SourceAmountError } from "@/lib/import/types";
 import { checkContinuity } from "@/lib/import/normalize";
 import { BAL, TX, en, bniDirectCsv, bniDirectXlsx, bniMobileXlsx, xlsxBuffer, briInternetBankingCsv, cimbPdf, idn, mandiriLivinPdf, mandiriLivinXlsx, serialDateXlsx, cimbOctoCsv, expectAugust, p2, permataCsv, titleWithCommasSemicolonCsv, utf16TabCsv } from "../bank-fixture";
 
@@ -338,5 +341,61 @@ describe("pockets and amounts read from the balance", () => {
     const st = await parseStatement("seabank.pdf", pdf);
     expect(st.rows.map((r) => r.amount)).toEqual([-250_000n, 100_000n]);
     expect(st.openingBalance).toBe(1_000_000n);
+  });
+});
+
+describe("two-column zero sides and BRImo financial reports", () => {
+  it.each(["0", "0.00", "0,00"])("accepts an exactly zero side %s beside a nonzero side", (zero) => {
+    expect(() => assertSingleSide(zero, "100", 1)).not.toThrow();
+    expect(() => assertSingleSide("100", zero, 1)).not.toThrow();
+    expect(() => assertSingleSide(zero, zero, 1)).not.toThrow();
+  });
+  it.each([["100", "200"], ["0.40", "0.40"]])("still refuses two nonzero sides %s and %s, before rounding", (debit, credit) => {
+    expect(() => assertSingleSide(debit, credit, 21)).toThrow(SourceAmountError);
+    expect(() => assertSingleSide(debit, credit, 21)).toThrow(/Baris 21: Debet dan Kredit sama-sama berisi nominal/);
+  });
+  it.each([["100", "0.00", -100n, "900"], ["0.00", "100", 100n, "1100"], ["0.00", "0.00", 0n, "1000"]])("reads separate-line debit %s and credit %s without treating zero as the populated side", async (debit, credit, amount, balance) => {
+    const file = makePdf([[
+      ...table(800, [[[40, "BRI"]], [[40, "Saldo Awal: 1000"]]]),
+      ...table(730, [
+        [[40, "Tanggal"], [130, "Keterangan"], [330, "Debit"], [410, "Credit"], [510, "Balance"]],
+        [[40, "13/08/2026"], [130, "Transfer sintetis"]],
+        [[330, debit as string], [410, credit as string], [510, balance as string]],
+      ]),
+    ]]);
+    const st = await parsePdf(file);
+    expect(st.rows).toHaveLength(1);
+    expect(st.rows[0].amount).toBe(amount);
+  });
+  it("reads the synthetic five-page BRImo report", async () => {
+    const layout = LAYOUTS.find((l) => l.file === "bri-brimo.pdf")!;
+    const sections = await parseStatementSections(layout.file, await layout.build());
+    expect(sections[0].format).toBe("BRI");
+    layout.check!(sections);
+  });
+  it("refuses a BRImo row whose debit and credit are both nonzero", async () => {
+    await expect(parseStatement("brimo.pdf", brimoPdf({ credit: "100.00" }))).rejects.toThrow(SourceAmountError);
+    await expect(parseStatement("brimo.pdf", brimoPdf({ credit: "100.00" }))).rejects.toThrow(/Debet dan Kredit sama-sama berisi nominal/);
+  });
+  it("preserves independently printed closing evidence when it contradicts the last movement", async () => {
+    const st = await parseStatement("brimo.pdf", brimoPdf({ closing: "48,400,000.00" }));
+    expect(st.closingBalance).toBe(48_400_000n);
+    expect(st.provenance?.closing).toBe("PRINTED");
+    expect(checkContinuity(st).ok).toBe(false);
+  });
+  it("keeps the existing whole-Rupiah rounding and reports sen", async () => {
+    const st = await parseStatement("brimo.pdf", brimoPdf({ debit: "5,000,000.40" }));
+    expect(st.rows[0].amount).toBe(-5_000_000n);
+    expect(st.notes?.join(" ")).toMatch(/sen|dibulatkan/i);
+    expect(checkContinuity(st).ok).toBe(true);
+  });
+  it.each([{ opening: "58,40x,000.00" }, { closing: "47,40x,000.00" }, { totalDebit: "120,00x,000.00" }, { totalCredit: "110,00x,000.00" }, { opening: "unreadable", closing: "unreadable", totalDebit: "unreadable", totalCredit: "unreadable" }])("refuses malformed printed summary evidence %j", async (opts) => {
+    await expect(parseStatement("brimo.pdf", brimoPdf(opts))).rejects.toThrow(SourceAmountError);
+  });
+  it("preserves independently printed opening evidence when it contradicts the first movement", async () => {
+    const st = await parseStatement("brimo.pdf", brimoPdf({ opening: "58,400,000.00" }));
+    expect(st.openingBalance).toBe(58_400_000n);
+    expect(st.provenance?.opening).toBe("PRINTED");
+    expect(checkContinuity(st).ok).toBe(false);
   });
 });
