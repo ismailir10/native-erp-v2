@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db, makeGroup, resetDb } from "../helpers";
 import { MockProvider, type AiItem } from "@/lib/ai/provider";
 import { importStatement } from "@/lib/import/pipeline";
-import { latestAiRun, runInBackground } from "@/lib/ai/run";
+import { AI_RUN_BUDGET_MS, FUNCTION_LIMIT_MS, latestAiRun, runInBackground, startAiRun } from "@/lib/ai/run";
+import { AI_TIMEOUT_MS } from "@/lib/ai/provider";
+import { continueRun, requestNextSlice } from "@/lib/ai/background";
 import { dateOnly } from "@/lib/format";
 import type { Db } from "@/lib/db";
 
@@ -150,8 +152,79 @@ describe("runInBackground", () => {
     const g = await makeGroup();
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     const { provider } = spy();
-    await expect(runInBackground(db, { firmId: "another-firm", clientId: g.client.id, provider })).resolves.toBeUndefined();
+    await expect(runInBackground(db, { firmId: "another-firm", clientId: g.client.id, provider })).resolves.toEqual({ continueRunId: null });
     expect(log).toHaveBeenCalledTimes(1);
     expect(String(log.mock.calls[0][0])).toMatch(/^AI run for client .* stopped: /);
   });
+
+  it("a slice leaves room for its last call inside the function limit", () => {
+    expect(AI_RUN_BUDGET_MS + AI_TIMEOUT_MS).toBeLessThanOrEqual(FUNCTION_LIMIT_MS - 20_000);
+  });
+
+  it("a time box that ends with work left asks for the next slice; a finished run doesn't", async () => {
+    const g = await makeGroup();
+    await lines(g, keys(40, "TOKO"));
+    const slow = spy(Object.fromEntries(keys(40, "TOKO").map((k) => [k, answer("6160")])));
+    const classify = slow.provider.classify.bind(slow.provider);
+    slow.provider.classify = async (items: AiItem[]) => {
+      await new Promise((r) => setTimeout(r, 40));
+      return classify(items);
+    };
+    const first = await runInBackground(db, { firmId: g.firm.id, clientId: g.client.id, provider: slow.provider, budgetMs: 20 });
+    const run = (await db.aiRun.findFirstOrThrow())!;
+    expect(first).toEqual({ continueRunId: run.id });
+    expect(run.status).toBe("RUNNING");
+    expect(run.leaseUntil).toBeNull(); // released: the next slice may claim it
+    const rest = await runInBackground(db, { firmId: g.firm.id, clientId: g.client.id, provider: slow.provider });
+    expect(rest).toEqual({ continueRunId: null });
+    expect((await db.aiRun.findUniqueOrThrow({ where: { id: run.id } })).status).toBe("DONE");
+  });
+
+  it("continues only a stalled run of an organisation with active access", async () => {
+    const g = await makeGroup();
+    await lines(g, keys(3, "TOKO"));
+    const run = (await startAiRun(db, { firmId: g.firm.id, clientId: g.client.id }))!;
+    const scheduled: string[] = [];
+    const schedule = () => void scheduled.push(run.id);
+    const now = new Date();
+
+    await db.aiRun.update({ where: { id: run.id }, data: { leaseUntil: new Date(now.getTime() + 60_000) } });
+    expect(await continueRun(db, run.id, { now, schedule })).toBe(false); // a worker holds it
+    await db.aiRun.update({ where: { id: run.id }, data: { leaseUntil: null } });
+    expect(await continueRun(db, run.id, { now, schedule })).toBe(true); // stalled, organisation ACTIVE (createFirm's open grant)
+    expect(scheduled).toEqual([run.id]);
+
+    await db.firm.update({ where: { id: g.firm.id }, data: { suspendedAt: new Date(now.getTime() - 1000) } });
+    expect(await continueRun(db, run.id, { now, schedule })).toBe(false); // suspended: no AI work
+    await db.firm.update({ where: { id: g.firm.id }, data: { suspendedAt: null } });
+    await db.accessGrant.updateMany({ where: { firmId: g.firm.id }, data: { revokedAt: new Date(now.getTime() - 1000) } });
+    await db.accessGrant.create({ data: { firmId: g.firm.id, kind: "TRIAL", startsAt: new Date(now.getTime() - 10 * 86_400_000), endsAt: new Date(now.getTime() - 86_400_000) } });
+    expect(await continueRun(db, run.id, { now, schedule })).toBe(false); // read-only: no AI work
+    expect(scheduled).toHaveLength(1);
+
+    await db.accessGrant.create({ data: { firmId: g.firm.id, kind: "PAID", startsAt: new Date(now.getTime() - 1000), endsAt: null } });
+    await db.aiRun.update({ where: { id: run.id }, data: { status: "DONE" } });
+    expect(await continueRun(db, run.id, { now, schedule })).toBe(false); // finished
+    expect(await continueRun(db, "cmv2unknown00000000000000", { now, schedule })).toBe(false);
+  });
+
+  it("asks for the next slice with a signed token, only when the app can sign it", async () => {
+    vi.stubEnv("APP_URL", "https://buku.test/");
+    vi.stubEnv("SETTINGS_SECRET", "k".repeat(40));
+    const sent: { url: string; body: unknown }[] = [];
+    const fetchImpl = (async (url: string, init: RequestInit) => {
+      sent.push({ url, body: JSON.parse(String(init.body)) });
+      return new Response(null, { status: 202 });
+    }) as unknown as typeof fetch;
+    expect(await requestNextSlice("cmv2abc123def456ghi789jk", fetchImpl)).toBe(true);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].url).toBe("https://buku.test/api/ai-run");
+    expect(sent[0].body).toMatchObject({ runId: "cmv2abc123def456ghi789jk", exp: expect.any(Number), sig: expect.any(String) });
+    expect(JSON.stringify(sent[0].body)).not.toContain("k".repeat(40));
+
+    vi.stubEnv("SETTINGS_SECRET", "");
+    expect(await requestNextSlice("cmv2abc123def456ghi789jk", fetchImpl)).toBe(false);
+    expect(sent).toHaveLength(1);
+  });
 });
+

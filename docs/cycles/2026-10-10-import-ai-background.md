@@ -203,3 +203,17 @@ code path, no credit:
 - Post-merge: production `/login`, build log lists the migration, Beranda shows the real firm; then a production walk
   with Chrome (import a statement on the test client, watch "Saran AI" finish).
 - Rollback: revert the merge; the `AiRun` table can stay (unused).
+
+## Follow-up — review findings after merge (2026-10-11)
+Codex review of #144 found two P1s, both confirmed and fixed in `task/ai-run-slices`:
+1. **A slice could outlive its function.** The 240 s slice deadline plus a call started just before it (up to 90 s) exceeded
+   `maxDuration = 300`, so the platform could cut the last call off (answer lost, budget reservation left unsettled). The
+   slice is now `FUNCTION_LIMIT_MS − AI_TIMEOUT_MS − 20 s` (190 s by default); a test pins the inequality.
+2. **A run only continued while someone watched.** A slice that ended with lines left scheduled nothing; resumption needed
+   a page view or a status poll (production on 2026-10-11 resumed through the open tab's poll). Now `runInBackground`
+   reports `continueRunId` when its worker held the lease and the time box ended with work left, and the slice POSTs to
+   `app/api/ai-run` with a signed, 10-minute token (HMAC with a key derived from `SETTINGS_SECRET`). The route only
+   continues an existing RUNNING run nobody is working on, of an organisation whose access is ACTIVE; it cannot start
+   a run or exceed the per-run cap. Without `APP_URL`/`SETTINGS_SECRET` nothing is sent and page views resume as before.
+   Tests: `tests/unit/ai-run-token.test.ts`, `tests/db/ai-background.test.ts` (time box → continue id, lease, access
+   states, signed request); `action-guards` names the route's guard.
