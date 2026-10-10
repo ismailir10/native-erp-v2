@@ -35,7 +35,7 @@ const TABS = [
 
 export default async function SettingsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SearchParams }) {
   const { client, sp } = await loadClientPage(params, searchParams);
-  const { member } = await requireWorkspaceSession();
+  const { member, firm } = await requireWorkspaceSession();
   const [rules, memories, auto, usage, cacheSize, cfg, reportFormat, lockedPeriod] = await Promise.all([
     prisma.rule.findMany({ where: { firmId: client.firmId, OR: [{ clientId: client.id }, { clientId: null }] }, orderBy: [{ clientId: "asc" }, { priority: "asc" }] }),
     prisma.memory.findMany({ where: { clientId: client.id }, orderBy: { hits: "desc" }, take: 40 }).then((ms) => ms.filter((m) => !isGenericKey(m.merchantKey)).slice(0, 15)),
@@ -76,7 +76,7 @@ export default async function SettingsPage({ params, searchParams }: { params: P
           />
           {/* Keyed on what's saved: after a save or a reset the editor starts again from the server's format. */}
           <ReportFormatCard key={JSON.stringify(reportFormat)} clientId={client.id} initial={formatValue} custom={customFormat} stale={staleFormat} universe={formatUniverse()} />
-          {isAdminRole(member.role) && <DeleteClientCard clientId={client.id} name={client.name} />}
+          {isAdminRole(member.role) && firm.kind !== "PERUSAHAAN" && <DeleteClientCard clientId={client.id} name={client.name} />}
         </>
       ) : (
         <>

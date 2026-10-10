@@ -1,6 +1,7 @@
 import type { Tx } from "@/lib/db";
 import type { BankCode, EntityKind, GrantKind, MemberRole, OrgKind, ReportingFramework } from "@/lib/generated/prisma/enums";
 import { isAdminRole } from "@/lib/auth/permissions";
+import { assertCanAddClient } from "@/lib/org";
 import { bankAccountCode, COA_TEMPLATE, overdraftAccountCode } from "@/lib/coa/template";
 import { FIRM_RULES, type RuleLike } from "@/lib/classify/rules";
 
@@ -30,6 +31,7 @@ export type ClientCreator = { id: string; role: MemberRole };
 
 /** Client + COA template + one GL account per bank account + client rules. */
 export async function createClient(tx: Tx, firmId: string, spec: ClientSpec, opts: { creator?: ClientCreator } = {}) {
+  await assertCanAddClient(tx, firmId);
   const client = await tx.client.create({ data: { firmId, name: spec.name, industry: spec.industry } });
   if (opts.creator && !isAdminRole(opts.creator.role)) await tx.clientAccess.create({ data: { memberId: opts.creator.id, clientId: client.id } });
   await tx.account.createMany({ data: COA_TEMPLATE.map((a) => ({ ...a, firmId, clientId: client.id })) });

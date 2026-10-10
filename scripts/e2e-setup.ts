@@ -47,6 +47,19 @@ async function setup() {
     await ensureLocalAdmin(db, auth, { ...ended, name: "Pemilik uji berakhir", firmId: (await trialFirm("Uji Berakhir", wibDay(-1))).id });
     const ending = { email: "pemilik-segera@buku.example", password: randomBytes(12).toString("base64url") };
     await ensureLocalAdmin(db, auth, { ...ending, name: "Pemilik uji segera", firmId: (await trialFirm("Uji Segera", wibDay(3))).id });
+    // A company keeping its own books (e2e/company-org.spec.ts): one client, the company, with two entities.
+    const companyName = "PT Uji Perusahaan";
+    const companyFirm = (await db.firm.findFirst({ where: { name: companyName } })) ?? await db.$transaction(async (tx) => {
+      const f = await createFirm(tx, companyName, { kind: "PERUSAHAAN" });
+      await createClient(tx, f.id, { name: companyName, industry: "distribusi", entities: [
+        { name: companyName, shortName: "Perusahaan", kind: "PT", banks: [{ bank: "MANDIRI", number: "8888888888", label: "Mandiri Giro" }] },
+        { name: "PT Uji Logistik", shortName: "Logistik", kind: "PT", banks: [] },
+      ] });
+      return f;
+    });
+    const companyOwner = { email: "pemilik-perusahaan@buku.example", password: randomBytes(12).toString("base64url") };
+    await ensureLocalAdmin(db, auth, { ...companyOwner, name: "Pemilik perusahaan uji", firmId: companyFirm.id });
+    writeFileSync(".playwright/credentials-company.json", JSON.stringify(companyOwner), { mode: 0o600 });
     writeFileSync(".playwright/credentials-trial-ended.json", JSON.stringify(ended), { mode: 0o600 });
     writeFileSync(".playwright/credentials-trial-ending.json", JSON.stringify(ending), { mode: 0o600 });
     writeFileSync(".playwright/credentials-akuntan.json", JSON.stringify(akuntan), { mode: 0o600 });

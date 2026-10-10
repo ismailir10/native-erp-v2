@@ -72,6 +72,7 @@ import { infraErrorMessage } from "@/lib/db-errors";
 import { deleteClient, DeleteClientError } from "@/lib/clients/delete";
 import { AccessError, requireCapability } from "@/lib/auth/session";
 import type { Capability } from "@/lib/auth/permissions";
+import { OrgError } from "@/lib/org";
 import type { FsLine } from "@/lib/coa/template";
 import type { MapMethod } from "@/lib/generated/prisma/enums";
 
@@ -84,7 +85,7 @@ type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string; needs
 function fail(e: unknown): { ok: false; error: string; needsPassword?: boolean; needsYear?: boolean; yearGuess?: number | null } {
   if (e instanceof PdfPasswordError) return { ok: false, error: e.message, needsPassword: true };
   if (e instanceof YearNeededError) return { ok: false, error: e.message, needsYear: true, yearGuess: e.guess };
-  if (e instanceof DeleteClientError || e instanceof AccessError) return { ok: false, error: e.message };
+  if (e instanceof DeleteClientError || e instanceof AccessError || e instanceof OrgError) return { ok: false, error: e.message };
   if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError || e instanceof FindingError || e instanceof RemoveImportError || e instanceof MoneyError || e instanceof RateError || e instanceof RevaluationError || e instanceof LedgerImportError || e instanceof MappingError || e instanceof EntitySettingsError || e instanceof FormatError || e instanceof SubledgerError || e instanceof FakturError || e instanceof BupotError) return { ok: false, error: e.message };
   const infra = infraErrorMessage(e);
   console.error(e);

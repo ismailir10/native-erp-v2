@@ -308,7 +308,7 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   — accept: the DB test proves the last OWNER cannot be demoted or disabled, an ADMIN cannot touch an OWNER, and the seat limit
   holds. The e2e test covers an OWNER inviting an AKUNTAN with one client, who sees only it, and a VIEWER who sees reports but no
   import or review buttons.
-- [~] **T12 Company organisation UX.** After: T05. Files: `app/(app)/page.tsx` (redirect branch), the `app/(app)/layout.tsx` sidebar
+- [x] **T12 Company organisation UX.** After: T05. Files: `app/(app)/page.tsx` (redirect branch), the `app/(app)/layout.tsx` sidebar
   section, `lib/org.ts` (`isCompany`, `companyClient`), the `createClientAction`/delete guards (one line each, coordinate via
   Handoffs if T04 is open), plus `e2e/company-org.spec.ts`.
   — accept: the e2e test shows a PERUSAHAAN org landing on its books, the sidebar listing entities, no *Klien* copy (text scan), and a
@@ -417,6 +417,12 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   and `/settings?tab=tim` (owners and admins only; `LinkTabs` Umum · Tim). The page file is `app/(app)/settings/page.tsx`, not a new
   `settings/team` route, so T07 should expect the tab there. Invitations are DB-tested with a fake auth API because the local stack
   sends no mail.
+- T12: `lib/org.ts` (`isCompany`, `companyClient`, `assertCanAddClient`, `OrgError`). `createClient` refuses a second client in a
+  company, which covers onboarding, evidence and every later path, and `deleteClient` refuses the company's books. Beranda and
+  `/clients/new` lead a company to its books. The sidebar takes `company`: the books are always selected, and the client list, *Tambah
+  klien* and the firm-wide *Laporan* are gone (*Ringkasan*, *Pengaturan buku*). Client settings hide *Hapus klien* for a company.
+  `scripts/e2e-setup.ts` adds *PT Uji Perusahaan* with two entities. **For T08/T09:** `createOrganisation(PERUSAHAAN)` must call
+  `createFirm(tx, name, { kind: "PERUSAHAAN", grant })` and then `createClient` once with the company's entities.
 
 ## Verification
 - T15: lint ✓, typecheck ✓, build ✓; full Vitest → 211 files / 1432 tests passed. After the browser-specific Origin fix,
@@ -437,6 +443,8 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   Screenshots of the banner on Beranda and the read-only import at 1440 and 390 px were looked at.
 - T11: `tests/db/team.test.ts` → 5 passed; `action-guards` → 10 passed; `npm run build` ✓; `playwright test roles, qa-access,
   trial-expiry` → 8 passed. Screenshots of the Tim tab at 1440 and 390 px were looked at.
+- T12: full `npx vitest run` → 212 files, 1416 tests passed; `npm run build` ✓; `playwright test company-org, qa-access,
+  roles, trial-expiry, workspace` → 12 passed. Screenshot of a company's books at 1440 px was looked at.
 
 ## Ship Notes
 
