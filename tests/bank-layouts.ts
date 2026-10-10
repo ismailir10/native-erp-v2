@@ -345,7 +345,7 @@ export const LAYOUTS: Layout[] = [
   },
   {
     bank: "MANDIRI",
-    format: "e-statement Livin'",
+    format: "e-Statement (Livin')",
     file: "mandiri-livin-estatement.pdf",
     // New Livin' e-Statement: a row-number column, bilingual headers, "02 Agu 2026 10:15:30 WIB", signed Indonesian amounts.
     build: () =>
@@ -356,7 +356,7 @@ export const LAYOUTS: Layout[] = [
       ),
   },
   {
-    bank: "MANDIRI", format: "e-statement Livin'", file: "mandiri-estatement-password.pdf", build: mandiriEstatementPdf, password: "synthetic-password",
+    bank: "MANDIRI", format: "e-Statement (Livin')", file: "mandiri-estatement-password.pdf", build: mandiriEstatementPdf, password: "synthetic-password",
     check: (sections) => {
       expect(sections).toHaveLength(1);
       const st = sections[0];
@@ -424,7 +424,7 @@ export const LAYOUTS: Layout[] = [
   },
   {
     bank: "BNI",
-    format: "wondr laporan mutasi",
+    format: "wondr Laporan Mutasi Rekening",
     file: "bni-wondr.pdf",
     // wondr by BNI: "01 Aug 2026 08:14:47 WIB", signed whole-Rupiah amounts with comma thousands.
     build: () =>
@@ -436,7 +436,7 @@ export const LAYOUTS: Layout[] = [
       ),
   },
   {
-    bank: "BNI", format: "wondr laporan mutasi", file: "bni-wondr-password.pdf", build: bniWondrPdf, password: "synthetic-password",
+    bank: "BNI", format: "wondr Laporan Mutasi Rekening", file: "bni-wondr-password.pdf", build: bniWondrPdf, password: "synthetic-password",
     check: (sections) => {
       expect(sections).toHaveLength(1);
       const st = sections[0];
@@ -467,7 +467,7 @@ export const LAYOUTS: Layout[] = [
   },
   {
     bank: "BRI",
-    format: "IBBIZ Laporan Transaksi Finansial",
+    format: "BRImo Laporan Transaksi Finansial",
     file: "bri-brimo.pdf",
     build: brimoPdf,
     check: (sections) => {
@@ -538,7 +538,7 @@ export const LAYOUTS: Layout[] = [
   },
   {
     bank: "MANDIRI",
-    format: "e-statement Livin'",
+    format: "e-Statement (Livin')",
     file: "mandiri-livin-estatement-time-below.pdf",
     // The same e-Statement as extracted from some PDFs: the time on its own line under the date.
     build: () =>
