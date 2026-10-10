@@ -37,7 +37,11 @@ describe("saved public product evidence", () => {
     expect(dom.querySelector("h1")?.textContent).toBe("Dari rekening koran ke laporan keuangan.");
     expect(dom.querySelector("#firm-title")?.closest("section")?.querySelector("figure")).not.toBeNull();
     expect(dom.querySelector("#company-title")?.closest("section")?.querySelector("figure")).not.toBeNull();
-    const figures = [...dom.querySelectorAll("figure")];
+    const illustration = dom.querySelector("svg[role='img']")!;
+    expect(illustration.getAttribute("aria-label")).toContain(`${capture.source.fileName} baris ${capture.source.rowNumber}`);
+    for (const line of capture.source.lines) expect(illustration.textContent).toContain(line.code);
+    expect(illustration.closest("figure")?.querySelector("figcaption")?.textContent).toContain("Ilustrasi alur berdasarkan data demo sintetis");
+    const figures = [...dom.querySelectorAll("figure")].filter((figure) => figure.querySelector("img"));
     expect(figures).toHaveLength(6);
     for (const figure of figures) {
       expect(figure.querySelector("figcaption")?.textContent).toContain("Data demonstrasi sintetis");
@@ -51,9 +55,9 @@ describe("saved public product evidence", () => {
         expect(capture.assets.some((asset) => asset.file === mobile)).toBe(true);
       }
     }
-    expect(figures[0].querySelector("img")?.getAttribute("loading")).toBe("eager");
-    for (const figure of figures.slice(1)) expect(figure.querySelector("img")?.getAttribute("loading")).toBe("lazy");
+    for (const figure of figures) expect(figure.querySelector("img")?.getAttribute("loading")).toBe("lazy");
     expect(dom.body.textContent).toContain(capture.source.fileName);
+    expect(dom.body.textContent).not.toContain("—");
     expect(dom.body.textContent).not.toMatch(/Supabase|Anthropic|OpenAI|OpenCode|Vercel|revolusioner|powered by AI/);
   });
 

@@ -1,8 +1,16 @@
 import type { Metadata } from "next";
+import localFont from "next/font/local";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { getWorkspaceSession } from "@/lib/auth/session";
-import { WorkspaceHistoryProvider } from "@/components/app/workspace-ask";
+import { WorkspaceHistoryProvider } from "@/components/app/workspace-history";
+
+const hankenGrotesk = localFont({
+  src: "../node_modules/@fontsource-variable/hanken-grotesk/files/hanken-grotesk-latin-wght-normal.woff2",
+  variable: "--font-hanken-grotesk",
+  weight: "100 900",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.APP_URL || "http://localhost:3000"),
@@ -16,7 +24,7 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const session = await getWorkspaceSession();
   return (
-    <html lang="id">
+    <html lang="id" className={hankenGrotesk.variable}>
       <body>
         {session ? <WorkspaceHistoryProvider key={session.firm.id + session.member.id}>{children}</WorkspaceHistoryProvider> : children}
         <Toaster position="bottom-right" closeButton />

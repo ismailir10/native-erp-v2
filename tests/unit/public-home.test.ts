@@ -35,7 +35,7 @@ describe("public home dispatch", () => {
     const page = await HomePage({ searchParams: Promise.resolve({ period: "2026-08" }) });
     const child = (page as ReactElement<{ children: ReactElement<{ children: ReactElement<{ searchParams: Promise<unknown> }> }> }>).props.children.props.children;
     expect(await child.props.searchParams).toEqual({ period: "2026-08" });
-    expect(await generateMetadata()).toEqual({ title: "Beranda" });
+    expect(await generateMetadata()).toEqual({ title: { absolute: "Beranda · Buku" } });
     expect(mocks.redirect).not.toHaveBeenCalled();
   });
 

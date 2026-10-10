@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 export async function generateMetadata(): Promise<Metadata> {
-  if (await getWorkspaceSession()) return { title: "Beranda" };
+  if (await getWorkspaceSession()) return { title: { absolute: "Beranda · Buku" } };
   const title = "Dari rekening koran ke laporan keuangan";
   const description = "Buku membantu kantor akuntan dan perusahaan meninjau pembukuan, menelusuri angka ke sumbernya, dan menutup buku setelah diperiksa.";
   return {

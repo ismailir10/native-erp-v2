@@ -39,34 +39,34 @@ this spec before that approval.
 
 ### Acceptance criteria
 
-- [ ] **Public home and session routing.** Signed-out `/` returns the landing page without redirecting to login.
+- [x] **Public home and session routing.** Signed-out `/` returns the landing page without redirecting to login.
   A signed-in accounting-firm member still gets Beranda, including its existing scope and period links. Company,
   Buku-admin, live-support, expired-trial, disabled-member and closed-access behavior follows the decisions above
   and the existing access rules. Protected routes still require a member session. No authenticated response or
   workspace data is cached as public landing content. A deployment without login configuration still shows the
   public landing and legal pages.
-- [ ] **Shared public frame.** Landing, `/syarat` and `/kebijakan-privasi` have the same linked Buku logo, header
+- [x] **Shared public frame.** Landing, `/syarat` and `/kebijakan-privasi` have the same linked Buku logo, header
   actions Masuk and Minta uji coba, and footer links Syarat, Privasi and contact. The header's trial link and the
   landing's primary Minta akses uji coba action reach `/daftar`. The secondary deck action reaches `/deck`.
   Login and the trial form expose both legal links. Navigation stays visible and usable at 390 px.
-- [ ] **One truthful promise, two audiences.** Bahasa uses Rekening Koran, Buku Besar, Neraca Saldo, Laba Rugi,
+- [x] **One truthful promise, two audiences.** Bahasa uses Rekening Koran, Buku Besar, Neraca Saldo, Laba Rugi,
   Neraca and Tutup Buku. It explains the accountant's review and traceability, not autonomous accounting.
   Kantor akuntan copy explains handling multiple clients; perusahaan copy explains the company's own books and
   the accountant's role. Claims reuse the current decks: uploaded bank files, review, source traceability,
   close controls and Excel/PDF reports. Bank names, format combinations and any coverage count are backed by the
   registry and fixture coverage; recognition of a bank does not mean every format from it is supported.
-- [ ] **Real product shown in every product section.** The landing includes at least (a) a bank row and its
+- [x] **Real product shown in every product section.** The landing includes at least (a) a bank row and its
   actual related journal, with matching amount and source reference; (b) Neraca Saldo with real demo totals;
   (c) the close checklist with its actual blockers and passed checks. Each product section includes a genuine
   screen or a verified number from the synthetic demo. The audience section pairs its copy with product proof.
   Legal pages and navigation are reading/navigation surfaces, not places to add decorative metrics.
-- [ ] **Regenerable, legible images.** A documented local capture command regenerates the three views from
+- [x] **Regenerable, legible images.** A documented local capture command regenerates the three views from
   KJA Demo & Rekan at a pinned scope and period. It refuses hosted targets, uses the existing demo login, waits
   for stable content/fonts, and never needs real model calls. Optimised images have descriptive Bahasa alt
   text, intrinsic sizes, responsive sizing, and lazy loading below the fold. The key evidence remains readable
   on a phone, using a useful crop/detail image where a full desktop table would become too small. The public
   site serves saved assets and never queries demo books on a visitor's behalf.
-- [ ] **Terms and Privacy are readable drafts.** Both pages have a top-of-page draf notice, a readable date,
+- [x] **Terms and Privacy are readable drafts.** Both pages have a top-of-page draf notice, a readable date,
   short labelled sections and the same contact destination. Together, and with shared support/trial sections
   on each page, they cover:
   - Trial-request name, work email, organisation, organisation kind, optional WhatsApp and note, plus IP for
@@ -91,22 +91,22 @@ this spec before that approval.
     processing. Do not imply all third-party processing remains in Singapore or promise provider retention
     terms that were not verified. Explain applicable UU PDP rights, purposes, processing grounds, correction,
     access, withdrawal/objection and deletion requests, and contact without claiming certified compliance.
-- [ ] **Contact and consent.** Server-rendered public contact reads the configured support email and offers a
+- [x] **Contact and consent.** Server-rendered public contact reads the configured support email and offers a
   working mailto link when valid. Otherwise show the neutral Hubungi pengelola Buku fallback; no invented
   address. Under the trial submit button, a visible Bahasa consent line links Syarat and Privasi, explains
   processing the request, and does not claim a consent record is stored. Pending, field-error and thank-you
   states stay accessible and preserve the current non-enumerating response behavior.
-- [ ] **Auth emails.** Every checked-in auth/security email includes Buku-origin links to Syarat and Privasi.
+- [x] **Auth emails.** Every checked-in auth/security email includes Buku-origin links to Syarat and Privasi.
   The invitation, recovery and confirmation actions keep their existing destination and scanner-safe behavior.
   The generated hosted payload preserves the legal links and the support-footer marker behavior. Hosted
   template configuration is not applied during this cycle.
-- [ ] **Motion proposal: existing pieces only.** Reuse `.page-settle` for arrival on public content and auth
+- [x] **Motion proposal: existing pieces only.** Reuse `.page-settle` for arrival on public content and auth
   cards. Retain `DotGrid` on auth pages only, because that is its approved scope. `CountUp`, `CheckDraw` and
   `ProgressFill` remain in the genuine product components captured for evidence; screenshots are static and
   public figures do not animate. No new React Bits piece, scroll reveal or animated list is proposed. Any
   public arrival motion plays once, lasts no more than 450 ms, eases out, never animates table rows or inputs,
   and is disabled with prefers-reduced-motion. Existing licences stay intact.
-- [ ] **Anti-slop screenshot review.** At both 1440 and 390 px, verify all of these:
+- [x] **Anti-slop screenshot review.** At both 1440 and 390 px, verify all of these:
   - No purple/decorative gradients, emoji, sparkle/magic-wand icons, hype such as revolusioner or powered by AI.
   - No stock illustrations, fake logos, testimonials, customer counts, speed/savings claims or traction metrics.
   - No three identical icon cards in a row; product sections carry real screenshots or verified demo numbers.
@@ -114,13 +114,13 @@ this spec before that approval.
   - No glass, glow/star borders, spotlight/tilt/magnet cards, cursor effects, 3D, click sparks, animated
     aurora/plasma/silk/beams/particle backgrounds, or gradient/shiny/glitch/decrypt text.
   - Clear hierarchy, useful screenshots and deliberate whitespace; no vendor names on any public page.
-- [ ] **Performance and accessibility.** Mobile Lighthouse performance and accessibility each reach 95 or
+- [x] **Performance and accessibility.** Mobile Lighthouse performance and accessibility each reach 95 or
   higher for landing and both legal pages on a production build, with the report and run settings recorded.
   No horizontal page scroll at 390 px; keyboard-visible focus, skip navigation, semantic landmarks, one h1,
   correct headings and labelled form controls. Verify screen-reader reading order and image descriptions.
   Page-specific metadata, canonical public URLs, a working Open Graph image, favicon and Bahasa document
   language are present. The trial form/login get the same keyboard, overflow and screenshot review.
-- [ ] **Evidence and deck consistency.** Capture and inspect landing, Terms, Privacy, login and trial form at
+- [x] **Evidence and deck consistency.** Capture and inspect landing, Terms, Privacy, login and trial form at
   1440 and 390 px; capture the trial thank-you state too. Record anti-slop review findings and fixes, Lighthouse
   scores, and local flow evidence for the final runtime commit. Deck claims to compare are uploaded bank
   formats/coverage, review versus automatic posting, traceability, close checks, audience/roles, Singapore
@@ -219,7 +219,7 @@ use, accounting-invariant change, promised deletion schedule, production write, 
 - [x] T5 Landing story and public metadata — accept: two audience narratives, primary/secondary actions, all
   three readable product views, fixture-backed bank claims, token styling and approved motion only. Deps: T2,
   T4. Reuse the checked decks, `next/image`, existing metadata/Open Graph/favicon and motion conventions.
-- [ ] T6 Complete local verification and polish — accept: public/session/form/email flows pass; five public
+- [x] T6 Complete local verification and polish — accept: public/session/form/email flows pass; five public
   pages at 1440/390 and thank-you are inspected; anti-slop, accessibility and mobile Lighthouse thresholds pass;
   task/full gates and verify-local evidence are recorded for the head. Deps: T3, T5. Reuse existing access tests.
 - [ ] T7 Documentation and review handoff — accept: capture/run instructions and route/docs changes are current,
@@ -269,6 +269,20 @@ demo capture environment. This spec stage has one tightly connected document and
   Bank and format claims come from the live registry and fixtures, with inferred formats qualified.
   Page-specific metadata and the existing Open Graph image are retained. Source/spec/standards reviews pass.
   Gate: lint/typecheck pass; 225 files / 1,538 tests pass, including rendered claims and asset-dimension checks.
+
+- T6 owner refinement: use deck-style product illustrations while retaining genuine capture evidence,
+  remove em dashes from public copy, and reuse relevant existing motion. The illustration explains the
+  verified source-to-books flow without invented charts or figures; the balanced-journal done mark reuses
+  the approved CheckDraw motion and its reduced-motion rule. No new dependency or motion piece is needed.
+
+- T6: deck-style source-to-books illustration uses the capture manifest; real screenshots remain in each
+  proof section. Existing CheckDraw and scoped arrival motion respect reduced motion. The existing font is
+  preloaded, history context is isolated from question-form code, and the existing mark has a working favicon.
+  The slow-load question handoff adopts early typed text; member home metadata preserves Beranda · Buku.
+  Canonical and trial-error tests retain exact URL semantics and accessible alert/text/focus assertions.
+  Separate source/spec/standards reviews and the React checklist pass; all ten public captures plus phone
+  disclosures and the trial thank-you were inspected. No further visual or flow fix is outstanding.
+  Gate: lint/typecheck/build pass; 226 files / 1,540 tests pass; ALL PASS / 1,765 book checks; 86 browser tests pass.
 
 ## Verification
 

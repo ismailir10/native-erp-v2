@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { createContext, useContext, useRef, useState, type ReactNode } from "react";
+import { useCallback, useContext, useRef, useState } from "react";
 import { ArrowUp, History, LoaderCircle } from "lucide-react";
 import { askWorkspaceAction } from "@/app/workspace-actions";
 import { Button } from "@/components/ui/button";
@@ -10,24 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { StatusPill } from "@/components/app/status";
-
-type Answer = {
-  id: string;
-  question: string;
-  scope: { key: string; label: string; period: string; periodLabel: string };
-  text: string;
-  rows: { label: string; value: string; source: string }[];
-  citations: { label: string; href: string }[];
-  limitations: string[];
-  preliminary: string | null;
-};
-const HistoryContext = createContext<{ answers: Answer[]; addAnswer: (answer: Answer) => void } | null>(null);
-
-/** Memory only: navigation keeps answers; logout or reload discards them. */
-export function WorkspaceHistoryProvider({ children }: { children: ReactNode }) {
-  const [answers, setAnswers] = useState<Answer[]>([]);
-  return <HistoryContext.Provider value={{ answers, addAnswer: (answer) => setAnswers((previous) => [answer, ...previous].slice(0, 20)) }}>{children}</HistoryContext.Provider>;
-}
+import { WorkspaceHistoryContext, type WorkspaceAnswer as Answer } from "@/components/app/workspace-history";
 
 function AnswerCard({ answer }: { answer: Answer }) {
   return (
@@ -43,7 +26,7 @@ function AnswerCard({ answer }: { answer: Answer }) {
 }
 
 export function WorkspaceAsk({ scope }: { scope: Answer["scope"] }) {
-  const history = useContext(HistoryContext);
+  const history = useContext(WorkspaceHistoryContext);
   if (!history) throw new Error("WorkspaceAsk requires WorkspaceHistoryProvider");
   const { answers, addAnswer } = history;
   const params = useSearchParams();
@@ -56,6 +39,11 @@ export function WorkspaceAsk({ scope }: { scope: Answer["scope"] }) {
   const [error, setError] = useState("");
   const [showHistory, setShowHistory] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const attachInput = useCallback((input: HTMLTextAreaElement | null) => {
+    inputRef.current = input;
+    // Hydration preserves early typing in the DOM; adopt it before enabling submission.
+    if (input?.value) setQuestion(input.value);
+  }, []);
   async function submit() {
     if (busy || !question.trim()) return;
     setBusy(true);
@@ -77,7 +65,7 @@ export function WorkspaceAsk({ scope }: { scope: Answer["scope"] }) {
       <CardContent className="space-y-4">
         <form onSubmit={(event) => { event.preventDefault(); void submit(); }} className="space-y-3">
           <Label htmlFor="workspace-question" className="sr-only">Apa yang ingin Anda periksa?</Label>
-          <Textarea ref={inputRef} id="workspace-question" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Contoh: Klien mana yang belum siap tutup buku?" maxLength={2000} aria-describedby="workspace-ask-help" aria-invalid={Boolean(error)} rows={1} className="min-h-9" />
+          <Textarea ref={attachInput} id="workspace-question" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Contoh: Klien mana yang belum siap tutup buku?" maxLength={2000} aria-describedby="workspace-ask-help" aria-invalid={Boolean(error)} rows={1} className="min-h-9" />
           <div className="flex flex-wrap items-center justify-between gap-3"><p id="workspace-ask-help" className="max-w-md text-xs text-muted-foreground">Jawaban menyertakan sumber. Usulan akuntansi tetap perlu diperiksa.</p><Button type="submit" disabled={busy || !question.trim()}>{busy ? <LoaderCircle className="animate-spin" aria-hidden /> : <ArrowUp aria-hidden />}{busy ? "Memeriksa…" : "Tanya Buku"}</Button></div>
           {error && <p role="alert" className="text-sm text-fail">{error}</p>}
         </form>

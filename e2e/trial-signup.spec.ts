@@ -56,8 +56,10 @@ test("a trial request on /daftar becomes an organisation, an invitation and a wo
   await page.getByLabel("Email kerja").fill(email);
   await page.getByLabel("Nama Anda").fill(" ");
   await page.getByRole("button", { name: "Minta akses uji coba" }).click();
-  await expect(page.getByRole("alert")).toHaveText("Tulis nama Anda.");
-  await expect(page.getByRole("alert")).toBeFocused();
+  const formError = page.locator("#signup-error");
+  await expect(formError).toHaveAttribute("role", "alert");
+  await expect(formError).toHaveText("Tulis nama Anda.");
+  await expect(formError).toBeFocused();
   await expect(page.getByLabel("Email kerja")).toHaveValue(email);
   await expect(page.getByLabel("Nama kantor")).toHaveValue(orgName);
   await page.getByLabel("Nama Anda").fill("Rina Coba");

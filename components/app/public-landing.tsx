@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { PublicSiteFrame } from "@/components/app/public-site-frame";
+import { PublicProductIllustration } from "@/components/app/public-product-illustration";
 import { buttonVariants } from "@/components/ui/button";
 import { formatMoney } from "@/lib/money";
 import { PUBLIC_BANK_COUNT, PUBLIC_BANK_COVERAGE, type PublicProductAsset, type PublicProductEvidence } from "@/lib/public-product";
@@ -8,7 +9,7 @@ import capture from "@/public/product/capture-manifest.json";
 
 const product: PublicProductEvidence = capture;
 const month = new Intl.DateTimeFormat("id-ID", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${product.period}-01T00:00:00Z`));
-const demoLabel = "Data demonstrasi sintetis — nama, rekening, dan angka rekaan.";
+const demoLabel = "Data demonstrasi sintetis. Nama, rekening, dan angka rekaan.";
 const amount = (value: string) => formatMoney(BigInt(value), "IDR");
 
 function asset(file: string): PublicProductAsset {
@@ -18,7 +19,7 @@ function asset(file: string): PublicProductAsset {
 }
 
 /** Saved genuine app views; the phone source is an independently captured readable view. */
-function ProductImage({ name, mobileName = `${name}-mobile`, mobileDetail, alt, caption, eager = false }: { name: string; mobileName?: string; mobileDetail?: string; alt: string; caption: React.ReactNode; eager?: boolean }) {
+function ProductImage({ name, mobileName = `${name}-mobile`, mobileDetail, alt, caption }: { name: string; mobileName?: string; mobileDetail?: string; alt: string; caption: React.ReactNode }) {
   const desktop = asset(name);
   const mobile = asset(mobileName);
   const detail = mobileDetail ? asset(mobileDetail) : null;
@@ -26,7 +27,7 @@ function ProductImage({ name, mobileName = `${name}-mobile`, mobileDetail, alt, 
     <div className="overflow-hidden rounded-xl border bg-card">
       <picture>
         <source media="(max-width: 767px)" srcSet={mobile.file} width={mobile.width} height={mobile.height} />
-        <Image src={desktop.file} alt={alt} width={desktop.width} height={desktop.height} sizes="(max-width: 767px) 100vw, (max-width: 1279px) 60vw, 760px" loading={eager ? "eager" : "lazy"} fetchPriority={eager ? "high" : "auto"} className="block h-auto w-full" />
+        <Image src={desktop.file} alt={alt} width={desktop.width} height={desktop.height} sizes="(max-width: 767px) 100vw, (max-width: 1279px) 60vw, 760px" loading="lazy" className="block h-auto w-full" />
       </picture>
       {detail && <Image src={detail.file} alt={detail.description} width={detail.width} height={detail.height} sizes="100vw" loading="lazy" className="block h-auto w-full border-t md:hidden" />}
     </div>
@@ -64,7 +65,7 @@ function BankFormats() {
 export function PublicLanding() {
   const blocker = product.close.controls.find((control) => control.status !== "PASS");
   return <PublicSiteFrame>
-    <div className="page-settle mx-auto max-w-7xl px-5 sm:px-8">
+    <div className="mx-auto max-w-7xl px-5 sm:px-8">
       <section aria-labelledby="landing-title" className="pb-10 pt-12 sm:pt-20">
         <div className="grid items-start gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:gap-14">
           <div className="min-w-0 lg:pt-6">
@@ -72,16 +73,22 @@ export function PublicLanding() {
             <h1 id="landing-title" className="display mt-5 max-w-xl text-[2.65rem] sm:text-6xl">Dari rekening koran ke laporan keuangan.</h1>
             <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">Setiap angka bisa ditelusuri. Akuntan Anda memutuskan yang perlu ditinjau.</p>
             <div className="mt-8 flex flex-wrap gap-3"><Link href="/daftar" className={buttonVariants({ size: "lg" })}>Minta akses uji coba</Link><Link href="/deck" className={buttonVariants({ size: "lg", variant: "outline" })}>Lihat deck</Link></div>
-            <div className="mt-10 border-t pt-6">
-              <h2 className="text-base font-medium">Dari baris bank ke jurnalnya.</h2>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">Buka angka di laporan, telusuri Buku Besar, lalu periksa jurnal dan baris sumbernya. Nama file, nomor baris dan keterangan asli tetap bisa dibuka.</p>
-              <p className="mt-4 text-sm leading-relaxed">Pada contoh ini, uang masuk <span className="num">{amount(product.source.amount)}</span> menjadi jurnal dengan debit dan kredit yang sama. Sumbernya {product.source.fileName}, baris <span className="num">{product.source.rowNumber}</span>.</p>
-            </div>
           </div>
-          <div className="min-w-0 space-y-6">
-            <ProductImage name="bank-source" eager alt={`Baris sumber rekening koran ${product.reportEntity.name} senilai ${amount(product.source.amount)}, dari ${product.source.fileName} baris ${product.source.rowNumber}.`} caption={<>{product.reportEntity.name} · {month}. Baris sumber yang dibuka dari Buku Besar.</>} />
+          <PublicProductIllustration evidence={product} />
+        </div>
+      </section>
+
+      <section aria-labelledby="source-title" className="border-t py-10 sm:py-12">
+        <div className="grid items-start gap-6 lg:grid-cols-[0.9fr_1.1fr] lg:gap-14">
+          <div><p className="eyebrow text-muted-foreground">Sumber dan jurnal</p><h2 id="source-title" className="display mt-4 text-3xl sm:text-4xl">Dari baris bank ke jurnalnya.</h2></div>
+          <div>
+            <p className="text-base leading-relaxed text-muted-foreground">Buka angka di laporan, telusuri Buku Besar, lalu periksa jurnal dan baris sumbernya. Nama file, nomor baris dan keterangan asli tetap bisa dibuka.</p>
+            <p className="mt-4 text-sm leading-relaxed">Pada contoh ini, uang masuk <span className="num">{amount(product.source.amount)}</span> menjadi jurnal dengan debit dan kredit yang sama. Sumbernya {product.source.fileName}, baris <span className="num">{product.source.rowNumber}</span>.</p>
+          </div>
+        </div>
+        <div className="mt-8 grid items-start gap-6 md:grid-cols-2">
+            <ProductImage name="bank-source" alt={`Baris sumber rekening koran ${product.reportEntity.name} senilai ${amount(product.source.amount)}, dari ${product.source.fileName} baris ${product.source.rowNumber}.`} caption={<>{product.reportEntity.name} · {month}. Baris sumber yang dibuka dari Buku Besar.</>} />
             <ProductImage name="journal" mobileName="journal-detail" alt={`Jurnal dari baris bank yang sama: debit ${amount(product.source.journalDebit)} sama dengan total kredit. Kode akun serta masing-masing nominal terlihat.`} caption={<>Jurnal terkait: {product.source.lines.map((line) => `${line.code} ${line.name}`).join("; ")}.</>} />
-          </div>
         </div>
         <BankFormats />
       </section>
