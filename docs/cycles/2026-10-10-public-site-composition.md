@@ -351,7 +351,11 @@ require full functional gates, independent evidence review and both exact-head C
   delivery is exercised by the complete browser suite, which is still running.
 - Driver and independent source/hero visual reviews pass. Fresh highlight bytes match the repository
   uploads recorded in `/workspace/work/composition-notifications-highlight-evidence.json`.
-- Pending: complete private/demo suites, the home performance decision and both exact-head CI modes.
+- Complete private-mode browser suite: 88 passed (9.4 minutes), including immediate Beranda Ctrl+K,
+  member/company/admin/support dispatch, support audit/exit, notifications and scope/history. The first
+  setup attempt was blocked by local demo-admin variables in private mode; clearing only those local
+  command variables allowed the unchanged suite to run. No application/config/test change was made.
+- Pending: the running demo suite, home performance decision and both exact-head CI modes.
   The unchanged 95 performance criterion fails at median 94. This is partial evidence, not release sign-off.
 
 ## Ship Notes
