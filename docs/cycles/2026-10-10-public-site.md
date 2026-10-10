@@ -213,7 +213,7 @@ use, accounting-invariant change, promised deletion schedule, production write, 
 - [x] T3 Trial/login and email legal links — accept: consent sits under submit, both pages and every auth email
   link to both legal pages; generated payload and scanner-safe invite/recovery tests pass. Deps: T2. Reuse
   `SignupForm`, `PublicShell`, support markers, `scripts/auth-config.ts` and local mail capture; no hosted apply.
-- [ ] T4 Demo capture script and optimised product assets — accept: one local-only command regenerates bank-to-
+- [x] T4 Demo capture script and optimised product assets — accept: one local-only command regenerates bank-to-
   journal, Neraca Saldo and close images with source/amount agreement and no real data/model calls. Deps: T1.
   Reuse demo seed, existing authenticated Playwright setup and source drill-down; no scenario/ledger change.
 - [ ] T5 Landing story and public metadata — accept: two audience narratives, primary/secondary actions, all
@@ -257,6 +257,12 @@ demo capture environment. This spec stage has one tightly connected document and
   scanner-safe destinations remain intact. Captured invitation and recovery legal-link walks are in e2e.
   Standards/spec/security review passed, including a retry fix. The same completed full task gate above covers
   these unchanged T3 files; fresh lint/typecheck and the interactive retry check also pass before committing.
+
+- T4: local-only capture validates the pinned synthetic firm, statement rows, source-linked balanced journal,
+  actual trial-balance footer and genuine REVIEW/PASS controls before saving 14 WebP assets (457,804 bytes).
+  Browser requests cannot leave loopback or write books. Guards reject hosted origins and database query
+  overrides before connection. Source, spec, standards and asset visual reviews passed.
+  Gate: lint/typecheck pass; 225 files / 1,538 tests pass; capture completes with 1,765 book checks passing.
 
 ## Verification
 
