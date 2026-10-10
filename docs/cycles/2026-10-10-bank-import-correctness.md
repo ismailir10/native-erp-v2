@@ -22,7 +22,7 @@ Approval: the user approved the review's three-stage proposal on 2026-10-10: “
 - [x] T1 Strict source interpretation — currency, calendar dates, MT940 block integrity; regression cases fail before writes.
 - [x] T2 Conservative duplicate identity — preserve exact idempotence and twins; reject ambiguous overlap, retain distinct balance-supported transactions.
 - [x] T3 Source validation and reconciliation — preserve independent totals and coverage provenance, persist validation, correctly reconcile sparse balances and partial periods; ambiguity/OCR guards.
-- [ ] T4 Adversarial corpus and release review — mutations, full accounting and browser gates, review fixes, docs/deck claims, draft PR and CI.
+- [x] T4 Adversarial corpus and release review — mutations, full accounting and browser gates, review fixes, docs/deck claims, draft PR and CI.
 
 ## Implementation
 - Plan: T1's MT940 reader and currency/calendar validation delegated as independent parser slices under the build skill; driver owns shared types/integration, T2/T3, review and all DB/full-suite gates. No concurrent DB reset suites. T4 reviews the integrated result.
@@ -58,4 +58,4 @@ Approval: the user approved the review's three-stage proposal on 2026-10-10: “
 - Existing legacy/derived/inferred sources can now show REVIEW; printed conflicts show FAIL. Exact complete legacy re-upload can attest matching financial rows; ambiguous or conflicting sources require explicit correction/removal in an open period. Historical locked journals are never rewritten.
 - Rollback: revert application changes; the nullable column can remain unused. Do not drop financial imports or alter journals as a rollback shortcut.
 - External anonymized bank-issued holdouts were unavailable. Synthetic coverage is deliberately not represented as external real-world validation.
-- Draft PR and deck review: pending final gates.
+- Local release gates are complete. Draft PR, deck review and CI are the remaining ship steps; no merge or deployment is authorized.

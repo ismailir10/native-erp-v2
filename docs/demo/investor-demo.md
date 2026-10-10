@@ -58,9 +58,8 @@ Automated end to end by `e2e/investor-demo.spec.ts` — if you change this scrip
 > amortisation and accruals, spots new assets and prepayments in the ledger, and the accountant posts with one click.*
 
 ### 6. Tutup Buku — the controlled close (60 s)
-- **Arithmetic all Lolos**: TB balanced, A = L + E, each bank reconciled to the statement, continuity,
-  clearing 1199 = 0, nothing in suspense, intercompany eliminated.
-- **Two Perlu dicek.** From the ledger scan: *Akun baru atau aktif lagi — 1210 Aset Tetap* — the machine reviewed in step 3
+- **Arithmetic Lolos**: TB balanced, A = L + E, clearing 1199 = 0, nothing in suspense, intercompany eliminated. BCA has independently printed opening/closing and declared coverage. Mandiri and BRI exports need source review: derived openings and transaction-only dates do not prove a complete statement. Acknowledge their four bank/completeness reviews with an explicit synthetic-demo limitation note; do not claim the files prove completeness.
+- **Two additional Perlu dicek.** From the ledger scan: *Akun baru atau aktif lagi — 1210 Aset Tetap* — the machine reviewed in step 3
   is the first movement on fixed assets since the opening balance. Click **Beri catatan** → "Pembelian mesin pakan otomatis,
   faktur ada. Penyusutan mulai September." → Simpan.
 - **Persediaan akhir (stock opname)**: PT Ayam holds Rp 260 jt of feed and no August count is recorded. Either type the count on
