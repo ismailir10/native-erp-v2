@@ -72,6 +72,7 @@ describe("statement workbooks", () => {
       expect(st.notes).toEqual([
         "3 lembar dibaca sebagai satu rekening koran: MAY, JUN, JUL.",
         "Kolom Debet dibaca sebagai uang masuk (sudut pandang pembukuan): hanya dengan cara itu saldo berjalan nyambung.",
+        "Rentang gabungan lembar belum membuktikan cakupan lengkap: ada periode yang disimpulkan dari transaksi atau celah antarperiode sumber.",
       ]);
       expect(checkContinuity(st)).toMatchObject({ ok: true });
     }

@@ -1,4 +1,4 @@
-import { ParseError, ScanError, UnreadableFileError, YearNeededError, type ParsedStatement } from "@/lib/import/types";
+import { ParseError, SourceAmountError, SourceCurrencyError, SourceDateError, ScanError, UnreadableFileError, YearNeededError, type ParsedStatement } from "@/lib/import/types";
 import { PdfPasswordError } from "@/lib/import/parsers/pdf";
 import { readGrid } from "@/lib/import/grid";
 import { readWithLayout, type RememberedLayout } from "@/lib/import/mapped";
@@ -46,7 +46,7 @@ export async function parseStatementSections(fileName: string, data: Buffer, opt
     });
   } catch (e) {
     // A password, a missing year or a scan is the accountant's to answer: no layout can help.
-    if (e instanceof PdfPasswordError || e instanceof YearNeededError || e instanceof ScanError) throw e;
+    if (e instanceof PdfPasswordError || e instanceof YearNeededError || e instanceof ScanError || e instanceof SourceAmountError || e instanceof SourceCurrencyError || e instanceof SourceDateError) throw e;
     const message = e instanceof ParseError ? e.message : `File tidak bisa dibaca: ${(e as Error).message}`;
     const remembered = opts.layouts?.length ? await rememberedRead(fileName, data, opts) : null;
     if (remembered) return [remembered];
@@ -84,7 +84,7 @@ async function parseAny(fileName: string, data: Buffer, opts: ParseOptions): Pro
     return specific();
   } catch (e) {
     // A file that only looks like BCA's / BRI's may still be a plain table: try the generic reader, keep this error if it can't either.
-    if (!(e instanceof ParseError)) throw e;
+    if (!(e instanceof ParseError) || e instanceof SourceAmountError || e instanceof SourceCurrencyError || e instanceof SourceDateError) throw e;
     try {
       return generic();
     } catch (g) {

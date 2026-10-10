@@ -1,9 +1,8 @@
 import ExcelJS from "exceljs";
-import { parseRupiah } from "@/lib/money";
 import { dateOnly } from "@/lib/format";
 import type { BankCode } from "@/lib/generated/prisma/enums";
-import { ParseError, YearNeededError, type ParsedRow, type ParsedStatement } from "@/lib/import/types";
-import { chronologicalOrder, closingFromRows, dateParts as baseDateParts, dayMonthEvidence, MONTHS as MONTH_NUMBER, periodFromText, SenWatch, splitMarker, type DateParts, type DayMonthOrder } from "@/lib/import/parsers/common";
+import { ParseError, AmbiguousDateError, YearNeededError, type ParsedRow, type ParsedStatement } from "@/lib/import/types";
+import { calendarDate, parseBankAmount, assertSingleSide, closingProvenance, sourceCurrency, chronologicalOrder, closingFromRows, dateParts as baseDateParts, dayMonthEvidence, MONTHS as MONTH_NUMBER, periodFromText, SenWatch, splitMarker, type DateParts, type DayMonthOrder } from "@/lib/import/parsers/common";
 import { detectFormat, periodOf } from "@/lib/import/parsers/pdf";
 
 /**
@@ -109,9 +108,7 @@ export function guessYear(fileName: string | undefined): number | null {
 const dateParts = (text: string, order?: DayMonthOrder) => baseDateParts(text, { serial: true, order });
 
 function dateFrom(p: DateParts, cursor: YearCursor): Date {
-  const d = dateOnly(p.y ?? cursor.year, p.m, p.d);
-  if (d.getUTCMonth() + 1 !== p.m) throw new ParseError(`Tanggal tidak ada di kalender: ${p.d}/${p.m}/${p.y ?? cursor.year}`);
-  return d;
+  return calendarDate(p.y ?? cursor.year, p.m, p.d);
 }
 
 /** The first run of digits (hyphens allowed) with six or more digits that isn't a dd-mm-yyyy / yyyy-mm-dd date. */
@@ -154,6 +151,7 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
   // A column of only D/K-type values beside a single unsigned amount column says which way each amount goes.
   const cFlag = split ? -1 : flagColumn(rows.slice(headerIdx + 1), header.map((_, c) => c).filter((c) => ![cDate, cDesc, cAmt, cBal].includes(c)));
   const money = [split ? cDb : -1, split ? cCr : -1, split ? -1 : cAmt, cBal].filter((c) => c >= 0);
+  const currency = sourceCurrency(rows.slice(0, headerIdx).map((r) => r.join(" ")), rawHeader, rows.slice(headerIdx + 1).flatMap((r) => money.map((c) => r[c] ?? "")), rows.slice(headerIdx + 1));
   // The description, plus unlabeled text columns between the date and the first amount (e.g. the transaction type).
   const firstMoney = Math.min(...money);
   const descCols = [...new Set([cDesc, ...header.map((h, i) => (i > cDate && i < firstMoney && !h.trim() ? i : -1)).filter((i) => i >= 0)])]
@@ -177,7 +175,26 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
   if (evidence.dmy && evidence.mdy) {
     throw new ParseError(`Kolom tanggal mencampur format hari/bulan ("${evidence.dmy}") dan bulan/hari ("${evidence.mdy}"). Samakan format tanggalnya di file lalu unggah ulang.`);
   }
-  const order: DayMonthOrder = evidence.mdy ? "MDY" : evidence.dmy || evidence.numeric.length < 2 ? "DMY" : (chronologicalOrder(evidence.numeric) ?? "DMY");
+  const fixedDayFirst = format !== "GENERIC" || detectFormat(rows.slice(0, headerIdx).map((r) => r.join(" ")).join("\n")) !== "GENERIC" || /^(?:tanggal|tgl\b)/i.test(rawHeader[cDate]);
+  const possible = (["DMY", "MDY"] as const).filter((candidate) => {
+    const parsedDates = evidence.numeric.map((text) => dateParts(text, candidate)!);
+    if (parsedDates.some((p) => !p)) return false;
+    const keys = parsedDates.map((p) => {
+      const y = p.y ?? period?.start.getUTCFullYear() ?? 2000;
+      const value = dateOnly(y, p.m, p.d);
+      if (value.getUTCMonth() + 1 !== p.m) return NaN;
+      if (period && (+value < +period.start || +value > +period.end)) return NaN;
+      return +value;
+    });
+    return keys.every(Number.isFinite) && (keys.every((key, i) => !i || key >= keys[i - 1]) || keys.every((key, i) => !i || key <= keys[i - 1]));
+  });
+  const distinctInterpretations = evidence.numeric.some((text) => {
+    const p = dateParts(text, "DMY"); return p && p.d !== p.m;
+  });
+  if (!fixedDayFirst && !evidence.dmy && !evidence.mdy && distinctInterpretations && possible.length === 2) {
+    throw new AmbiguousDateError("Urutan tanggal ambigu: hari/bulan dan bulan/hari sama-sama mungkin. Gunakan Atur kolom untuk memilih urutan tanggal, atau ubah tanggal sumber menjadi YYYY-MM-DD lalu unggah ulang.");
+  }
+  const order: DayMonthOrder = evidence.mdy ? "MDY" : evidence.dmy ? "DMY" : possible.length === 1 ? possible[0] : fixedDayFirst ? "DMY" : (chronologicalOrder(evidence.numeric) ?? "DMY");
   const orderNote =
     order === "MDY"
       ? evidence.mdy
@@ -203,14 +220,14 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
   const num = (r: string[], c: number) => {
     if (c < 0 || !r[c]) return 0n;
     sen.check(r[c], at);
-    return parseRupiah(splitMarker(r[c]).text);
+    return parseBankAmount(splitMarker(r[c]).text);
   };
   // A balance marked DB / D is a debit balance (an overdrawn account): below zero.
   const bal = (r: string[]) => {
     if (cBal < 0 || !r[cBal]) return null;
     sen.check(r[cBal], at);
     const { text, flag } = splitMarker(r[cBal]);
-    const v = parseRupiah(text);
+    const v = parseBankAmount(text);
     return flag === "DB" ? -(v < 0n ? -v : v) : v;
   };
   let markedAmounts = 0;
@@ -231,6 +248,7 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
     const label = OPENING_ROW.test(dateText) || OPENING_ROW.test(text) ? "open" : CLOSING_ROW.test(dateText) || CLOSING_ROW.test(text) ? "close" : TOTAL_ROW.test(dateText) ? "total" : null;
     // A SALDO AWAL row is the opening even when it writes its amount in a movement column (b4): that amount is the opening when it
     // equals the printed balance or the balance is empty. Any other amount is read as before (a transaction).
+    if (label === "open" && split) assertSingleSide(r[cDb], r[cCr], i + 1);
     if (label === "open" && !openingRow && !noMovement) {
       let written: bigint | null = null;
       try {
@@ -271,6 +289,7 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
     }
     // A dated row that moves no money is no transaction (it could never post). One whose printed balance moved anyway is passed on as
     // balance-only: the repair (rule 12) takes its amount from the balance, or drops it when the balance didn't move.
+    if (split) assertSingleSide(r[cDb], r[cCr], i + 1);
     if (noMovement) {
       const b = bal(r);
       if (b !== null && !SUMMARY_TEXT.test(text)) drafts.push({ parts, description: text, debit: 0n, credit: 0n, amount: 0n, balance: b, rowNumber: i + 1, rawRow: r.map((c) => c.replace(/\s+/g, " ").trim()).join(" | "), balanceOnly: true });
@@ -412,9 +431,11 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
     if (!parsed.length) throw new ParseError("File tidak berisi transaksi");
     throw new ParseError("Saldo awal tidak dapat ditentukan (tidak ada baris SALDO AWAL dan kolom saldo kosong)");
   }
-  const anchor = dates[0] ?? openingDate;
-  if (!anchor) throw new ParseError("File tidak berisi transaksi");
-  const last = dates.at(-1) ?? anchor;
+  const dated = dates.length ? dates : openingDate ? [openingDate] : [];
+  if (!dated.length) throw new ParseError("File tidak berisi transaksi");
+  // Keep source order for running balances, but infer coverage from the actual minimum/maximum dates.
+  const anchor = dated.reduce((earliest, date) => +date < +earliest ? date : earliest);
+  const last = dated.reduce((latest, date) => +date > +latest ? date : latest);
   const bounds = period ?? {
     start: dateOnly(anchor.getUTCFullYear(), anchor.getUTCMonth() + 1, 1),
     end: new Date(Date.UTC(last.getUTCFullYear(), last.getUTCMonth() + 1, 0)),
@@ -423,6 +444,8 @@ export function parseTabular(rows: string[][], format: BankCode, ctx: Ctx = {}):
     // A file that names no bank stays GENERIC (only the lines above the table count: a transaction may name another bank).
     format: format === "GENERIC" ? detectFormat(rows.slice(0, headerIdx + 1).map((r) => r.join(" ")).join("\n")) : format,
     accountNumber,
+    currency,
+    provenance: { period: period ? "DECLARED" : "INFERRED", opening: openingRow?.balance != null || openingRow?.written !== undefined ? "PRINTED" : "DERIVED", closing: printedClosing !== null ? "PRINTED" : closingProvenance(parsed) },
     periodStart: bounds.start,
     periodEnd: bounds.end,
     openingBalance,
@@ -493,10 +516,19 @@ function join(parts: ParsedStatement[]): ParsedStatement {
   const last = sorted[sorted.length - 1];
   const sheets = sorted.flatMap((p) => p.sheets ?? []);
   const notes = [...new Set(sorted.flatMap((p) => p.notes ?? []))];
+  let coveredThrough = +first.periodEnd;
+  let contiguous = sorted.every((p) => p.provenance?.period === "DECLARED");
+  for (const part of sorted.slice(1)) {
+    if (+part.periodStart > coveredThrough + 86_400_000) contiguous = false;
+    coveredThrough = Math.max(coveredThrough, +part.periodEnd);
+  }
+  if (!contiguous) notes.push("Rentang gabungan lembar belum membuktikan cakupan lengkap: ada periode yang disimpulkan dari transaksi atau celah antarperiode sumber.");
   notes.unshift(`${sheets.length} lembar dibaca sebagai satu rekening koran: ${sheets.join(", ")}.`);
   return {
     format: sorted.every((p) => p.format === first.format) ? first.format : "GENERIC",
     accountNumber: first.accountNumber ?? sorted.find((p) => p.accountNumber)?.accountNumber ?? null,
+    currency: sorted.find((p) => p.currency)?.currency,
+    provenance: { period: contiguous ? "DECLARED" : "INFERRED", opening: first.provenance?.opening ?? "DERIVED", closing: last.provenance?.closing ?? "DERIVED" },
     periodStart: first.periodStart,
     periodEnd: last.periodEnd,
     openingBalance: first.openingBalance,

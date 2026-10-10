@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { ParseError, type ParsedRow, type ParsedStatement } from "@/lib/import/types";
+import { ParseError, SourceDateError, type ParsedRow, type ParsedStatement } from "@/lib/import/types";
 import { dateOnly, formatDate } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
 
@@ -148,19 +148,27 @@ function yearTypos(rows: ParsedRow[]): { row: ParsedRow; fix: Date | null; start
  * - A year typo with one fix inside the statement's months is read with that year; a year it can't hold refuses the file.
  * - A row where previous balance − amount equals its printed balance had its direction written the wrong way: flipped.
  * - A balance-only row (a date, no amount) whose balance moved takes the move as its amount; one whose balance didn't move is dropped.
- * - When every printed balance chains and only the closing header disagrees, the running balance is the closing.
+ * - An independently printed closing remains evidence even when the row balances contradict it.
  * A direction or amount repair needs a later printed balance that confirms it (one balance alone can be the typo) and is kept only when
- * every printed balance then chains; otherwise the rows stay as written, the import shows the break, and a note names what was not
+ * every printed balance and the closing then agree; otherwise the rows stay as written, the import shows the break, and a note names what was not
  * repaired. Every repair is noted with the value the file wrote; the row keeps it in `written` and its `rawRow`.
  */
 export function repairStatement(input: ParsedStatement): ParsedStatement {
   const notes: string[] = [];
   let st = input;
-  const currency = st.section?.currency ?? "IDR";
+  const currency = st.currency ?? st.section?.currency ?? "IDR";
   const money = (n: bigint) => formatMoney(n < 0n ? -n : n, currency);
 
+  if (!Number.isFinite(+st.periodStart) || !Number.isFinite(+st.periodEnd) || +st.periodStart > +st.periodEnd) {
+    throw new SourceDateError("Periode rekening koran tidak valid. Periksa tanggal awal dan akhir pada file.");
+  }
+  if (st.provenance?.period === "DECLARED") {
+    const outside = st.rows.find((r) => !Number.isFinite(+r.date) || +r.date < +st.periodStart || +r.date > +st.periodEnd);
+    if (outside) throw new SourceDateError(`Tanggal ${formatDate(outside.date)} di baris ${rowLabel(outside)} di luar periode tercetak (${formatDate(st.periodStart)} – ${formatDate(st.periodEnd)}). Periksa tanggal dan periode di file; saldo tidak membuktikan perubahan tahun.`);
+  }
+
   // 1. Year typos (dates only: the balance chain doesn't depend on them).
-  const typos = yearTypos(st.rows.filter((r) => !r.balanceOnly));
+  const typos = st.provenance?.period === "DECLARED" ? [] : yearTypos(st.rows.filter((r) => !r.balanceOnly));
   if (typos.length) {
     const bad = typos.find((t) => !t.fix);
     if (bad) {
@@ -178,7 +186,13 @@ export function repairStatement(input: ParsedStatement): ParsedStatement {
   }
 
   // 2. Direction and amount from the balance: each needs a later printed balance, and all are kept only if the whole chain then holds.
-  const confirmedAfter = st.rows.map((_, i) => st.rows.slice(i + 1).some((r) => r.balance !== null && !r.balanceOnly));
+  const confirmedAfter = new Array<boolean>(st.rows.length);
+  let hasLaterBalance = false;
+  for (let i = st.rows.length - 1; i >= 0; i--) {
+    confirmedAfter[i] = hasLaterBalance;
+    if (st.rows[i].balance !== null && !st.rows[i].balanceOnly) hasLaterBalance = true;
+  }
+  const movedBalanceOnly = new Set<ParsedRow>();
   let running = st.openingBalance;
   const repaired: ParsedRow[] = [];
   const chainNotes: string[] = [];
@@ -186,11 +200,13 @@ export function repairStatement(input: ParsedStatement): ParsedStatement {
   st.rows.forEach((r, i) => {
     if (r.balanceOnly) {
       if (r.balance === null || r.balance === running) return;
+      movedBalanceOnly.add(r);
       const amount = r.balance - running;
       if (confirmedAfter[i]) {
         repaired.push({ ...r, amount, balanceOnly: undefined, written: { ...r.written, amount: 0n } });
         chainNotes.push(`Baris ${rowLabel(r)}: nominal kosong tetapi saldo ${amount > 0n ? "naik" : "turun"} ${money(amount)}; dicatat ${amount > 0n ? "masuk" : "keluar"} ${money(amount)} dari selisih saldo.`);
       }
+      if (!confirmedAfter[i]) repaired.push(r);
       unrepaired.push(`Baris ${rowLabel(r)}: nominal kosong tetapi saldo bergerak ${money(amount)}; tidak dicatat karena saldo berjalan tidak bisa memastikannya. Periksa baris itu di file.`);
       running = r.balance;
       return;
@@ -208,11 +224,11 @@ export function repairStatement(input: ParsedStatement): ParsedStatement {
     repaired.push(r);
     running = r.balance ?? next;
   });
-  const withoutBalanceOnly = st.rows.filter((r) => !r.balanceOnly);
+  // Keep unresolved moved balances as zero-amount evidence: dropping them could hide a missing gross movement.
+  const withoutBalanceOnly = st.rows.filter((r) => !r.balanceOnly || movedBalanceOnly.has(r));
   const trial = { ...st, rows: repaired };
   const check = checkContinuity(trial);
-  const last = repaired[repaired.length - 1];
-  const holds = chainNotes.length > 0 && check.brokenRows.length === 0 && (check.ok || (last?.balance ?? null) !== null);
+  const holds = chainNotes.length > 0 && check.ok;
   if (holds) {
     st = trial;
     notes.push(...chainNotes);
@@ -222,12 +238,11 @@ export function repairStatement(input: ParsedStatement): ParsedStatement {
     notes.push(...unrepaired);
   }
 
-  // 3. The closing header against a chain that holds everywhere, unproven repairs aside: the chain wins, the header is reported.
+  // The printed closing is independent evidence, not a value a row repair can replace.
   const after = checkContinuity(st);
   const end = st.rows[st.rows.length - 1];
-  if (!after.ok && after.brokenRows.length === 0 && end && end.balance !== null && end.balance !== st.closingBalance) {
-    notes.push(`Saldo akhir di file ${formatMoney(st.closingBalance, currency)} ≠ saldo berjalan ${formatMoney(end.balance, currency)}; saldo berjalan dipakai. Periksa saldo akhir di file.`);
-    st = { ...st, closingBalance: end.balance };
+  if (!after.ok && after.brokenRows.length === 0 && end?.balance !== null && end?.balance !== undefined && end.balance !== st.closingBalance) {
+    notes.push(`Saldo akhir di file ${formatMoney(st.closingBalance, currency)} ≠ saldo berjalan ${formatMoney(end.balance, currency)}; saldo akhir tercetak dipertahankan. Periksa kedua nilai pada file sumber.`);
   }
   return notes.length ? { ...st, notes: [...(st.notes ?? []), ...notes] } : st;
 }

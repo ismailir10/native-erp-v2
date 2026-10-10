@@ -60,6 +60,9 @@ describe("bank statement (generic CSV)", () => {
   it("an all-ambiguous file in no order is read day/month and says it can't be sure", async () => {
     const st = await parseStatement("acak.csv", csv(["01/03/2026,A,0,100,1100", "02/01/2026,B,50,0,1050", "01/02/2026,C,0,10,1060"]));
     expect(st.notes?.join(" ")).toMatch(/tidak bisa dipastikan/);
+    expect(st.rows.map((row) => day(row.date))).toEqual(["2026-03-01", "2026-01-02", "2026-02-01"]);
+    expect(day(st.periodStart)).toBe("2026-01-01");
+    expect(day(st.periodEnd)).toBe("2026-03-31");
   });
 });
 

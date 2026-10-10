@@ -1,7 +1,7 @@
 import Papa from "papaparse";
 import { dateOnly } from "@/lib/format";
-import { parseCents } from "@/lib/money";
-import { ParseError, type ParsedRow } from "@/lib/import/types";
+import { parseCents, parseRupiah } from "@/lib/money";
+import { ParseError, SourceAmountError, SourceCurrencyError, SourceDateError, type ParsedRow } from "@/lib/import/types";
 
 export function readCsv(text: string, delimiter?: string): string[][] {
   const res = Papa.parse<string[]>(text.replace(/^﻿/, ""), { delimiter, skipEmptyLines: false });
@@ -136,9 +136,7 @@ export function excelSerialDate(serial: number): Date | null {
 export function parseDateDMY(s: string): Date {
   const p = dateParts(s);
   if (!p || p.y === null) throw new ParseError(`Format tanggal tidak dikenali: "${s}"`);
-  const d = dateOnly(p.y, p.m, p.d);
-  if (d.getUTCMonth() + 1 !== p.m) throw new ParseError(`Tanggal tidak ada di kalender: "${s}"`);
-  return d;
+  return calendarDate(p.y, p.m, p.d);
 }
 
 export function periodFromText(s: string): { start: Date; end: Date } | null {
@@ -149,8 +147,8 @@ export function periodFromText(s: string): { start: Date; end: Date } | null {
 
 export function monthBoundsOf(rows: ParsedRow[]) {
   if (rows.length === 0) throw new ParseError("File tidak berisi transaksi");
-  const first = rows[0].date;
-  const last = rows[rows.length - 1].date;
+  const first = rows.reduce((earliest, row) => +row.date < +earliest ? row.date : earliest, rows[0].date);
+  const last = rows.reduce((latest, row) => +row.date > +latest ? row.date : latest, rows[0].date);
   return {
     start: dateOnly(first.getUTCFullYear(), first.getUTCMonth() + 1, 1),
     end: new Date(Date.UTC(last.getUTCFullYear(), last.getUTCMonth() + 1, 0)),
@@ -215,7 +213,84 @@ export class SenWatch {
   }
 }
 
+/** Closing at the final row, including movements after the last printed checkpoint. */
 export function closingFromRows(rows: ParsedRow[], opening: bigint): bigint {
-  const withBalance = [...rows].reverse().find((r) => r.balance !== null);
-  return withBalance?.balance ?? opening + rows.reduce((s, r) => s + r.amount, 0n);
+  return rows.reduce((running, row) => row.balance ?? running + row.amount, opening);
+}
+
+/** Only a balance printed on the final row independently states the closing. */
+export function closingProvenance(rows: ParsedRow[]): "ROW" | "DERIVED" {
+  return rows.at(-1)?.balance != null ? "ROW" : "DERIVED";
+}
+
+/** Calendar construction must never let JavaScript roll a nonexistent date into another month. */
+export function calendarDate(y: number, m: number, d: number): Date {
+  const date = dateOnly(y, m, d);
+  if (date.getUTCFullYear() !== y || date.getUTCMonth() + 1 !== m || date.getUTCDate() !== d) {
+    throw new SourceDateError(`Tanggal tidak ada di kalender: ${d}/${m}/${y}`);
+  }
+  return date;
+}
+
+export const CURRENCY_HEADER = /^(?:currency|ccy|mata\s*uang|valuta)(?:\s*\/\s*(?:currency|ccy|mata\s*uang|valuta))?$/i;
+
+/** Read explicit currency declarations, never incidental customer names or transaction descriptions. */
+export function sourceCurrency(preamble: string[], headers: string[], amounts: string[] = [], rows: string[][] = []): string | undefined {
+  const found = new Set<string>();
+  const add = (unit: string) => found.add(/^(?:rp\.?|rupiah)$/i.test(unit) ? "IDR" : unit.toUpperCase());
+  const unit = String.raw`(?:[A-Z]{3}|Rp\.?|Rupiah)`;
+  for (const line of preamble) {
+    for (const match of line.matchAll(new RegExp(String.raw`(?:^|\b)(?:mata\s*uang|currency|ccy|valuta)(?:\s*[/\-]\s*(?:currency|mata\s*uang))?\s*[:=,;\s]+(${unit})(?=$|[^A-Za-z])`, "gi"))) add(match[1]);
+    const accountUnit = /\b(?:account|rekening)\b.*\(([A-Z]{3})\)/i.exec(line);
+    if (accountUnit) add(accountUnit[1]);
+    // Unbracketed account declarations need an adjacent account number: a customer's name is not a unit.
+    const accountCode = /\b(?:account|rekening)\s*(?:no\.?|number|nomor)?\s*[:#-]?\s*([A-Z]{3})\s+\d[\d-]{5,}\b/i.exec(line);
+    if (accountCode) add(accountCode[1]);
+    if (/^\s*(?:IDR|USD|SGD|EUR|GBP|AUD|JPY|CNY|HKD|MYR|Rp\.?|Rupiah)\s*$/i.test(line)) add(line.trim());
+  }
+  for (const label of headers) {
+    if (!/^(?:debit|debet|credit|kredit|amount|jumlah|nominal|mutasi|saldo|balance|withdrawal|deposit)\b/i.test(label.trim())) continue;
+    const match = label.match(new RegExp(String.raw`(?:\(|\[|\s)(${unit})(?:\)|\])?\s*$`, "i"));
+    if (match && (/[([]/.test(match[0]) || /^(?:IDR|USD|SGD|EUR|GBP|AUD|CAD|CHF|JPY|CNY|HKD|MYR|NZD|THB|SAR|AED|INR|KRW|Rp\.?|Rupiah)$/i.test(match[1]))) add(match[1]);
+  }
+  const currencyColumns = headers.flatMap((label, index) => CURRENCY_HEADER.test(label.trim()) ? [index] : []);
+  for (const row of rows) for (const column of currencyColumns) {
+    const value = (row[column] ?? "").trim();
+    if (!value || value === "-" || CURRENCY_HEADER.test(value)) continue;
+    if (!new RegExp(String.raw`^${unit}$`, "i").test(value)) {
+      throw new SourceCurrencyError("Mata uang pada kolom sumber tidak dikenali. Periksa rekening koran sebelum mengimpor.");
+    }
+    add(value);
+  }
+  for (const value of amounts) {
+    const match = value.trim().match(new RegExp(String.raw`^(${unit})\s*[+-]?[\d(]|[\d)]\s*(${unit})$`, "i"));
+    if (match) add(match[1] ?? match[2]);
+    if (/[$€£¥]/.test(value)) found.add("NON-IDR");
+  }
+  if (found.size > 1) throw new SourceCurrencyError(`Mata uang sumber bertentangan (${[...found].join(", ")}). Pisahkan atau perbaiki rekening koran sebelum mengimpor.`);
+  const currency = [...found][0];
+  if (currency && currency !== "IDR") throw new SourceCurrencyError(`Mata uang ${currency} belum didukung untuk impor bank. Gunakan rekening koran IDR; nominal tidak dikonversi otomatis.`);
+  return currency;
+}
+
+
+/** Strict bank-file grammar: separators are grouping or one decimal separator, never punctuation to silently discard. */
+export function parseBankAmount(text: string | undefined | null): bigint {
+  const original = text ?? "";
+  let bare = original.trim();
+  if (!bare || bare === "-") return 0n;
+  if (/^\(.*\)$/.test(bare)) bare = bare.slice(1, -1).trim();
+  bare = bare.replace(/^([+-]?)\s*(?:Rp\.?|IDR)\s*/i, "$1").replace(/\s/g, "");
+  const plain = /^[+-]?\d+(?:[.,]\d{1,2})?$/;
+  const grouped = /^[+-]?(?:\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?)$/;
+  if (!plain.test(bare) && !grouped.test(bare)) throw new SourceAmountError(`Nominal sumber tidak valid: "${original}". Periksa angka dan pemisah ribu/desimal pada file.`);
+  return parseRupiah(original);
+}
+
+/** One bank movement has one non-zero side. Check sen before whole-Rupiah rounding. */
+export function assertSingleSide(debit: string | undefined, credit: string | undefined, row: number): void {
+  const d = splitMarker(debit ?? "").text;
+  const c = splitMarker(credit ?? "").text;
+  parseBankAmount(d); parseBankAmount(c);
+  if (parseCents(d) !== 0n && parseCents(c) !== 0n) throw new SourceAmountError(`Baris ${row}: Debet dan Kredit sama-sama berisi nominal. Pisahkan transaksi atau perbaiki file; kedua sisi tidak dinetokan otomatis.`);
 }
