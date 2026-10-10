@@ -3,9 +3,18 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
+
+# A new push to a PR cancels the run it supersedes. Pushes to main always finish.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Lint, typecheck and unit tests. Runs on every ready PR and on every push to main.
+  # Draft PRs skip CI until they are marked ready for review.
   check:
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -36,6 +45,39 @@ jobs:
         run: npm run lint && npm run typecheck
       - name: Unit + DB + ground-truth tests
         run: npm test
+
+  # The heavy job: local Supabase stack, production build and Playwright. Runs on pushes to
+  # main, on manual dispatch, or on a ready PR that carries the `e2e` label.
+  e2e:
+    needs: check
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.draft != true && contains(github.event.pull_request.labels.*.name, 'e2e'))
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: buku
+          POSTGRES_PASSWORD: buku
+          POSTGRES_DB: buku
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U buku" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://buku:buku@localhost:5432/buku
+      TEST_DATABASE_URL: postgresql://buku:buku@localhost:5432/buku_test
+      DEMO_MODE: "true"
+      EVIDENCE_ENABLED: "true"
+      APP_URL: http://localhost:3200
+      AI_API_KEY: ""
+      AI_MODEL: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npx prisma migrate deploy
       # Auth for the e2e walk: a throwaway local Supabase stack (Auth + gateway + its own Postgres on :54322).
       # NEXT_PUBLIC_* are inlined at build time, so the stack must be up before `next build`.
       - uses: supabase/setup-cli@v1
