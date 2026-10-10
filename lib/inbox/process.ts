@@ -114,28 +114,53 @@ async function stageLedger(db: Db, row: UploadItem, data: Buffer, input: Process
   }
 }
 
+/** A claim older than this is a crashed request's: the file counts as CHECKED again (well past any request's time limit). */
+export const STALE_CLAIM_MS = 10 * 60 * 1000;
+
 /**
  * Processes the next CHECKED file of the batch in plan order (bank statements oldest period first, then ledgers) and returns its line
- * with how many CHECKED files are left. `item` is null when nothing is left to process.
+ * with how many files are left (still CHECKED, or being processed by a parallel call). `item` is null when nothing is left to take.
+ *
+ * Two parallel calls never take the same file: each claims its file with a conditional update (CHECKED → PROCESSING) and moves on to
+ * the next one when another call got there first. The claimed file always ends in a final status — an unexpected error makes it
+ * FAILED — and a claim left behind by a crashed request is released after `STALE_CLAIM_MS`.
  */
 export async function processNext(db: Db, input: ProcessInput): Promise<{ item: InboxItem | null; remaining: number }> {
   const scope = { firmId: input.firmId, clientId: input.clientId, batchId: input.batchId };
+  await db.uploadItem.updateMany({ where: { ...scope, status: "PROCESSING", updatedAt: { lt: new Date(Date.now() - STALE_CLAIM_MS) } }, data: { status: "CHECKED" } });
   const plan = await planBatch(db, scope);
-  const next = plan.items.find((i) => i.status === "CHECKED");
-  if (!next) return { item: null, remaining: 0 };
-  const row = await db.uploadItem.findFirstOrThrow({ where: { id: next.id, ...scope } });
+  let claimed: string | null = null;
+  for (const next of plan.items.filter((i) => i.status === "CHECKED")) {
+    const { count } = await db.uploadItem.updateMany({ where: { id: next.id, ...scope, status: "CHECKED" }, data: { status: "PROCESSING", updatedAt: new Date() } });
+    if (count === 1) {
+      claimed = next.id;
+      break;
+    }
+  }
+  if (!claimed) return { item: null, remaining: await remainingIn(db, scope) };
 
   let result: Result;
-  const version = row.evidenceVersionId ? await db.evidenceVersion.findFirst({ where: { id: row.evidenceVersionId, firmId: input.firmId }, select: { data: true } }) : null;
-  if (row.kind === "OTHER") result = { status: "KEPT", message: "Disimpan di Dokumen." };
-  else if (!version) result = { status: "FAILED", message: "File tidak tersimpan; unggah ulang." };
-  else if (row.kind === "BANK") result = await bookBank(db, row, Buffer.from(version.data), input);
-  else result = await stageLedger(db, row, Buffer.from(version.data), input);
+  try {
+    const row = await db.uploadItem.findFirstOrThrow({ where: { id: claimed, ...scope } });
+    const version = row.evidenceVersionId ? await db.evidenceVersion.findFirst({ where: { id: row.evidenceVersionId, firmId: input.firmId }, select: { data: true } }) : null;
+    if (row.kind === "OTHER") result = { status: "KEPT", message: "Disimpan di Dokumen." };
+    else if (!version) result = { status: "FAILED", message: "File tidak tersimpan; unggah ulang." };
+    else if (row.kind === "BANK") result = await bookBank(db, row, Buffer.from(version.data), input);
+    else result = await stageLedger(db, row, Buffer.from(version.data), input);
+  } catch (e) {
+    // A refusal keeps its Bahasa message; anything else is logged and reads "Terjadi kesalahan tak terduga".
+    result = { status: "FAILED", message: failureMessage(e) };
+  }
 
+  // If even this write fails, the claim is released after STALE_CLAIM_MS and the file is processed again (duplicate rows are skipped).
   const updated = await db.uploadItem.update({
-    where: { id: row.id },
+    where: { id: claimed },
     data: { status: result.status, message: result.message, statementImportIds: result.statementImportIds ?? [], ledgerImportId: result.ledgerImportId ?? null },
   });
-  const remaining = await db.uploadItem.count({ where: { ...scope, status: "CHECKED" } });
-  return { item: itemView(updated), remaining };
+  return { item: itemView(updated), remaining: await remainingIn(db, scope) };
+}
+
+/** Files of the batch still to process: CHECKED, or claimed by a parallel call (so only the last call to finish sees 0). */
+function remainingIn(db: Db, scope: { firmId: string; clientId: string; batchId: string }) {
+  return db.uploadItem.count({ where: { ...scope, status: { in: ["CHECKED", "PROCESSING"] } } });
 }

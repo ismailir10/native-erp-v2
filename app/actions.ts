@@ -1313,6 +1313,7 @@ export async function discardLedgerDraftAction(clientId: string, importId: strin
 // Public UI action facade; explicit async exports are required by Next.js.
 import * as evidenceActions from "./evidence-actions";
 import * as googleActions from "./google-actions";
+import * as inboxActions from "./inbox-actions";
 export async function createEvidenceAction(...args: Parameters<typeof evidenceActions.createEvidenceAction>) { return evidenceActions.createEvidenceAction(...args); }
 export async function loadEvidenceAction(...args: Parameters<typeof evidenceActions.loadEvidenceAction>) { return evidenceActions.loadEvidenceAction(...args); }
 export async function beginEvidenceUploadAction(...args: Parameters<typeof evidenceActions.beginEvidenceUploadAction>) { return evidenceActions.beginEvidenceUploadAction(...args); }
@@ -1333,6 +1334,17 @@ export async function prepareEvidenceImportAction(...args: Parameters<typeof evi
 export async function postEvidenceBankAction(...args: Parameters<typeof evidenceActions.postEvidenceBankAction>) { return evidenceActions.postEvidenceBankAction(...args); }
 export async function startGoogleAction(...args: Parameters<typeof googleActions.startGoogleAction>) { return googleActions.startGoogleAction(...args); }
 export async function disconnectGoogleAction(...args: Parameters<typeof googleActions.disconnectGoogleAction>) { return googleActions.disconnectGoogleAction(...args); }
+export async function inboxCheckFileAction(...args: Parameters<typeof inboxActions.inboxCheckFileAction>) { return inboxActions.inboxCheckFileAction(...args); }
+export async function inboxPlanAction(...args: Parameters<typeof inboxActions.inboxPlanAction>) { return inboxActions.inboxPlanAction(...args); }
+export async function inboxUnlockAction(...args: Parameters<typeof inboxActions.inboxUnlockAction>) { return inboxActions.inboxUnlockAction(...args); }
+export async function inboxConfirmAction(...args: Parameters<typeof inboxActions.inboxConfirmAction>) { return inboxActions.inboxConfirmAction(...args); }
+export async function inboxSkipAction(...args: Parameters<typeof inboxActions.inboxSkipAction>) { return inboxActions.inboxSkipAction(...args); }
+export async function inboxProcessNextAction(...args: Parameters<typeof inboxActions.inboxProcessNextAction>) { return inboxActions.inboxProcessNextAction(...args); }
+export async function inboxBatchAction(...args: Parameters<typeof inboxActions.inboxBatchAction>) { return inboxActions.inboxBatchAction(...args); }
+export async function inboxDriveListAction(...args: Parameters<typeof inboxActions.inboxDriveListAction>) { return inboxActions.inboxDriveListAction(...args); }
+export async function inboxDriveFileAction(...args: Parameters<typeof inboxActions.inboxDriveFileAction>) { return inboxActions.inboxDriveFileAction(...args); }
+export async function inboxKeyringAction(...args: Parameters<typeof inboxActions.inboxKeyringAction>) { return inboxActions.inboxKeyringAction(...args); }
+export async function clearInboxKeyringAction(...args: Parameters<typeof inboxActions.clearInboxKeyringAction>) { return inboxActions.clearInboxKeyringAction(...args); }
 
 /** Admin only: removes a client and all its books after the typed-name confirmation (lib/clients/delete.ts). */
 /** Hapus impor (ADR 0013): admin only; the lib refuses closed months and imports something else rests on. */

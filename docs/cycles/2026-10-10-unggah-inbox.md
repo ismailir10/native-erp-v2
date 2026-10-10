@@ -127,13 +127,13 @@ them and asks only what it truly cannot know, once.
 
 ## Tasks
 - [x] T1 ADR: per-client PDF password keyring (replaces "never stored") — accept: ADR merged in the PR.
-- [ ] T2 Sorting + per-file outcome: every file → Dokumen version + kind (bank / ledger / other) + outcome record —
+- [x] T2 Sorting + per-file outcome: every file → Dokumen version + kind (bank / ledger / other) + outcome record —
       accept: DB tests for the three kinds and reload persistence. (reuse: evidence store, `parseStatementSections`,
       ledger-import read)
-- [ ] T3 Rekening from files: route known numbers; build the confirm card model (new numbers, combined sections,
+- [x] T3 Rekening from files: route known numbers; build the confirm card model (new numbers, combined sections,
       numberless files, holder ↔ entity, proposed pemilik); server action *Tambah & impor* — accept: DB tests incl.
       SMBC three accounts and wrong-client warning. (reuse: `addBankAccount`, `addEntity`, `importStatement`)
-- [ ] T4 Keyring: encrypt/store/try-all/clear; never logged — accept: DB + unit tests; grep proves no plaintext path.
+- [x] T4 Keyring: encrypt/store/try-all/clear; never logged — accept: DB + unit tests; grep proves no plaintext path.
 - [ ] T5 Unggah page + menu: drop zone, Drive link, password field, confirm card, per-file list, oldest-first —
       accept: verify flows 1–5 locally. (deps: T2–T4)
 - [ ] T6 Dokumen: booked statements show "Dibukukan →"; no country-as-currency facts; Pengaturan empty-rekening copy —
@@ -147,6 +147,10 @@ them and asks only what it truly cannot know, once.
   in ~15 s, its background run settled 556 of 813 waiting lines and stopped at the 20-call cap; Review then says
   "257 transaksi hanya punya tebakan sederhana karena AI tidak memberi saran saat impor" — no longer true (AI doesn't run
   at import) → copy fix in T6.
+- Review findings on #144 fixed in #145 (merged `7acb301`): slices now fit the function limit and chain themselves
+  through `app/api/ai-run`. Production check 2026-10-11 18:02 UTC: *Minta saran AI* for the 257 lines left, tab closed
+  after the first slice; Vercel logged `POST /api/ai-run 202` at 18:05:29 and the run settled every line (Review no longer
+  offers *Minta saran AI*).
 - Plan (driver): tasks regrouped for the build, same scope — T1 ADR (driver, inline); T2 inbox store + preview + keyring
   (lib); T3 plan / confirm / process (lib); T4 actions + Drive folder; T5 Unggah page + menu + setup copy; T6 Dokumen
   "Dibukukan", Pengaturan and Review copy; T7 e2e + docs + full gate. Sequential, one worker each (shared files);
@@ -188,6 +192,16 @@ them and asks only what it truly cannot know, once.
   `verify:books` ALL PASS. A new rekening whose balance is negative is proposed as an overdraft (PRK); a combined file
   with some sections booked stays BOOKED with the failures in its message. Open for T4: an atomic claim so two
   parallel `processNext` calls can't take the same file.
+- T4 (actions + Drive + claim): `UploadStatus.PROCESSING` (in the branch's `unggah_inbox` migration); processNext claims
+  its file with a conditional update (CHECKED → PROCESSING), always ends it in a final status (unexpected error →
+  FAILED), releases claims older than 10 minutes, and counts claimed files as remaining; planBatch's status writes are
+  conditional too. Parallel imports of the same new month raced on the period row (`getOrCreatePeriod` upsert) → now
+  `INSERT … ON CONFLICT DO NOTHING` + read. `app/inbox-actions.ts` (re-exported by app/actions.ts): check file, plan,
+  unlock, confirm (zod-validated card), skip, process next (schedules the background AI run once after the last file of
+  a drop that booked a statement), latest batch (`batchItems`, read-only), Drive list / fetch-by-id with the firm's
+  token (`lib/inbox/drive.ts`: Dokumen's ignored/backup filters, readable formats only, no shortcuts, ≤ 20 levels,
+  ≤ 200 files), keyring count / clear (admins, `org.settings`). Tests `inbox-actions` (through the real guard),
+  `inbox-drive` (fake Drive), claim / recovery / failure cases in `inbox-process`.
 
 ## Verification
 

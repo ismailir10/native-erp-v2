@@ -62,8 +62,9 @@ describe("every server action reaches requireCapability", () => {
   const delegates = {
     evidenceActions: guarded(readFileSync(join(ROOT, "evidence-actions.ts"), "utf8")),
     googleActions: guarded(readFileSync(join(ROOT, "google-actions.ts"), "utf8")),
+    inboxActions: guarded(readFileSync(join(ROOT, "inbox-actions.ts"), "utf8")),
   };
-  it("finds the server-action modules", () => expect(serverModules.map(rel)).toEqual(expect.arrayContaining(["app/actions.ts", "app/evidence-actions.ts", "app/settings-actions.ts", "app/google-actions.ts", "app/workspace-actions.ts"])));
+  it("finds the server-action modules", () => expect(serverModules.map(rel)).toEqual(expect.arrayContaining(["app/actions.ts", "app/evidence-actions.ts", "app/settings-actions.ts", "app/google-actions.ts", "app/inbox-actions.ts", "app/workspace-actions.ts"])));
   for (const path of serverModules) {
     const name = rel(path);
     if (PUBLIC_ACTIONS[name]) continue;

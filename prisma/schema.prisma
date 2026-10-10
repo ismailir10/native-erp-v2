@@ -1174,6 +1174,8 @@ enum UploadKind {
 
 enum UploadStatus {
   CHECKED
+  /// Claimed by one processNext call (lib/inbox/process.ts); one older than 10 minutes counts as CHECKED again.
+  PROCESSING
   NEEDS_PASSWORD
   NEEDS_ACCOUNT
   BOOKED

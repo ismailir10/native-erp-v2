@@ -161,6 +161,18 @@ function build({ rows, entities, accounts }: Loaded) {
 }
 
 /**
+ * The lines of one drop for the Unggah page, in processing order — of `batchId`, or of the client's most recent drop when none is
+ * given (the page shows the last drop after a reload). Reads only: the plan's status updates happen in `planBatch`.
+ */
+export async function batchItems(db: Db, input: { firmId: string; clientId: string; batchId?: string }): Promise<{ batchId: string | null; items: InboxItem[] }> {
+  const where = { firmId: input.firmId, clientId: input.clientId };
+  const batchId = input.batchId ?? (await db.uploadItem.findFirst({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { batchId: true } }))?.batchId ?? null;
+  if (!batchId) return { batchId: null, items: [] };
+  const rows = await db.uploadItem.findMany({ where: { ...where, batchId } });
+  return { batchId, items: rows.sort(order).map(itemView) };
+}
+
+/**
  * The batch's plan: its items in processing order, the sections routed to a known rekening, the new rekening to confirm, the files
  * without a readable number and the locked ones. Open items whose rekening is missing are marked NEEDS_ACCOUNT (the page shows why
  * they wait), and back to CHECKED once it exists.
@@ -179,7 +191,9 @@ async function planWith(db: Db, scope: Scope): Promise<{ plan: InboxPlan; loaded
       const message = waiting.get(row.id);
       const status = message ? "NEEDS_ACCOUNT" : "CHECKED";
       if (row.status !== status || (message && row.message !== message)) {
-        current = await db.uploadItem.update({ where: { id: row.id }, data: { status, message: message ?? null } });
+        // Only while the row is still as read: a parallel processNext may have claimed it (PROCESSING) since.
+        const { count } = await db.uploadItem.updateMany({ where: { id: row.id, status: row.status }, data: { status, message: message ?? null } });
+        current = count ? { ...row, status, message: message ?? null } : await db.uploadItem.findUniqueOrThrow({ where: { id: row.id } });
       }
     }
     items.push(itemView(current));

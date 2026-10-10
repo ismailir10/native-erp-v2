@@ -4,7 +4,7 @@ import { db, makeGroup, resetDb } from "../helpers";
 import { makePdf, smbcCombinedPdf, table } from "../pdf-fixture";
 import { checkFile } from "@/lib/inbox/check";
 import { confirmBatch, planBatch, unlockBatch } from "@/lib/inbox/plan";
-import { processNext } from "@/lib/inbox/process";
+import { processNext, STALE_CLAIM_MS } from "@/lib/inbox/process";
 import { addBankAccount } from "@/lib/onboarding";
 import { MockProvider } from "@/lib/ai/provider";
 import { toBcaCsv } from "@/lib/demo/writers";
@@ -165,5 +165,61 @@ describe("Unggah: book the drop file by file", () => {
     expect(again.item).toMatchObject({ status: "BOOKED", message: "Sudah dibukukan sebelumnya ke BCA ·1111 · Januari 2026 (2 baris sama, dilewati)" });
     const gapped = await processNext(db, { ...g.scope, batchId: "b2", provider: null });
     expect(gapped.item?.message).toMatch(/ada celah saldo$/);
+  });
+});
+
+describe("Unggah: one file, one taker", () => {
+  it("two parallel calls on a two-file drop book each file once (same client, same new month)", async () => {
+    const g = await setup();
+    await g.check("bca-jan.csv", bcaCsv(1));
+    await g.check("bri-jan.csv", Buffer.from(toBcaCsv({ bank: "BCA", accountNumber: "3333333333", holder: "Andi Wijaya", year: 2026, month: 1, opening: 0n, rows: [{ date: d(2026, 1, 7), description: "SETORAN", amount: 100_000n }] })));
+    const [a, b] = await Promise.all([g.next(), g.next()]);
+    expect([a.item?.status, b.item?.status]).toEqual(["BOOKED", "BOOKED"]);
+    expect(a.item!.id).not.toBe(b.item!.id);
+    // Only the call that finished last sees nothing left (a claimed file still counts).
+    expect(Math.min(a.remaining, b.remaining)).toBe(0);
+    expect(await db.statementImport.count()).toBe(2);
+    expect(await g.next()).toEqual({ item: null, remaining: 0 });
+    await expectBalanced();
+  });
+
+  it("leaves a claimed file alone, and takes it back once the claim is older than 10 minutes", async () => {
+    const g = await setup();
+    const item = await g.check("bca-jan.csv", bcaCsv(1));
+    const claim = (ago: number) => db.$executeRaw`UPDATE "UploadItem" SET status = 'PROCESSING', "updatedAt" = ${new Date(Date.now() - ago)} WHERE id = ${item.id}`;
+    await claim(60_000);
+    expect(await g.next()).toEqual({ item: null, remaining: 1 });
+    expect(await db.statementImport.count()).toBe(0);
+
+    await claim(STALE_CLAIM_MS + 60_000);
+    const { item: booked, remaining } = await g.next();
+    expect(booked).toMatchObject({ id: item.id, status: "BOOKED" });
+    expect(remaining).toBe(0);
+  });
+
+  it("an unexpected error still ends the file FAILED with the generic message, and the next file is booked", async () => {
+    const g = await setup();
+    await g.check("bca-jan.csv", bcaCsv(1));
+    await g.check("bca-feb.csv", bcaCsv(2));
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    // The database fails once while the first file is being booked.
+    let failures = 1;
+    const flaky = new Proxy(db, {
+      get(target, prop) {
+        if (prop === "bankAccount" && failures > 0) {
+          failures--;
+          return { findMany: async () => Promise.reject(new Error("connection reset")) };
+        }
+        const value = Reflect.get(target, prop);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    const first = await processNext(flaky, { ...g.scope, provider: null });
+    expect(first.item).toMatchObject({ fileName: "bca-jan.csv", status: "FAILED", message: "Terjadi kesalahan tak terduga. Coba lagi." });
+    expect(first.remaining).toBe(1);
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
+    expect((await g.next()).item).toMatchObject({ fileName: "bca-feb.csv", status: "BOOKED" });
+    expect(await db.uploadItem.count({ where: { status: "PROCESSING" } })).toBe(0);
   });
 });
