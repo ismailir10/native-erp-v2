@@ -271,14 +271,14 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   Every client list uses `accessibleClientWhere`, and every client page uses `getClientForMember`.
   — accept: the DB test shows an AKUNTAN with one of two clients sees one on Beranda, the work board, reports and the workspace
   scope. A grep for `firmId: firm.id` client lists outside `lib/tenant.ts` comes back empty, or each hit is justified in Implementation.
-- [~] **T06 Platform admin + backoffice shell.** (claimed: driver) After: T01. Files: `lib/auth/platform.ts`, `app/backoffice/**` (layout and the
+- [x] **T06 Platform admin + backoffice shell.** After: T01. Files: `lib/auth/platform.ts`, `app/backoffice/**` (layout and the
   organisations list), `lib/auth/operator.ts` (`addOperator`, `removeOperator`), `scripts/access.ts` (`operator add|remove|list`),
   plus `tests/db/platform-admin.test.ts`.
   `requirePlatformAdmin()` (live row, `disabled` respected) returns 404 to everyone else. The list shows the columns from A1
   (metadata only). Login is the same `/login`, and `/backoffice` is reached by URL.
   — accept: the DB test covers an operator vs a firm member vs a stranger. The CLI adds and removes an operator. A screenshot of the
   list (desktop + 390 px).
-- [ ] **T07 AI + OCR settings move to backoffice; per-org budget.** After: T06, T04. Files: `app/settings-actions.ts` (AI parts),
+- [~] **T07 AI + OCR settings move to backoffice; per-org budget.** After: T06, T04. Files: `app/settings-actions.ts` (AI parts),
   `app/backoffice/settings/**`, `app/(app)/settings/page.tsx` (read-only status), `components/app/ai-settings-form.tsx`, `lib/ai/budget.ts`,
   `lib/ai/provider.ts`, plus `tests/db/ai-budget.test.ts` (extend).
   — accept: a firm ADMIN can no longer save AI credentials (action refused, form gone). The budget uses
@@ -430,6 +430,13 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   klien* and the firm-wide *Laporan* are gone (*Ringkasan*, *Pengaturan buku*). Client settings hide *Hapus klien* for a company.
   `scripts/e2e-setup.ts` adds *PT Uji Perusahaan* with two entities. **For T08/T09:** `createOrganisation(PERUSAHAAN)` must call
   `createFirm(tx, name, { kind: "PERUSAHAAN", grant })` and then `createClient` once with the company's entities.
+- T06: `lib/auth/platform.ts` (`resolvePlatformAdmin`, `getPlatformAdmin` cached per request and carrying the JWT `aal` for T18,
+  `requirePlatformAdmin` → 404). `app/backoffice/layout.tsx` (own header, no tenant sidebar, noindex) and `page.tsx` (organisations:
+  kind, owner, members/seat limit, clients, entities, AI tokens this month, last journal, `AccessStatus`), with
+  `lib/backoffice/orgs.ts` and `components/backoffice/access-status.tsx`. Login sends a Buku admin without a membership to
+  `/backoffice`. CLI: `access operator add|remove|list` (an existing Supabase account is reused, removal disables the row) and
+  `access set-role` (refuses moving the only active OWNER). `scripts/e2e-setup.ts` adds `ops@buku.example`. **CI and local stack:**
+  `mailpit` is no longer excluded, so `e2e/auth-links.spec.ts` can capture mail. Its link origin is handed back to T15/T16 (PR comment).
 
 ## Verification
 - T17: lint ✓, typecheck ✓, production build ✓; full Vitest → 215 files / 1471 tests passed. Focused error/auth tests → 2 files / 19 tests passed. Production Chromium checks
@@ -458,6 +465,8 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   trial-expiry` → 8 passed. Screenshots of the Tim tab at 1440 and 390 px were looked at.
 - T12: full `npx vitest run` → 212 files, 1416 tests passed; `npm run build` ✓; `playwright test company-org, qa-access,
   roles, trial-expiry, workspace` → 12 passed. Screenshot of a company's books at 1440 px was looked at.
+- T06: full `npx vitest run` → 214 files, 1444 tests passed; `npm run build` ✓; `playwright test backoffice, workspace,
+  qa-access` → all passed. `auth-links` (T15) failed locally and is handed back (no mail catcher, then link origin 3000 ≠ 3200).
 
 ## Ship Notes
 

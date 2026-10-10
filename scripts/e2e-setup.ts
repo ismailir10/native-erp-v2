@@ -60,6 +60,17 @@ async function setup() {
     const companyOwner = { email: "pemilik-perusahaan@buku.example", password: randomBytes(12).toString("base64url") };
     await ensureLocalAdmin(db, auth, { ...companyOwner, name: "Pemilik perusahaan uji", firmId: companyFirm.id });
     writeFileSync(".playwright/credentials-company.json", JSON.stringify(companyOwner), { mode: 0o600 });
+    // A Buku admin who is no organisation's member (e2e/backoffice.spec.ts): a real local account with a known password.
+    const ops = { email: "ops@buku.example", password: randomBytes(12).toString("base64url") };
+    const created = await auth.admin.createUser({ email: ops.email, password: ops.password, email_confirm: true, user_metadata: { name: "Admin Buku uji" } });
+    let opsId = created.data.user?.id;
+    if (!opsId) {
+      opsId = (await auth.admin.listUsers({ page: 1, perPage: 1000 })).data.users.find((u) => u.email === ops.email)?.id;
+      if (!opsId) throw new Error("Akun admin Buku uji tidak bisa dibuat.");
+      await auth.admin.updateUserById(opsId, { password: ops.password });
+    }
+    await db.platformAdmin.upsert({ where: { email: ops.email }, create: { userId: opsId, email: ops.email, name: "Admin Buku uji" }, update: { userId: opsId, disabled: false } });
+    writeFileSync(".playwright/credentials-ops.json", JSON.stringify(ops), { mode: 0o600 });
     writeFileSync(".playwright/credentials-trial-ended.json", JSON.stringify(ended), { mode: 0o600 });
     writeFileSync(".playwright/credentials-trial-ending.json", JSON.stringify(ending), { mode: 0o600 });
     writeFileSync(".playwright/credentials-akuntan.json", JSON.stringify(akuntan), { mode: 0o600 });

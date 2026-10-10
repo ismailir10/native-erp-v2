@@ -133,3 +133,51 @@ export async function ensureLocalAdmin(db: Db, auth: AuthApi, input: { email: st
     update: { userId, name: input.name, role: "ADMIN", disabled: false, firmId: input.firmId },
   });
 }
+
+/**
+ * A Buku admin (ADR 0017 §2), CLI only. The person gets a Supabase account through an invitation (or keeps the one they have, e.g.
+ * as an organisation member); re-adding a removed admin enables the row again.
+ */
+export async function addOperator(db: Db, auth: AuthApi, input: { email: string; name: string; redirectTo?: string }) {
+  const email = normalizeEmail(input.email);
+  const name = input.name.trim();
+  if (!name) throw new Error("Nama wajib diisi.");
+  const existing = await db.platformAdmin.findUnique({ where: { email } });
+  if (existing) return db.platformAdmin.update({ where: { id: existing.id }, data: { name, disabled: false } });
+  const redirect = input.redirectTo ? { redirectTo: `${input.redirectTo.replace(/\/$/, "")}/auth/callback` } : {};
+  const known = await findAuthUser(auth, email);
+  let userId = known?.id;
+  if (!userId) {
+    const invited = await auth.admin.inviteUserByEmail(email, { data: { name }, ...redirect });
+    userId = invited.data?.user?.id;
+    if (!userId) fail(invited.error, "Undangan admin Buku belum terkirim.");
+  }
+  return db.platformAdmin.create({ data: { userId, email, name } });
+}
+
+/** Removal disables the row (kept for the platform log); the Supabase account stays, it may also be an organisation member's. */
+export async function removeOperator(db: Db, input: { email: string }) {
+  const email = normalizeEmail(input.email);
+  const existing = await db.platformAdmin.findUnique({ where: { email } });
+  if (!existing) throw new Error("Admin Buku tidak ditemukan.");
+  return db.platformAdmin.update({ where: { id: existing.id }, data: { disabled: true } });
+}
+
+export async function listOperators(db: Db) {
+  return db.platformAdmin.findMany({ orderBy: { email: "asc" } });
+}
+
+/**
+ * An operator's role change for one member, e.g. naming an organisation's first OWNER after the trial migration (M1). The only active
+ * OWNER of an organisation cannot be moved off OWNER here; ownership moves in Pengaturan → Tim.
+ */
+export async function setMemberRole(db: Db, input: { email: string; firmId: string; role: MemberRole }) {
+  const email = normalizeEmail(input.email);
+  const member = await db.firmMember.findUnique({ where: { email } });
+  if (!member || member.firmId !== input.firmId) throw new Error("Pengguna tidak ditemukan di kantor ini. Peran tidak diubah.");
+  if (member.role === "OWNER" && input.role !== "OWNER") {
+    const owners = await db.firmMember.count({ where: { firmId: input.firmId, role: "OWNER", disabled: false } });
+    if (owners <= 1 && !member.disabled) throw new Error("Ini satu-satunya pemilik aktif. Jadikan anggota lain pemilik dulu.");
+  }
+  return db.firmMember.update({ where: { id: member.id }, data: { role: input.role } });
+}
