@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { Db } from "@/lib/db";
 import type { MemberRole } from "@/lib/generated/prisma/enums";
+import { isAdminRole } from "@/lib/auth/permissions";
 import { createFirm } from "@/lib/setup";
 import type { SupabaseAdmin } from "@/lib/supabase/admin";
 
@@ -69,7 +70,10 @@ export async function inviteUser(db: Db, auth: AuthApi, input: { email: string; 
     userId = orphan.id;
   }
   try {
-    return await db.firmMember.create({ data: { userId, email, name, role, firmId: input.firmId } });
+    // From the CLI an AKUNTAN or VIEWER gets every client of the organisation, as before roles had assignments; the team page
+    // (Pengaturan → Tim) chooses clients instead.
+    const clients = isAdminRole(role) ? [] : await db.client.findMany({ where: { firmId: input.firmId }, select: { id: true } });
+    return await db.firmMember.create({ data: { userId, email, name, role, firmId: input.firmId, clientAccess: { create: clients.map((c) => ({ clientId: c.id })) } } });
   } catch (e) {
     // Never leave a just-created Auth user without its member; a retry then starts clean. A concurrent invitation may have
     // adopted it in the meantime (its member insert won the race): then the user is theirs and stays.

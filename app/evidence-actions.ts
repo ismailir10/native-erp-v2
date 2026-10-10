@@ -55,7 +55,7 @@ export async function confirmEvidenceAction(intakeId: string, versionId: string,
 }
 export async function decideEvidenceFactAction(intakeId: string, factId: string, accept: boolean) { return result(async () => decideFact(prisma, await firm(), intakeId, factId, accept)); }
 export async function resolveEvidenceConflictAction(intakeId: string, conflictId: string, note: string) { return result(async () => resolveConflict(prisma, await firm(), intakeId, conflictId, note)); }
-export async function createEvidenceClientAction(intakeId: string, input: NewClientInput) { return result(async () => createClientFromEvidence(prisma, await firm(), intakeId, input)); }
+export async function createEvidenceClientAction(intakeId: string, input: NewClientInput) { return result(async () => createClientFromEvidence(prisma, await firm(), intakeId, input, await getCurrentMember())); }
 export async function linkEvidenceClientAction(intakeId: string, clientId: string) { return result(async () => linkClient(prisma, await firm(), intakeId, clientId)); }
 export async function analyzeEvidenceAction(intakeId: string, versionId: string) { return result(async () => analyzeVersion(prisma, await firm(), intakeId, versionId, await provider())); }
 export async function askEvidenceAction(intakeId: string, question: string, entityId?: string, period?: string) { return result(async () => askEvidence(prisma, await firm(), intakeId, { question, entityId, period }, await provider())); }

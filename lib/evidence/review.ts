@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Db, Tx } from "@/lib/db";
 import { validateNewClient, type NewClientInput } from "@/lib/onboarding";
-import { createClient } from "@/lib/setup";
+import { createClient, type ClientCreator } from "@/lib/setup";
 import { isCurrency } from "@/lib/fx/currency";
 import type { EvidenceUnit } from "./types";
 import { intakeForFirm, lockIntake, releaseStep } from "./store";
@@ -11,13 +11,13 @@ import { importStatement } from "@/lib/import/pipeline";
 import { parseStatementSections } from "@/lib/import/parsers";
 import { checkContinuity } from "@/lib/import/normalize";
 
-export async function createClientFromEvidence(db: Db, firmId: string, intakeId: string, input: NewClientInput) {
+export async function createClientFromEvidence(db: Db, firmId: string, intakeId: string, input: NewClientInput, creator?: ClientCreator) {
   const spec = validateNewClient(input);
   return db.$transaction(async tx => {
     await lockIntake(tx, intakeId);
     const intake = await intakeForFirm(tx, firmId, intakeId);
     if (intake.clientId) throw new Error("Dokumen sudah terhubung ke klien.");
-    const { client } = await createClient(tx, firmId, spec);
+    const { client } = await createClient(tx, firmId, spec, { creator });
     await tx.evidenceIntake.update({ where: { id: intakeId }, data: { clientId: client.id, contextVersion: { increment: 1 } } });
     return client.id;
   });

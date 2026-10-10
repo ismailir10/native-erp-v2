@@ -249,7 +249,7 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   `{ state, endsAt, daysLeft }`, with the Jakarta end-of-day rule. `ROLE_LABEL` moves here (four labels).
   — accept: table-driven unit tests cover every role × capability and every grant edge (open-ended, revoked, future-starting,
   overlapping, ends today 23:59 WIB, suspended).
-- [~] **T03 Session v2 + client resolver.** After: T02. Files: `lib/auth/session.ts`, `lib/tenant.ts`, `tests/db/tenant-scope.test.ts`.
+- [x] **T03 Session v2 + client resolver.** After: T02. Files: `lib/auth/session.ts`, `lib/tenant.ts`, `tests/db/tenant-scope.test.ts`.
   `getWorkspaceSession()` also loads grants and assignments and returns `{ member, firm, access, clientIds: string[] | "ALL" }`. It returns
   null on NONE, and the `(app)` layout then sends the user to an *Akses ditutup* page (T10 styles it; T03 ships a plain one).
   `requireCapability(cap, { clientId? })` for actions throws `AccessError` (Bahasa message) on READ_ONLY writes, a missing
@@ -378,14 +378,30 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   `endOfDayJakarta`, `readOnlyMessage`). A revocation dated in the future has not happened yet; a grant that has not started yet gives
   NONE when nothing came before it and READ_ONLY in a gap between grants. `ROLE_LABEL` is re-exported from `lib/auth/session.ts` for
   the existing import sites.
+- T03: `lib/auth/session.ts` (`resolveWorkspace` with access and `clientIds`, `getWorkspaceSession` cached per request, NONE →
+  `/akses-ditutup`, `checkCapability`/`requireCapability`, `accessibleClientWhere`, `AccessError`; `requireMember` maps to
+  capabilities), `lib/tenant.ts` (`getClientForMember`; `getClientForFirm` kept as a deprecated alias), `app/akses-ditutup/page.tsx`
+  (plain, T10 styles it), `lib/setup.ts` (`createFirm` gives an open COMP grant unless a grant is passed; `createClient` assigns an
+  AKUNTAN creator), `lib/onboarding.ts`, `lib/evidence/review.ts` and two actions pass the creator, and `lib/auth/operator.ts` (a CLI
+  invite of an AKUNTAN/VIEWER gets every client, as before). **Bug caught while testing:** spreading the access `where` and then
+  setting `id` overwrote an AKUNTAN's assignment list, so every lookup now uses `AND: [access, { id }]`. A unit test pins that.
 
 ## Verification
 - T01: full `npx vitest run`: 203 of 204 files passed; the one failure was `migration-protected-tables` refusing the backfill's role
   UPDATE. After removing it: lint ✓, typecheck ✓, and `tenancy-migration`, `migration-protected-tables`, `period-lock`, `close-history`
   and `remove-import` → 5 files, 51 tests passed.
 - T02: `permissions.test.ts` and `access-grant.test.ts` → 2 files, 25 tests passed; lint ✓, typecheck ✓.
+- T03: full `npx vitest run` → 207 files, 1390 tests passed; lint ✓, typecheck ✓.
 
 ## Ship Notes
 
 ## Handoffs
+- **For T05 (from T03):** client pages call `getClientForFirm(id).catch(() => notFound())`. That catch also swallows the
+  redirect `requireWorkspaceSession` throws (to `/login` or `/akses-ditutup`), so the page shows 404 instead. No data leaks, but when
+  T05 moves these sites to `getClientForMember`, rethrow framework errors first (`unstable_rethrow` from `next/navigation`).
+- **For T04 (from T03):** `requireMember()` without a role maps to `books.read`, so it does not refuse writes while READ_ONLY. Move
+  every write action to `requireCapability("books.write", { clientId })` or narrower.
+- **For T06 (from T01):** add `npm run access -- set-role --firm ID --email ADDRESS --role OWNER|ADMIN|AKUNTAN|VIEWER` to
+  `scripts/access.ts` and `lib/auth/operator.ts`. The migration no longer promotes anyone to OWNER (M1), so the operator names the
+  first OWNER with it after deploy. Refuse demoting the last active OWNER.
 <!-- Cross-task requests: "T12 needs createClientAction to call requireCapability('client.create') — owner T04". -->

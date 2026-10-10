@@ -778,7 +778,7 @@ export async function stopScheduleAction(clientId: string, scheduleId: string): 
 export async function addClientAction(input: NewClientInput): Promise<Result<{ clientId: string }>> {
   try {
     const firm = await getCurrentFirm();
-    const client = await addClient(prisma, firm.id, input);
+    const client = await addClient(prisma, firm.id, input, await getCurrentMember());
     revalidatePath("/", "layout");
     return { ok: true, clientId: client.id };
   } catch (e) {
