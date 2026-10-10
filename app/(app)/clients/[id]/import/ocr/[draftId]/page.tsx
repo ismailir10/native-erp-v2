@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getClientForFirm } from "@/lib/tenant";
@@ -22,7 +21,6 @@ export default async function OcrDraftPage({ params }: { params: Promise<{ id: s
       <PageHeader
         title={mapped ? "Periksa baris rekening koran" : "Periksa scan rekening koran"}
         description={mapped ? `${draft.fileName} · dibaca dengan pemetaan kolom · ${where}` : `${draft.fileName} · ${draft.pages} halaman · disalin AI (${draft.model}) · ${where}`}
-        actions={<Link href={`/clients/${client.id}/import`} className="text-sm text-primary underline-offset-2 hover:underline">Kembali ke Impor Mutasi</Link>}
       />
       {draft.status === "IMPORTED" ? (
         <NextStep tone="done" href={`/clients/${client.id}/review`} cta="Buka Review transaksi">{mapped ? "File ini sudah diimpor" : "Scan ini sudah diimpor"}. Transaksinya masuk ke buku besar seperti file lain; yang perlu dicek ada di Review transaksi.</NextStep>

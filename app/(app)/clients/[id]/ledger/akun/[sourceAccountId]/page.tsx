@@ -1,6 +1,4 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { loadClientPage } from "@/lib/client-page";
 import { type SearchParams, withParams } from "@/lib/scope";
@@ -26,9 +24,6 @@ export default async function ClientAccountLedger({ params, searchParams }: { pa
   const q = { period: period.key, entity: src.entityId };
   return (
     <div className="space-y-6">
-      <Link href={withParams(`${base}/ledger`, q)} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-        <ChevronLeft className="size-4" /> Buku Besar
-      </Link>
       <PageHeader
         title={sourceAccountLabel(src)}
         description={`${src.entity.name} · akun klien · ${formatPeriod(period.year, period.month)} · klik baris untuk melihat sumbernya`}

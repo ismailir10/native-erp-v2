@@ -54,7 +54,7 @@ test("map an unknown CSV once, prove and import it; next month's file reads stra
   await expect(page.getByText("File ini sudah diimpor")).toBeVisible();
 
   // August's file of the same layout imports straight away.
-  await page.getByRole("link", { name: "Kembali ke Impor Mutasi" }).click();
+  await page.getByTestId("client-bar").getByRole("link", { name: "Impor Mutasi" }).click();
   await page.getByTestId("file-input").setInputFiles({ name: "kas-agustus.csv", mimeType: "text/csv", buffer: unknownCsv(8) });
   await page.getByRole("button", { name: "Proses mutasi" }).click();
   const result = page.getByTestId("import-result");

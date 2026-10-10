@@ -52,7 +52,7 @@ export default async function ReceivablesPage({ params, searchParams }: { params
     <div className="space-y-6">
       <PageHeader
         title="Piutang & Utang"
-        description={`${client.name} · daftar ${sales ? "faktur penjualan" : "tagihan pembelian"}, pelunasan dari rekening koran dan umur ${word} per ${label}`}
+        description={`Daftar ${sales ? "faktur penjualan" : "tagihan pembelian"}, pelunasan dari rekening koran dan umur ${word} per ${label}`}
         actions={<ScopeBar entities={entityOptions} periods={periodOptions} entity={scope.value} period={period.key} />}
       />
       {loose.length ? (
@@ -140,7 +140,7 @@ async function Reconcile({ client, period, scope, periodOptions, entityOptions, 
     <div className="space-y-6">
       <PageHeader
         title="Piutang & Utang"
-        description={`${client.name} · aging dari sistem klien dibandingkan dengan buku besar`}
+        description="Aging dari sistem klien dibandingkan dengan buku besar"
         actions={<ScopeBar entities={entityOptions} periods={periodOptions} entity={scope.value} period={period.key} />}
       />
       {open.length ? (

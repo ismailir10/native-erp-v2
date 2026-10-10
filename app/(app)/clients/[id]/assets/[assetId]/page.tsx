@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { loadClientPage } from "@/lib/client-page";
 import type { SearchParams } from "@/lib/scope";
@@ -18,7 +17,7 @@ const KIND = { ACQUIRED: "Perolehan", OPENING: "Saldo Awal", DEPRECIATION: "Peny
 
 /** One asset's register figures down to their entries (accounting-rules 5b; ui-rules: every number drills to its source). */
 export default async function AssetDetailPage({ params, searchParams }: { params: Promise<{ id: string; assetId: string }>; searchParams: SearchParams }) {
-  const { client, base, period } = await loadClientPage(params, searchParams);
+  const { client, base } = await loadClientPage(params, searchParams);
   const { assetId } = await params;
   const detail = await assetDetail(prisma, client.id, assetId);
   if (!detail) notFound();
@@ -29,13 +28,11 @@ export default async function AssetDetailPage({ params, searchParams }: { params
     const prev = out.at(-1);
     return [...out, { ...m, costAfter: (prev?.costAfter ?? 0n) + m.cost, accumulatedAfter: (prev?.accumulatedAfter ?? 0n) + m.accumulated }];
   }, []);
-  const back = `${base}/assets?period=${period.key}&entity=${asset.entity.id}`;
   return (
     <div className="space-y-6">
       <PageHeader
         title={asset.name}
         description={`${asset.entity.name} · ${TAX_GROUPS[asset.taxGroup].label} · diperoleh ${formatDate(asset.acquiredOn)} · ${asset.assetAccount.code} ${asset.assetAccount.name}${asset.accumulatedAccount ? ` / ${asset.accumulatedAccount.code}` : ""}`}
-        actions={<Link href={back} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary"><ChevronLeft className="size-4" /> Aset Tetap</Link>}
       />
       <Card>
         <CardHeader>

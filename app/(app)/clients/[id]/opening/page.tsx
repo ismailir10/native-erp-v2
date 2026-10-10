@@ -34,7 +34,7 @@ export default async function OpeningPage({ params }: { params: Promise<{ id: st
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Saldo Awal" description={`${client.name} · posisi keuangan sebelum transaksi pertama di Buku`} />
+      <PageHeader title="Saldo Awal" description="Posisi keuangan sebelum transaksi pertama di Buku" />
       {!setup.hasData ? (
         <NextStep href={`/clients/${client.id}/import`} cta="Unggah rekening koran">
           Unggah rekening koran dulu. Saldo bank di sini terisi otomatis dari sana, jadi Anda tidak perlu mengetik angkanya. Atau isi manual di bawah.
