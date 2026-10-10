@@ -335,7 +335,7 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   not match `otp_expiry`. The e2e test (local stack, which captures mail in Inbucket/Mailpit) opens the invite mail. The link host
   is the app's, a GET alone does not consume it, *Lanjutkan* sets the session, and a second use shows the Bahasa *expired* page.
   Screenshots of both emails at 375 px and desktop.
-- [~] **T16 Auth email config as code.** (claimed: agent-b) After: T15. Files: `scripts/auth-config.ts`, the `package.json` script `auth:config`,
+- [x] **T16 Auth email config as code.** (agent-b) After: T15. Files: `scripts/auth-config.ts`, the `package.json` script `auth:config`,
   `tests/unit/auth-config.test.ts`, and the README section (*Email & login appearance*).
   Read the template files and the subjects from `config.toml`, then build the Management API payload (`mailer_subjects_*`,
   `mailer_templates_*_content`, `site_url`, `uri_allow_list`, `mailer_otp_exp`, `smtp_sender_name`). `GET` the project's auth config,
@@ -364,6 +364,9 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   Screenshots of the bar at desktop and 390 px.
 
 ## Implementation
+- T16: `auth:config` reads the repo's subjects/templates/expiry, fills the configured support address, and maps callback paths to
+  `APP_URL`. Default GET + hashed-value diff; explicit `--apply` PATCHes changed public fields only. Project/token come from env;
+  SMTP secrets stay untouched, and enabled unbranded hosted notices are refused. README documents the owner setup and external-client check.
 - Plan (agent-b): T15 → T16 → T17 → T06 sequential on the shared branch; kept inline because callback, public shell and platform
   login share integration points. First-agent files remain owned by the driver.
 - T15: seven table-based Bahasa templates and matching local subjects/one-hour expiry; PNG brand mark; `/auth/callback` renders
@@ -425,6 +428,9 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   `createFirm(tx, name, { kind: "PERUSAHAAN", grant })` and then `createClient` once with the company's entities.
 
 ## Verification
+- T16: lint ✓, typecheck ✓; full Vitest → 213 files / 1457 tests passed, including 19 auth-config checks with fake fetch
+  (dry run, apply, idempotence, unknown notices and secret-safe output). CLI without project configuration exits 1 before network.
+  No hosted configuration was read or changed; the owner supplies the project/token/domain/support address and runs the documented command.
 - T15: lint ✓, typecheck ✓, build ✓; full Vitest → 211 files / 1432 tests passed. After the browser-specific Origin fix,
   `email-templates` + `action-guards` → 2 files / 33 tests passed. Captured-mail `auth-links.spec.ts` → 1 passed (24.3 s).
   Invite/recovery screenshots at 375 and 1000 px, callback at 390 px inspected. Real Gmail/Outlook/Apple Mail rendering remains

@@ -140,6 +140,29 @@ database is empty**, runs the first-admin bootstrap, and builds. `npm run demo:r
 demo database data, including members; the demo admin is recreated by the seed. The shared UI cannot trigger it. Supabase Storage,
 Edge Functions, Realtime and Row Level Security are not used: the server is the boundary and Prisma connects as `postgres`.
 
+### Email & login appearance
+
+Auth emails are the Bahasa templates in `supabase/templates/`; subjects and the one-hour link expiry live in
+`supabase/config.toml`. Local Auth reads those files. Links open Buku's `/auth/callback` confirmation page; the token is verified
+only after **Lanjutkan** is submitted, so email scanners do not consume it.
+
+For the hosted project, set `SUPABASE_PROJECT_REF` and `SUPABASE_ACCESS_TOKEN` securely in the operator's environment, plus
+`APP_URL` (Buku's HTTPS origin) and `BUKU_SUPPORT_EMAIL` (the real support address). Then, from the repository root:
+
+```bash
+npm run auth:config             # GET and a dry-run diff; no changes
+npm run auth:config -- --apply  # PATCH only the differing public email settings
+```
+
+The script reads subjects/templates from the repo, fills the support footer, maps local callback paths to `APP_URL`, and manages
+the sender name, expiry and configured notification templates. Diffs show field names, lengths and hashes rather than template
+contents or credentials. It refuses an enabled hosted notification that has no branded template in the repo. Project selection
+comes only from the environment. SMTP credentials and all unrelated hosted settings remain untouched.
+
+Before external invitations, the owner must verify the mail domain (SPF, DKIM and DMARC), configure custom SMTP with the sender
+`Buku <noreply@your-domain>`, and ensure replies reach `BUKU_SUPPORT_EMAIL` through the mail provider. The script does not configure
+DNS, SMTP credentials or a Reply-To header. Review the templates in Gmail, Outlook and Apple Mail before sending externally.
+
 ### Invitation operations
 
 ```bash
