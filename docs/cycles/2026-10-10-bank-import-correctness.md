@@ -109,3 +109,12 @@ Approval: the user approved the review's three-stage proposal on 2026-10-10: “
 - Screenshots/highlights: refreshed and inspected `bank-source-review-desktop.png` and `bank-source-review-mobile.png` at 1440px/390px on the combined build; readable warnings, no horizontal overflow.
 - Rounds: one integration round, followed by local setup diagnosis and successful auth/full browser verification.
 - Not checked: external bank holdouts, private PR image rendering, private deployment logs and signed-in production remain unavailable. Local environment startup corrections saved in its configuration draft; publication is separate from the code release.
+
+### Verified locally — d2cf410, 2026-10-10
+- Integrated main through `6a7f4eb` (#140 public site). Clean merge; independent review confirmed public claims distinguish balanced journals from complete source evidence and retain qualified bank-format coverage.
+- Gate: lint, typecheck, production build and diff checks passed. Unit/database: `236 passed (236)` files, `1871 passed (1871)` tests in `630.69s`. Books: `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.` Full browser: `88 passed (11.3m)`, no retries/skips.
+- App/walk: fresh production build, local PostgreSQL/Auth and synthetic data. Public/legal navigation, trial consent, both auth-link shapes, bank import/review/report/close, mapping, locked periods and tenant isolation all passed.
+- Console/network: existing navigation stream-close and PostgreSQL deprecation warnings; no failed assertions.
+- Screenshots/highlights: refreshed and inspected `bank-source-review-desktop.png` and `bank-source-review-mobile.png` at 1440px/390px on this build. Unverified source warnings remain readable without page overflow.
+- Rounds: one clean public-site integration; no application fixes needed. Local public email templates remain readable after checkout; refreshed auth template cache before testing.
+- Not checked: external bank-issued holdouts, private PR image rendering, private deployment logs and authenticated production checks remain unavailable.
