@@ -1,9 +1,10 @@
-import { readValidation } from "@/lib/import/validation";
+import { exactLegacyStatement } from "@/lib/import/revalidate";
+import { readValidation, type StatementValidation } from "@/lib/import/validation";
 import type { Db, Tx } from "@/lib/db";
 import { ParseError, type ParsedStatement } from "@/lib/import/types";
 
 /** Exact source identity first; date/amount similarity alone never removes or doubles a payment. */
-export async function dedupeStatement(db: Db | Tx, bankAccountId: string, st: ParsedStatement, hashes: string[], written: (string | null)[] = [], sourceHash?: string) {
+export async function dedupeStatement(db: Db | Tx, bankAccountId: string, st: ParsedStatement, hashes: string[], written: (string | null)[] = [], sourceHash?: string, validation?: StatementValidation) {
   const range = st.rows.reduce((r, row) => ({ start: Math.min(r.start, +row.date), end: Math.max(r.end, +row.date) }), { start: +st.periodStart, end: +st.periodEnd });
   const already = await db.bankTransaction.findMany({
     where: { bankAccountId, OR: [
@@ -12,6 +13,14 @@ export async function dedupeStatement(db: Db | Tx, bankAccountId: string, st: Pa
     ] },
     select: { id: true, hash: true, date: true, amount: true, balance: true, import: { select: { sourceValidation: true } } },
   });
+  // Sparse balances and same-day cycles cannot prove individual cross-source
+  // rows. A unique, unchanged complete legacy owner can prove the whole source.
+  // Use the caller's pre-filter validation so discarded zero rows cannot erase a
+  // source conflict. The write/attestation paths recheck under the account lock.
+  if (validation && already.some((row) => row.import.sourceValidation === null)
+    && await exactLegacyStatement(db, bankAccountId, st, hashes, validation)) {
+    return { duplicate: hashes.map(() => true), notes: [] as string[] };
+  }
   type Existing = typeof already[number];
   const byHash = new Map(already.map((row) => [row.hash, row]));
   const key = (row: { date: Date; amount: bigint }) => `${+row.date}|${row.amount}`;

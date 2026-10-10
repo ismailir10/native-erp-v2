@@ -141,7 +141,7 @@ export async function importStatement(
   // Hashed as one list, like the file was hashed before (two identical written rows keep their ordinals).
   const asWrittenHashes = rowHashes(st.rows.map((r) => (r.written ? { ...r, amount: r.written.amount ?? r.amount, date: r.written.date ?? r.date } : r)));
   const written = st.rows.map((r, i) => (r.written ? asWrittenHashes[i] : null));
-  const seen = await dedupe(db, bankAccount.id, st, hashes, written, validation.sourceHash);
+  const seen = await dedupe(db, bankAccount.id, st, hashes, written, validation.sourceHash, validation);
   const fresh = st.rows.map((r, i) => ({ r, hash: hashes[i] })).filter((_, i) => !seen.duplicate[i]);
   if (seen.notes.some((n) => n.includes("sebelum diperbaiki"))) validation.issues.push({ code: "LEGACY_WRITTEN_ROWS", severity: "CONFLICT", message: "Mutasi lama masih memakai nilai sebelum perbaikan. Hapus impor lama dan impor ulang sumber yang benar." });
   const notes = [...(st.notes ?? []), ...seen.notes, ...validation.issues.map((i) => i.message)];
@@ -285,7 +285,7 @@ export async function importStatement(
     async (tx) => {
       // Two copies of a statement imported at once must not both pass the dedupe: serialise per bank account and look again.
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`import:${bankAccount.id}`}, 0))::text`;
-      const now = await dedupe(tx, bankAccount.id, st, hashes, written, validation.sourceHash);
+      const now = await dedupe(tx, bankAccount.id, st, hashes, written, validation.sourceHash, validation);
       if (now.duplicate.some((d, i) => d !== seen.duplicate[i])) throw new ParseError("Rekening ini baru saja menerima impor lain. Ulangi impor file ini.");
       await guardTransferCounterparts(tx, client.id, openCounterparts.filter((row) => !!transfers.get(row.id)?.matchedTxId));
       const imp = await tx.statementImport.create({
