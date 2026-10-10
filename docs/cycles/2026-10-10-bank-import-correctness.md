@@ -99,3 +99,13 @@ Approval: the user approved the review's three-stage proposal on 2026-10-10: “
 - Screenshots/highlights: refreshed and inspected `docs/reviews/bank-import-correctness/bank-source-review-desktop.png` and `bank-source-review-mobile.png` at 1440px/390px. Unverified-period copy visible, no horizontal overflow or clipping.
 - Rounds: one final review round resolving R1 and R2; no additional blockers from independent spec/standards review or final gate.
 - Not checked: external anonymized bank holdouts unavailable; private PR image rendering and authenticated production checks require access not available here.
+
+### Verified locally — 6cd972b, 2026-10-10
+- Integrated main through `1d3ef98` (#141 default-template auth links), with no conflicts or bank-code changes. Independent integration review found no blockers.
+- Gate: lint, typecheck, production build and diff checks passed. Unit/database: `231 passed (231)` files, `1841 passed (1841)` tests in `397.90s`. Books: `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.` Full browser suite: `85 passed (9.2m)`, no retries/skips.
+- App/walk: fresh production build and synthetic local data; both auth-link shapes, import/review/report/close, malformed-source refusal, mapping, locked periods, roles and tenant isolation passed.
+- Setup correction: initial integrated browser runs exposed local auth verification URLs outside the gateway route, then unreadable public email templates after container recreation. Set local GoTrue verification paths to `/auth/v1/verify`, made public templates readable, and retained local service proxy exclusions. Focused auth suite then passed 2/2 before the successful full 85-case rerun. No application/test assertions changed.
+- Console/network: previously observed navigation stream-close and PostgreSQL deprecation warnings only; no failed assertions in the completed final run.
+- Screenshots/highlights: refreshed and inspected `bank-source-review-desktop.png` and `bank-source-review-mobile.png` at 1440px/390px on the combined build; readable warnings, no horizontal overflow.
+- Rounds: one integration round, followed by local setup diagnosis and successful auth/full browser verification.
+- Not checked: external bank holdouts, private PR image rendering, private deployment logs and signed-in production remain unavailable. Local environment startup corrections saved in its configuration draft; publication is separate from the code release.
