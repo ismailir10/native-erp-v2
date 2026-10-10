@@ -1,7 +1,6 @@
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar, MobileTrigger } from "@/components/app/app-sidebar";
 import { prisma } from "@/lib/db";
-import { WorkspaceHistoryProvider } from "@/components/app/workspace-ask";
 import { accessibleClientWhere, accessView, requireWorkspaceSession, ROLE_LABEL } from "@/lib/auth/session";
 import { AccessProvider } from "@/components/app/access-context";
 import { AccessBanner } from "@/components/app/access-banner";
@@ -37,5 +36,5 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </SidebarInset>
     </SidebarProvider>
   );
-  return <WorkspaceHistoryProvider key={firm.id + member.id}>{company ? shell : <ClientSwitcherProvider clients={clients}>{shell}</ClientSwitcherProvider>}</WorkspaceHistoryProvider>;
+  return company ? shell : <ClientSwitcherProvider clients={clients}>{shell}</ClientSwitcherProvider>;
 }

@@ -101,7 +101,8 @@ Next.js 16 (App Router, server actions) · TypeScript · Tailwind v4 · shadcn (
 | `DEMO_MODE` | `true` enables synthetic demo fixtures; database reset remains an explicit operator command |
 | `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | The environment's Supabase project (Auth). Integration names `NEXT_PUBLIC_SUPABASE_ANON_KEY` also work |
 | `SUPABASE_SECRET_KEY` | Server-only admin key (or `SUPABASE_SERVICE_ROLE_KEY`): invitations, revocation, demo admin, e2e |
-| `APP_URL` | Public origin for invite / reset links. Empty = request origin (pages) or the Supabase project's Site URL (CLI) |
+| `APP_URL` | Public origin for site metadata and invite / reset links. Set to the public HTTPS origin when hosted; local verification uses `http://localhost:3200` |
+| `BUKU_SUPPORT_EMAIL` | Monitored public support mailbox; the site renders a valid mailto or a neutral fallback. Also used when generating hosted auth-template footers |
 | `DEMO_ADMIN_EMAIL` / `DEMO_ADMIN_PASSWORD` | Demo admin created by the seed; refused unless `DEMO_MODE=true` |
 | `INITIAL_FIRM_NAME` / `INITIAL_ADMIN_EMAIL` / `INITIAL_ADMIN_NAME` | Build-time bootstrap of a real workspace: first firm + first admin invitation, once |
 | `EVIDENCE_ENABLED` | Same authenticated document workspace in both environments; `false` is an operational kill switch |
@@ -180,7 +181,35 @@ read-only **support sessions** and *Riwayat Buku*. *Pengaturan AI* holds the one
 uses; organisations only see their status and their own monthly use. Everything a Buku admin does is in Buku's own log, never in
 an organisation's *Riwayat*.
 
-**Trial requests** come from the public `/daftar` page (linked from the login page as *Minta uji coba*); Supabase self-signup stays
+**Public product site:** signed-out `/` explains the bank-row → journal → reports → close workflow for accounting firms and
+companies using saved, explicitly synthetic product screenshots. Members keep Beranda or their company's books; Buku admins
+outside a live support session go to `/backoffice`. Protected routes still require the existing live member/session guards.
+The shared navigation links `/login`, `/daftar`, draft Terms at `/syarat` and draft Privacy at `/kebijakan-privasi`.
+Public pages read `BUKU_SUPPORT_EMAIL` at render time for a validated mailto; an unset/invalid value shows *Hubungi pengelola Buku*.
+The legal pages remain visibly **drafts** pending owner confirmation of the operator's identity and wording. Before external
+trials or an application, confirm those details, the public `APP_URL` and a monitored support address. Auth templates include
+both legal links; publishing the site does not apply hosted email-template/SMTP configuration (see the auth-config section above).
+
+**Regenerate product evidence locally:** use `.env` with the local database/Auth URLs, `APP_URL=http://localhost:3200`,
+`DEMO_MODE=true`, the existing demo admin password and no real model key. Start local Auth before building, then:
+
+```bash
+APP_URL=http://localhost:3200 npm run auth:local
+npm run demo:reset
+npm run build
+npm run start -- -p 3200
+# In another terminal, with the same local .env:
+npx tsx scripts/capture-public-demo.ts
+```
+
+Set `PW_CHROMIUM` to an existing Chromium executable when needed (this verification used `/usr/bin/chromium`). The capture command
+refuses hosted app/Auth/database targets, database URL query overrides, and a fixture that differs from generator truth. It uses
+the real demo login, verifies every selected entity's source row against the generated bank files, checks source/journal amounts
+and Neraca Saldo totals, and preserves open-month blockers. It neither reseeds nor writes books nor calls a model. Saved WebP
+views and `public/product/capture-manifest.json` pin KJA Demo & Rekan / Grup Ayam Nusantara / August 2026, the report entity,
+actual figures, control statuses and image dimensions. Rebuild after regeneration so the public page uses the new manifest.
+
+**Trial requests** come from the public `/daftar` page (linked from the home and login pages as *Minta uji coba*); Supabase self-signup stays
 off. Each request waits in *Backoffice → Permintaan*: *Setujui* with an end date creates the organisation, its trial grant and the
 owner's invitation in one step (a failed invitation leaves nothing), *Tolak* needs a reason. The form gives the same answer whether a
 request was stored, a duplicate, throttled (5 per hour per address and per IP) or a bot, so it never tells who already has access.

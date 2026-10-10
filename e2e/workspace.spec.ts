@@ -6,7 +6,9 @@ const credentials = () => JSON.parse(readFileSync(".playwright/credentials.json"
 test("anonymous routes require a member session and login has no signup", async ({ browser }) => {
   const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
   const page = await context.newPage();
-  for (const route of ["/", "/documents", "/reports", "/work", "/settings"]) {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("Dari rekening koran ke laporan keuangan");
+  for (const route of ["/documents", "/reports", "/work", "/settings"]) {
     await page.goto(route);
     await expect(page).toHaveURL(/\/login$/);
     await expect(page.getByRole("heading", { name: "Masuk ke ruang kerja" })).toBeVisible();

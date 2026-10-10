@@ -39,6 +39,16 @@ async function emailScreenshots(page: Page, html: string, name: string) {
   }
 }
 
+async function openLegalLinks(page: Page, html: string, origin: string) {
+  for (const [path, title] of [["/syarat", "Syarat penggunaan"], ["/kebijakan-privasi", "Kebijakan privasi"]]) {
+    const url = new URL(path, origin).href;
+    expect(html).toContain(`href="${url}"`);
+    await page.goto(url);
+    await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
+    await expect(page.getByRole("note")).toContainText("Draf");
+  }
+}
+
 test("captured invite and recovery stay on Buku; scanners cannot consume them, POST sets the session, replay expires", async ({ page, browser, request, baseURL }) => {
   const authUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
   if (!["localhost", "127.0.0.1"].includes(new URL(authUrl).hostname)) throw new Error("Auth link tests require the local stack.");
@@ -55,6 +65,7 @@ test("captured invite and recovery stay on Buku; scanners cannot consume them, P
     const inviteUrl = callbackLink(html);
     expect(new URL(inviteUrl).origin).toBe(new URL(baseURL!).origin);
     await emailScreenshots(page, html, "invite");
+    await openLegalLinks(page, html, baseURL!);
 
     const before = (await admin.auth.admin.getUserById(id)).data.user?.email_confirmed_at;
     expect(before).toBeFalsy();
@@ -85,6 +96,7 @@ test("captured invite and recovery stay on Buku; scanners cannot consume them, P
     const recovery = await capturedMail(request, email, "Atur ulang kata sandi Buku");
     expect(new URL(callbackLink(recovery)).origin).toBe(new URL(baseURL!).origin);
     await emailScreenshots(page, recovery, "recovery");
+    await openLegalLinks(page, recovery, baseURL!);
     await page.goto(callbackLink(recovery));
     await page.getByRole("button", { name: "Lanjutkan", exact: true }).click();
     await expect(page.getByRole("button", { name: "Simpan dan masuk" })).toBeEnabled();

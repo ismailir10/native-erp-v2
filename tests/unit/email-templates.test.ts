@@ -22,6 +22,10 @@ describe("Buku email templates", () => {
     expect(html).toContain('role="presentation"');
     expect(html).toContain('alt="Buku"');
     expect(html).toContain('{{ .SiteURL }}/auth/callback/logo');
+    expect(html).toContain('href="{{ .SiteURL }}/syarat"');
+    expect(html).toContain('href="{{ .SiteURL }}/kebijakan-privasi"');
+    expect(html).toContain('<!-- buku-support -->');
+    expect(html).toContain('<!-- /buku-support -->');
     for (const [, url] of html.matchAll(/(?:href|src)="([^"]+)"/g)) expect(url).toMatch(/^\{\{ \.SiteURL \}\}\//);
     if (file !== "password-changed.html") expect(html).toContain("berlaku 1 jam dan hanya sekali pakai");
     expect(config).toContain(`./supabase/templates/${file}`);

@@ -1,2 +1,6 @@
-/** Compatibility export: existing public routes use the shared Buku shell. */
-export { PublicShell as AuthShell } from "@/components/app/public-shell";
+import { PublicShell } from "@/components/app/public-shell";
+
+/** Auth forms retain their approved background; general public content stays still. */
+export function AuthShell(props: React.ComponentProps<typeof PublicShell>) {
+  return <PublicShell {...props} dotGrid />;
+}

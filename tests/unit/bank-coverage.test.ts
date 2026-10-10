@@ -1,9 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { BANKS } from "@/lib/banks";
+import { PUBLIC_BANK_COUNT, PUBLIC_BANK_COVERAGE } from "@/lib/public-product";
 import { LAYOUTS } from "../bank-layouts";
 
 /** What the UI and the decks may claim: a bank's format counts only when a fixture of it reads (tests/unit/bank-layouts.test.ts). */
 describe("bank coverage", () => {
+  it("backs every actual public bank/format claim with its registry evidence and a reading fixture", () => {
+    expect(PUBLIC_BANK_COUNT).toBe(BANKS.length);
+    expect(PUBLIC_BANK_COVERAGE.map((claim) => claim.code)).toEqual(BANKS.map((bank) => bank.code));
+    for (const claim of PUBLIC_BANK_COVERAGE) {
+      const bank = BANKS.find((entry) => entry.code === claim.code)!;
+      expect(claim.name).toBe(bank.name);
+      expect(claim.formats).toEqual(bank.formats);
+      for (const format of claim.formats) expect(LAYOUTS.some((fixture) => fixture.bank === claim.code && fixture.format === format.label)).toBe(true);
+    }
+  });
   it("has a layout fixture for every format a bank lists", () => {
     const missing = BANKS.flatMap((b) => b.formats.filter((f) => !LAYOUTS.some((l) => l.bank === b.code && l.format === f.label)).map((f) => `${b.code} · ${f.label}`));
     expect(missing).toEqual([]);

@@ -59,6 +59,9 @@ test("a Buku admin with two-step login looks into a firm as its akuntan, read-on
   expect(refusal, `support session refused at ${page.url()}`).toEqual([]);
   await expect(page.getByTestId("support-bar"), `no support bar at ${page.url()}`).toContainText("sebagai Akuntan uji");
   await expect(page.getByTestId("support-bar")).toContainText("hanya baca");
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Beranda", exact: true })).toBeVisible();
+  await expect(page.getByTestId("support-bar")).toContainText("hanya baca");
 
   const href = await page.getByRole("link", { name: "CV Sinar Retail", exact: true }).first().getAttribute("href");
   const id = href!.match(/clients\/([^/?]+)/)![1];
