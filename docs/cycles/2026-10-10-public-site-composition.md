@@ -27,9 +27,9 @@ startup-program reviewers, retaining the genuine synthetic evidence from the pre
   captures are accessible without making their tiny text the main visual on desktop or phone.
 - [x] The story has deliberate changes in scale and composition, one primary action per view, clear audience
   distinctions, visible synthetic labels and working trial/deck/legal links. No horizontal overflow or em dashes.
-- [ ] Keyboard, semantic headings, image descriptions, native disclosure behavior and reduced motion pass.
+- [x] Keyboard, semantic headings, image descriptions, native disclosure behavior and reduced motion pass.
   Mobile production-build Lighthouse performance and accessibility each remain at least 95 on all three public pages.
-- [ ] Local task/full gates pass; desktop/phone visual iterations and separate standards/spec reviews show no
+- [x] Local task/full gates pass; desktop/phone visual iterations and separate standards/spec reviews show no
   unresolved in-scope polish. Deck coverage, human review, traceability, close, exports and data claims still agree.
 
 ## Verify flows
@@ -71,8 +71,9 @@ data/configuration writes or new capability claims.
 
 - [x] T1 Redesign and iterate the public composition: stronger opening, useful source/close/report proof, genuine
   evidence and full-view disclosures; reuse tokens, saved captures, money formatter and approved motion.
-- [ ] T2 Verify and ship: complete gates, independent reviews, final screenshots/Lighthouse, accurate cycle/PR
-  evidence, exact-head CI and owner-authorised merge. Depends on T1; no changed deck claim is expected.
+- [x] T2 Verify and prepare release: complete gates, independent reviews, final screenshots/Lighthouse and accurate
+  cycle/PR evidence. Exact-head CI and owner-authorised merge are subsequent release gates tracked in Ship Notes.
+  Depends on T1; no changed deck claim is expected.
 
 ## Implementation
 
@@ -96,6 +97,57 @@ data/configuration writes or new capability claims.
 - T1 gate: lint and typecheck pass; 226 files / 1,540 tests pass (337.48 seconds); production build passes.
   Complete book/browser gates and Lighthouse remain the T2 release evidence.
 
+- T2: all required local gates complete on the unchanged T1 runtime. Final production captures, complete desktop
+  and phone disclosures, keyboard links, reduced motion and trial acknowledgement are inspected. The React
+  checklist and separate standards/spec reviews pass with no unresolved visual or source finding. No routes,
+  setup instructions, environment variables or capability claims changed, so the existing README remains true.
+
 ## Verification
 
+### Verified locally: b334875d7bcc8641f31a5d7cc472ab9834445b0d, 2026-10-10
+
+- Gate: `npm run lint && npm run typecheck && npm test` passes: 226 files / 1,540 tests (337.48 seconds).
+  `npm run build && npm run demo:reset && npm run verify:books && npm run test:e2e` passes:
+  `ALL PASS` / 1,765 checks; `86 passed (9.0m)`. Logs: `/workspace/work/composition-verified-*.log`.
+- App: final production build at http://localhost:3200, local synthetic Postgres 16 books and the existing local
+  GoTrue/Mailpit/Kong Auth stack described in the preceding cycle. Paid model keys remain blank. No hosted
+  data or configuration is read for captures or changed by tests.
+- Walked: signed-out home, source/journal proof, exact close controls, compact report and both complete captures
+  at desktop/phone; section links at 1440, 1024, 768 and 390 px; deck/trial/legal navigation, trial validation and
+  acknowledgement. The full suite covers member/company/admin/support routes, scanner-safe invitation/recovery,
+  expiry/revocation, tenant roles, protected writes, early input and persistent scope/history.
+- Accessibility: one h1/main, keyboard skip/focus and native disclosures, source account names retained in the
+  phone caption, descriptive figures, no horizontal overflow, correct reading order and reduced-motion checks
+  pass. Reading order was inspected through browser accessibility snapshots, not a separate assistive-device audit.
+- Console/network: ten final public page/viewport checks have no unexpected errors or failed resources. Full
+  suite negative auth/tenant cases retain their expected refusal behavior.
+- Lighthouse: default mobile simulated slow 4G, 412 × 823, CPU slowdown 4×, Lighthouse 13.5.0 / Chromium
+  151.0.7922.173, final production build. Performance/accessibility: home 96/100, Terms 95/100, Privacy 95/100.
+  Home LCP 2.8 seconds, TBT 40 ms, CLS 0. Reports: `/workspace/work/composition-lighthouse-{home,syarat,kebijakan-privasi}.json`.
+  No relaxed settings or repeat-until-green measurement.
+- Screenshots: `/workspace/work/composition-production-{home,terms,privacy,login,trial}-{1440,390}.png`,
+  both expanded close/report captures, `/workspace/work/composition-production-report-{1440,390}.png` and
+  `test-results/daftar-terima-kasih-390.png`. Driver inspected the changed page/proof and acknowledgement;
+  a separate reviewer inspected all sixteen full/top unchanged legal/auth captures without regressions.
+- Highlights: `/workspace/work/composition-production-home-1440-top.png` and
+  `/workspace/work/composition-mobile-hero.png` (complete phone opening, 390 × 888).
+- Rounds: five passes with progress. Stronger drawing contours and real account names, balanced headline,
+  readable close crops/counts, accurate section destinations, shorter phone copy/spacing and native-size report
+  totals resolved the in-scope findings. The final round and independent reviews found nothing further to fix.
+- Not checked: production member session and target Vercel build logs still require unavailable project/member
+  access. The preceding cycle's legal/domain/contact operator prerequisites remain; this visual change neither
+  asserts legal sign-off nor submits a startup-program application.
+
 ## Ship Notes
+
+
+- Deck review: no deck change. Both audience decks still agree with uploaded files and registry-backed coverage,
+  human approval of AI suggestions, source traceability, close controls, derived reports and Excel/PDF exports.
+  The paper/ledger composition borrows their drawing grammar without importing illustrative charts or loops.
+- Release: open a draft PR to main with final highlights, then add the e2e label and mark ready. Require check
+  and e2e success on the exact pushed head before the owner-authorised merge. No preview or separate promotion.
+- Blast radius: two public presentation components and this record. No auth/schema/accounting/configuration or
+  dependency changes; no migrations or operator apply step. Rollback: revert the visual refinement merge.
+- Post-merge: confirm the merge deployment succeeds and public home contains the refined illustration/story;
+  GET legal/login/trial pages, genuine images, fonts, metadata and icons with verified TLS. Do not create a
+  production test account. Signed-in real-firm and build-log checks require the same operator access as before.
