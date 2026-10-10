@@ -52,7 +52,12 @@ test("a Buku admin with two-step login looks into a firm as its akuntan, read-on
   await page.getByRole("option", { name: "Akuntan uji · Akuntan" }).click();
   await form.getByLabel("Alasan").fill("Neraca Agustus tidak seimbang, tiket 42");
   await form.getByRole("button", { name: "Buka ruang kerja" }).click();
-  await expect(page.getByTestId("support-bar")).toContainText("sebagai Akuntan uji");
+  // A refusal shows as a toast; a session that does not resolve lands back in the backoffice. Either way, say which.
+  const opened = page.getByTestId("support-bar").or(page.locator("[data-sonner-toast]")).first();
+  await opened.waitFor({ timeout: 30_000 }).catch(() => {});
+  const refusal = await page.locator("[data-sonner-toast]").allTextContents();
+  expect(refusal, `support session refused at ${page.url()}`).toEqual([]);
+  await expect(page.getByTestId("support-bar"), `no support bar at ${page.url()}`).toContainText("sebagai Akuntan uji");
   await expect(page.getByTestId("support-bar")).toContainText("hanya baca");
 
   const href = await page.getByRole("link", { name: "CV Sinar Retail", exact: true }).first().getAttribute("href");
