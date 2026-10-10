@@ -128,7 +128,7 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
     <div className="space-y-6">
       <PageHeader
         title={hasBanks ? "Impor Mutasi" : "Impor Buku Besar"}
-        description={`${client.name} · ${hasBanks ? "rekening koran, buku besar atau neraca" : "buku besar atau neraca dari sistem lama"}; setiap angka tetap bisa ditelusuri ke baris file aslinya`}
+        description={`${hasBanks ? "rekening koran, buku besar atau neraca" : "buku besar atau neraca dari sistem lama"}; setiap angka tetap bisa ditelusuri ke baris file aslinya`}
       />
       {setup.current === "import" ? (
         <NextStep>{setup.next?.text}</NextStep>

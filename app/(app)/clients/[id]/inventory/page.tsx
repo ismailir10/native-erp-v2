@@ -35,7 +35,7 @@ export default async function InventoryPage({ params, searchParams }: { params: 
     <div className="space-y-6">
       <PageHeader
         title="Persediaan"
-        description={`${client.name} · stock opname akhir bulan dan beban pokok penjualan (metode periodik) per ${label}`}
+        description={`Stock opname akhir bulan dan beban pokok penjualan (metode periodik) per ${label}`}
         actions={<ScopeBar entities={entityOptions} periods={periodOptions} entity={scope.value} period={period.key} />}
       />
       {locked ? (

@@ -21,7 +21,7 @@ export default async function LeasesPage({ params, searchParams }: { params: Pro
     <div className="space-y-6">
       <PageHeader
         title="Sewa (PSAK 116)"
-        description={`${client.name} · aset hak guna, liabilitas sewa dan jurnal bulanannya per ${label}`}
+        description={`Aset hak guna, liabilitas sewa dan jurnal bulanannya per ${label}`}
         actions={<ScopeBar entities={entityOptions} periods={periodOptions} entity={scope.value} period={period.key} />}
       />
       {due ? (

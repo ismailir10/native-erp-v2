@@ -15,7 +15,7 @@ import { TeamCard } from "@/components/app/team-card";
 import { listTeam } from "@/lib/team";
 import type { SearchParams } from "@/lib/scope";
 
-export const metadata = { title: "Pengaturan" };
+export const metadata = { title: "Pengaturan kantor" };
 
 export default async function SettingsPage({ searchParams }: { searchParams: SearchParams }) {
   const { firm, member } = await requireWorkspaceSession();
@@ -27,7 +27,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
     const team = await listTeam(prisma, firm.id);
     return (
       <div className="space-y-6">
-        <PageHeader title="Pengaturan" description="Berlaku untuk semua klien di kantor ini." />
+        <PageHeader title="Pengaturan kantor" description="Berlaku untuk semua klien di kantor ini." />
         {tabs}
         <NextStep>{team.kind === "PERUSAHAAN" ? "Undang anggota tim dan pilih perannya." : "Undang anggota tim, pilih perannya, lalu tugaskan klien untuk akuntan dan peninjau."}</NextStep>
         <TeamCard
@@ -46,7 +46,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Pengaturan" description="Berlaku untuk semua klien di kantor ini." />
+      <PageHeader title="Pengaturan kantor" description="Berlaku untuk semua klien di kantor ini." />
       {tabs}
       {live ? (
         <NextStep tone="done">Usulan AI aktif. Semua usulan tetap masuk Review transaksi sebelum dicatat.</NextStep>

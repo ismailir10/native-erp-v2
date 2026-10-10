@@ -28,7 +28,7 @@ export default async function AssetsPage({ params, searchParams }: { params: Pro
     <div className="space-y-6">
       <PageHeader
         title="Aset Tetap"
-        description={`${client.name} · daftar aset, penyusutan buku (PSAK 216) dan estimasi penyusutan fiskal per ${label}`}
+        description={`Daftar aset, penyusutan buku (PSAK 216) dan estimasi penyusutan fiskal per ${label}`}
         actions={<ScopeBar entities={entityOptions} periods={periodOptions} entity={scope.value} period={period.key} />}
       />
       {candidates.length ? (
