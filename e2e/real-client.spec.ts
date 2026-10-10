@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { makePdf, table } from "../tests/pdf-fixture";
+import { openManualImport } from "./qa-helpers";
 
 /**
  * First real client, end to end: Tambah klien → password-protected PDF e-statement → Saldo Awal (prefilled) → bank reconciles.
@@ -37,6 +38,7 @@ test("add a client, set opening balance, import a locked PDF, bank reconciles", 
 
   // A new client lands on the upload: Saldo Awal is prefilled from the statement afterwards.
   await expect(page.getByRole("heading", { name: "Unggah", exact: true })).toBeVisible();
+  await openManualImport(page);
   await expect(page.getByTestId("setup-steps")).toContainText("Langkah 1 dari 4");
   await expect(page.getByTestId("next-step")).toContainText("Unggah rekening koran pertama");
   await page.getByTestId("file-input").setInputFiles({ name: "mandiri-agustus.pdf", mimeType: "application/pdf", buffer: pdf });

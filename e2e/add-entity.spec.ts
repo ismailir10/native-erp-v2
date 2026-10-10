@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { openManualImport } from "./qa-helpers";
 
 /** A forgotten bank account or owner is added after "Simpan klien", from the client's settings page; nothing has to be deleted and redone. */
 test("add a bank account and an owner to an existing client", async ({ page }) => {
@@ -12,6 +13,7 @@ test("add a bank account and an owner to an existing client", async ({ page }) =
 
   // Impor says how it differs from Dokumen, and where a missing account is added.
   await expect(page.getByText("Yang diimpor di sini langsung menjadi jurnal.")).toBeVisible();
+  await openManualImport(page);
   await page.getByRole("link", { name: "Tambahkan di Pengaturan klien" }).click();
   const card = page.getByTestId("entities-card");
   await expect(card).toContainText("PT Tambah Rekening");
@@ -41,6 +43,7 @@ test("add a bank account and an owner to an existing client", async ({ page }) =
 
   // The new account is offered on the upload page.
   await page.goto(`${base}/import`);
+  await openManualImport(page);
   await page.getByRole("combobox", { name: "Rekening", exact: true }).click();
   await expect(page.getByRole("option", { name: /Mandiri Tambahan/ })).toBeVisible();
 });

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openManualImport } from "./qa-helpers";
 
 /** The 5-minute investor walk (docs/demo/investor-demo.md), end to end. */
 
@@ -34,6 +35,7 @@ test("statement in → reviewed → traceable reports → combined → closed", 
   // Sumber first (I1a): the grid shows the missing August statement and drafts the request to the client.
   await expect(page.getByTestId("completeness")).toContainText("Bolong");
   await expect(page.getByTestId("data-request").getByRole("textbox")).toHaveValue(/Agustus 2026/);
+  await openManualImport(page);
   await pickOption(page, page.getByRole("combobox", { name: "Rekening", exact: true }), /5509/);
   await page.getByTestId("file-input").setInputFiles("public/demo/BRI-5509-2026-08.csv");
   await page.getByRole("button", { name: "Proses mutasi", exact: true }).click();

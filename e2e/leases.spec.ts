@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { openManualImport } from "./qa-helpers";
 
 /**
  * Lease register (PSAK 116), end to end (synthetic): an office lease of 24 × 10 jt paid monthly in arrears at 12 % a year, from June
@@ -23,6 +24,7 @@ test("leases: register, commencement, monthly journals, payments, control", asyn
   await page.waitForURL(/\/clients\/[^/]+\/import/);
   const base = page.url().replace(/\/import.*$/, "");
   await page.goto(`${base}/import`);
+  await openManualImport(page);
   await page.getByTestId("file-input").setInputFiles({ name: "bca.csv", mimeType: "text/csv", buffer: Buffer.from(CSV) });
   await page.getByRole("button", { name: "Proses mutasi" }).click();
   await expect(page.getByTestId("import-result")).toContainText("Nyambung");

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import ExcelJS from "exceljs";
+import { openManualImport } from "./qa-helpers";
 
 /**
  * Ledger client, end to end (synthetic data): Tambah klien with an IDR company and an SGD holding (no bank accounts)
@@ -54,6 +55,7 @@ test("ledger import: checks, mapping, post, Kurs, Gabungan in IDR, client accoun
 
   // Ledger-only client lands on the ledger import.
   await expect(page.getByRole("heading", { name: "Unggah", exact: true })).toBeVisible();
+  await openManualImport(page);
   await page.getByTestId("ledger-file-input").setInputFiles({ name: "buku-besar-uji.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: await ledgerXlsx() });
   await page.getByRole("button", { name: "Periksa file" }).click();
 

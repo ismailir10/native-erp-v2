@@ -138,7 +138,7 @@ them and asks only what it truly cannot know, once.
       accept: verify flows 1–5 locally. (deps: T2–T4)
 - [x] T6 Dokumen: booked statements show "Dibukukan →"; no country-as-currency facts; Pengaturan empty-rekening copy —
       accept: verify on the walk's files.
-- [ ] T7 e2e + investor walk + docs (README routes, demo script) + full gate — accept: full gate green.
+- [x] T7 e2e + investor walk + docs (README routes, demo script) + full gate — accept: full gate green.
 
 ## Implementation
 - Approval: user approved the four-cycle plan on 2026-10-10 ("proceed"), merge on green, production check with Chrome
@@ -220,6 +220,14 @@ them and asks only what it truly cannot know, once.
   transaksi belum punya saran AI."; Pengaturan klien gets a "Kata sandi PDF" card (admins: count + "Hapus semua"
   behind the confirm dialog); deck slides (kantor 08, perusahaan 12) say passwords are kept encrypted and can be
   cleared — `deck:pdf` regenerated, the new sentence checked in both PDFs with Buku's own PDF reader.
+
+- T7: `e2e/unggah-inbox.spec.ts` (verify flow 1 in a real browser: a client with no rekening drops two BCA months and a
+  locked Mandiri PDF → one password → one card with two new rekening → "3 file selesai: 3 dibukukan" → lines survive a
+  reload → Pengaturan shows both rekening and "1 kata sandi tersimpan"); `openManualImport` in `e2e/qa-helpers.ts` for
+  the specs that use the single-file forms (now under *Cara lain*); README (Import, Onboarding, `SETTINGS_SECRET`,
+  Document evidence) and `docs/real-data.md` (rule 6, §4, §5) describe Unggah and the keyring. Driver: the public privacy
+  page still said PDF passwords are never stored — now it says Unggah keeps them encrypted per client (admins clear
+  them) and the other import paths don't; legal date 11 Oktober 2026; pinned by `public-legal.test.ts`.
 
 ## Verification
 

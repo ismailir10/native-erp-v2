@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openManualImport } from "./qa-helpers";
 
 /**
  * CKPN piutang (PSAK 109), end to end (synthetic): four sales invoices May–Aug 2026, a partial receipt in June and a full one in July →
@@ -38,6 +39,7 @@ test("CKPN: roll-rate matrix from the aging, allowance journal, close control", 
   await page.waitForURL(/\/clients\/[^/]+\/import/);
   const base = page.url().replace(/\/import.*$/, "");
   await page.goto(`${base}/import`);
+  await openManualImport(page);
   await page.getByTestId("file-input").setInputFiles({ name: "bca.csv", mimeType: "text/csv", buffer: Buffer.from(CSV) });
   await page.getByRole("button", { name: "Proses mutasi" }).click();
   await expect(page.getByTestId("import-result")).toContainText("Nyambung");

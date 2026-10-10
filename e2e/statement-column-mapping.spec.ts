@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { unknownCsv, unknownPdf } from "../tests/unknown-layout";
+import { openManualImport } from "./qa-helpers";
 
 /**
  * Atur kolom: a statement in a layout no reader knows is refused with a way forward; the accountant points at the columns once, proves the
@@ -15,6 +16,7 @@ test("map an unknown CSV once, prove and import it; next month's file reads stra
   await page.getByLabel("Nama rekening").fill("Kas Bank Daerah");
   await page.getByRole("button", { name: "Simpan klien" }).click();
   await expect(page.getByRole("heading", { name: "Unggah", exact: true })).toBeVisible();
+  await openManualImport(page);
 
   // July's file: no reader knows "Value Dt · Particulars · Withdrawn · Lodged · Position".
   await page.getByTestId("file-input").setInputFiles({ name: "kas-juli.csv", mimeType: "text/csv", buffer: unknownCsv(7) });
@@ -55,6 +57,7 @@ test("map an unknown CSV once, prove and import it; next month's file reads stra
 
   // August's file of the same layout imports straight away.
   await page.getByTestId("client-bar").getByRole("link", { name: "Unggah", exact: true }).click();
+  await openManualImport(page);
   await page.getByTestId("file-input").setInputFiles({ name: "kas-agustus.csv", mimeType: "text/csv", buffer: unknownCsv(8) });
   await page.getByRole("button", { name: "Proses mutasi" }).click();
   const result = page.getByTestId("import-result");
@@ -81,6 +84,7 @@ test("map an unknown text PDF: columns cut at its header, Debet and Kredit apart
   await page.getByLabel("Nama rekening").fill("Giro Daerah");
   await page.getByRole("button", { name: "Simpan klien" }).click();
   await expect(page.getByRole("heading", { name: "Unggah", exact: true })).toBeVisible();
+  await openManualImport(page);
 
   await page.getByTestId("file-input").setInputFiles({ name: "giro-agustus.pdf", mimeType: "application/pdf", buffer: unknownPdf(8) });
   await page.getByRole("button", { name: "Proses mutasi" }).click();
