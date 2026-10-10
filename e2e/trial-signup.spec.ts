@@ -31,18 +31,40 @@ test("a trial request on /daftar becomes an organisation, an invitation and a wo
   const orgName = `Kantor Coba ${Date.now()}`;
 
   await page.goto("/login");
-  await page.getByRole("link", { name: "Minta uji coba" }).click();
+  await page.getByRole("link", { name: "Minta uji coba" }).first().click();
   await expect(page).toHaveURL(/\/daftar$/);
+  const consent = page.locator("#signup-consent");
+  await expect(consent).toContainText("memproses data");
+  await expect(consent.getByRole("link", { name: "Syarat", exact: true })).toHaveAttribute("href", "/syarat");
+  await expect(consent.getByRole("link", { name: "Privasi", exact: true })).toHaveAttribute("href", "/kebijakan-privasi");
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: `test-results/daftar-${width}.png`, fullPage: true });
   }
+  await page.getByRole("button", { name: "Minta akses uji coba" }).click();
+  await expect(page.getByTestId("signup-done")).toHaveCount(0);
+  expect(await page.getByLabel("Nama Anda").evaluate((input: HTMLInputElement) => input.validity.valueMissing)).toBe(true);
   await page.getByLabel("Nama Anda").fill("Rina Coba");
-  await page.getByLabel("Email kerja").fill(email);
+  await page.getByLabel("Email kerja").fill("alamat-tidak-valid");
   await page.getByLabel("Nama kantor").fill(orgName);
   await page.getByRole("button", { name: "Minta akses uji coba" }).click();
+  expect(await page.getByLabel("Email kerja").evaluate((input: HTMLInputElement) => input.validity.typeMismatch)).toBe(true);
+  await expect(page.getByLabel("Nama Anda")).toHaveValue("Rina Coba");
+  await expect(page.getByLabel("Nama kantor")).toHaveValue(orgName);
+  await expect(page.getByTestId("signup-done")).toHaveCount(0);
+  await page.getByLabel("Email kerja").fill(email);
+  await page.getByLabel("Nama Anda").fill(" ");
+  await page.getByRole("button", { name: "Minta akses uji coba" }).click();
+  await expect(page.getByRole("alert")).toHaveText("Tulis nama Anda.");
+  await expect(page.getByRole("alert")).toBeFocused();
+  await expect(page.getByLabel("Email kerja")).toHaveValue(email);
+  await expect(page.getByLabel("Nama kantor")).toHaveValue(orgName);
+  await page.getByLabel("Nama Anda").fill("Rina Coba");
+  await page.getByRole("button", { name: "Minta akses uji coba" }).click();
   await expect(page.getByTestId("signup-done")).toContainText("Kami kirim email setelah akses uji coba disetujui");
+  await expect(page.getByTestId("signup-done")).toBeFocused();
+  await page.screenshot({ path: "test-results/daftar-terima-kasih-390.png", fullPage: true });
   await expect(page.locator("body")).not.toContainText(/supabase/i);
 
   const { email: opsEmail, password } = JSON.parse(readFileSync(".playwright/credentials-ops.json", "utf8")) as { email: string; password: string };
@@ -76,6 +98,12 @@ test("a trial request on /daftar becomes an organisation, an invitation and a wo
     const { html, link } = await inviteLink(request, email);
     expect(html).toContain(orgName);
     expect(new URL(link).origin).toBe(new URL(baseURL!).origin);
+    for (const path of ["/syarat", "/kebijakan-privasi"]) {
+      expect(html).toContain(`href="${new URL(path, baseURL!).href}"`);
+      const legal = await request.get(path);
+      expect(legal.status()).toBe(200);
+      expect(await legal.text()).toContain("Draf");
+    }
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(link);
     await page.getByRole("button", { name: "Lanjutkan", exact: true }).click();

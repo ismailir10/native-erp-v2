@@ -210,7 +210,7 @@ use, accounting-invariant change, promised deletion schedule, production write, 
   sections, visible draf notes and valid/fallback contact with passing content tests. Deps: T1. Reuse public shell
   and server-only `BUKU_SUPPORT_EMAIL`; source facts from `lib/signup.ts`, `lib/auth/support.ts`, `lib/ai`,
   `lib/ocr`, `lib/evidence`, `lib/controls/ai-review.ts`, `lib/reports/report-comment.ts` and the access ADR/cycle.
-- [ ] T3 Trial/login and email legal links — accept: consent sits under submit, both pages and every auth email
+- [x] T3 Trial/login and email legal links — accept: consent sits under submit, both pages and every auth email
   link to both legal pages; generated payload and scanner-safe invite/recovery tests pass. Deps: T2. Reuse
   `SignupForm`, `PublicShell`, support markers, `scripts/auth-config.ts` and local mail capture; no hosted apply.
 - [ ] T4 Demo capture script and optimised product assets — accept: one local-only command regenerates bank-to-
@@ -250,6 +250,13 @@ demo capture environment. This spec stage has one tightly connected document and
   fields and separate throttle records, honest retention, expiry, quiet read-only support, task-specific AI
   payloads and data rights are disclosed. Both content/source reviews passed; eight rendered legal tests pass.
   Gate: lint/typecheck pass; the completed full suite passes 224 files / 1,535 tests, including T2 and T3.
+
+- T3: trial consent links sit below submission; pending, focused field-error/thank-you and transport-failure
+  retry states preserve the existing fields and neutral acknowledgement. Login/trial use server contact.
+  All seven email templates and generated payloads include legal links outside the unchanged support markers;
+  scanner-safe destinations remain intact. Captured invitation and recovery legal-link walks are in e2e.
+  Standards/spec/security review passed, including a retry fix. The same completed full task gate above covers
+  these unchanged T3 files; fresh lint/typecheck and the interactive retry check also pass before committing.
 
 ## Verification
 
