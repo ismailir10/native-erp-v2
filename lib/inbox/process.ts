@@ -89,7 +89,8 @@ async function bookBank(db: Db, row: UploadItem, data: Buffer, input: ProcessInp
       say(failed, failureMessage(e));
     }
   }
-  const message = [...booked, ...failed, ...notes].join("; ");
+  // One line per account: the page shows them as separate lines (whitespace-pre-line).
+  const message = [...booked, ...failed, ...notes].join("\n");
   if (ids.length) return { status: "BOOKED", message, statementImportIds: ids };
   if (failed.length) return { status: "FAILED", message };
   return { status: "KEPT", message: notes.length ? message : "Disimpan di Dokumen." };

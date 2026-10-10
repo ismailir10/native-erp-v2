@@ -121,7 +121,7 @@ test("HTML typed into a client name is shown as text, never run", async ({ page 
   await page.getByLabel("Nama lengkap").fill("PT XSS <script>alert(2)</script>");
   await page.getByLabel("Nomor rekening").fill("7000300001");
   await page.getByRole("button", { name: "Simpan klien" }).click();
-  await expect(page.getByRole("heading", { name: "Impor Mutasi" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Unggah", exact: true })).toBeVisible();
   await page.goto("/");
   await expect(page.getByText("QA XSS <img src=x onerror=alert(1)>").first()).toBeVisible();
   await expect(page.locator("img[src=x]")).toHaveCount(0);

@@ -28,7 +28,7 @@ test("two open months before June are checked and closed together from June's Tu
   await page.getByLabel("Nama singkat").fill("RIWAYAT");
   await page.getByRole("button", { name: "Hapus rekening" }).click();
   await page.getByRole("button", { name: "Simpan klien" }).click();
-  await expect(page.getByRole("heading", { name: "Impor Buku Besar" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Unggah", exact: true })).toBeVisible();
   const base = page.url().replace(/\/import.*$/, "");
   for (const [m, d] of [["04", "30"], ["05", "31"], ["06", "30"]]) await accrual(page, base, m, d);
 

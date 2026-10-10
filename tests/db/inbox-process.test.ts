@@ -117,7 +117,7 @@ describe("Unggah: book the drop file by file", () => {
     const { item } = await g.next();
     expect(item!.status).toBe("BOOKED");
     expect(item!.statementImportIds).toHaveLength(2);
-    expect(item!.message).toBe("Dibukukan ke SMBC ·2088 · Mei 2026 · 2 baris; Dibukukan ke SMBC ·2879 · Mei 2026 · 2 baris; SMBC ·4251 (JPY): rekening valas belum bisa dibukukan");
+    expect(item!.message).toBe("Dibukukan ke SMBC ·2088 · Mei 2026 · 2 baris\nDibukukan ke SMBC ·2879 · Mei 2026 · 2 baris\nSMBC ·4251 (JPY): rekening valas belum bisa dibukukan");
     const accounts = await db.statementImport.findMany({ select: { bankAccount: { select: { number: true, isOverdraft: true } } } });
     expect(accounts.map((a) => a.bankAccount).sort((a, b) => a.number.localeCompare(b.number))).toEqual([{ number: "05243002879", isOverdraft: true }, { number: "90022152088", isOverdraft: false }]);
     await expectBalanced();

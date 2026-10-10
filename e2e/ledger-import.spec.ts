@@ -53,7 +53,7 @@ test("ledger import: checks, mapping, post, Kurs, Gabungan in IDR, client accoun
   await page.getByRole("button", { name: "Simpan klien" }).click();
 
   // Ledger-only client lands on the ledger import.
-  await expect(page.getByRole("heading", { name: "Impor Buku Besar" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Unggah", exact: true })).toBeVisible();
   await page.getByTestId("ledger-file-input").setInputFiles({ name: "buku-besar-uji.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: await ledgerXlsx() });
   await page.getByRole("button", { name: "Periksa file" }).click();
 

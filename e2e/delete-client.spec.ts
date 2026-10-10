@@ -7,7 +7,7 @@ test("Hapus klien: typed name, then the client and its books are gone", async ({
   await page.getByLabel("Nama lengkap").fill("PT Salah Ketik");
   await page.getByRole("button", { name: "Hapus rekening" }).click();
   await page.getByRole("button", { name: "Simpan klien" }).click();
-  await expect(page.getByRole("heading", { name: "Impor Buku Besar" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Unggah", exact: true })).toBeVisible();
   const base = new URL(page.url()).pathname.match(/\/clients\/[^/]+/)![0];
 
   await page.goto(`${base}/settings`);

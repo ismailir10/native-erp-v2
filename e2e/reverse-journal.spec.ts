@@ -18,7 +18,7 @@ test("a manual accrual is reversed from its ledger line on the next month's firs
   await page.getByLabel("Nama singkat").fill("BALIK");
   await page.getByRole("button", { name: "Hapus rekening" }).click();
   await page.getByRole("button", { name: "Simpan klien" }).click();
-  await expect(page.getByRole("heading", { name: "Impor Buku Besar" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Unggah", exact: true })).toBeVisible();
   const base = page.url().replace(/\/import.*$/, "");
 
   await page.goto(`${base}/journals/new?period=2026-07`);

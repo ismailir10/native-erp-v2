@@ -13,7 +13,7 @@ export async function addClient(page: Page, v: { name: string; entity?: string; 
   if (v.npwp) await page.getByLabel(/^NPWP/).fill(v.npwp);
   await page.getByLabel("Nomor rekening").fill(v.account ?? nextAccount());
   await page.getByRole("button", { name: "Simpan klien" }).click();
-  await expect(page.getByRole("heading", { name: "Impor Mutasi" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Unggah", exact: true })).toBeVisible();
   return page.url().match(/clients\/([^/]+)\//)![1];
 }
 

@@ -64,7 +64,7 @@ test("BUG-008: a file above 6 MB gets the friendly size message and the page sta
   await page.goto(`/clients/${id}/import`);
   await page.getByTestId("file-input").setInputFiles({ name: "besar.csv", mimeType: "text/csv", buffer: Buffer.alloc(6.5 * 1024 * 1024, "x") });
   await expect(toast(page)).toContainText("File terlalu besar (maks. 5 MB)");
-  await expect(page.getByRole("heading", { name: "Impor Mutasi" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Unggah", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Proses mutasi" })).toBeDisabled();
   await expect(page.getByText("This page couldn")).toHaveCount(0);
 });

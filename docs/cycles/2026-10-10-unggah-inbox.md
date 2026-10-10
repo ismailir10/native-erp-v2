@@ -134,7 +134,7 @@ them and asks only what it truly cannot know, once.
       numberless files, holder ↔ entity, proposed pemilik); server action *Tambah & impor* — accept: DB tests incl.
       SMBC three accounts and wrong-client warning. (reuse: `addBankAccount`, `addEntity`, `importStatement`)
 - [x] T4 Keyring: encrypt/store/try-all/clear; never logged — accept: DB + unit tests; grep proves no plaintext path.
-- [ ] T5 Unggah page + menu: drop zone, Drive link, password field, confirm card, per-file list, oldest-first —
+- [x] T5 Unggah page + menu: drop zone, Drive link, password field, confirm card, per-file list, oldest-first —
       accept: verify flows 1–5 locally. (deps: T2–T4)
 - [ ] T6 Dokumen: booked statements show "Dibukukan →"; no country-as-currency facts; Pengaturan empty-rekening copy —
       accept: verify on the walk's files.
@@ -202,6 +202,16 @@ them and asks only what it truly cannot know, once.
   token (`lib/inbox/drive.ts`: Dokumen's ignored/backup filters, readable formats only, no shortcuts, ≤ 20 levels,
   ≤ 200 files), keyring count / clear (admins, `org.settings`). Tests `inbox-actions` (through the real guard),
   `inbox-drive` (fake Drive), claim / recovery / failure cases in `inbox-process`.
+
+- T5 (Unggah page): `components/app/unggah-inbox.tsx` (drop zone + Drive link → check each file → plan → one
+  password field → one confirm card → book oldest first, live per-file lines, "Saran AI" line; reload shows the last drop
+  and resumes only on "Lanjutkan"), `lib/inbox/view.ts` (pure line/summary helpers), page reordered (Unggah first;
+  Riwayat / Cara lain tabs — the single-file forms for scans, year prompts and *Atur kolom* live in Cara lain), menu
+  "Unggah", NextStep for a client without rekening, e2e/doc label updates. Driver's browser walk (production build,
+  fake AI endpoint, demo client): six files at once → one password → one card with four new rekening (PRK badge on the
+  negative SMBC account) → "6 file selesai: 3 dibukukan, 1 draf buku besar, 1 disimpan di Dokumen, 1 gagal" (SMBC: May
+  2026 is closed in the demo) → "Saran AI selesai · 5 saran"; the list survives a reload. Walk fixes: no "Coba cara lain"
+  for failures another form can't fix (closed month, valas, password, size); one line per account instead of "; ".
 
 ## Verification
 

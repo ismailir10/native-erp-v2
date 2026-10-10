@@ -1,10 +1,10 @@
 import type { Db } from "@/lib/db";
 import type { BankCode, EntityKind, UploadItem } from "@/lib/generated/prisma/client";
 import { json } from "@/lib/evidence/store";
-import { bankName } from "@/lib/banks";
 import { addBankAccount, addEntity, OnboardingError } from "@/lib/onboarding";
 import { itemView, recheckItem, type BankSection, type InboxItem } from "./check";
 import { isCompanyName, matchEntity, normalName, titleCase } from "./names";
+import { accountDisplay } from "./view";
 
 /**
  * The Unggah confirm card (cycle 2026-10-10-unggah-inbox, Decisions 2 and 5): which rekening every bank file of a drop goes to. A number
@@ -52,9 +52,7 @@ type Scope = { firmId: string; clientId: string; batchId: string };
 export const VALAS_BLOCKED = "Rekening valas belum bisa dibukukan; file disimpan di Dokumen.";
 const SKIPPED = "Tidak dibukukan; disimpan di Dokumen.";
 const digits = (s: string | null | undefined) => (s ?? "").replace(/\D/g, "");
-const shortBank = (code: string) => (code === "GENERIC" ? "Bank" : bankName(code).split(" / ")[0]);
-/** "BCA ·3814". */
-export const accountDisplay = (bank: string, number: string) => `${shortBank(bank)} ·${digits(number).slice(-4)}`;
+export { accountDisplay };
 const isRupiah = (s: BankSection) => (s.currency ?? "IDR") === "IDR";
 const RANK: Record<EntityKind, number> = { PT: 0, CV: 1, BADAN_USAHA_ASING: 2, PERORANGAN: 3 };
 

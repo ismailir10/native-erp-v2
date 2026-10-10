@@ -7,7 +7,7 @@ test("add a bank account and an owner to an existing client", async ({ page }) =
   await page.getByLabel("Nama lengkap").fill("PT Tambah Rekening");
   await page.getByLabel("Nomor rekening").fill("5550009999");
   await page.getByRole("button", { name: "Simpan klien" }).click();
-  await expect(page.getByRole("heading", { name: "Impor Mutasi" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Unggah", exact: true })).toBeVisible();
   const base = new URL(page.url()).pathname.match(/\/clients\/[^/]+/)![0];
 
   // Impor says how it differs from Dokumen, and where a missing account is added.

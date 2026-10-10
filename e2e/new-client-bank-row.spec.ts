@@ -15,7 +15,7 @@ test("Tambah klien: an untouched bank row is ignored, a half-filled one says wha
   // Clearing the name leaves an empty row: it is ignored and the client is saved without a bank account.
   await page.getByLabel("Nama rekening").fill("");
   await page.getByRole("button", { name: "Simpan klien" }).click();
-  await expect(page.getByRole("heading", { name: "Impor Buku Besar" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Unggah", exact: true })).toBeVisible();
   const base = new URL(page.url()).pathname.match(/\/clients\/[^/]+/)![0];
 
   await page.goto(`${base}/settings`);
