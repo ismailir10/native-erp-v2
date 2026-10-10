@@ -1,24 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { db, makeGroup, resetDb } from "../helpers";
+
 import { postJournal } from "@/lib/ledger/post";
 import { CLOSE_SIGNOFFS, CloseError, lockPeriod, runControls, unlockPeriod } from "@/lib/controls";
 import { deleteClient } from "@/lib/clients/delete";
 import { dateOnly } from "@/lib/format";
 
-const session = vi.hoisted(() => ({ role: "ADMIN" as "ADMIN" | "AKUNTAN", firmId: "", memberId: "" }));
-vi.mock("@/lib/tenant", async () => {
-  const { db } = await import("../helpers");
-  return {
-    getCurrentFirm: async () => ({ id: session.firmId }),
-    getCurrentMember: async () => ({ id: session.memberId, role: session.role }),
-    getClientForFirm: async (id: string) => {
-      const c = await db.client.findFirst({ where: { id, firmId: session.firmId }, include: { entities: true } });
-      if (!c) throw new Error("Klien tidak ditemukan");
-      return c;
-    },
-  };
-});
+const auth = vi.hoisted(() => ({ userId: null as string | null }));
+vi.mock("@/lib/auth", () => ({ authConfigured: () => true }));
+vi.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: async () => ({ auth: { getClaims: async () => ({ data: auth.userId ? { claims: { sub: auth.userId } } : null }) } }) }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 const { ackControlAction, unlockAction } = await import("@/app/actions");
 
@@ -143,10 +134,10 @@ describe("unlock: admin only, reasoned, logged", () => {
     const akuntan = await member(g, "AKUNTAN", "sari");
     await entry(g, 8);
     await lock(g, 8);
-    session.firmId = g.firm.id;
-    Object.assign(session, { role: "AKUNTAN", memberId: akuntan.id });
+    await db.clientAccess.create({ data: { memberId: akuntan.id, clientId: g.client.id } });
+    auth.userId = akuntan.userId;
     expect(await unlockAction(g.client.id, 2026, 8, "Koreksi faktur")).toEqual({ ok: false, error: "Hanya admin kantor yang dapat membuka kembali periode." });
-    Object.assign(session, { role: "ADMIN", memberId: admin.id });
+    auth.userId = admin.userId;
     expect(await unlockAction(g.client.id, 2026, 8, "")).toEqual({ ok: false, error: "Tulis alasan membuka kembali periode (min. 5 karakter)." });
     expect(await unlockAction(g.client.id, 2026, 8, "Koreksi faktur")).toEqual({ ok: true });
     expect(await status(g, 8)).toBe("OPEN");
@@ -191,7 +182,7 @@ describe("close notes answer the control as it read", () => {
     const g = await makeGroup();
     const admin = await member(g, "ADMIN", "admin");
     await entry(g, 8);
-    Object.assign(session, { firmId: g.firm.id, role: "ADMIN", memberId: admin.id });
+    auth.userId = admin.userId;
     const c = (await runControls(db, g.client.id, 2026, 8)).find((x) => x.status === "REVIEW")!;
     expect(await ackControlAction(g.client.id, 2026, 8, c.key, "Wajar, dicek")).toEqual({ ok: true });
     expect(await db.controlAck.findFirstOrThrow({ where: { controlKey: c.key } })).toMatchObject({ note: "Wajar, dicek", detail: c.detail, ackedById: admin.id });

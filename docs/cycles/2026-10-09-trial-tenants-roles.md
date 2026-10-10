@@ -258,7 +258,7 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   `requireMember(role)` maps to capabilities.
   — accept: the DB test sets up two orgs plus an assigned AKUNTAN and a VIEWER. A foreign client, an unassigned client and a READ_ONLY
   write each throw. An ADMIN resolves every client of its own org.
-- [~] **T04 Guard every write path + coverage test.** After: T03. Files: `app/actions.ts`, `app/settings-actions.ts`,
+- [x] **T04 Guard every write path + coverage test.** After: T03. Files: `app/actions.ts`, `app/settings-actions.ts`,
   `app/evidence-actions.ts`, `app/google-actions.ts`, `app/workspace-actions.ts`, `app/api/**`, `app/kirim/[token]/upload/route.ts`,
   `lib/controls/index.ts`, `lib/controls/history.ts` and `lib/imports/remove.ts` (role checks → `can()`), plus `tests/unit/action-guards.test.ts`.
   Each exported action calls `requireCapability` with the narrowest capability and its `clientId`. The upload route checks the
@@ -385,6 +385,14 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   AKUNTAN creator), `lib/onboarding.ts`, `lib/evidence/review.ts` and two actions pass the creator, and `lib/auth/operator.ts` (a CLI
   invite of an AKUNTAN/VIEWER gets every client, as before). **Bug caught while testing:** spreading the access `where` and then
   setting `id` overwrote an AKUNTAN's assignment list, so every lookup now uses `AND: [access, { id }]`. A unit test pins that.
+- T04: `app/actions.ts` (`clientFor(capability, clientId)` / `writeClient` replace all 72 client lookups; unlock → `period.unlock`,
+  multi-month close → `close.batch`, remove import → `import.remove`, delete client → `client.delete`, new client or entity →
+  `client.create`; `AccessError` messages pass through `fail()`), `app/evidence-actions.ts` (an intake linked to a client checks that
+  client), `app/google-actions.ts`, `app/settings-actions.ts`, `app/api/google/callback/route.ts` (`org.settings`), and
+  `app/workspace-actions.ts` (an AI question counts as a write). `lib/upload-links.ts` `resolveUploadLink` refuses a link of an
+  organisation that is not ACTIVE. `lib/controls` and `lib/imports/remove.ts` use `can()`. `capabilityRefusal` keeps the domain wording.
+  Tests that mocked `@/lib/tenant` or `@/lib/auth/session` now fake only the login token and use real members (`tests/members.ts`).
+  **Still open until T07:** AI key, model and OCR are `org.settings`, so any organisation ADMIN can still change Buku's AI key.
 
 ## Verification
 - T01: full `npx vitest run`: 203 of 204 files passed; the one failure was `migration-protected-tables` refusing the backfill's role
@@ -392,6 +400,9 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   and `remove-import` → 5 files, 51 tests passed.
 - T02: `permissions.test.ts` and `access-grant.test.ts` → 2 files, 25 tests passed; lint ✓, typecheck ✓.
 - T03: full `npx vitest run` → 207 files, 1390 tests passed; lint ✓, typecheck ✓.
+- T04: full `npx vitest run` → 208 of 209 files, 1403 of 1404 tests; the one failure was `upload-links` resolving on a simulated
+  September clock before the firm's grant started (test backdates the grant). Re-run: `upload-links` + `action-access` → 10 passed;
+  `action-guards` → 9 passed; lint ✓, typecheck ✓.
 
 ## Ship Notes
 

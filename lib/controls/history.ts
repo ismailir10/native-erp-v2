@@ -4,7 +4,7 @@ import { recordEvent } from "@/lib/audit";
 import { formatPeriod } from "@/lib/format";
 import { saveControlNote } from "@/lib/controls/ack";
 import { CLOSE_SIGNOFFS, CloseError, earlierOpenMonth, lockPeriod, runControls, type Control } from "@/lib/controls";
-import { isAdminRole } from "@/lib/auth/permissions";
+import { can } from "@/lib/auth/permissions";
 import type { MemberRole } from "@/lib/generated/prisma/enums";
 
 /**
@@ -104,7 +104,7 @@ export async function closeHistoryMonth(
   const { year, month } = input.month;
   const label = formatPeriod(year, month);
   const note = input.note.trim();
-  if (!isAdminRole(actor.role)) throw new CloseError("Hanya admin kantor yang dapat menutup beberapa bulan sekaligus.");
+  if (!can(actor.role, "close.batch")) throw new CloseError("Hanya admin kantor yang dapat menutup beberapa bulan sekaligus.");
   if (note.length < HISTORY_NOTE_MIN) throw new CloseError(`Tulis catatan untuk bulan-bulan ini (min. ${HISTORY_NOTE_MIN} karakter).`);
   if (!before(input.month, until)) throw new CloseError(`${label} bukan bulan sebelum ${formatPeriod(until.year, until.month)}; tutup bulan itu dari halamannya sendiri.`);
   const period = await db.period.findUnique({ where: { clientId_year_month: { clientId, year, month } } });

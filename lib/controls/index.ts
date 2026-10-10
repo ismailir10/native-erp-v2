@@ -22,7 +22,7 @@ import { DIRECTION_LABEL, fakturNotes, fakturRecon } from "@/lib/tax/faktur";
 import { bupotNotes, bupotRecon } from "@/lib/tax/bupot";
 import { findingLabel } from "@/lib/findings";
 import { compareSubledger } from "@/lib/reconcile/subledger";
-import { isAdminRole } from "@/lib/auth/permissions";
+import { can } from "@/lib/auth/permissions";
 import type { MemberRole } from "@/lib/generated/prisma/enums";
 
 /**
@@ -672,7 +672,7 @@ export const UNLOCK_REASON_MIN = 5;
  * admin. The status change and the audit row (`PeriodUnlockLog`) are one transaction, under the same client lock as closing.
  */
 export async function unlockPeriod(db: Db, clientId: string, year: number, month: number, actor: { id: string; role: MemberRole }, reason: string) {
-  if (!isAdminRole(actor.role)) throw new CloseError("Hanya admin kantor yang dapat membuka kembali periode.");
+  if (!can(actor.role, "period.unlock")) throw new CloseError("Hanya admin kantor yang dapat membuka kembali periode.");
   const why = reason.trim();
   if (why.length < UNLOCK_REASON_MIN) throw new CloseError(`Tulis alasan membuka kembali periode (min. ${UNLOCK_REASON_MIN} karakter).`);
   return db.$transaction(async (tx) => {

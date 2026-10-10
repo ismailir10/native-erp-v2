@@ -4,7 +4,7 @@ import { recordEvent } from "@/lib/audit";
 import { importKindLabel } from "@/lib/ledger-import/code";
 import { formatDate, formatPeriod } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
-import { isAdminRole } from "@/lib/auth/permissions";
+import { can } from "@/lib/auth/permissions";
 import type { MemberRole } from "@/lib/generated/prisma/enums";
 
 /**
@@ -19,7 +19,7 @@ export const REMOVE_REASON_MIN = 10;
 type Actor = { id: string; role: MemberRole };
 
 function checkActor(actor: Actor, reason: string) {
-  if (!isAdminRole(actor.role)) throw new RemoveImportError("Hanya admin kantor yang dapat menghapus impor.");
+  if (!can(actor.role, "import.remove")) throw new RemoveImportError("Hanya admin kantor yang dapat menghapus impor.");
   const why = reason.trim();
   if (why.length < REMOVE_REASON_MIN) throw new RemoveImportError(`Tulis alasan menghapus impor ini (min. ${REMOVE_REASON_MIN} karakter), mis. "salah rekening" atau "file bulan yang sama dua kali".`);
   return why;

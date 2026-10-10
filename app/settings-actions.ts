@@ -1,8 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getCurrentFirm } from "@/lib/tenant";
-import { requireMember } from "@/lib/auth/session";
+import { requireCapability } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
 import { settingsSecretConfigured } from "@/lib/settings/secret";
 import { clearAiKey, fetchModels, resolveAiConfig, saveAiSettings, SettingsError, validateAiInput } from "@/lib/settings/ai";
@@ -17,7 +16,7 @@ type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
 /** Admin-only; the message is the one the form shows verbatim. */
 async function guard(): Promise<string | null> {
-  try { await requireMember("ADMIN"); return null; }
+  try { await requireCapability("org.settings"); return null; }
   catch (e) { return e instanceof Error ? e.message : "Masuk terlebih dahulu."; }
 }
 
@@ -56,7 +55,7 @@ export async function clearAiKeyAction(): Promise<Result> {
 /** Model ids from GET {baseUrl}/models (no tokens). OpenCode Zen serves this list without checking the key. */
 export async function listModelsAction(): Promise<Result<{ models: string[] }>> {
   try {
-    await getCurrentFirm();
+    await requireCapability("org.settings");
     const cfg = await resolveAiConfig(prisma);
     return { ok: true, models: await fetchModels(cfg.baseUrl, cfg.apiKey) };
   } catch (e) {

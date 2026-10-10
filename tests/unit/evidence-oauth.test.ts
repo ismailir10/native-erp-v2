@@ -8,7 +8,7 @@ vi.mock("@/lib/db", () => {
   mocks.transaction.mockImplementation(async (work) => work(prisma));
   return { prisma };
 });
-vi.mock("@/lib/tenant", () => ({ getCurrentFirm: mocks.firm }));
+vi.mock("@/lib/auth/session", () => ({ requireCapability: async () => ({ firm: await mocks.firm() }) }));
 vi.mock("@/lib/evidence/drive", async (original) => ({ DriveError: (await original<typeof import("@/lib/evidence/drive")>()).DriveError, exchangeCode: mocks.exchange, oauthConfigured: () => true }));
 vi.mock("@/lib/settings/secret", () => ({
   encryptSecret: (value: string) => `encrypted:${value}`,

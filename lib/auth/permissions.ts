@@ -44,9 +44,17 @@ export const isWrite = (capability: Capability) => capability !== "books.read";
 /** OWNER and ADMIN may do what "admin kantor" could before roles grew to four, and see every client without an assignment. */
 export const isAdminRole = (role: MemberRole) => ADMINS.includes(role);
 
-/** Bahasa refusal for a missing capability, shown as is by forms and toasts. */
-export function capabilityRefusal(capability: Capability) {
-  if (capability === "org.transfer") return "Hanya pemilik yang dapat memindahkan kepemilikan.";
-  if (capability === "books.write" || capability === "client.create") return "Peran Peninjau hanya dapat melihat dan mengunduh laporan.";
-  return "Hanya admin kantor yang dapat melakukan ini.";
-}
+/** Bahasa refusal for a missing capability, shown as is by forms and toasts (the wording the domain checks used before). */
+const REFUSAL: Record<Capability, string> = {
+  "books.read": "Akses tidak tersedia.",
+  "books.write": "Peran Peninjau hanya dapat melihat dan mengunduh laporan.",
+  "client.create": "Peran Peninjau hanya dapat melihat dan mengunduh laporan.",
+  "period.unlock": "Hanya admin kantor yang dapat membuka kembali periode.",
+  "import.remove": "Hanya admin kantor yang dapat menghapus impor.",
+  "close.batch": "Hanya admin kantor yang dapat menutup beberapa bulan sekaligus.",
+  "client.delete": "Hanya admin kantor yang dapat menghapus klien.",
+  "org.settings": "Hanya admin kantor yang dapat mengubah ini.",
+  "members.manage": "Hanya pemilik atau admin kantor yang dapat mengatur tim.",
+  "org.transfer": "Hanya pemilik yang dapat memindahkan kepemilikan.",
+};
+export const capabilityRefusal = (capability: Capability) => REFUSAL[capability];

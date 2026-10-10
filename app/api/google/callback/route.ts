@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { type NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getCurrentFirm } from "@/lib/tenant";
+import { requireCapability } from "@/lib/auth/session";
 import { requireEvidenceEnabled } from "@/lib/evidence/config";
 import { DriveError, exchangeCode, oauthConfigured } from "@/lib/evidence/drive";
 import { encryptSecret, settingsSecretConfigured } from "@/lib/settings/secret";
@@ -30,7 +30,8 @@ export async function GET(request: NextRequest) {
     const state = request.nextUrl.searchParams.get("state");
     const browser = request.cookies.get(COOKIE)?.value;
     if (!state || !browser || !/^[A-Za-z0-9_-]{43}$/.test(state) || !/^[A-Za-z0-9_-]{43}$/.test(browser)) return finish(false, "state");
-    const firm = await getCurrentFirm();
+    // Connecting Drive is an organisation setting: admins only, and refused while the organisation is read-only.
+    const { firm } = await requireCapability("org.settings");
     const binding = {
       id: createHash("sha256").update(state).digest("hex"),
       firmId: firm.id,
