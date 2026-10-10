@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AccessStatus } from "@/components/backoffice/access-status";
 import { GrantForm, GrantRowActions, InviteOwnerForm, LimitsForm, SuspendForm } from "@/components/backoffice/org-forms";
+import { SupportForm } from "@/components/backoffice/support-form";
 import { requirePlatformAdmin } from "@/lib/auth/platform";
 import { organisationDetail } from "@/lib/backoffice/orgs";
 import { prisma } from "@/lib/db";
@@ -21,11 +22,11 @@ const wibDate = (d: Date) => new Date(d.getTime() + 7 * 3600_000).toISOString().
 
 /** Access, people, limits and Buku's own log for one organisation (ADR 0017 §2–3). Counts and names of people only, never books. */
 export default async function OrganisationPage({ params }: { params: Promise<{ id: string }> }) {
-  await requirePlatformAdmin();
+  const admin = await requirePlatformAdmin();
   const { id } = await params;
   const detail = await organisationDetail(prisma, id);
   if (!detail) notFound();
-  const { firm, access, events, aiUse } = detail;
+  const { firm, access, events, supportSessions, aiUse } = detail;
   const now = new Date();
   const status = (g: (typeof firm.grants)[number]) => g.revokedAt ? "Dicabut" : g.startsAt > now ? "Akan datang" : g.endsAt && g.endsAt <= now ? "Berakhir" : "Berjalan";
   return (
@@ -82,6 +83,20 @@ export default async function OrganisationPage({ params }: { params: Promise<{ i
       <Card>
         <CardHeader><CardTitle>Penangguhan</CardTitle><CardDescription>Menutup ruang kerja seketika, apa pun aksesnya. Untuk penyalahgunaan atau tagihan; data tetap tersimpan.</CardDescription></CardHeader>
         <CardContent><SuspendForm firmId={firm.id} suspended={Boolean(firm.suspendedAt)} /></CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>Dukungan</CardTitle><CardDescription>Buka ruang kerja ini sebagai salah satu anggotanya untuk memeriksa masalah: hanya baca, paling lama 60 menit, tanpa pemberitahuan ke organisasi. Setiap halaman yang dibuka dicatat di sini.</CardDescription></CardHeader>
+        <CardContent className="space-y-6">
+          {admin.aal === "aal2"
+            ? <SupportForm firmId={firm.id} members={firm.members.map((m) => ({ id: m.id, label: `${m.name} · ${ROLE_LABEL[m.role]}${m.disabled ? " · nonaktif" : ""}` }))} />
+            : <p className="text-sm">Aktifkan verifikasi dua langkah di <Link href="/backoffice/keamanan" className="drill">Keamanan</Link> untuk membuka ruang kerja.</p>}
+          {supportSessions.length > 0 && (
+            <ul className="divide-y text-sm" data-testid="support-sessions">
+              {supportSessions.map((s) => <li key={s.id} className="flex flex-wrap justify-between gap-2 py-2"><span>{s.admin.name} sebagai {s.asMember.name} · {s.reason}</span><span className="text-muted-foreground">{formatDateTime(s.startedAt)} · {s._count.views} halaman · {s.endedAt ? "selesai" : s.expiresAt > now ? "berjalan" : "habis waktu"}</span></li>)}
+            </ul>
+          )}
+        </CardContent>
       </Card>
 
       <Card>

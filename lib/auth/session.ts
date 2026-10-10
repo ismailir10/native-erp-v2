@@ -1,17 +1,19 @@
 import { cache } from "react";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { authConfigured } from "@/lib/auth";
 import { prisma, type Db } from "@/lib/db";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { MemberRole } from "@/lib/generated/prisma/enums";
 import { can, capabilityRefusal, isAdminRole, isWrite, type Capability } from "@/lib/auth/permissions";
 import { accessState, readOnlyMessage, type Access } from "@/lib/access/grant";
+import { resolveSupportSession, SUPPORT_COOKIE, SUPPORT_READ_ONLY } from "@/lib/auth/support";
 
 export { ROLE_LABEL } from "@/lib/auth/permissions";
 
 /** A refusal a form or toast shows as is (Bahasa). Server actions return its message; pages turn it into 404 or a redirect. */
 export class AccessError extends Error {
-  constructor(message: string, readonly reason: "SIGNED_OUT" | "CLOSED" | "READ_ONLY" | "ROLE" | "CLIENT") {
+  constructor(message: string, readonly reason: "SIGNED_OUT" | "CLOSED" | "READ_ONLY" | "ROLE" | "CLIENT" | "SUPPORT") {
     super(message);
     this.name = "AccessError";
   }
@@ -26,18 +28,37 @@ export const ACCESS_CLOSED = "Akses ruang kerja ini ditutup. Hubungi Buku.";
  */
 export type WorkspaceSession = NonNullable<Awaited<ReturnType<typeof resolveWorkspace>>>;
 
-/** The member row of a verified user, read live (a disabled member, ended grant or suspension takes effect at once). */
-export async function resolveWorkspace(db: Db, userId: string, now = new Date()) {
-  const member = await db.firmMember.findUnique({
-    where: { userId },
-    include: { firm: { include: { grants: true } }, clientAccess: { select: { clientId: true } } },
-  });
-  if (!member || member.disabled) return null;
+/** A Buku admin's support session behind this request (ADR 0017 §2), shown only to that admin; null for everyone else. */
+export type SupportInfo = { id: string; adminName: string; firmId: string; firmName: string; memberName: string; expiresAt: Date };
+
+async function loadMember(db: Db, where: { userId: string } | { id: string }) {
+  return db.firmMember.findUnique({ where, include: { firm: { include: { grants: true } }, clientAccess: { select: { clientId: true } } } });
+}
+
+function shape(member: NonNullable<Awaited<ReturnType<typeof loadMember>>>, now: Date, support: SupportInfo | null) {
   const { firm: withGrants, clientAccess, ...rest } = member;
   const { grants, ...firm } = withGrants;
   const access: Access = accessState(grants, firm, now);
   const clientIds: string[] | "ALL" = isAdminRole(member.role) || firm.kind === "PERUSAHAAN" ? "ALL" : clientAccess.map((a) => a.clientId);
-  return { member: rest, user: rest, firm, access, clientIds };
+  return { member: rest, user: rest, firm, access, clientIds, support };
+}
+
+/** The member row of a verified user, read live (a disabled member, ended grant or suspension takes effect at once). */
+export async function resolveWorkspace(db: Db, userId: string, now = new Date()) {
+  const member = await loadMember(db, { userId });
+  if (!member || member.disabled) return null;
+  return shape(member, now, null);
+}
+
+/** A support session's view: exactly the member's own (role, assignments), whatever their state, marked as support. */
+export async function resolveSupportWorkspace(db: Db, memberId: string, support: SupportInfo, now = new Date()) {
+  const member = await loadMember(db, { id: memberId });
+  return member && member.firmId === support.firmId ? shape(member, now, support) : null;
+}
+
+/** The support session id this browser carries; none outside a request (tests, scripts), where `cookies()` is unavailable. */
+async function supportCookie() {
+  try { return (await cookies()).get(SUPPORT_COOKIE)?.value; } catch { return undefined; }
 }
 
 /** The verified Supabase session resolved to an organisation member, once per request. JWT verified locally (`getClaims`). */
@@ -47,6 +68,18 @@ export const getWorkspaceSession = cache(async () => {
   const { data } = await supabase.auth.getClaims();
   const userId = data?.claims.sub;
   if (!userId) return null;
+  // A Buku admin with a live support session sees the chosen member's workspace instead of their own (ADR 0017 §2).
+  const supportId = await supportCookie();
+  if (supportId) {
+    const aal = (data?.claims as { aal?: string } | undefined)?.aal ?? "aal1";
+    const live = await resolveSupportSession(prisma, userId, aal, supportId);
+    if (live) {
+      const member = await prisma.firmMember.findUnique({ where: { id: live.session.asMemberId }, select: { name: true } });
+      const support: SupportInfo = { id: live.session.id, adminName: live.admin.name, firmId: live.session.firmId, firmName: live.session.firm.name, memberName: member?.name ?? "", expiresAt: live.session.expiresAt };
+      const session = await resolveSupportWorkspace(prisma, live.session.asMemberId, support);
+      if (session) return session;
+    }
+  }
   return resolveWorkspace(prisma, userId);
 });
 
@@ -54,7 +87,8 @@ export const getWorkspaceSession = cache(async () => {
 export async function requireWorkspaceSession() {
   const session = await getWorkspaceSession();
   if (!session) redirect("/login");
-  if (session.access.state === "NONE") redirect("/akses-ditutup");
+  // Troubleshooting a closed organisation is part of support: a support session reads whatever the access state.
+  if (session.access.state === "NONE" && !session.support) redirect("/akses-ditutup");
   return session;
 }
 
@@ -77,7 +111,9 @@ export function accessibleClientWhere(session: Pick<WorkspaceSession, "firm" | "
  */
 export async function checkCapability(db: Db, session: WorkspaceSession | null, capability: Capability, opts: { clientId?: string } = {}) {
   if (!session) throw new AccessError("Masuk terlebih dahulu.", "SIGNED_OUT");
-  if (session.access.state === "NONE") throw new AccessError(ACCESS_CLOSED, "CLOSED");
+  // A support session never writes: entries record who made them, and posting as the client would falsify that (ADR 0017 §2).
+  if (session.support && isWrite(capability)) throw new AccessError(SUPPORT_READ_ONLY, "SUPPORT");
+  if (session.access.state === "NONE" && !session.support) throw new AccessError(ACCESS_CLOSED, "CLOSED");
   if (isWrite(capability) && session.access.state === "READ_ONLY") throw new AccessError(readOnlyMessage(session.access), "READ_ONLY");
   if (!can(session.member.role, capability)) throw new AccessError(capabilityRefusal(capability), "ROLE");
   if (opts.clientId !== undefined) {
@@ -89,7 +125,8 @@ export async function checkCapability(db: Db, session: WorkspaceSession | null, 
 }
 
 /** What the write controls of client components need to know (components/app/access-context.tsx). */
-export function accessView(session: Pick<WorkspaceSession, "access" | "member">) {
+export function accessView(session: Pick<WorkspaceSession, "access" | "member" | "support">) {
+  if (session.support) return { canWrite: false, reason: SUPPORT_READ_ONLY };
   if (session.access.state === "READ_ONLY") return { canWrite: false, reason: readOnlyMessage(session.access) };
   if (!can(session.member.role, "books.write")) return { canWrite: false, reason: capabilityRefusal("books.write") };
   return { canWrite: true, reason: null };

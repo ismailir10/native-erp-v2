@@ -50,6 +50,9 @@ export async function organisationDetail(db: Db, firmId: string, now = new Date(
     },
   });
   if (!firm) return null;
-  const events = await db.platformAuditEvent.findMany({ where: { firmId }, include: { admin: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: 50 });
-  return { firm, access: accessState(firm.grants, firm, now), events, aiUse: await monthlyAiUse(db, firmId) };
+  const [events, supportSessions] = await Promise.all([
+    db.platformAuditEvent.findMany({ where: { firmId }, include: { admin: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: 50 }),
+    db.supportSession.findMany({ where: { firmId }, include: { admin: { select: { name: true } }, asMember: { select: { name: true } }, _count: { select: { views: true } } }, orderBy: { startedAt: "desc" }, take: 20 }),
+  ]);
+  return { firm, access: accessState(firm.grants, firm, now), events, supportSessions, aiUse: await monthlyAiUse(db, firmId) };
 }

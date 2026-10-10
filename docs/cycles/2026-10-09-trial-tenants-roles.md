@@ -351,7 +351,7 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   and fails on `supabase|prisma|postgres` (code identifiers and comments exempt). A forced render error shows the branded page with a
   reference id. Screenshots at desktop and 390 px.
 
-- [~] **T18 Support session (A4).** After: T04, T05, T06. Files: `lib/auth/support.ts` (start, end, resolve; an httpOnly cookie
+- [x] **T18 Support session (A4).** After: T04, T05, T06. Files: `lib/auth/support.ts` (start, end, resolve; an httpOnly cookie
   holding the session id, checked live against `SupportSession` and `PlatformAdmin` on every request), the `lib/auth/session.ts` branch
   (a platform admin with a live support cookie resolves to the target member's session with `support: {…}` and `access` forced
   read-only, so `requireCapability` refuses writes), `app/backoffice/orgs/[id]/support/**` (reason form, history),
@@ -454,6 +454,16 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   `create-org`, `grant`, `revoke-grant`, `suspend`, `reinstate`. **For T09:** approval = `createOrganisation(db, adminId, { kind,
   grant: { kind: "TRIAL", endsOn } })` then `inviteUser(role OWNER)`; on invite failure delete nothing that has data, just the new
   organisation (it is empty) or report and keep it (decide in T09).
+- T18: `lib/auth/support.ts` (start needs aal2, a 10+ char reason and a member of the organisation; one live session per admin;
+  end; resolve only for its own active admin at aal2, live and under 60 min; view log). `lib/auth/session.ts`: a live `buku_support`
+  cookie resolves to the chosen member's view with `support` set. `checkCapability` refuses every write with *Mode dukungan hanya
+  baca*, reads work even when the organisation is NONE or suspended, and `accessView` disables write controls. `recordExport`
+  logs a support download to `SupportSessionView` (EXPORT), never to the tenant's `AuditEvent`. `components/app/support-bar.tsx`
+  (ink bar: organisation, viewed as, minutes left, *Keluar*; logs each page) and `app/support-actions.ts`. Backoffice: a *Dukungan*
+  card on the organisation page (member + reason, session history with page counts) and `/backoffice/keamanan` (TOTP enrolment,
+  issuer *Buku*). `supabase/config.toml` enables TOTP. `scripts/e2e-table-counts.ts` feeds the e2e no-trace check. **For T14
+  (Ship Notes):** hosted Supabase must have TOTP MFA enabled (default on hosted projects), so check it in `scripts/auth-config.ts` or
+  in the dashboard. The support bar was checked by e2e only, without screenshots: the TOTP flow needs a fresh factor per run.
 
 ## Verification
 - T15/T16 origin follow-up: lint ✓, typecheck ✓; full Vitest → 215 files / 1471 tests passed. CLI accepts the environment-based config (its status then reports the intentionally absent full-stack
@@ -492,6 +502,9 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   ocr-scan` → 7 passed.
 - T08: full `npx vitest run` → 217 files, 1480 tests passed; `npm run build` ✓; `playwright test backoffice` → 3 passed; CLI
   create-org → grant → suspend → reinstate run against the local DB. Screenshots of the list (1440, 390 px) and an organisation page were looked at.
+- T18: full `npx vitest run` → 219 files, 1504 tests passed; `npm run build` ✓; `playwright test support-session, auth-links`
+  (local stack restarted with TOTP and `APP_URL=http://localhost:3200`) → 3 passed. Tenant row counts were identical before and
+  after walking 18 client pages and a download.
 
 ## Ship Notes
 

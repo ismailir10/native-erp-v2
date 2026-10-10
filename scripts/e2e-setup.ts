@@ -70,6 +70,9 @@ async function setup() {
       await auth.admin.updateUserById(opsId, { password: ops.password });
     }
     await db.platformAdmin.upsert({ where: { email: ops.email }, create: { userId: opsId, email: ops.email, name: "Admin Buku uji" }, update: { userId: opsId, disabled: false } });
+    // Every run enrols two-step login afresh (e2e/support-session.spec.ts reads the new secret from the page).
+    const factors = await auth.admin.mfa.listFactors({ userId: opsId });
+    for (const factor of factors.data?.factors ?? []) await auth.admin.mfa.deleteFactor({ id: factor.id, userId: opsId });
     writeFileSync(".playwright/credentials-ops.json", JSON.stringify(ops), { mode: 0o600 });
     writeFileSync(".playwright/credentials-trial-ended.json", JSON.stringify(ended), { mode: 0o600 });
     writeFileSync(".playwright/credentials-trial-ending.json", JSON.stringify(ending), { mode: 0o600 });
