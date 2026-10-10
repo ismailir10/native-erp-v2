@@ -12,10 +12,32 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # On a push to a base branch, skip the jobs below when the merged PR already passed them on exactly this code
+  # (same git tree). Any doubt runs them. See scripts/ci-already-verified.sh (vendored from agent-workflow).
+  verified:
+    name: Already verified on PR
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bash scripts/ci-already-verified.sh ci.yml "check"
+
   # Lint, typecheck, unit tests and production build. Runs on every ready PR and on every push
   # to main. Draft PRs skip CI until they are marked ready for review. Playwright lives in e2e.yml.
   check:
-    if: github.event.pull_request.draft != true
+    needs: verified
+    if: ${{ !cancelled() && needs.verified.outputs.skip != 'true' && (github.event.pull_request.draft != true) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
