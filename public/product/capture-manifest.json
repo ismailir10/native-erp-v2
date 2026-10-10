@@ -3,21 +3,21 @@
   "command": "PW_CHROMIUM=/opt/pw-browsers/chromium npx tsx scripts/capture-public-demo.ts",
   "period": "2026-08",
   "firm": {
-    "id": "cmv20ux5m0000dnpe2cf5r8zn",
+    "id": "cmv28k0qm0000a3peqniqkxw0",
     "name": "KJA Demo & Rekan"
   },
   "client": {
-    "id": "cmv20ux70001jdnpell34h4ct",
+    "id": "cmv28k0ru001ja3pedbejp4rv",
     "name": "Grup Ayam Nusantara"
   },
   "reportEntity": {
-    "id": "cmv20ux7m003jdnpec3lra0o1",
+    "id": "cmv28k0si003ja3pe2cqxfsiq",
     "name": "PT Ayam Nusantara Digital",
     "currency": "IDR"
   },
   "source": {
-    "bankTransactionId": "cmv20v0rs012adnpe1397i06c",
-    "journalEntryId": "cmv20v0ry012bdnpe4sho8baz",
+    "bankTransactionId": "cmv28k432012ua3pepbuknstv",
+    "journalEntryId": "cmv28k43d012va3pe4n47ze9d",
     "date": "2026-08-06",
     "description": "TRSF E-BANKING CR 0608/FTSCY/WS930729 PT MITRA UNGGAS SENTOSA",
     "fileName": "BCA-5566-2026-08.csv",
@@ -55,133 +55,133 @@
     "scope": "All entities in Grup Ayam Nusantara",
     "controls": [
       {
-        "key": "tb:cmv20ux7m003jdnpec3lra0o1",
+        "key": "tb:cmv28k0si003ja3pe2cqxfsiq",
         "scope": "PT Ayam Nusantara",
         "title": "Neraca saldo seimbang",
         "status": "PASS",
         "detail": "Debit = kredit = Rp 12.552.852.217"
       },
       {
-        "key": "bs:cmv20ux7m003jdnpec3lra0o1",
+        "key": "bs:cmv28k0si003ja3pe2cqxfsiq",
         "scope": "PT Ayam Nusantara",
         "title": "Neraca: aset = liabilitas + ekuitas",
         "status": "PASS",
         "detail": "Total aset Rp 4.613.827.937"
       },
       {
-        "key": "bank:cmv20ux7v003ldnpearvz77c2",
+        "key": "bank:cmv28k0sn003la3peqv32fdvo",
         "scope": "PT Ayam Nusantara",
         "title": "Rekonsiliasi BCA Giro",
         "status": "PASS",
         "detail": "Saldo bank = buku besar = Rp 2.162.157.217"
       },
       {
-        "key": "cont:cmv20ux7v003ldnpearvz77c2",
+        "key": "cont:cmv28k0sn003la3peqv32fdvo",
         "scope": "PT Ayam Nusantara",
         "title": "Kelengkapan mutasi BCA Giro",
         "status": "PASS",
-        "detail": "Saldo berjalan nyambung dari awal ke akhir"
+        "detail": "Saldo berjalan nyambung dan sumber mencakup bulan penuh"
       },
       {
-        "key": "bank:cmv20ux7z003ndnpeki5vck5w",
+        "key": "bank:cmv28k0sq003na3pen71zdvvf",
         "scope": "PT Ayam Nusantara",
         "title": "Rekonsiliasi Mandiri Giro",
-        "status": "PASS",
-        "detail": "Saldo bank = buku besar = Rp 456.300.000"
+        "status": "REVIEW",
+        "detail": "Cakupan atau saldo sumber belum sepenuhnya terbukti. Periksa rincian kelengkapan mutasi dan bukti saldo."
       },
       {
-        "key": "cont:cmv20ux7z003ndnpeki5vck5w",
+        "key": "cont:cmv28k0sq003na3pen71zdvvf",
         "scope": "PT Ayam Nusantara",
         "title": "Kelengkapan mutasi Mandiri Giro",
-        "status": "PASS",
-        "detail": "Saldo berjalan nyambung dari awal ke akhir"
+        "status": "REVIEW",
+        "detail": "MANDIRI-5432-2026-08.xlsx: Saldo awal dihitung dari transaksi, bukan saldo awal yang tercetak.; MANDIRI-5432-2026-08.xlsx: Saldo terakhir tercetak sebelum akhir periode; lengkapi saldo penutup periode."
       },
       {
-        "key": "clearing:cmv20ux7m003jdnpec3lra0o1",
+        "key": "clearing:cmv28k0si003ja3pe2cqxfsiq",
         "scope": "PT Ayam Nusantara",
         "title": "Kliring transfer (1199) = 0",
         "status": "PASS",
         "detail": "Semua transfer antar rekening berpasangan"
       },
       {
-        "key": "sanity:cmv20ux7m003jdnpec3lra0o1",
+        "key": "sanity:cmv28k0si003ja3pe2cqxfsiq",
         "scope": "PT Ayam Nusantara",
         "title": "Kewajaran pembukuan",
         "status": "PASS",
         "detail": "Tidak ada saldo janggal, pembiayaan di Laba Rugi, bulan kosong, tebakan yang diterima begitu saja, fluktuasi atau jurnal ganda"
       },
       {
-        "key": "sched:cmv20ux7m003jdnpec3lra0o1",
+        "key": "sched:cmv28k0si003ja3pe2cqxfsiq",
         "scope": "PT Ayam Nusantara",
         "title": "Jurnal terjadwal belum dicatat",
         "status": "REVIEW",
         "detail": "1 angsuran: Penyusutan aset tetap (garis lurus) (6/120) Rp 9.500.000"
       },
       {
-        "key": "inv:cmv20ux7m003jdnpec3lra0o1",
+        "key": "inv:cmv28k0si003ja3pe2cqxfsiq",
         "scope": "PT Ayam Nusantara",
         "title": "Persediaan akhir (stock opname)",
         "status": "REVIEW",
         "detail": "Persediaan akhir Agustus 2026 belum dicatat; saldo buku Rp 260.000.000"
       },
       {
-        "key": "masa:cmv20ux7m003jdnpec3lra0o1",
+        "key": "masa:cmv28k0si003ja3pe2cqxfsiq",
         "scope": "PT Ayam Nusantara",
         "title": "Pajak masa disetor",
         "status": "PASS",
         "detail": "Masa Juli 2026 disetor penuh sampai jatuh tempo; saldo PPN, PPh 21, PPh 4(2), 22 & 26, PPh 25 sesuai yang masih terutang"
       },
       {
-        "key": "faktur:cmv20ux7m003jdnpec3lra0o1",
+        "key": "faktur:cmv28k0si003ja3pe2cqxfsiq",
         "scope": "PT Ayam Nusantara",
         "title": "Faktur Coretax = buku",
         "status": "REVIEW",
         "detail": "Faktur keluaran: PPN faktur Rp 171.575.225 vs buku Rp 165.629.279 (selisih Rp 5.945.946); 1 faktur belum ada di buku. Faktur masukan: PPN faktur Rp 96.071.621 vs buku Rp 77.738.288 (selisih Rp 18.333.333); 1 faktur belum ada di buku."
       },
       {
-        "key": "tb:cmv20ux80003odnpe05jzlfur",
+        "key": "tb:cmv28k0sr003oa3peo523wyac",
         "scope": "Budi (Pemilik)",
         "title": "Neraca saldo seimbang",
         "status": "PASS",
         "detail": "Debit = kredit = Rp 411.270.000"
       },
       {
-        "key": "bs:cmv20ux80003odnpe05jzlfur",
+        "key": "bs:cmv28k0sr003oa3peo523wyac",
         "scope": "Budi (Pemilik)",
         "title": "Neraca: aset = liabilitas + ekuitas",
         "status": "PASS",
         "detail": "Total aset Rp 347.520.000"
       },
       {
-        "key": "bank:cmv20ux82003qdnpe6f59dman",
+        "key": "bank:cmv28k0st003qa3pe5p236vyt",
         "scope": "Budi (Pemilik)",
         "title": "Rekonsiliasi BCA Tahapan",
         "status": "PASS",
         "detail": "Saldo bank = buku besar = Rp 86.390.000"
       },
       {
-        "key": "cont:cmv20ux82003qdnpe6f59dman",
+        "key": "cont:cmv28k0st003qa3pe5p236vyt",
         "scope": "Budi (Pemilik)",
         "title": "Kelengkapan mutasi BCA Tahapan",
         "status": "PASS",
-        "detail": "Saldo berjalan nyambung dari awal ke akhir"
+        "detail": "Saldo berjalan nyambung dan sumber mencakup bulan penuh"
       },
       {
-        "key": "bank:cmv20ux83003sdnpeh8y94r4r",
+        "key": "bank:cmv28k0su003sa3pe21qiaqd8",
         "scope": "Budi (Pemilik)",
         "title": "Rekonsiliasi BRI Simpedes",
         "status": "REVIEW",
         "detail": "Mutasi bulan ini belum diimpor"
       },
       {
-        "key": "clearing:cmv20ux80003odnpe05jzlfur",
+        "key": "clearing:cmv28k0sr003oa3peo523wyac",
         "scope": "Budi (Pemilik)",
         "title": "Kliring transfer (1199) = 0",
         "status": "REVIEW",
         "detail": "Sisa Rp 11.000.000. Ada transfer yang pasangannya belum diimpor"
       },
       {
-        "key": "sanity:cmv20ux80003odnpe05jzlfur",
+        "key": "sanity:cmv28k0sr003oa3peo523wyac",
         "scope": "Budi (Pemilik)",
         "title": "Kewajaran pembukuan",
         "status": "PASS",
@@ -219,98 +219,112 @@
       "width": 672,
       "height": 744,
       "bytes": 36874,
-      "description": "Baris rekening koran demo dan jurnal terkait, nominal serta referensi sumber cocok."
+      "description": "Baris rekening koran demo dan jurnal terkait, nominal serta referensi sumber cocok.",
+      "sha256": "bb09117d4d6e0151c84cd136bc56b29b9f440ecd2e7f277d81339b2199409b9e"
     },
     {
       "file": "/product/bank-source.webp",
       "width": 639,
       "height": 218,
       "bytes": 12442,
-      "description": "Baris sumber rekening koran demo dengan nama file, nomor baris, dan nominal asli."
+      "description": "Baris sumber rekening koran demo dengan nama file, nomor baris, dan nominal asli.",
+      "sha256": "908ca4c463fc2b72c17a695c6fa39bb874ea3c11e444ab2c11d09a85f8add349"
     },
     {
       "file": "/product/journal.webp",
       "width": 639,
       "height": 175,
       "bytes": 5984,
-      "description": "Rincian debit dan kredit jurnal dari baris demo yang sama."
+      "description": "Rincian debit dan kredit jurnal dari baris demo yang sama.",
+      "sha256": "e4cf9e9dc9113910924b3870fb004657c72a66a53bf5dd7010920b832b6036c2"
     },
     {
       "file": "/product/trial-balance.webp",
       "width": 1184,
       "height": 1446,
       "bytes": 103496,
-      "description": "Neraca Saldo PT Ayam Nusantara Digital, Agustus 2026, dengan total seimbang dari buku demo."
+      "description": "Neraca Saldo PT Ayam Nusantara Digital, Agustus 2026, dengan total seimbang dari buku demo.",
+      "sha256": "220f4dff779b2800301648275ba8288165de144255f02aeb52bdc0fcc46457d4"
     },
     {
       "file": "/product/trial-balance-totals.webp",
       "width": 1120,
       "height": 39,
       "bytes": 4162,
-      "description": "Total debit dan kredit Neraca Saldo demo yang seimbang."
+      "description": "Total debit dan kredit Neraca Saldo demo yang seimbang.",
+      "sha256": "12c30f339945e85ca1baf5a1c0024a4e1e3ea592c1aada6aa373bf53834e0ace"
     },
     {
       "file": "/product/close-checklist.webp",
       "width": 1120,
-      "height": 1298,
-      "bytes": 84048,
-      "description": "Kontrol Tutup Buku Grup Ayam Nusantara Agustus 2026, dengan masalah asli, kontrol lolos, dan daftar periksa akuntan."
+      "height": 1346,
+      "bytes": 92898,
+      "description": "Kontrol Tutup Buku Grup Ayam Nusantara Agustus 2026, dengan masalah asli, kontrol lolos, dan daftar periksa akuntan.",
+      "sha256": "75ea64d40940f1f4374f14eb25bd74fe8447f3e2be7861cdc7bf308e391eea9a"
     },
     {
       "file": "/product/bank-journal-mobile.webp",
       "width": 386,
       "height": 880,
       "bytes": 34532,
-      "description": "Baris rekening koran demo dan jurnal terkait, nominal serta referensi sumber cocok."
+      "description": "Baris rekening koran demo dan jurnal terkait, nominal serta referensi sumber cocok.",
+      "sha256": "2c2063d08ea74cbe519dc53ead49bb0e798a674c7ce557a12ee0bcb75375c729"
     },
     {
       "file": "/product/bank-source-mobile.webp",
       "width": 357,
       "height": 246,
       "bytes": 12446,
-      "description": "Baris sumber rekening koran demo dengan nama file, nomor baris, dan nominal asli."
+      "description": "Baris sumber rekening koran demo dengan nama file, nomor baris, dan nominal asli.",
+      "sha256": "09ec2273f4559223e60fa91d20e8e0da5bb109841ace4b1455e6eb5ef51f674e"
     },
     {
       "file": "/product/journal-detail.webp",
       "width": 357,
       "height": 175,
       "bytes": 3794,
-      "description": "Rincian debit dan kredit jurnal dari baris demo yang sama."
+      "description": "Rincian debit dan kredit jurnal dari baris demo yang sama.",
+      "sha256": "38c1522983f2fd6b3dbe8ee41a1b3cfba39d868064e732eb3b9432718632cba9"
     },
     {
       "file": "/product/trial-balance-mobile.webp",
       "width": 390,
       "height": 2446,
       "bytes": 66754,
-      "description": "Neraca Saldo demo pada lebar telepon, kolom saldo debit dan kredit tetap terbaca."
+      "description": "Neraca Saldo demo pada lebar telepon, kolom saldo debit dan kredit tetap terbaca.",
+      "sha256": "0ab6d8a0dd3b8624ea35250637d545f762080e6ca776021103dfa438210d0a76"
     },
     {
       "file": "/product/trial-balance-totals-mobile.webp",
       "width": 383,
       "height": 39,
       "bytes": 2698,
-      "description": "Total seimbang dari Neraca Saldo demo pada lebar telepon."
+      "description": "Total seimbang dari Neraca Saldo demo pada lebar telepon.",
+      "sha256": "505fbdfb346a7a43dfb078aa0c3f57a1a86d76284510954a64132e50259b93ba"
     },
     {
       "file": "/product/close-checklist-mobile.webp",
       "width": 358,
-      "height": 2410,
-      "bytes": 82422,
-      "description": "Kontrol Tutup Buku Grup Ayam Nusantara Agustus 2026, dengan masalah asli, kontrol lolos, dan daftar periksa akuntan."
+      "height": 2658,
+      "bytes": 91610,
+      "description": "Kontrol Tutup Buku Grup Ayam Nusantara Agustus 2026, dengan masalah asli, kontrol lolos, dan daftar periksa akuntan.",
+      "sha256": "a98a22b0561d175f08204954cbc4f8ec3461bb65b49e82e6bf53d2e28061a94a"
     },
     {
       "file": "/product/close-blocker-detail.webp",
       "width": 358,
-      "height": 150,
-      "bytes": 5362,
-      "description": "Rincian kontrol demo yang masih perlu dicek sebelum buku ditutup."
+      "height": 166,
+      "bytes": 6174,
+      "description": "Rincian kontrol demo yang masih perlu dicek sebelum buku ditutup.",
+      "sha256": "d7879e081a0fe23b4cb9728ec4b03e6a2e80a1da7376524fa1b14cf72a506770"
     },
     {
       "file": "/product/close-pass-detail.webp",
       "width": 358,
       "height": 58,
       "bytes": 2790,
-      "description": "Kontrol Neraca Saldo demo yang lolos, dengan debit sama dengan kredit."
+      "description": "Kontrol Neraca Saldo demo yang lolos, dengan debit sama dengan kredit.",
+      "sha256": "4cc8eea3855319a45c9c489ed487d243432cb4c6333c45e7551be2288eed67df"
     }
   ]
 }

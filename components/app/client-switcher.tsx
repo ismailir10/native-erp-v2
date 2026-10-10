@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Building2, Home, Plus } from "lucide-react";
 import { Command as CommandRoot, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandShortcut } from "@/components/ui/command";
@@ -41,7 +41,8 @@ export function ClientSwitcherProvider({ clients, children }: { clients: Switche
   const period = search.get("period");
 
   const open = useCallback(() => { setQuery(""); setRecents(readRecents(known)); setOpen(true); }, [known]);
-  useEffect(() => {
+  const contextValue = useMemo(() => ({ open, clients }), [open, clients]);
+  useLayoutEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.isComposing || !(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== "k") return;
       e.preventDefault();
@@ -93,7 +94,7 @@ export function ClientSwitcherProvider({ clients, children }: { clients: Switche
   const here = parseClientPath(pathname);
 
   return (
-    <SwitcherContext.Provider value={{ open, clients }}>
+    <SwitcherContext.Provider value={contextValue}>
       {children}
       <CommandDialog open={isOpen} onOpenChange={setOpen} title="Cari klien" description="Ketik nama klien atau perusahaan, lalu Enter untuk membukanya." className="sm:max-w-lg">
         <CommandSearch query={query} setQuery={setQuery} placeholder={current ? "Cari klien atau halaman…" : "Cari klien…"}>

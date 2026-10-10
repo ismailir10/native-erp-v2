@@ -2,6 +2,15 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/* Landing headline subset. Reproduce from app/fonts/SOURCE.txt; bytes pinned by its coverage test. */
+@font-face {
+  font-family: "Buku Public Headline";
+  src: url("data:font/woff2;base64,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") format("woff2");
+  font-weight: 450;
+  font-style: normal;
+  font-display: swap;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 /*
@@ -152,6 +161,10 @@
     font-weight: 450;
     letter-spacing: -0.025em;
     line-height: 1.1;
+  }
+
+  .public-headline {
+    font-family: "Buku Public Headline", var(--font-sans);
   }
 
   /* Icon tile: pale-blue rounded square with a blue glyph, leads a card or a list row. */

@@ -3,7 +3,7 @@ import { ArrowRight, CircleAlert, CircleCheck, Clock3 } from "lucide-react";
 import type { WorkspaceOverview } from "@/lib/workspace";
 import { workspaceHref } from "@/lib/workspace";
 import { formatDateTime } from "@/lib/format";
-import { buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusPill } from "@/components/app/status";
 import { CountUp } from "@/components/motion/count-up";

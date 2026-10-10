@@ -8,7 +8,7 @@ export const PUBLIC_BANK_COVERAGE = BANKS.map((bank) => ({
 }));
 export const PUBLIC_BANK_COUNT = PUBLIC_BANK_COVERAGE.length;
 
-export type PublicProductAsset = { file: string; width: number; height: number; bytes: number; description: string };
+export type PublicProductAsset = { file: string; width: number; height: number; bytes: number; sha256: string; description: string };
 export type PublicProductEvidence = {
   period: string;
   firm: { name: string };

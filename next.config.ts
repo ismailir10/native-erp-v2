@@ -1,6 +1,14 @@
 import type { NextConfig } from "next";
+import capture from "./public/product/capture-manifest.json";
 
 const nextConfig: NextConfig = {
+  // Refreshed public evidence gets an exact content-versioned optimizer URL.
+  images: {
+    localPatterns: [
+      { pathname: "**", search: "" },
+      ...capture.assets.map((asset) => ({ pathname: asset.file, search: `?v=${asset.sha256}` })),
+    ],
+  },
   serverExternalPackages: ["pg", "exceljs", "pdfkit"],
   // AGENTS.md (and its CLAUDE.md symlink) is hand-maintained; stop `next dev` from rewriting it.
   agentRules: false,
