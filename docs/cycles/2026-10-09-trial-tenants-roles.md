@@ -335,7 +335,7 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   not match `otp_expiry`. The e2e test (local stack, which captures mail in Inbucket/Mailpit) opens the invite mail. The link host
   is the app's, a GET alone does not consume it, *Lanjutkan* sets the session, and a second use shows the Bahasa *expired* page.
   Screenshots of both emails at 375 px and desktop.
-- [ ] **T16 Auth email config as code.** After: T15. Files: `scripts/auth-config.ts`, the `package.json` script `auth:config`,
+- [~] **T16 Auth email config as code.** (claimed: agent-b) After: T15. Files: `scripts/auth-config.ts`, the `package.json` script `auth:config`,
   `tests/unit/auth-config.test.ts`, and the README section (*Email & login appearance*).
   Read the template files and the subjects from `config.toml`, then build the Management API payload (`mailer_subjects_*`,
   `mailer_templates_*_content`, `site_url`, `uri_allow_list`, `mailer_otp_exp`, `smtp_sender_name`). `GET` the project's auth config,
