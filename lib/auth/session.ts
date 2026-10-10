@@ -88,6 +88,13 @@ export async function checkCapability(db: Db, session: WorkspaceSession | null, 
   return session;
 }
 
+/** What the write controls of client components need to know (components/app/access-context.tsx). */
+export function accessView(session: Pick<WorkspaceSession, "access" | "member">) {
+  if (session.access.state === "READ_ONLY") return { canWrite: false, reason: readOnlyMessage(session.access) };
+  if (!can(session.member.role, "books.write")) return { canWrite: false, reason: capabilityRefusal("books.write") };
+  return { canWrite: true, reason: null };
+}
+
 /** For server actions: an error, not a redirect, so the form can show it. */
 export async function requireCapability(capability: Capability, opts: { clientId?: string } = {}) {
   return checkCapability(prisma, await getWorkspaceSession(), capability, opts);

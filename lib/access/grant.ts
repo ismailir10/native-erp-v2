@@ -1,4 +1,5 @@
 import type { GrantKind } from "@/lib/generated/prisma/enums";
+import { formatDateWib } from "@/lib/format";
 
 /**
  * An organisation's access, computed from its grants at the moment of the request (ADR 0017 §3). Never stored.
@@ -58,6 +59,6 @@ export function accessState(grants: readonly GrantLike[], firm: { suspendedAt: D
 /** "Masa uji coba berakhir pada 23 Okt 2026." — the refusal shown for a write while READ_ONLY. */
 export function readOnlyMessage(access: Pick<Access, "endsAt" | "kind">) {
   const what = access.kind === "TRIAL" ? "Masa uji coba" : "Masa akses";
-  const when = access.endsAt ? ` pada ${new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Jakarta" }).format(access.endsAt)}` : "";
+  const when = access.endsAt ? ` pada ${formatDateWib(access.endsAt)}` : "";
   return `${what} berakhir${when}. Data tetap tersimpan dan laporan bisa diunduh. Hubungi Buku untuk memperpanjang.`;
 }

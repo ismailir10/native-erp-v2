@@ -296,7 +296,7 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   — accept: the DB test covers the throttle (6th request in an hour refused silently), approve (org + grant + owner), reject, a
   duplicate member address refused, and a failed invite leaving no org. The e2e walk (local Supabase stack) goes request →
   backoffice approve → owner gets a password link via the admin API → lands in the workspace with the trial banner.
-- [~] **T10 Trial UX: banners, read-only, closed.** After: T03, T04. Files: `components/app/access-banner.tsx`,
+- [x] **T10 Trial UX: banners, read-only, closed.** After: T03, T04. Files: `components/app/access-banner.tsx`,
   `app/(app)/layout.tsx` (banner slot only), `app/akses-ditutup/page.tsx`, the write buttons' disabled state through one
   `useAccess()` context (`components/app/access-context.tsx`), plus `e2e/trial-expiry.spec.ts`.
   — accept: the e2e test, with an org whose grant ended yesterday, can open a report and download Excel. The import button
@@ -400,6 +400,12 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   `getClientForFirm` is gone. Remaining `firmId` client queries, all justified: `lib/clients/modules.ts` only annotates rows already
   scoped; `lib/auth/operator.ts` is CLI only; `lib/evidence/*`, `lib/upload-links.ts` and `lib/clients/delete.ts` check a client id
   their guarded caller passed; `lib/queries.ts` `clientStatuses` has no caller.
+- T10: `components/app/access-banner.tsx` (≤ 7 days left: *Uji coba berakhir dalam N hari (tanggal)…*; ended: the read-only
+  message), `components/app/access-context.tsx` (`AccessProvider`, `useAccess`, `WriteBlockedNote`) fed by `accessView(session)` in
+  the app layout. Both import forms disable their submit and say why. `formatDateWib` in `lib/format.ts` is used by the banner and
+  `readOnlyMessage`. `/akses-ditutup` stays on the auth shell from T03. `scripts/e2e-setup.ts` adds two trial organisations (ended
+  yesterday, ending in 3 days) and gives the e2e AKUNTAN every demo client (assignments are needed since T03). Other write buttons rely
+  on the server refusal (toast with the same message); more can opt in with `useAccess()`.
 
 ## Verification
 - T01: full `npx vitest run`: 203 of 204 files passed; the one failure was `migration-protected-tables` refusing the backfill's role
@@ -411,6 +417,8 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   September clock before the firm's grant started (test backdates the grant). Re-run: `upload-links` + `action-access` → 10 passed;
   `action-guards` → 9 passed; lint ✓, typecheck ✓.
 - T05: full `npx vitest run` → 210 files, 1408 tests passed; lint ✓, typecheck ✓.
+- T10: `npm run build` ✓; `playwright test e2e/trial-expiry.spec.ts e2e/qa-access.spec.ts` (local Supabase stack) → 7 passed.
+  Screenshots of the banner on Beranda and the read-only import at 1440 and 390 px were looked at.
 
 ## Ship Notes
 

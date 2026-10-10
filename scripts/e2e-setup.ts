@@ -5,7 +5,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { createPrisma } from "../lib/db";
 import { ensureLocalAdmin } from "../lib/auth/operator";
 import { createSupabaseAdmin } from "../lib/supabase/admin";
-import { createFirm } from "../lib/setup";
+import { createClient, createFirm } from "../lib/setup";
+import { endOfDayJakarta } from "../lib/access/grant";
 
 /**
  * Seed synthetic books and create the e2e member through the Supabase admin API (a real account with a
@@ -29,10 +30,25 @@ async function setup() {
     const auth = createSupabaseAdmin().auth;
     const akuntan = { email: "akuntan@buku.example", password: randomBytes(12).toString("base64url") };
     await ensureLocalAdmin(db, auth, { ...akuntan, name: "Akuntan uji", firmId: firm.id });
-    await db.firmMember.update({ where: { email: akuntan.email }, data: { role: "AKUNTAN" } });
+    // An AKUNTAN works on assigned clients (ADR 0017); like a CLI invitation, this one gets every demo client.
+    const clients = await db.client.findMany({ where: { firmId: firm.id }, select: { id: true } });
+    await db.firmMember.update({ where: { email: akuntan.email }, data: { role: "AKUNTAN", clientAccess: { deleteMany: {}, create: clients.map((c) => ({ clientId: c.id })) } } });
     const other = { email: "admin-lain@buku.example", password: randomBytes(12).toString("base64url") };
     const otherFirm = await db.firm.findFirst({ where: { name: "KAP Uji Lain" } }) ?? await db.$transaction((tx) => createFirm(tx, "KAP Uji Lain"));
     await ensureLocalAdmin(db, auth, { ...other, name: "Admin firma lain", firmId: otherFirm.id });
+    // Trial accounts for e2e/trial-expiry.spec.ts (ADR 0017): one organisation whose trial ended yesterday, one ending in 3 days.
+    const wibDay = (offset: number) => new Date(Date.now() + 7 * 3600_000 + offset * 86_400_000).toISOString().slice(0, 10);
+    const trialFirm = async (name: string, endsOn: string) => (await db.firm.findFirst({ where: { name } })) ?? db.$transaction(async (tx) => {
+      const f = await createFirm(tx, name, { grant: { kind: "TRIAL", startsAt: new Date(Date.now() - 20 * 86_400_000), endsAt: endOfDayJakarta(endsOn), note: "e2e" } });
+      await createClient(tx, f.id, { name: `Klien ${name}`, industry: "jasa", entities: [{ name: `PT ${name}`, shortName: name, kind: "PT", banks: [{ bank: "BCA", number: "9999999999", label: "BCA Giro" }] }] });
+      return f;
+    });
+    const ended = { email: "pemilik-berakhir@buku.example", password: randomBytes(12).toString("base64url") };
+    await ensureLocalAdmin(db, auth, { ...ended, name: "Pemilik uji berakhir", firmId: (await trialFirm("Uji Berakhir", wibDay(-1))).id });
+    const ending = { email: "pemilik-segera@buku.example", password: randomBytes(12).toString("base64url") };
+    await ensureLocalAdmin(db, auth, { ...ending, name: "Pemilik uji segera", firmId: (await trialFirm("Uji Segera", wibDay(3))).id });
+    writeFileSync(".playwright/credentials-trial-ended.json", JSON.stringify(ended), { mode: 0o600 });
+    writeFileSync(".playwright/credentials-trial-ending.json", JSON.stringify(ending), { mode: 0o600 });
     writeFileSync(".playwright/credentials-akuntan.json", JSON.stringify(akuntan), { mode: 0o600 });
     writeFileSync(".playwright/credentials-other-firm.json", JSON.stringify(other), { mode: 0o600 });
   } finally { await db.$disconnect(); }
