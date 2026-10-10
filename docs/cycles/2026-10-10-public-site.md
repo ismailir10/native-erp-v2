@@ -206,7 +206,7 @@ use, accounting-invariant change, promised deletion schedule, production write, 
 - [x] T1 Public-home dispatch and shared public navigation — accept: signed-out home is public, firm/company/
   admin/support destinations and protected routes hold; header/footer work at 390 px. Deps: approval. Reuse
   `getWorkspaceSession`, `getPlatformAdmin`, existing workspace layout, `PublicShell`, `BrandMark`, UI primitives.
-- [ ] T2 Draft Terms/Privacy and contact — accept: both legal pages render required support/trial/AI/retention
+- [x] T2 Draft Terms/Privacy and contact — accept: both legal pages render required support/trial/AI/retention
   sections, visible draf notes and valid/fallback contact with passing content tests. Deps: T1. Reuse public shell
   and server-only `BUKU_SUPPORT_EMAIL`; source facts from `lib/signup.ts`, `lib/auth/support.ts`, `lib/ai`,
   `lib/ocr`, `lib/evidence`, `lib/controls/ai-review.ts`, `lib/reports/report-comment.ts` and the access ADR/cycle.
@@ -245,6 +245,11 @@ demo capture environment. This spec stage has one tightly connected document and
   Standards, spec and security reviews passed after mailbox encoding and live-support coverage fixes.
   Gate: lint/typecheck pass; 224 files / 1,535 tests pass. Early 390 px browser walk returns 200 on all five
   public pages with one h1 and no horizontal overflow; full authenticated flow verification follows in T6.
+
+- T2: both dated legal pages share the public frame/contact and prominently remain drafts. Trial-request
+  fields and separate throttle records, honest retention, expiry, quiet read-only support, task-specific AI
+  payloads and data rights are disclosed. Both content/source reviews passed; eight rendered legal tests pass.
+  Gate: lint/typecheck pass; the completed full suite passes 224 files / 1,535 tests, including T2 and T3.
 
 ## Verification
 
