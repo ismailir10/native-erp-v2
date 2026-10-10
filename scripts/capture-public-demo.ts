@@ -6,6 +6,7 @@
  */
 import "dotenv/config";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium, expect, type Locator, type Page } from "@playwright/test";
@@ -109,7 +110,7 @@ async function main() {
     assert.notEqual(period?.status, "LOCKED", "August must remain open for the honest blocker screenshot.");
 
     const browser = await chromium.launch(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : undefined);
-    const assets: { file: string; width: number; height: number; bytes: number; description: string }[] = [];
+    const assets: { file: string; width: number; height: number; bytes: number; sha256: string; description: string }[] = [];
     try {
       const context = await browser.newContext({ baseURL: target.origin, viewport: { width: 1440, height: 1700 }, deviceScaleFactor: 1, reducedMotion: "reduce" });
       let signedIn = false;
@@ -140,7 +141,7 @@ async function main() {
           : await locator.screenshot({ animations: "disabled" });
         const { data, info } = await sharp(png).webp({ quality: 86, effort: 6 }).toBuffer({ resolveWithObject: true });
         await writeFile(join(OUTPUT, name), data);
-        assets.push({ file: `/product/${name}`, width: info.width, height: info.height, bytes: data.byteLength, description });
+        assets.push({ file: `/product/${name}`, width: info.width, height: info.height, bytes: data.byteLength, sha256: createHash("sha256").update(data).digest("hex"), description });
       };
       const scope = `period=${PERIOD}&entity=${entity.id}`;
       const base = `/clients/${client.id}`;

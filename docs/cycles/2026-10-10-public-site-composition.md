@@ -15,7 +15,8 @@ startup-program reviewers, retaining the genuine synthetic evidence from the pre
    views on useful details, while keeping complete captured views available through native disclosures.
 3. Keep Bahasa, existing typography and colour tokens, flat surfaces, restrained existing arrival/CheckDraw
    motion and reduced-motion support. No em dashes in public copy, new dependency or motion piece.
-4. Preserve all claims, captured numbers, routes, consent/legal wording, session dispatch and tenant behavior.
+4. Keep claims qualified and captured numbers current; preserve routes, consent/legal wording, session dispatch
+   and tenant behavior.
    The owner's standing instruction to proceed through merge also applies to this requested visual iteration.
 
 ## Acceptance criteria
@@ -29,7 +30,7 @@ startup-program reviewers, retaining the genuine synthetic evidence from the pre
   distinctions, visible synthetic labels and working trial/deck/legal links. No horizontal overflow or em dashes.
 - [x] Keyboard, semantic headings, image descriptions, native disclosure behavior and reduced motion pass.
   Mobile production-build Lighthouse performance and accessibility each remain at least 95 on all three public pages.
-- [x] Local task/full gates pass; desktop/phone visual iterations and separate standards/spec reviews show no
+- [ ] Local task/full gates pass; desktop/phone visual iterations and separate standards/spec reviews show no
   unresolved in-scope polish. Deck coverage, human review, traceability, close, exports and data claims still agree.
 
 ## Verify flows
@@ -54,13 +55,14 @@ screenshots at both widths and default mobile Lighthouse on the production build
 
 ## Non-goals
 
-New product features, accounting changes, data capture/regeneration, auth or legal changes, pricing, traction,
+New product features, accounting changes, new demonstration scenarios, auth or legal changes, pricing, traction,
 analytics, provider affiliation, hosted configuration and startup application submission.
 
 ## Assumptions
 
 This is an explicitly requested visual follow-up within the owner's previously approved scope and merge
-authorization. Existing capture evidence remains current because the book/UI feature behavior is unchanged.
+authorization. Capture evidence must agree with the integrated main branch. If concurrent accounting work changes the same
+synthetic controls, refresh only the affected saved views through the existing guarded read-only capture script.
 
 ## Gate re-openers
 
@@ -71,9 +73,11 @@ data/configuration writes or new capability claims.
 
 - [x] T1 Redesign and iterate the public composition: stronger opening, useful source/close/report proof, genuine
   evidence and full-view disclosures; reuse tokens, saved captures, money formatter and approved motion.
-- [x] T2 Verify and prepare release: complete gates, independent reviews, final screenshots/Lighthouse and accurate
+- [x] T3 Integrate the updated base and resolve evidence/cache/loading findings without changing product,
+  auth, context or client-control implementations. Depends on T1; required by existing accuracy/performance criteria.
+- [ ] T2 Verify and prepare release: complete gates, independent reviews, final screenshots/Lighthouse and accurate
   cycle/PR evidence. Exact-head CI and owner-authorised merge are subsequent release gates tracked in Ship Notes.
-  Depends on T1; no changed deck claim is expected.
+  Depends on T1 and T3; the Rupiah qualification must match the integrated deck.
 
 ## Implementation
 
@@ -87,7 +91,8 @@ data/configuration writes or new capability claims.
   folded reports. Actual source row and account names give the illustration meaning. Sections vary their scale;
   readable close details and exact manifest-derived control counts replace the full-height checklist, while a
   report preview pairs with a native-size genuine total crop. Full captures remain available at both widths.
-  Phone headings, supporting copy and spacing are tighter. No assets, product claims or dependencies changed.
+  Phone headings, supporting copy and spacing are tighter. The initial visual task changed no assets, product
+  claims or dependencies. See the integration note below for the narrow evidence refresh required by main.
 - T1 iteration: five visual rounds improved contours, headline balance, close detail scale, caption/navigation
   accuracy, phone length and desktop total legibility. The headline remains plain semantic text; CSS balances
   its lines. Separate standards/spec reviews clear the final source and desktop/phone production captures.
@@ -97,14 +102,47 @@ data/configuration writes or new capability claims.
 - T1 gate: lint and typecheck pass; 226 files / 1,540 tests pass (337.48 seconds); production build passes.
   Complete book/browser gates and Lighthouse remain the T2 release evidence.
 
-- T2: all required local gates complete on the unchanged T1 runtime. Final production captures, complete desktop
+- T2, pre-integration: all required local gates completed on the unchanged T1 runtime. Production captures, complete desktop
   and phone disclosures, keyboard links, reduced motion and trial acknowledgement are inspected. The React
   checklist and separate standards/spec reviews pass with no unresolved visual or source finding. No routes,
   setup instructions, environment variables or capability claims changed, so the existing README remains true.
 
+- Integration: main advanced to `f4e4280` (bank-import correctness) before PR creation; rebase was clean.
+  Its stricter source-completeness controls change the unchanged demo from 14 PASS / 7 REVIEW to 12 PASS /
+  9 REVIEW. Mandiri reconciliation and completeness now require review, and BCA completeness detail changes.
+  The existing guarded capture refreshes three affected close screenshots and the manifest, verifies all 222
+  source rows and 1,765 book checks, and makes no book/model write. Source/journal and TB values remain exact.
+  The bank-format copy now explicitly qualifies Rupiah accounts to match the revised decks.
+- Evidence delivery: review caught stale desktop optimizer bytes at unchanged image URLs. Capture output now
+  records each WebP's SHA-256, and required `next/image` plus responsive picture sources use that hash in their
+  URLs. Next.js permits the exact manifest path/hash pairs alongside existing query-free images. Tests recompute
+  file hashes and verify rendered URLs. A separate guarded capture into scratch verified future regeneration.
+- Loading: the integrated page initially measured 91/100, below the original mobile target. Branch-local member
+  imports reached 94/100 but retained workspace controls. The final thin client facade splits only Ask and Scope
+  through default-SSR dynamic imports. The app shell retains its original direct imports; component
+  implementations, JSX/props, guards, providers, contexts, root history and early-input adoption are untouched.
+  Pure button variants are extracted unchanged and re-exported; server style users avoid the interactive
+  primitive. Shared public navigation retains client routing with prefetch disabled; signed-out home uses
+  document links. Final required optimized-image measurements are home 95/100, Terms 96/100 and Privacy
+  96/100, with no layout shift. Home script transfer is 284,442 bytes versus roughly 299–305 KB in intermediate
+  builds. Unsupported server-only lazy boundaries and a native-image experiment were removed; the original
+  `next/image` requirement remains satisfied.
+- Hydration finding: a broader nine-control facade reached 96/100 and 197,866 script bytes, but its full suite
+  caught an immediate Ctrl+K lost on Beranda (87 of 88 passed). The switcher's native listener was not installed
+  when the visible SSR heading became ready; a read-only browser probe confirmed that timing. Making only
+  the switcher provider eager still failed (8 of 9 focused cases). Restoring the shell's original loading paths
+  resolves the observed regression with all nine unchanged focused cases passing (44.5 seconds), including the
+  immediate shortcut, desktop/phone switching, early typed input and persistent context. The lower-transfer
+  shell version and failed runs are not release evidence. The final two-leaf runtime requires renewed full
+  gates; interrupted runs and below-target measurements do not count as passes.
+
+- T3 task gate: lint, typecheck and production build pass; 236 files / 1,871 unit/database tests pass
+  (564.78 seconds). The two-leaf runtime and final public measurements/captures are frozen. The full book and
+  authenticated browser gate is tracked by T2 below.
+
 ## Verification
 
-### Verified locally: b334875d7bcc8641f31a5d7cc472ab9834445b0d, 2026-10-10
+### Pre-integration verification: b334875d7bcc8641f31a5d7cc472ab9834445b0d, 2026-10-10
 
 - Gate: `npm run lint && npm run typecheck && npm test` passes: 226 files / 1,540 tests (337.48 seconds).
   `npm run build && npm run demo:reset && npm run verify:books && npm run test:e2e` passes:
@@ -146,8 +184,12 @@ data/configuration writes or new capability claims.
   The paper/ledger composition borrows their drawing grammar without importing illustrative charts or loops.
 - Release: open a draft PR to main with final highlights, then add the e2e label and mark ready. Require check
   and e2e success on the exact pushed head before the owner-authorised merge. No preview or separate promotion.
-- Blast radius: two public presentation components and this record. No auth/schema/accounting/configuration or
-  dependency changes; no migrations or operator apply step. Rollback: revert the visual refinement merge.
+- Blast radius: public composition, typed capture/hash metadata, exact optimizer queries, unchanged button
+  styles and member UI import boundaries, existing evidence assertions, three refreshed close assets and this
+  record. No auth/schema/accounting, hosted configuration or dependency changes; no migrations or operator
+  apply step. Rollback: revert the refinement merge. Member hydration/navigation is the additional risk covered
+  by the complete browser suite, including early input, scope/history, sidebar and support access.
+
 - Post-merge: confirm the merge deployment succeeds and public home contains the refined illustration/story;
   GET legal/login/trial pages, genuine images, fonts, metadata and icons with verified TLS. Do not create a
   production test account. Signed-in real-firm and build-log checks require the same operator access as before.

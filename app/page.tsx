@@ -3,10 +3,7 @@ import type { Metadata } from "next";
 import { getWorkspaceSession } from "@/lib/auth/session";
 import { getPlatformAdmin } from "@/lib/auth/platform";
 import { PublicLanding } from "@/components/app/public-landing";
-import WorkspaceHome from "@/components/app/workspace-home";
 import type { WorkspaceSearchParams } from "@/components/app/workspace-page";
-import AppLayout from "./(app)/layout";
-import AppTemplate from "./(app)/template";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -29,5 +26,9 @@ export default async function HomePage({ searchParams }: { searchParams: Workspa
   // A live, verified support session keeps the selected member's workspace.
   if (!session?.support && await getPlatformAdmin()) redirect("/backoffice");
   if (!session) return <PublicLanding />;
+  // Keep member-only module loading behind the existing session dispatch.
+  const [{ default: WorkspaceHome }, { default: AppLayout }, { default: AppTemplate }] = await Promise.all([
+    import("@/components/app/workspace-home"), import("./(app)/layout"), import("./(app)/template"),
+  ]);
   return <AppLayout><AppTemplate><WorkspaceHome searchParams={searchParams} /></AppTemplate></AppLayout>;
 }

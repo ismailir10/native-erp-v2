@@ -1,6 +1,5 @@
 import { PageHeader, NextStep } from "@/components/app/page-header";
-import { WorkspaceScopeBar } from "@/components/app/workspace-scope";
-import { WorkspaceAsk } from "@/components/app/workspace-ask";
+import { WorkspaceScopeBar, WorkspaceAsk } from "@/components/app/workspace-lazy";
 import { WorkspaceTasks, WorkspaceClose, WorkspaceFinancials } from "@/components/app/workspace-overview";
 import { loadWorkspace, WorkspaceScopeError, type WorkspaceSearchParams } from "@/components/app/workspace-page";
 import { redirect } from "next/navigation";

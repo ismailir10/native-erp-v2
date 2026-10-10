@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import sharp from "sharp";
@@ -22,6 +23,7 @@ describe("saved public product evidence", () => {
     const disclosure = dom.querySelector("[data-testid='public-bank-formats']")!;
     expect(disclosure.querySelector("summary")?.textContent).toContain(`(${PUBLIC_BANK_COUNT} bank)`);
     expect(disclosure.textContent).toContain("bukan semua file dari bank yang sama");
+    expect(disclosure.textContent).toContain("Rekening Rupiah");
     const rows = [...disclosure.querySelectorAll("dl > div")];
     expect(rows).toHaveLength(PUBLIC_BANK_COVERAGE.length);
     for (const claim of PUBLIC_BANK_COVERAGE) {
@@ -52,10 +54,20 @@ describe("saved public product evidence", () => {
       if (figure.querySelector("picture")) {
         expect(figure.querySelector("source")?.getAttribute("media")).toBe("(max-width: 767px)");
         const mobile = figure.querySelector("source")?.getAttribute("srcset");
-        expect(capture.assets.some((asset) => asset.file === mobile)).toBe(true);
+        const url = new URL(mobile!, "http://localhost");
+        const asset = capture.assets.find((entry) => entry.file === url.pathname);
+        expect(asset).toBeDefined();
+        expect(url.searchParams.get("v")).toBe(asset?.sha256);
       }
     }
-    for (const figure of figures) expect(figure.querySelector("img")?.getAttribute("loading")).toBe("lazy");
+    for (const image of dom.querySelectorAll("img")) {
+      expect(image.getAttribute("loading")).toBe("lazy");
+      const rendered = new URL(image.getAttribute("src")!, "http://localhost");
+      const original = new URL(rendered.searchParams.get("url") ?? rendered.href, "http://localhost");
+      const asset = capture.assets.find((entry) => entry.file === original.pathname);
+      expect(asset).toBeDefined();
+      expect(original.searchParams.get("v")).toBe(asset?.sha256);
+    }
     expect(dom.body.textContent).toContain(capture.source.fileName);
     expect(dom.body.textContent).not.toContain("—");
     expect(dom.body.textContent).not.toMatch(/Supabase|Anthropic|OpenAI|OpenCode|Vercel|revolusioner|powered by AI/);
@@ -67,6 +79,7 @@ describe("saved public product evidence", () => {
       const bytes = await readFile(join(process.cwd(), "public", asset.file));
       const metadata = await sharp(bytes).metadata();
       expect(bytes.length).toBe(asset.bytes);
+      expect(createHash("sha256").update(bytes).digest("hex")).toBe(asset.sha256);
       expect(metadata.format).toBe("webp");
       expect(metadata.width).toBe(asset.width);
       expect(metadata.height).toBe(asset.height);
