@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Local Supabase Auth (ADR 0015): the same throwaway stack CI boots, so development and e2e never create accounts in production.
-# Needs Docker. Starts the stack (Auth + gateway only) and writes its URL and keys into .env. Idempotent.
+# Needs Docker. Starts the stack (Auth, gateway and the local mail catcher that e2e/auth-links.spec.ts reads) and writes its URL and keys
+# into .env. Idempotent.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 SUPABASE="npx -y supabase@2.118.0" # pinned, as in CI
 command -v docker >/dev/null 2>&1 || { echo "local-auth: Docker is required (docker.com, or colima on macOS)" >&2; exit 1; }
 docker info >/dev/null 2>&1 || { echo "local-auth: start Docker first" >&2; exit 1; }
-$SUPABASE start -x realtime,storage-api,imgproxy,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor >/dev/null
+$SUPABASE start -x realtime,storage-api,imgproxy,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor >/dev/null
 env=$($SUPABASE status -o env)
 get() { printf '%s\n' "$env" | sed -n "s/^$1=\"\{0,1\}\([^\"]*\)\"\{0,1\}$/\1/p" | head -1; }
 url=$(get API_URL)

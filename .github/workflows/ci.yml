@@ -42,7 +42,7 @@ jobs:
         with: { version: 2.118.0 } # pinned: resolving "latest" calls the GitHub API, which rate-limits CI
       - name: Supabase Auth (local stack)
         run: |
-          supabase start -x realtime,storage-api,imgproxy,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+          supabase start -x realtime,storage-api,imgproxy,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
           supabase status -o env > "$RUNNER_TEMP/supabase.env"
           . "$RUNNER_TEMP/supabase.env"
           echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL" >> "$GITHUB_ENV"
