@@ -11,12 +11,36 @@ import { planRejections } from "@/lib/evidence/plan-stats";
 import { ocrEnabled } from "@/lib/ocr/draft";
 import { OcrSettingCard } from "@/components/app/ocr-setting";
 import { isAdminRole } from "@/lib/auth/permissions";
+import { LinkTabs } from "@/components/app/link-tabs";
+import { TeamCard } from "@/components/app/team-card";
+import { listTeam } from "@/lib/team";
+import type { SearchParams } from "@/lib/scope";
 
 export const metadata = { title: "Pengaturan" };
 
-export default async function SettingsPage() {
+export default async function SettingsPage({ searchParams }: { searchParams: SearchParams }) {
   const { firm, member } = await requireWorkspaceSession();
   const isAdmin = isAdminRole(member.role);
+  // Tim (ADR 0017 §5): owners and admins manage people here; other roles see only the general section.
+  const tab = (await searchParams).tab === "tim" && isAdmin ? "tim" : "umum";
+  const tabs = isAdmin ? <LinkTabs label="Bagian pengaturan" items={[{ href: "/settings", label: "Umum", active: tab === "umum" }, { href: "/settings?tab=tim", label: "Tim", active: tab === "tim" }]} /> : null;
+  if (tab === "tim") {
+    const team = await listTeam(prisma, firm.id);
+    return (
+      <div className="space-y-6">
+        <PageHeader title="Pengaturan" description="Berlaku untuk semua klien di kantor ini." />
+        {tabs}
+        <NextStep>{team.kind === "PERUSAHAAN" ? "Undang anggota tim dan pilih perannya." : "Undang anggota tim, pilih perannya, lalu tugaskan klien untuk akuntan dan peninjau."}</NextStep>
+        <TeamCard
+          members={team.members.map((m) => ({ id: m.id, name: m.name, email: m.email, role: m.role, disabled: m.disabled, clientIds: m.clientAccess.map((a) => a.clientId) }))}
+          clients={team.clients}
+          me={{ id: member.id, role: member.role }}
+          company={team.kind === "PERUSAHAAN"}
+          seatLimit={team.seatLimit}
+        />
+      </div>
+    );
+  }
   const [cfg, lastCall, plans, ocr] = await Promise.all([resolveAiConfig(prisma), prisma.aiUsage.findFirst({ where: { firmId: firm.id, model: { not: "demo-seed" } }, orderBy: { at: "desc" } }), planRejections(prisma, firm.id), ocrEnabled(prisma)]);
   const secretReady = settingsSecretConfigured();
   const live = Boolean(cfg.apiKey && cfg.model);
@@ -24,6 +48,7 @@ export default async function SettingsPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Pengaturan" description="Berlaku untuk semua klien di kantor ini." />
+      {tabs}
       {!isAdmin ? (
         <NextStep>Hanya admin kantor yang dapat mengubah pengaturan ini. Anda bisa melihat statusnya di bawah.</NextStep>
       ) : !secretReady ? (

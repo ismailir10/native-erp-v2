@@ -302,7 +302,7 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   — accept: the e2e test, with an org whose grant ended yesterday, can open a report and download Excel. The import button
   explains the expiry, and a forced server-action call returns the same message. With ≤ 7 days left the banner shows the count.
   Screenshots at desktop and 390 px.
-- [~] **T11 Team management (Pengaturan → Tim).** After: T03, T04. Files: `app/(app)/settings/team/**`, `app/team-actions.ts`,
+- [x] **T11 Team management (Pengaturan → Tim).** After: T03, T04. Files: `app/(app)/settings/team/**`, `app/team-actions.ts`,
   `lib/team.ts` (invite via `inviteUser`, setRole, disable/enable via `revokeUser`-style, assignClients, transferOwnership, seat
   limit), `components/app/team-table.tsx`, plus `tests/db/team.test.ts` and `e2e/roles.spec.ts`.
   — accept: the DB test proves the last OWNER cannot be demoted or disabled, an ADMIN cannot touch an OWNER, and the seat limit
@@ -406,6 +406,12 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   `readOnlyMessage`. `/akses-ditutup` stays on the auth shell from T03. `scripts/e2e-setup.ts` adds two trial organisations (ended
   yesterday, ending in 3 days) and gives the e2e AKUNTAN every demo client (assignments are needed since T03). Other write buttons rely
   on the server refusal (toast with the same message); more can opt in with `useAccess()`.
+- T11: `lib/team.ts` (invite through `inviteUser` then set the chosen clients; set role; assign clients; disable/enable with ban and
+  unban; transfer ownership; rules: an ADMIN never touches or makes an OWNER, nobody edits themselves, the only active OWNER stays,
+  the seat limit counts active members), `app/team-actions.ts` (`members.manage`, transfer `org.transfer`), `components/app/team-card.tsx`,
+  and `/settings?tab=tim` (owners and admins only; `LinkTabs` Umum · Tim). The page file is `app/(app)/settings/page.tsx`, not a new
+  `settings/team` route, so T07 should expect the tab there. Invitations are DB-tested with a fake auth API because the local stack
+  sends no mail.
 
 ## Verification
 - T01: full `npx vitest run`: 203 of 204 files passed; the one failure was `migration-protected-tables` refusing the backfill's role
@@ -419,6 +425,8 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
 - T05: full `npx vitest run` → 210 files, 1408 tests passed; lint ✓, typecheck ✓.
 - T10: `npm run build` ✓; `playwright test e2e/trial-expiry.spec.ts e2e/qa-access.spec.ts` (local Supabase stack) → 7 passed.
   Screenshots of the banner on Beranda and the read-only import at 1440 and 390 px were looked at.
+- T11: `tests/db/team.test.ts` → 5 passed; `action-guards` → 10 passed; `npm run build` ✓; `playwright test roles, qa-access,
+  trial-expiry` → 8 passed. Screenshots of the Tim tab at 1440 and 390 px were looked at.
 
 ## Ship Notes
 
