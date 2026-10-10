@@ -178,7 +178,14 @@ its end date. Data is never deleted when access ends.
 grants (give, change date, revoke with a reason), the owner's invitation, limits (active members, AI tokens per month), suspension,
 read-only **support sessions** and *Riwayat Buku*. *Pengaturan AI* holds the one AI key, model and OCR switch every organisation
 uses; organisations only see their status and their own monthly use. Everything a Buku admin does is in Buku's own log, never in
-an organisation's *Riwayat*. Buku admins are created only from the CLI:
+an organisation's *Riwayat*.
+
+**Trial requests** come from the public `/daftar` page (linked from the login page as *Minta uji coba*); Supabase self-signup stays
+off. Each request waits in *Backoffice → Permintaan*: *Setujui* with an end date creates the organisation, its trial grant and the
+owner's invitation in one step (a failed invitation leaves nothing), *Tolak* needs a reason. The form gives the same answer whether a
+request was stored, a duplicate, throttled (5 per hour per address and per IP) or a bot, so it never tells who already has access.
+
+Buku admins are created only from the CLI:
 
 ```bash
 npm run access -- operator add --email ops@example.com --name "Ops" [--url https://origin]   # Buku admin (invited, or an existing login)

@@ -545,7 +545,8 @@ firm; every AKUNTAN assigned to every client). No row of `FirmMember`, `AppSetti
 4. Before the first external trial (from the Spec's owner actions): Buku domain → `APP_URL`; Resend domain (SPF, DKIM, DMARC) as
    Supabase SMTP, sender *Buku*; a support address (`BUKU_SUPPORT_EMAIL`); `npm run auth:config -- --apply` (T16, README *Email &
    login appearance*); check TOTP MFA is enabled on the hosted project (Authentication → MFA); publish Terms and Privacy covering
-   support access (UU PDP).
+   support access and the trial request data (name, email, phone, note; UU PDP).
+5. Trial requests: `/daftar` is public once deployed. Check *Backoffice → Permintaan* for new requests; nothing notifies you yet.
 
 **Env vars:** none new for the app. `APP_URL` now also drives the local Auth site URL (`npm run auth:local`, CI); `BUKU_SUPPORT_EMAIL`,
 `SUPABASE_PROJECT_REF` and `SUPABASE_ACCESS_TOKEN` are only for `auth:config` (T16).
@@ -554,7 +555,7 @@ firm; every AKUNTAN assigned to every client). No row of `FirmMember`, `AppSetti
 (no down-migration). A revert brings back the old AI settings page, which reads the same `AppSetting` rows.
 
 **Follow-ups (not this cycle):** a per-organisation OCR consent; one person in several organisations (org switcher); billing;
-deleting long-expired trials.
+deleting long-expired trials; a notification to Buku when a trial request arrives; purging old rejected requests.
 
 ## Handoffs
 - **From T17 (agent-b), for driver/T04/T06:** `userMessage(error, fallback?)` is ready for unexpected server errors. Preserve
