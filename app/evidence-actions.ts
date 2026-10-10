@@ -1,6 +1,7 @@
 "use server";
 import { prisma } from "@/lib/db";
 import { requireCapability } from "@/lib/auth/session";
+import { userMessage } from "@/lib/errors/user-message";
 import type { Capability } from "@/lib/auth/permissions";
 import { requireEvidenceEnabled } from "@/lib/evidence/config";
 import { appendUpload, beginUpload, createIntake, finishUpload, intakeForFirm, lockIntake } from "@/lib/evidence/store";
@@ -32,9 +33,13 @@ async function uploadFirm(uploadId: string) {
 }
 async function memberId() { return (await requireCapability("books.write")).member.id; }
 async function provider() { const cfg = await resolveAiConfig(prisma); return cfg.apiKey && cfg.model ? new OpenAiCompatibleProvider(cfg) : null; }
+/**
+ * The evidence modules refuse in Bahasa with plain Errors, shown as they are. A database or provider error (it carries a `code`) never
+ * reaches the screen: it is logged with a reference and replaced by a Bahasa message (T17 handoff).
+ */
 async function result<T>(fn: () => Promise<T>): Promise<{ ok: true; data: T } | { ok: false; error: string }> {
   try { return { ok: true, data: await fn() }; }
-  catch (error) { return { ok: false, error: error instanceof Error ? error.message : "Proses gagal. Coba kembali." }; }
+  catch (error) { return { ok: false, error: error instanceof Error && !("code" in error) ? error.message : userMessage(error, "Proses gagal. Coba kembali.") }; }
 }
 export async function createEvidenceAction(clientId?: string) {
   return result(async () => ({ id: (await createIntake(prisma, await firm("books.write", clientId), clientId)).id }));

@@ -289,7 +289,7 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   `createOrganisation(kind)` also creates the single client for PERUSAHAAN (reuse `createFirm`/`createClient` from `lib/setup.ts`).
   — accept: the DB test covers grant → ACTIVE, expiry → READ_ONLY, revoke → NONE, suspend → NONE, reinstate → back. Each writes a
   PlatformAuditEvent and no tenant `AuditEvent`. CLI round-trip.
-- [ ] **T09 Public signup + approval queue.** After: T08. Files: `app/daftar/**` (public, outside `(app)`), `proxy.ts` matcher if
+- [~] **T09 Public signup + approval queue.** (claimed: driver) After: T08. Files: `app/daftar/**` (public, outside `(app)`), `proxy.ts` matcher if
   needed, `lib/signup.ts` (submit, throttle, approve, reject), `app/backoffice/requests/**`, `tests/db/signup.test.ts`, `e2e/trial-signup.spec.ts`.
   Approve = createOrganisation + TRIAL grant + `inviteUser(role OWNER)`, with compensation on failure (pattern: `inviteUser`).
   The answer is always the same and leaks nothing. Copy is Bahasa (ui-rules).
@@ -469,6 +469,9 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   `ops@buku.example` with fresh TOTP, and the AKUNTAN's assignments). So no demo company or Buku admin goes into a database that
   `demo:reset` builds for the investor walk. `e2e/tenant-isolation.spec.ts`: an AKUNTAN narrowed to one client gets 404 on 20 pages and
   5 downloads of another client of the same firm (another firm: `qa-access.spec.ts`).
+- T17 handoff (driver): `app/evidence-actions.ts` `result()` shows the evidence modules' Bahasa refusals as they are and replaces
+  any error with a `code` (database, provider) by `userMessage`. The `deleteClientAction` catch the handoff named only catches
+  `requireCapability` (always an `AccessError`), so it stays.
 
 ## Verification
 - T15/T16 origin follow-up: lint ✓, typecheck ✓; full Vitest → 215 files / 1471 tests passed. CLI accepts the environment-based config (its status then reports the intentionally absent full-stack
