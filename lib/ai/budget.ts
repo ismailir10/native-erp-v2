@@ -29,7 +29,13 @@ async function spentThisMonth(tx: Db | Tx, firmId: string) {
 
 /** This month's use against the deployment's monthly limit, for Pengaturan. */
 export async function monthlyAiUse(db: Db, firmId: string): Promise<{ spent: number; limit: number }> {
-  return { spent: await spentThisMonth(db, firmId), limit: aiConfig().monthlyTokenBudget };
+  return { spent: await spentThisMonth(db, firmId), limit: await firmTokenBudget(db, firmId) };
+}
+
+/** The organisation's monthly cap: set per organisation in the backoffice (ADR 0017 §6), else the deployment default. */
+export async function firmTokenBudget(db: Db | Tx, firmId: string) {
+  const firm = await db.firm.findUnique({ where: { id: firmId }, select: { aiMonthlyTokenBudget: true } });
+  return firm?.aiMonthlyTokenBudget ?? aiConfig().monthlyTokenBudget;
 }
 
 /**
@@ -38,13 +44,13 @@ export async function monthlyAiUse(db: Db, firmId: string): Promise<{ spent: num
  */
 export function budgetExceededMessage(spent: number, needed: number, limit: number) {
   const n = (v: number) => v.toLocaleString("id-ID");
-  return `Kuota token AI bulan ini tidak cukup: terpakai ${n(spent)} dari ${n(limit)} token, permintaan ini butuh sekitar ${n(needed)}. Lanjutkan manual, atau minta pengelola aplikasi menaikkan batas bulanan (AI_MONTHLY_TOKEN_BUDGET).`;
+  return `Kuota token AI bulan ini tidak cukup: terpakai ${n(spent)} dari ${n(limit)} token, permintaan ini butuh sekitar ${n(needed)}. Lanjutkan manual, atau hubungi Buku untuk menaikkan batas bulanan.`;
 }
 
 /** Reserve under a firm advisory lock; the paid network call must happen after this transaction ends. */
 export async function reserveAiBudget(db: Db, args: BudgetArgs) {
   const tokens = reservationTokens(args.prompt, args.maxCompletionTokens);
-  const monthlyLimit = args.monthlyTokenBudget ?? aiConfig().monthlyTokenBudget;
+  const monthlyLimit = args.monthlyTokenBudget ?? await firmTokenBudget(db, args.firmId);
   if (!Number.isSafeInteger(monthlyLimit) || monthlyLimit < 0 || (args.scopeTokenLimit !== undefined && (!Number.isSafeInteger(args.scopeTokenLimit) || args.scopeTokenLimit < 0))) throw new AiBudgetError("Batas token AI tidak valid");
   return db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`ai-budget:${args.firmId}`}))::text`;

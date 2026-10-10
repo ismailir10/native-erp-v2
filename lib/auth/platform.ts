@@ -25,9 +25,17 @@ export const getPlatformAdmin = cache(async () => {
   return admin && { ...admin, aal: (data?.claims as { aal?: string } | undefined)?.aal ?? "aal1" };
 });
 
-/** /backoffice and its actions: anyone who is not an active Buku admin gets a 404, never a hint that the page exists. */
-export async function requirePlatformAdmin() {
+/**
+ * /backoffice pages: anyone who is not an active Buku admin gets a 404, never a hint that the page exists. Server actions pass
+ * `{ refuse: "error" }` and get an Error to return as their message instead.
+ */
+export async function requirePlatformAdmin(opts: { refuse?: "404" | "error" } = {}) {
   const admin = await getPlatformAdmin();
-  if (!admin) notFound();
+  if (!admin) {
+    if (opts.refuse === "error") throw new Error(NOT_PLATFORM_ADMIN);
+    notFound();
+  }
   return admin;
 }
+
+export const NOT_PLATFORM_ADMIN = "Hanya admin Buku yang dapat mengubah ini.";

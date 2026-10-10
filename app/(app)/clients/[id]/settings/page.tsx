@@ -1,9 +1,9 @@
-import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { loadClientPage } from "@/lib/client-page";
 import { withParams, type SearchParams } from "@/lib/scope";
 import { resolveAiConfig } from "@/lib/settings/ai";
 import { automationByMonth } from "@/lib/queries";
+import { firmTokenBudget } from "@/lib/ai/budget";
 import { TAX_TAG_LABEL } from "@/lib/coa/template";
 import { formatMonthShort } from "@/lib/format";
 import { NextStep, PageHeader, Stat } from "@/components/app/page-header";
@@ -81,7 +81,7 @@ export default async function SettingsPage({ params, searchParams }: { params: P
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Stat label="Status AI" value={<StatusPill status={live ? "PASS" : "REVIEW"} label={live ? "Aktif" : "Aturan saja"} />} hint={live ? `Model ${cfg.model}` : isAdminRole(member.role) ? <>Atur kunci & model di <Link href="/settings" className="text-primary hover:underline">Pengaturan</Link></> : "Minta admin kantor mengatur kunci & model"} />
+            <Stat label="Status AI" value={<StatusPill status={live ? "PASS" : "REVIEW"} label={live ? "Aktif" : "Aturan saja"} />} hint={live ? `Model ${cfg.model}` : "Diatur oleh Buku"} />
             <Stat label="Dikode tanpa AI" value={`${total ? Math.round(((total - aiLines) / total) * 100) : 0}%`} hint={`${total} baris sejak awal`} />
             <Stat label="Panggilan AI (total)" value={usage._sum.calls ?? 0} hint={`${((usage._sum.promptTokens ?? 0) + (usage._sum.completionTokens ?? 0)).toLocaleString("id-ID")} token`} />
             <Stat label="Jawaban AI tersimpan" value={cacheSize} hint="Penerima atau pengirim yang sama tidak ditanyakan lagi" />
@@ -90,7 +90,7 @@ export default async function SettingsPage({ params, searchParams }: { params: P
             <CardHeader>
               <CardTitle>Batas pemakaian</CardTitle>
               <CardDescription>
-                Maks. {cfg.maxCallsPerImport} panggilan per impor · {cfg.monthlyTokenBudget.toLocaleString("id-ID")} token per bulan.
+                Maks. {cfg.maxCallsPerImport} panggilan per impor · {(await firmTokenBudget(prisma, client.firmId)).toLocaleString("id-ID")} token per bulan untuk kantor ini.
                 {lastMonth && ` Bulan terakhir: ${lastMonth.pct}% dikode otomatis (${formatMonthShort(Number(lastMonth.ym.slice(0, 4)), Number(lastMonth.ym.slice(5)))}).`}
               </CardDescription>
             </CardHeader>

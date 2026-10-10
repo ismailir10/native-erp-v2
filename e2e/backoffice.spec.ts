@@ -21,6 +21,10 @@ test("a Buku admin lands on the organisations list with each one's access", asyn
   await expect(rows.filter({ hasText: "PT Uji Perusahaan" })).toContainText("Perusahaan");
   // No client of any organisation is named here.
   await expect(page.locator("main")).not.toContainText("CV Sinar Retail");
+  // Buku's AI key and OCR switch live here, and only here (ADR 0017 §6).
+  await page.getByRole("link", { name: "Pengaturan AI" }).click();
+  await expect(page.getByLabel("Kunci API baru")).toBeVisible();
+  await expect(page.getByTestId("ocr-setting").getByRole("checkbox")).toBeVisible();
   // The workspace is not theirs: no membership, back to the backoffice.
   await page.goto("/");
   await page.waitForURL(/\/(login|backoffice)/);

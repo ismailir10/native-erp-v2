@@ -9,7 +9,7 @@ import { signOutAction } from "@/app/login/actions";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: { template: "%s · Backoffice Buku", default: "Backoffice Buku" }, robots: { index: false, follow: false } };
 
-const NAV = [{ href: "/backoffice", label: "Organisasi" }];
+const NAV = [{ href: "/backoffice", label: "Organisasi" }, { href: "/backoffice/settings", label: "Pengaturan AI" }];
 
 /** Buku's own backoffice (ADR 0017 §2): only active Buku admins; everyone else gets a 404. No organisation's sidebar or books here. */
 export default async function BackofficeLayout({ children }: { children: React.ReactNode }) {

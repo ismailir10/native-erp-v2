@@ -32,15 +32,17 @@ export function OcrSettingCard({ enabled, canSave, aiLive }: { enabled: boolean;
           Rekening koran hasil scan atau foto dibaca oleh model AI, lalu setiap baris diperiksa dengan saldo berjalan sebelum bisa diimpor. Gambar scan dikirim ke penyedia AI yang diatur di atas; nama dan nomor rekening di gambar tidak bisa disamarkan. Nyalakan hanya bila klien setuju datanya diproses penyedia AI (UU PDP).
         </CardDescription>
       </CardHeader>
+      {/* Organisations see the state only; the switch is Buku's (backoffice, ADR 0017 §6). */}
+      {!canSave ? <CardContent className="text-sm text-muted-foreground">Diatur oleh Buku. Hubungi Buku bila klien Anda tidak menyetujui pengiriman gambar scan ke penyedia AI.</CardContent> : (
       <CardContent className="space-y-3 text-sm">
         {!aiLive && <p className="text-muted-foreground">AI belum aktif: atur kunci dan model dulu, dan pilih model yang bisa membaca gambar.</p>}
         <div className="flex items-center gap-2">
           <Checkbox id="ocr-on" checked={on} disabled={!canSave || busy} onCheckedChange={(v) => setOn(v === true)} />
           <label htmlFor="ocr-on">Izinkan Buku mengirim gambar scan rekening koran ke penyedia AI</label>
         </div>
-        {/* Non-admins already read "Hanya admin kantor…" at the top of Pengaturan (ui-rules 9: each fact once). */}
-        {canSave && <Button variant="outline" size="sm" disabled={busy || on === enabled} onClick={save}>Simpan</Button>}
+        <Button variant="outline" size="sm" disabled={busy || on === enabled} onClick={save}>Simpan</Button>
       </CardContent>
+      )}
     </Card>
   );
 }

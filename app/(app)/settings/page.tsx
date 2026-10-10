@@ -3,9 +3,8 @@ import { prisma } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { resolveAiConfig } from "@/lib/settings/ai";
 import { monthlyAiUse } from "@/lib/ai/budget";
-import { settingsSecretConfigured } from "@/lib/settings/secret";
 import { PageHeader, NextStep } from "@/components/app/page-header";
-import { AiSettingsForm } from "@/components/app/ai-settings-form";
+import { AiStatusCard } from "@/components/app/ai-status-card";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { planRejections } from "@/lib/evidence/plan-stats";
 import { ocrEnabled } from "@/lib/ocr/draft";
@@ -42,42 +41,20 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
     );
   }
   const [cfg, lastCall, plans, ocr] = await Promise.all([resolveAiConfig(prisma), prisma.aiUsage.findFirst({ where: { firmId: firm.id, model: { not: "demo-seed" } }, orderBy: { at: "desc" } }), planRejections(prisma, firm.id), ocrEnabled(prisma)]);
-  const secretReady = settingsSecretConfigured();
   const live = Boolean(cfg.apiKey && cfg.model);
+  const use = await monthlyAiUse(prisma, firm.id);
 
   return (
     <div className="space-y-6">
       <PageHeader title="Pengaturan" description="Berlaku untuk semua klien di kantor ini." />
       {tabs}
-      {!isAdmin ? (
-        <NextStep>Hanya admin kantor yang dapat mengubah pengaturan ini. Anda bisa melihat statusnya di bawah.</NextStep>
-      ) : !secretReady ? (
-        <NextStep>
-          Pengaturan belum bisa diubah karena kunci keamanan server belum disiapkan. Hubungi pengelola aplikasi.
-        </NextStep>
-      ) : cfg.keyError ? (
-        <NextStep>{cfg.keyError}</NextStep>
-      ) : !live ? (
-        <NextStep>Tempel kunci API dan pilih model untuk menyalakan usulan AI. Tanpa kunci, Buku tetap bekerja dengan aturan.</NextStep>
-      ) : (
+      {live ? (
         <NextStep tone="done">Usulan AI aktif. Semua usulan tetap masuk Review transaksi sebelum dicatat.</NextStep>
+      ) : (
+        <NextStep>Usulan AI belum aktif, jadi Buku bekerja dengan aturan saja. Hubungi Buku untuk menyalakannya.</NextStep>
       )}
-      <AiSettingsForm
-        status={{
-          live,
-          keyLast4: cfg.keyLast4,
-          keySource: cfg.keySource,
-          model: cfg.model || null,
-          modelSource: cfg.modelSource,
-          gatewayHost: new URL(cfg.baseUrl).host,
-          maxCallsPerImport: cfg.maxCallsPerImport,
-          monthlyTokenBudget: cfg.monthlyTokenBudget,
-          monthlyTokensUsed: (await monthlyAiUse(prisma, firm.id)).spent,
-          lastCall: lastCall && { at: formatDateTime(lastCall.at), ok: lastCall.ok, model: lastCall.model, note: lastCall.note },
-        }}
-        canSave={isAdmin && secretReady}
-      />
-      <OcrSettingCard enabled={ocr} canSave={isAdmin} aiLive={live} />
+      <AiStatusCard live={live} model={cfg.model || null} used={use.spent} limit={use.limit} lastCall={lastCall && { at: formatDateTime(lastCall.at), ok: lastCall.ok }} />
+      <OcrSettingCard enabled={ocr} canSave={false} aiLive={live} />
       <Card>
         <CardHeader>
           <CardTitle>Rencana jawaban AI</CardTitle>

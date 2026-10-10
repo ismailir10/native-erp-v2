@@ -278,12 +278,12 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   (metadata only). Login is the same `/login`, and `/backoffice` is reached by URL.
   — accept: the DB test covers an operator vs a firm member vs a stranger. The CLI adds and removes an operator. A screenshot of the
   list (desktop + 390 px).
-- [~] **T07 AI + OCR settings move to backoffice; per-org budget.** After: T06, T04. Files: `app/settings-actions.ts` (AI parts),
+- [x] **T07 AI + OCR settings move to backoffice; per-org budget.** After: T06, T04. Files: `app/settings-actions.ts` (AI parts),
   `app/backoffice/settings/**`, `app/(app)/settings/page.tsx` (read-only status), `components/app/ai-settings-form.tsx`, `lib/ai/budget.ts`,
   `lib/ai/provider.ts`, plus `tests/db/ai-budget.test.ts` (extend).
   — accept: a firm ADMIN can no longer save AI credentials (action refused, form gone). The budget uses
   `Firm.aiMonthlyTokenBudget ?? env`. Existing AI tests stay green, still with MockProvider only.
-- [ ] **T08 Grants and organisations in backoffice + CLI.** After: T06, T02. Files: `lib/access/admin.ts` (createOrganisation,
+- [~] **T08 Grants and organisations in backoffice + CLI.** After: T06, T02. Files: `lib/access/admin.ts` (createOrganisation,
   grant, extend, revokeGrant, suspend, reinstate, all writing `PlatformAuditEvent`), `app/backoffice/orgs/**`,
   `app/backoffice-actions.ts`, `scripts/access.ts` (`grant`, `revoke-grant`, `suspend`), plus `tests/db/access-admin.test.ts`.
   `createOrganisation(kind)` also creates the single client for PERUSAHAAN (reuse `createFirm`/`createClient` from `lib/setup.ts`).
@@ -439,6 +439,13 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   `/backoffice`. CLI: `access operator add|remove|list` (an existing Supabase account is reused, removal disables the row) and
   `access set-role` (refuses moving the only active OWNER). `scripts/e2e-setup.ts` adds `ops@buku.example`. **CI and local stack:**
   `mailpit` is no longer excluded, so `e2e/auth-links.spec.ts` can capture mail. Its link origin is handed back to T15/T16 (PR comment).
+- T07: `app/settings-actions.ts` now uses `requirePlatformAdmin({ refuse: "error" })`: *Hanya admin Buku yang dapat mengubah ini.* for
+  every organisation member, admins included. **This closes the security gap noted in T04.** `/backoffice/settings` (*Pengaturan AI*)
+  holds `AiSettingsForm`, with usage across all organisations and the default cap, and the OCR switch. Organisation *Pengaturan* shows
+  `AiStatusCard` (status, model, own use against own cap; no key, no variable names) and the OCR state read-only. `lib/ai/budget.ts`
+  has `firmTokenBudget`: `Firm.aiMonthlyTokenBudget ?? AI_MONTHLY_TOKEN_BUDGET`, used by reservations and `monthlyAiUse`. The budget
+  refusal says *hubungi Buku* instead of naming the env var. Editing a firm's cap is on the organisation page (T08). **Follow-up, not
+  this cycle:** the OCR consent is one global switch; a per-organisation consent (UU PDP) needs a column.
 
 ## Verification
 - T15/T16 origin follow-up: lint ✓, typecheck ✓; full Vitest → 215 files / 1471 tests passed. CLI accepts the environment-based config (its status then reports the intentionally absent full-stack
@@ -473,6 +480,8 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   roles, trial-expiry, workspace` → 12 passed. Screenshot of a company's books at 1440 px was looked at.
 - T06: full `npx vitest run` → 214 files, 1444 tests passed; `npm run build` ✓; `playwright test backoffice, workspace,
   qa-access` → all passed. `auth-links` (T15) failed locally and is handed back (no mail catcher, then link origin 3000 ≠ 3200).
+- T07: full `npx vitest run` → 216 files, 1476 tests passed; `npm run build` ✓; `playwright test backoffice, qa-access,
+  ocr-scan` → 7 passed.
 
 ## Ship Notes
 

@@ -62,10 +62,16 @@ test("an AKUNTAN cannot delete a client, change AI settings, or reopen a closed 
   await expect(page.getByText("Hapus klien").first()).toBeVisible();
   await page.goto(`/clients/${jasa}/close?period=2026-08`);
   await expect(page.getByTestId("unlock")).toBeVisible();
+  // The AI key is Buku's (ADR 0017 §6): not even an organisation admin can change it.
+  await page.goto(`/settings`);
+  await expect(page.getByTestId("ai-status")).toBeVisible();
+  await expect(page.getByLabel("Kunci API baru")).toHaveCount(0);
 
   const akuntan = await signIn(browser, baseURL, "credentials-akuntan.json");
   await akuntan.goto(`/settings`);
-  await expect(akuntan.getByText(/Hanya admin kantor yang dapat mengubah/)).toBeVisible();
+  await expect(akuntan.getByTestId("ai-status")).toBeVisible();
+  await expect(akuntan.getByLabel("Kunci API baru")).toHaveCount(0);
+  await expect(akuntan.getByRole("link", { name: "Tim" })).toHaveCount(0);
   await akuntan.goto(`/clients/${sinar}/settings`);
   await expect(akuntan.getByRole("heading", { name: "Pengaturan klien" })).toBeVisible();
   await expect(akuntan.getByText("Hapus klien")).toHaveCount(0);
