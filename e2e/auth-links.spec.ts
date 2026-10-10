@@ -92,3 +92,47 @@ test("captured invite and recovery stay on Buku; scanners cannot consume them, P
     await admin.auth.admin.deleteUser(id);
   }
 });
+
+/**
+ * The auth server's default template (cycle 2026-10-10-auth-callback-fragment): the link verifies on the auth server and comes back
+ * to /auth/callback with the session in the fragment. It must reach the password page, not "Tautan tidak berlaku".
+ */
+test("default-template invite and reset links reach the password page; a failed one says so", async ({ page, baseURL }) => {
+  const authUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  if (!["localhost", "127.0.0.1"].includes(new URL(authUrl).hostname)) throw new Error("Auth link tests require the local stack.");
+  const admin = createSupabaseAdmin();
+  const email = `default-link-${randomUUID()}@example.test`;
+  const redirectTo = `${baseURL}/auth/callback`;
+  const invite = await admin.auth.admin.generateLink({ type: "invite", email, options: { redirectTo } });
+  expect(invite.error).toBeNull();
+  const id = invite.data.user!.id;
+  try {
+    await page.goto(invite.data.properties!.action_link);
+    await page.waitForURL(/\/atur-sandi$/);
+    await expect(page.getByText("Tautan tidak berlaku")).toHaveCount(0);
+    await page.getByLabel("Kata sandi baru").fill("sandi-bawaan-1");
+    await page.getByLabel("Ulangi kata sandi").fill("sandi-bawaan-1");
+    await expect(page.getByRole("button", { name: "Simpan dan masuk" })).toBeEnabled();
+    await page.getByRole("button", { name: "Simpan dan masuk" }).click();
+    // No membership for this address: the password is saved and the app sends them on (login or closed); never back to the link page.
+    await page.waitForURL((url) => !url.pathname.startsWith("/atur-sandi") && !url.pathname.startsWith("/auth/callback"));
+    expect((await admin.auth.admin.getUserById(id)).data.user?.email_confirmed_at).toBeTruthy();
+
+    await page.context().clearCookies();
+    const reset = await admin.auth.admin.generateLink({ type: "recovery", email, options: { redirectTo } });
+    expect(reset.error).toBeNull();
+    await page.goto(reset.data.properties!.action_link);
+    await page.waitForURL(/\/atur-sandi$/);
+    await expect(page.getByRole("button", { name: "Simpan dan masuk" })).toBeEnabled();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.screenshot({ path: "test-results/auth-default-link-390.png" });
+
+    // A spent default-template link comes back with the failure in the fragment.
+    await page.goto("/auth/callback#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired");
+    await expect(page.getByRole("heading", { name: "Tautan tidak berlaku" })).toBeVisible();
+    await expect(page.getByText("Tautan sudah kedaluwarsa.", { exact: false })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Kirim tautan baru" })).toBeVisible();
+  } finally {
+    await admin.auth.admin.deleteUser(id);
+  }
+});
