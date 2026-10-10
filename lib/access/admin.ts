@@ -33,19 +33,24 @@ async function log(tx: Tx | Db, adminId: string | null, firmId: string, kind: st
 }
 
 /** A new organisation with its first grant; a company also gets its one client (its books) with the company as first entity. */
-export async function createOrganisation(db: Db, adminId: string | null, input: { name: string; kind: OrgKind; grant: GrantInput; seatLimit?: number | null }, now = new Date()) {
+export async function createOrganisation(db: Db, adminId: string | null, input: OrganisationInput, now = new Date()) {
+  return db.$transaction((tx) => createOrganisationTx(tx, adminId, input, now));
+}
+
+export type OrganisationInput = { name: string; kind: OrgKind; grant: GrantInput; seatLimit?: number | null };
+
+/** As createOrganisation, inside the caller's transaction (a trial approval also invites the owner before it commits). */
+export async function createOrganisationTx(tx: Tx, adminId: string | null, input: OrganisationInput, now = new Date()) {
   const name = input.name.trim();
   if (!name) throw new AccessAdminError("Tulis nama organisasi.");
   const { startsAt, endsAt } = period(input.grant, now);
-  return db.$transaction(async (tx) => {
-    const firm = await createFirm(tx, name, { kind: input.kind, grant: { kind: input.grant.kind, startsAt, endsAt, note: input.grant.note?.trim() || undefined, grantedById: adminId ?? undefined } });
-    if (input.seatLimit) await tx.firm.update({ where: { id: firm.id }, data: { seatLimit: input.seatLimit } });
-    if (input.kind === "PERUSAHAAN") {
-      await createClient(tx, firm.id, { name, industry: "", entities: [{ name, shortName: name.replace(/^(PT|CV)\.?\s+/i, "").slice(0, 24) || name, kind: "PT", banks: [] }] });
-    }
-    await log(tx, adminId, firm.id, "ORG_CREATED", `${input.kind === "PERUSAHAAN" ? "Perusahaan" : "Kantor akuntan"} ${name} dibuat · ${GRANT_LABEL[input.grant.kind]} ${until(endsAt)}`, undefined, { kind: input.kind, grant: input.grant.kind, endsAt: endsAt?.toISOString() ?? null });
-    return firm;
-  });
+  const firm = await createFirm(tx, name, { kind: input.kind, grant: { kind: input.grant.kind, startsAt, endsAt, note: input.grant.note?.trim() || undefined, grantedById: adminId ?? undefined } });
+  if (input.seatLimit) await tx.firm.update({ where: { id: firm.id }, data: { seatLimit: input.seatLimit } });
+  if (input.kind === "PERUSAHAAN") {
+    await createClient(tx, firm.id, { name, industry: "", entities: [{ name, shortName: name.replace(/^(PT|CV)\.?\s+/i, "").slice(0, 24) || name, kind: "PT", banks: [] }] });
+  }
+  await log(tx, adminId, firm.id, "ORG_CREATED", `${input.kind === "PERUSAHAAN" ? "Perusahaan" : "Kantor akuntan"} ${name} dibuat · ${GRANT_LABEL[input.grant.kind]} ${until(endsAt)}`, undefined, { kind: input.kind, grant: input.grant.kind, endsAt: endsAt?.toISOString() ?? null });
+  return { ...firm, endsAt };
 }
 
 export async function grantAccess(db: Db, adminId: string | null, firmId: string, input: GrantInput, now = new Date()) {

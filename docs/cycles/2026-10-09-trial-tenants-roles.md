@@ -289,7 +289,7 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   `createOrganisation(kind)` also creates the single client for PERUSAHAAN (reuse `createFirm`/`createClient` from `lib/setup.ts`).
   — accept: the DB test covers grant → ACTIVE, expiry → READ_ONLY, revoke → NONE, suspend → NONE, reinstate → back. Each writes a
   PlatformAuditEvent and no tenant `AuditEvent`. CLI round-trip.
-- [~] **T09 Public signup + approval queue.** (claimed: driver) After: T08. Files: `app/daftar/**` (public, outside `(app)`), `proxy.ts` matcher if
+- [x] **T09 Public signup + approval queue.** After: T08. Files: `app/daftar/**` (public, outside `(app)`), `proxy.ts` matcher if
   needed, `lib/signup.ts` (submit, throttle, approve, reject), `app/backoffice/requests/**`, `tests/db/signup.test.ts`, `e2e/trial-signup.spec.ts`.
   Approve = createOrganisation + TRIAL grant + `inviteUser(role OWNER)`, with compensation on failure (pattern: `inviteUser`).
   The answer is always the same and leaks nothing. Copy is Bahasa (ui-rules).
@@ -469,6 +469,16 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   `ops@buku.example` with fresh TOTP, and the AKUNTAN's assignments). So no demo company or Buku admin goes into a database that
   `demo:reset` builds for the investor walk. `e2e/tenant-isolation.spec.ts`: an AKUNTAN narrowed to one client gets 404 on 20 pages and
   5 downloads of another client of the same firm (another firm: `qa-access.spec.ts`).
+- T09: `lib/signup.ts`. `submitSignup` checks the fields people can fix (email, name, organisation, kind) and answers every other case
+  with the same thanks: stored, a pending request for the same address, the hidden `website` honeypot, or over 5 per hour per address
+  or per IP (`SignupThrottle`, fixed window). `approveSignup` runs in one transaction: `createOrganisationTx` (new in
+  `lib/access/admin.ts`) with a TRIAL grant, the request marked APPROVED, `SIGNUP_APPROVED` in `PlatformAuditEvent`, then
+  `inviteUser(role OWNER)` with `org_name`, `org_kind` and `access_until` as invite metadata. **Decision on failure:** the invitation is
+  the last step inside the transaction, so a refused invite rolls back the organisation, grant and log and the request stays pending
+  (no compensation code needed). An address that is already a member is refused before anything is created. `rejectSignup` needs a
+  reason (5+ chars). Pages: `/daftar` (public, `AuthShell`, linked from the login footer as *Minta uji coba*) and
+  `/backoffice/requests` (*Permintaan*: pending with end date and 14/30-day shortcuts, *Setujui* / *Tolak*; decided list links to the
+  organisation). The backoffice header nav scrolls sideways on a phone instead of widening the page. `proxy.ts` needed no change.
 - T17 handoff (driver): `app/evidence-actions.ts` `result()` shows the evidence modules' Bahasa refusals as they are and replaces
   any error with a `code` (database, provider) by `userMessage`. The `deleteClientAction` catch the handoff named only catches
   `requireCapability` (always an `AccessError`), so it stays.
@@ -515,6 +525,10 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   after walking 18 client pages and a download.
 - T13: `playwright test tenant-isolation` → 1 passed. `npm run demo:reset && npm run verify:books` → **ALL PASS — 1765 pemeriksaan
   saldo cocok dengan ground truth.** Full e2e on the T18 head (`npm run build` then `playwright test`) → **80 passed (7.4 m)**.
+- T09: `tests/db/signup.test.ts` → 4 passed; full `npx vitest run` → 220 files, all passed; lint ✓, typecheck ✓, `npm run build` ✓;
+  `playwright test trial-signup, backoffice, auth-links, support-session` (local stack, `APP_URL=http://localhost:3200`) → all passed.
+  Screenshots of /daftar and Permintaan at 1440 and 390 px were looked at; the 390 px Permintaan page first overflowed (backoffice
+  nav), fixed and now asserted (no horizontal scroll).
 
 ## Ship Notes
 **Migrations** (applied by the Vercel build's `prisma migrate deploy`): `20261009232747_trial_tenants` (additive: new tables, enum

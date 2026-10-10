@@ -13,6 +13,7 @@ const ROOT = join(process.cwd(), "app");
 /** Server actions that run before anyone is signed in, by design. */
 const PUBLIC_ACTIONS: Record<string, string> = {
   "app/login/actions.ts": "sign in, ask for a reset link, sign out",
+  "app/daftar/actions.ts": "the public trial request, throttled per address and IP (lib/signup.ts)",
 };
 /** Mutating routes guarded elsewhere, with where. */
 const OTHER_GUARD: Record<string, string> = {

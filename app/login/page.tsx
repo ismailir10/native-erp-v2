@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getWorkspaceSession } from "@/lib/auth/session";
 import { getPlatformAdmin } from "@/lib/auth/platform";
@@ -14,7 +15,7 @@ export default async function LoginPage() {
   const configured = authConfigured();
   if (configured && await getWorkspaceSession()) redirect("/");
   if (configured && await getPlatformAdmin()) redirect("/backoffice");
-  return <AuthShell title="Masuk ke ruang kerja" description="Kelola dokumen, pembukuan, dan tutup buku kantor Anda." footer="Akses hanya melalui undangan admin kantor. Seluruh anggota kantor berbagi ruang kerja yang sama." aside={<ValueProposition />}>
+  return <AuthShell title="Masuk ke ruang kerja" description="Kelola dokumen, pembukuan, dan tutup buku kantor Anda." footer={<>Belum punya akses? <Link href="/daftar" className="drill">Minta uji coba</Link>. Anggota baru diundang oleh admin kantornya.</>} aside={<ValueProposition />}>
     {configured ? <LoginForm /> : <p role="alert" className="text-sm text-muted-foreground">Akses belum siap. Hubungi pengelola untuk mengaktifkan login kantor Anda.</p>}
   </AuthShell>;
 }

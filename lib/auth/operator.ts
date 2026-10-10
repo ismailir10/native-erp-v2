@@ -38,7 +38,8 @@ async function findAuthUser(auth: AuthApi, email: string) {
  * CLI-only provisioning. Creates the Supabase user (invite email) and the firm member together.
  * A re-invitation of a revoked member lifts the ban and sends a fresh password link.
  */
-export async function inviteUser(db: Db, auth: AuthApi, input: { email: string; name: string; firmId: string; role?: MemberRole; redirectTo?: string }) {
+/** `data`: extra invitation metadata the email template reads (`org_name`, `org_kind`, `access_until`; supabase/templates/invite.html). */
+export async function inviteUser(db: Db, auth: AuthApi, input: { email: string; name: string; firmId: string; role?: MemberRole; redirectTo?: string; data?: Record<string, string> }) {
   const email = normalizeEmail(input.email);
   const name = input.name.trim();
   const role: MemberRole = input.role ?? "AKUNTAN";
@@ -56,7 +57,7 @@ export async function inviteUser(db: Db, auth: AuthApi, input: { email: string; 
     if (sent.error) fail(sent.error, "Tautan kata sandi belum terkirim.");
     return db.firmMember.update({ where: { id: existing.id }, data: { name, role, disabled: false } });
   }
-  const invited = await auth.admin.inviteUserByEmail(email, { data: { name }, ...redirect });
+  const invited = await auth.admin.inviteUserByEmail(email, { data: { ...input.data, name }, ...redirect });
   let userId = invited.data?.user?.id;
   const fresh = !!userId;
   if (!userId) {

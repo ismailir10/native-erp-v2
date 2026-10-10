@@ -8,6 +8,7 @@ import { inviteUser } from "@/lib/auth/operator";
 import { createSupabaseAdmin } from "@/lib/supabase/admin";
 import { appUrl } from "@/lib/supabase/env";
 import { userMessage } from "@/lib/errors/user-message";
+import { approveSignup, rejectSignup, SignupError } from "@/lib/signup";
 import type { GrantKind, MemberRole, OrgKind } from "@/lib/generated/prisma/enums";
 
 /** Backoffice writes (ADR 0017 §2–3): Buku admins only; every change is logged in lib/access/admin.ts. */
@@ -76,4 +77,27 @@ export async function inviteMemberAction(firmId: string, input: { email: string;
     await prisma.platformAuditEvent.create({ data: { adminId, firmId: String(firmId), kind: "MEMBER_INVITED", summary: `${member.email} diundang sebagai ${role === "OWNER" ? "pemilik" : "admin"}` } });
     return {};
   }, [`/backoffice/orgs/${firmId}`]);
+}
+
+/** A trial request from /daftar: the organisation, its trial grant and the owner's invitation, all or nothing (lib/signup.ts). */
+export async function approveSignupAction(requestId: string, endsOn: string) {
+  return run(async (adminId) => {
+    try {
+      const firm = await approveSignup(prisma, createSupabaseAdmin().auth, adminId, String(requestId), { endsOn: String(endsOn ?? ""), redirectTo: appUrl() || undefined });
+      return { firmId: firm.id };
+    } catch (e) {
+      if (e instanceof SignupError) throw new AccessAdminError(e.message);
+      // inviteUser's own refusals are Bahasa and safe to show; a database error (it has a code) stays behind userMessage.
+      if (e instanceof Error && !("code" in e)) throw new AccessAdminError(e.message);
+      throw e;
+    }
+  }, ["/backoffice", "/backoffice/requests"]);
+}
+
+export async function rejectSignupAction(requestId: string, reason: string) {
+  return run(async (adminId) => {
+    try { await rejectSignup(prisma, adminId, String(requestId), String(reason ?? "")); }
+    catch (e) { if (e instanceof SignupError) throw new AccessAdminError(e.message); throw e; }
+    return {};
+  }, ["/backoffice/requests"]);
 }
