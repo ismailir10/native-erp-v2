@@ -226,7 +226,7 @@ otp_expiry = 3600
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
 
-# Bahasa templates. Hosted projects: paste the same files under Authentication → Emails once custom SMTP is set.
+# Shared with scripts/auth-config.ts; all one-time email links expire after 1 hour (otp_expiry above).
 [auth.email.template.invite]
 subject = "Undangan ke Buku"
 content_path = "./supabase/templates/invite.html"
@@ -235,11 +235,26 @@ content_path = "./supabase/templates/invite.html"
 subject = "Atur ulang kata sandi Buku"
 content_path = "./supabase/templates/recovery.html"
 
-# Uncomment to customize notification email template
-# [auth.email.notification.password_changed]
-# enabled = true
-# subject = "Your password has been changed"
-# content_path = "./templates/password_changed_notification.html"
+[auth.email.template.confirmation]
+subject = "Konfirmasi email Buku"
+content_path = "./supabase/templates/confirmation.html"
+
+[auth.email.template.email_change]
+subject = "Konfirmasi perubahan email Buku"
+content_path = "./supabase/templates/email-change.html"
+
+[auth.email.template.magic_link]
+subject = "Tautan masuk ke Buku"
+content_path = "./supabase/templates/magic-link.html"
+
+[auth.email.template.reauthentication]
+subject = "Konfirmasi keamanan akun Buku"
+content_path = "./supabase/templates/reauthentication.html"
+
+[auth.email.notification.password_changed]
+enabled = true
+subject = "Kata sandi Buku telah diubah"
+content_path = "./supabase/templates/password-changed.html"
 
 [auth.sms]
 # Allow/disallow new user signups via SMS to your project.

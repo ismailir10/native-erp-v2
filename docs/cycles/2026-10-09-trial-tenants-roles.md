@@ -324,7 +324,7 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   and this doc. Deck per `/ship` step 3.
   — accept: lint + typecheck + test + build + verify:books + test:e2e all green, with the output pasted under Verification.
 
-- [~] **T15 Branded auth emails + scanner-safe callback.** (claimed: agent-b) After: none. Files: `supabase/templates/*.html` (invite, recovery,
+- [x] **T15 Branded auth emails + scanner-safe callback.** (agent-b) After: none. Files: `supabase/templates/*.html` (invite, recovery,
   password-changed, email-change, magic-link and reauthentication, so every mail Supabase could send is branded), `supabase/config.toml`
   (template paths, subjects, `otp_expiry` matching the copy), `app/auth/callback/**` (GET renders a confirm page and POST verifies),
   `app/auth/callback/confirm-form.tsx`, plus `tests/unit/email-templates.test.ts` and `e2e/auth-links.spec.ts`.
@@ -364,6 +364,11 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   Screenshots of the bar at desktop and 390 px.
 
 ## Implementation
+- Plan (agent-b): T15 → T16 → T17 → T06 sequential on the shared branch; kept inline because callback, public shell and platform
+  login share integration points. First-agent files remain owned by the driver.
+- T15: seven table-based Bahasa templates and matching local subjects/one-hour expiry; PNG brand mark; `/auth/callback` renders
+  without verification and `/auth/callback/confirm` verifies only a same-origin POST. `no-referrer` uses same-origin Fetch Metadata
+  when browsers send a null Origin. Captured-mail e2e covers scanner GETs, invite/recovery sessions and replay; guard exemption is explicit.
 - Plan: the critical path T01 → T02 → T03 goes first, on this branch (claimed: driver). T15, T16 and T17 have no schema
   dependency and are open for a second agent to take in parallel. Wave 2+ is claimed task by task after T03 lands.
 
@@ -414,6 +419,11 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   sends no mail.
 
 ## Verification
+- T15: lint ✓, typecheck ✓, build ✓; full Vitest → 211 files / 1432 tests passed. After the browser-specific Origin fix,
+  `email-templates` + `action-guards` → 2 files / 33 tests passed. Captured-mail `auth-links.spec.ts` → 1 passed (24.3 s).
+  Invite/recovery screenshots at 375 and 1000 px, callback at 390 px inspected. Real Gmail/Outlook/Apple Mail rendering remains
+  an external-client check. Local Auth uses the pinned GoTrue/Kong images with PostgreSQL 16 and Mailpit because the CLI's full
+  PostgreSQL image exhausted this environment's VFS disk during extraction; no auth bypass. Baseline disk-related failures reran green.
 - T01: full `npx vitest run`: 203 of 204 files passed; the one failure was `migration-protected-tables` refusing the backfill's role
   UPDATE. After removing it: lint ✓, typecheck ✓, and `tenancy-migration`, `migration-protected-tables`, `period-lock`, `close-history`
   and `remove-import` → 5 files, 51 tests passed.
@@ -431,6 +441,12 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
 ## Ship Notes
 
 ## Handoffs
+- **From T15 (agent-b), for T09/T11:** invitation metadata is `org_name`, `org_kind` (`KANTOR_AKUNTAN` / `PERUSAHAAN`), and
+  `access_until` (a formatted Bahasa/WIB date); all are optional with template fallbacks. The shared guard scanner needs the
+  explicit public `/auth/callback/confirm` exemption included with T15: same-origin POST + allowlisted token + Auth verification,
+  with unit/e2e coverage. This is authentication before membership exists, not a tenant write. No first-agent implementation files changed.
+- **From T15, for T16:** templates contain a `buku-support` footer marker. Replace that fallback with the owner's configured support
+  email when building the hosted payload; no support address has been invented. Local mail retains the pengelola fallback.
 - **For T05 (from T03):** client pages call `getClientForFirm(id).catch(() => notFound())`. That catch also swallows the
   redirect `requireWorkspaceSession` throws (to `/login` or `/akses-ditutup`), so the page shows 404 instead. No data leaks, but when
   T05 moves these sites to `getClientForMember`, rethrow framework errors first (`unstable_rethrow` from `next/navigation`).

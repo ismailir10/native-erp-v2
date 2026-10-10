@@ -1,0 +1,94 @@
+import "dotenv/config";
+import { randomUUID } from "node:crypto";
+import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { createSupabaseAdmin } from "@/lib/supabase/admin";
+
+test.use({ storageState: { cookies: [], origins: [] } });
+
+/** Real local SMTP capture, not a generated link or an auth bypass. */
+async function capturedMail(request: APIRequestContext, email: string, subject: string) {
+  const mailUrl = process.env.LOCAL_MAIL_URL ?? "http://127.0.0.1:54324";
+  if (!["localhost", "127.0.0.1"].includes(new URL(mailUrl).hostname)) throw new Error("Mail capture must be local.");
+  let messageId = "";
+  await expect.poll(async () => {
+    const response = await request.get(`${mailUrl}/api/v1/messages`);
+    expect(response.ok()).toBeTruthy();
+    const data = await response.json() as { messages: { ID: string; Subject: string; To: { Address: string }[] }[] };
+    messageId = data.messages.find((mail) => mail.Subject === subject && mail.To.some((to) => to.Address === email))?.ID ?? "";
+    return messageId;
+  }, { timeout: 20_000 }).not.toBe("");
+  const message = await request.get(`${mailUrl}/api/v1/message/${messageId}`);
+  return (await message.json() as { HTML: string }).HTML;
+}
+
+function callbackLink(html: string) {
+  const link = html.match(/href="([^"]*\/auth\/callback\?token_hash=[^"]+)"/)?.[1];
+  expect(link).toBeTruthy();
+  return link!.replaceAll("&amp;", "&");
+}
+
+async function emailScreenshots(page: Page, html: string, name: string) {
+  // Screenshots keep the layout and show an inert example URL, never a usable login token.
+  const inert = html.replace(/token_hash=[^&"<\s]+/g, "token_hash=contoh-tautan");
+  for (const width of [375, 1000]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.setContent(inert);
+    await expect(page.getByRole("heading")).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: `test-results/auth-${name}-${width}.png`, fullPage: true });
+  }
+}
+
+test("captured invite and recovery stay on Buku; scanners cannot consume them, POST sets the session, replay expires", async ({ page, browser, request, baseURL }) => {
+  const authUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  if (!["localhost", "127.0.0.1"].includes(new URL(authUrl).hostname)) throw new Error("Auth link tests require the local stack.");
+  const admin = createSupabaseAdmin();
+  const email = `auth-link-${randomUUID()}@example.test`;
+  const invited = await admin.auth.admin.inviteUserByEmail(email, { data: { name: "Pemilik Uji", org_name: "PT Contoh Uji", org_kind: "PERUSAHAAN", access_until: "24 Okt 2026" } });
+  expect(invited.error).toBeNull();
+  const id = invited.data.user!.id;
+  try {
+    const html = await capturedMail(request, email, "Undangan ke Buku");
+    expect(html).toContain("PT Contoh Uji");
+    expect(html).toContain("24 Okt 2026");
+    expect(html).not.toMatch(/supabase|ConfirmationURL/i);
+    const inviteUrl = callbackLink(html);
+    expect(new URL(inviteUrl).origin).toBe(new URL(baseURL!).origin);
+    await emailScreenshots(page, html, "invite");
+
+    const before = (await admin.auth.admin.getUserById(id)).data.user?.email_confirmed_at;
+    expect(before).toBeFalsy();
+    for (let i = 0; i < 2; i++) {
+      const scanner = await request.get(inviteUrl);
+      expect(scanner.status()).toBe(200);
+      expect(await scanner.text()).toContain("Lanjutkan");
+    }
+    expect((await admin.auth.admin.getUserById(id)).data.user?.email_confirmed_at).toBeFalsy();
+    await page.goto(inviteUrl);
+    await expect(page.getByRole("button", { name: "Lanjutkan", exact: true })).toBeVisible();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.screenshot({ path: "test-results/auth-confirm-390.png" });
+    await page.getByRole("button", { name: "Lanjutkan", exact: true }).click();
+    await expect(page).toHaveURL(/\/atur-sandi$/);
+    await expect(page.getByRole("button", { name: "Simpan dan masuk" })).toBeEnabled();
+    expect((await admin.auth.admin.getUserById(id)).data.user?.email_confirmed_at).toBeTruthy();
+
+    const replay = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] } });
+    const replayPage = await replay.newPage();
+    await replayPage.goto(inviteUrl);
+    await replayPage.getByRole("button", { name: "Lanjutkan", exact: true }).click();
+    await expect(replayPage.getByText("Tautan sudah kedaluwarsa atau sudah dipakai.", { exact: false })).toBeVisible();
+    await expect(replayPage.getByRole("button", { name: "Kirim tautan baru" })).toBeVisible();
+    await replay.close();
+
+    expect((await admin.auth.resetPasswordForEmail(email)).error).toBeNull();
+    const recovery = await capturedMail(request, email, "Atur ulang kata sandi Buku");
+    expect(new URL(callbackLink(recovery)).origin).toBe(new URL(baseURL!).origin);
+    await emailScreenshots(page, recovery, "recovery");
+    await page.goto(callbackLink(recovery));
+    await page.getByRole("button", { name: "Lanjutkan", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Simpan dan masuk" })).toBeEnabled();
+  } finally {
+    await admin.auth.admin.deleteUser(id);
+  }
+});
