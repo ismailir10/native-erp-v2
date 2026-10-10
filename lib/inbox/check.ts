@@ -21,6 +21,8 @@ export type BankSection = {
   opening: string;
   closing: string;
   error: string | null;
+  /** A section without a readable number: the rekening the accountant chose for it (lib/inbox/plan.ts `confirmBatch`). */
+  bankAccountId?: string;
 };
 /** One table of a ledger / Neraca file the ledger import would read. */
 export type LedgerSection = { sheet: string; mode: "LEDGER" | "NERACA"; rows: number; periodStart: string | null; periodEnd: string | null };
@@ -103,7 +105,8 @@ const ledgerOutcome = (sections: LedgerSection[], message: string | null): Outco
 /** A refusal that only a real bank statement produces: the reader's message is the answer (year, date order, amounts, currency). */
 const statementRefusal = (e: unknown) => e instanceof YearNeededError || e instanceof SourceDateError || e instanceof SourceAmountError || e instanceof SourceCurrencyError;
 
-async function classify(db: Db, input: CheckInput): Promise<Outcome> {
+/** Reads what a file is (bank / ledger / other), opening a locked PDF with the offered password or the client's keyring. Writes no item. */
+async function classify(db: Db, input: Omit<CheckInput, "batchId">): Promise<Outcome> {
   const { name, data } = input;
   // Non-password errors come back as values: a password that opened the file still opened it, whatever the reader says next.
   const tryOpen = async (password?: string): Promise<{ sections: ParsedStatement[] } | { error: unknown }> => {
@@ -187,4 +190,19 @@ export async function checkFile(db: Db, input: CheckInput): Promise<InboxItem> {
     },
   });
   return itemView(row);
+}
+
+/**
+ * Reads an item's stored file again — the same bytes, not stored twice — offering `password` (the Unggah page's one password field for
+ * every locked file of a drop). The item takes the new outcome: opened files become CHECKED, still-locked ones stay NEEDS_PASSWORD.
+ */
+export async function recheckItem(db: Db, row: UploadItem, input: { password?: string; actorId?: string | null }): Promise<InboxItem> {
+  if (!row.evidenceVersionId) return itemView(row);
+  const version = await db.evidenceVersion.findFirstOrThrow({ where: { id: row.evidenceVersionId, firmId: row.firmId }, select: { data: true } });
+  const result = await classify(db, { firmId: row.firmId, clientId: row.clientId, name: row.fileName, data: Buffer.from(version.data), password: input.password, actorId: input.actorId });
+  const updated = await db.uploadItem.update({
+    where: { id: row.id },
+    data: { kind: result.kind, status: result.status, message: result.message, periodStart: result.periodStart, periodEnd: result.periodEnd, sections: json(result.sections) },
+  });
+  return itemView(updated);
 }

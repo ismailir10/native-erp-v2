@@ -179,6 +179,15 @@ them and asks only what it truly cannot know, once.
   tests `inbox-store`, `inbox-keyring`, `inbox-check`. Known gaps kept for later: year-less / ambiguous-date statements
   end FAILED with the reader's message (the old import page keeps its year prompt and *Atur kolom*); locked Excel files
   are kept as documents; the inbox has Dokumen's per-intake limits (500 files / 100 MiB).
+- T3 (plan / confirm / process): `lib/inbox/names.ts` (normalised names: legal forms, punctuation and word order
+  ignored; company vs person), `lib/inbox/plan.ts` (planBatch: known numbers routed, new rekening per bank+number with a
+  proposed entity or new pemilik and the wrong-client warning, numberless files, locked files; confirmBatch with tenancy
+  checks before any write and per-account errors; skipItems; unlockBatch re-checks stored files with one password),
+  `lib/inbox/process.ts` (processNext: oldest period first, one importStatement per rekening with `aiLater`, ledger →
+  draft, per-file Bahasa outcome), `recheckItem` in check.ts, tests `inbox-names`, `inbox-plan`, `inbox-process`;
+  `verify:books` ALL PASS. A new rekening whose balance is negative is proposed as an overdraft (PRK); a combined file
+  with some sections booked stays BOOKED with the failures in its message. Open for T4: an atomic claim so two
+  parallel `processNext` calls can't take the same file.
 
 ## Verification
 
