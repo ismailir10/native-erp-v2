@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { evidenceEnabled } from "@/lib/evidence/config";
-import { requireWorkspaceSession } from "@/lib/auth/session";
+import { intakeVisibleWhere, requireWorkspaceSession, workspaceAccess } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
 import { oauthConfigured } from "@/lib/evidence/drive";
 import { EvidenceHome } from "@/components/app/evidence-workspace";
@@ -13,16 +13,17 @@ import { isAdminRole } from "@/lib/auth/permissions";
 export const metadata = { title: "Dokumen" };
 
 export default async function DocumentsPage({ searchParams }: { searchParams: SearchParams }) {
-  const { firm, member } = await requireWorkspaceSession();
+  const session = await requireWorkspaceSession();
+  const { firm, member } = session;
   if (!evidenceEnabled()) notFound();
   const input = await searchParams;
-  const scope = await resolveWorkspaceScope(prisma, firm.id, { scope: typeof input.scope === "string" ? input.scope : undefined, period: typeof input.period === "string" ? input.period : undefined }).catch(error => { if (error instanceof WorkspaceInputError) notFound(); throw error; });
+  const scope = await resolveWorkspaceScope(prisma, workspaceAccess(session), { scope: typeof input.scope === "string" ? input.scope : undefined, period: typeof input.period === "string" ? input.period : undefined }).catch(error => { if (error instanceof WorkspaceInputError) notFound(); throw error; });
   const googleResult = input.google === "connected" || input.google === "error" ? input.google : undefined;
   const googleReason = googleResult === "error" && typeof input.reason === "string" ? input.reason : undefined;
   const selections = scope.kind === "entity" ? await prisma.evidenceSelection.findMany({ where: { firmId: firm.id, confirmed: true, entityId: { in: scope.entityIds } }, select: { intakeId: true, versionId: true } }) : [];
   const current = scope.kind === "entity" ? await prisma.evidenceDocument.findMany({ where: { firmId: firm.id, excluded: false, currentVersionId: { in: selections.map(s => s.versionId) } }, select: { intakeId: true } }) : [];
   const [intakes, connection] = await Promise.all([
-    prisma.evidenceIntake.findMany({ where: { firmId: firm.id, ...(scope.kind !== "all" ? { clientId: { in: scope.clientIds } } : {}), ...(scope.kind === "entity" ? { id: { in: current.map(d => d.intakeId) } } : {}) }, select: { id: true, name: true, status: true, clientId: true }, orderBy: { updatedAt: "desc" }, take: 100 }),
+    prisma.evidenceIntake.findMany({ where: { firmId: firm.id, ...(scope.kind !== "all" ? { clientId: { in: scope.clientIds } } : intakeVisibleWhere(session)), ...(scope.kind === "entity" ? { id: { in: current.map(d => d.intakeId) } } : {}) }, select: { id: true, name: true, status: true, clientId: true }, orderBy: { updatedAt: "desc" }, take: 100 }),
     prisma.driveConnection.findUnique({ where: { firmId: firm.id }, select: { id: true } }),
   ]);
   // Keyed: EvidenceHome (client) renders these server elements among its children; a still-streaming

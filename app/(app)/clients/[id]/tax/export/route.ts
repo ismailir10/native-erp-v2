@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { getClientForFirm, getCurrentFirm } from "@/lib/tenant";
+import { findClientForMember, getCurrentFirm } from "@/lib/tenant";
 import { parsePeriod } from "@/lib/scope";
 import { packApplies, taxPack } from "@/lib/tax/pack";
 import { taxWorkpaper } from "@/lib/tax/workpaper";
@@ -8,7 +8,7 @@ import { recordExport } from "@/lib/reports/export-log";
 /** GET ?entity=<id>&period=YYYY-MM — the tax pack's Excel kertas kerja for one company (accounting-rules 5d). */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const client = await getClientForFirm(id).catch(() => null);
+  const client = await findClientForMember(id);
   if (!client) return new Response("Klien tidak ditemukan", { status: 404 });
   const url = new URL(req.url);
   const entity = client.entities.find((e) => e.id === url.searchParams.get("entity"));

@@ -58,6 +58,14 @@ export async function requireWorkspaceSession() {
   return session;
 }
 
+/** Evidence intakes this session may open: unlinked ones (the firm's inbox) and those of its clients. */
+export function intakeVisibleWhere(session: Pick<WorkspaceSession, "clientIds">) {
+  return session.clientIds === "ALL" ? {} : { OR: [{ clientId: null }, { clientId: { in: session.clientIds } }] };
+}
+
+/** The session's access for lib/workspace (scope, overview, answers). */
+export const workspaceAccess = (session: Pick<WorkspaceSession, "firm" | "clientIds">) => ({ firmId: session.firm.id, clientIds: session.clientIds });
+
 /** The Prisma `where` for the clients this session may open. Every client list goes through it. */
 export function accessibleClientWhere(session: Pick<WorkspaceSession, "firm" | "clientIds">) {
   return session.clientIds === "ALL" ? { firmId: session.firm.id } : { firmId: session.firm.id, id: { in: session.clientIds } };

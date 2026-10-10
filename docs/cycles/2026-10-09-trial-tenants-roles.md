@@ -265,7 +265,7 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   link's organisation state. The test reads every `"use server"` file and fails on an exported async function that calls no
   `requireCapability` / `getClientForMember` / `requirePlatformAdmin`.
   — accept: guard test green; `qa-access.spec.ts` still green; a READ_ONLY org's import returns the expiry message (DB test).
-- [~] **T05 Read-path scoping.** After: T03. Files: `app/(app)/layout.tsx`, `app/(app)/page.tsx`, `app/(app)/work/**`,
+- [x] **T05 Read-path scoping.** After: T03. Files: `app/(app)/layout.tsx`, `app/(app)/page.tsx`, `app/(app)/work/**`,
   `app/(app)/reports/**`, `app/(app)/documents/**`, `app/(app)/clients/**/page.tsx` (resolver swap only), `lib/workspace/**`,
   `lib/queries.ts`, plus `tests/db/read-scope.test.ts`.
   Every client list uses `accessibleClientWhere`, and every client page uses `getClientForMember`.
@@ -296,19 +296,19 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   — accept: the DB test covers the throttle (6th request in an hour refused silently), approve (org + grant + owner), reject, a
   duplicate member address refused, and a failed invite leaving no org. The e2e walk (local Supabase stack) goes request →
   backoffice approve → owner gets a password link via the admin API → lands in the workspace with the trial banner.
-- [ ] **T10 Trial UX: banners, read-only, closed.** After: T03, T04. Files: `components/app/access-banner.tsx`,
+- [~] **T10 Trial UX: banners, read-only, closed.** After: T03, T04. Files: `components/app/access-banner.tsx`,
   `app/(app)/layout.tsx` (banner slot only), `app/akses-ditutup/page.tsx`, the write buttons' disabled state through one
   `useAccess()` context (`components/app/access-context.tsx`), plus `e2e/trial-expiry.spec.ts`.
   — accept: the e2e test, with an org whose grant ended yesterday, can open a report and download Excel. The import button
   explains the expiry, and a forced server-action call returns the same message. With ≤ 7 days left the banner shows the count.
   Screenshots at desktop and 390 px.
-- [ ] **T11 Team management (Pengaturan → Tim).** After: T03, T04. Files: `app/(app)/settings/team/**`, `app/team-actions.ts`,
+- [~] **T11 Team management (Pengaturan → Tim).** After: T03, T04. Files: `app/(app)/settings/team/**`, `app/team-actions.ts`,
   `lib/team.ts` (invite via `inviteUser`, setRole, disable/enable via `revokeUser`-style, assignClients, transferOwnership, seat
   limit), `components/app/team-table.tsx`, plus `tests/db/team.test.ts` and `e2e/roles.spec.ts`.
   — accept: the DB test proves the last OWNER cannot be demoted or disabled, an ADMIN cannot touch an OWNER, and the seat limit
   holds. The e2e test covers an OWNER inviting an AKUNTAN with one client, who sees only it, and a VIEWER who sees reports but no
   import or review buttons.
-- [ ] **T12 Company organisation UX.** After: T05. Files: `app/(app)/page.tsx` (redirect branch), the `app/(app)/layout.tsx` sidebar
+- [~] **T12 Company organisation UX.** After: T05. Files: `app/(app)/page.tsx` (redirect branch), the `app/(app)/layout.tsx` sidebar
   section, `lib/org.ts` (`isCompany`, `companyClient`), the `createClientAction`/delete guards (one line each, coordinate via
   Handoffs if T04 is open), plus `e2e/company-org.spec.ts`.
   — accept: the e2e test shows a PERUSAHAAN org landing on its books, the sidebar listing entities, no *Klien* copy (text scan), and a
@@ -393,6 +393,13 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   organisation that is not ACTIVE. `lib/controls` and `lib/imports/remove.ts` use `can()`. `capabilityRefusal` keeps the domain wording.
   Tests that mocked `@/lib/tenant` or `@/lib/auth/session` now fake only the login token and use real members (`tests/members.ts`).
   **Still open until T07:** AI key, model and OCR are `org.settings`, so any organisation ADMIN can still change Buku's AI key.
+- T05: `lib/workspace` takes `WorkspaceAccess` (`{ firmId, clientIds }`) instead of a firm id, so Beranda, the work board, reports,
+  documents and the question box are built from the member's clients only (`workspaceAccess(session)`). The sidebar uses
+  `accessibleClientWhere`. Documents show unlinked intakes plus the member's clients' (`intakeVisibleWhere`), also on the intake and
+  source pages. Client pages and downloads use `findClientForMember` (null → 404, while redirects still go through), and the deprecated
+  `getClientForFirm` is gone. Remaining `firmId` client queries, all justified: `lib/clients/modules.ts` only annotates rows already
+  scoped; `lib/auth/operator.ts` is CLI only; `lib/evidence/*`, `lib/upload-links.ts` and `lib/clients/delete.ts` check a client id
+  their guarded caller passed; `lib/queries.ts` `clientStatuses` has no caller.
 
 ## Verification
 - T01: full `npx vitest run`: 203 of 204 files passed; the one failure was `migration-protected-tables` refusing the backfill's role
@@ -403,6 +410,7 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
 - T04: full `npx vitest run` → 208 of 209 files, 1403 of 1404 tests; the one failure was `upload-links` resolving on a simulated
   September clock before the firm's grant started (test backdates the grant). Re-run: `upload-links` + `action-access` → 10 passed;
   `action-guards` → 9 passed; lint ✓, typecheck ✓.
+- T05: full `npx vitest run` → 210 files, 1408 tests passed; lint ✓, typecheck ✓.
 
 ## Ship Notes
 

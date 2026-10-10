@@ -29,5 +29,15 @@ export async function getClientForMember(clientId: string) {
   return client;
 }
 
-/** @deprecated Use getClientForMember; kept while call sites move (cycle 2026-10-09-trial-tenants-roles, T04/T05). */
-export const getClientForFirm = getClientForMember;
+/**
+ * As getClientForMember, for pages and downloads: null when the client is not the member's (the caller answers 404), while the
+ * redirects of an unauthenticated or closed session still go through (a blanket .catch would turn them into 404s).
+ */
+export async function findClientForMember(clientId: string) {
+  try {
+    return await getClientForMember(clientId);
+  } catch (e) {
+    if (e instanceof AccessError) return null;
+    throw e;
+  }
+}

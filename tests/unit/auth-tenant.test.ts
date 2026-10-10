@@ -4,7 +4,7 @@ vi.mock("next/navigation", () => ({ redirect: (url: string) => { throw new Error
 vi.mock("@/lib/auth", () => ({ authConfigured: mocks.configured }));
 vi.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: async () => ({ auth: { getClaims: mocks.getClaims } }) }));
 vi.mock("@/lib/db", () => ({ prisma: { firmMember: { findUnique: mocks.member }, client: { findFirst: mocks.client } } }));
-import { getCurrentFirm, getClientForFirm } from "@/lib/tenant";
+import { findClientForMember, getCurrentFirm, getClientForMember } from "@/lib/tenant";
 import { getWorkspaceSession, requireMember } from "@/lib/auth/session";
 
 const firm = { id: "right-firm", name: "Kantor", kind: "KANTOR_AKUNTAN", suspendedAt: null };
@@ -56,15 +56,23 @@ describe("authenticated tenant resolution", () => {
     signedIn();
     mocks.member.mockResolvedValue(row({ id: "m1", role: "ADMIN", disabled: false }));
     mocks.client.mockResolvedValue(null);
-    await expect(getClientForFirm("foreign-client")).rejects.toThrow("Klien tidak ditemukan");
+    await expect(getClientForMember("foreign-client")).rejects.toThrow("Klien tidak ditemukan");
     expect(mocks.client).toHaveBeenCalledWith(expect.objectContaining({ where: { AND: [{ firmId: "right-firm" }, { id: "foreign-client" }] } }));
   });
   it("keeps an akuntan's assignment list next to the requested id instead of overwriting it", async () => {
     signedIn();
     mocks.member.mockResolvedValue(row({ id: "m1", role: "AKUNTAN", disabled: false }, { clients: ["assigned"] }));
     mocks.client.mockResolvedValue(null);
-    await expect(getClientForFirm("unassigned")).rejects.toThrow("Klien tidak ditemukan");
+    await expect(getClientForMember("unassigned")).rejects.toThrow("Klien tidak ditemukan");
     expect(mocks.client).toHaveBeenCalledWith(expect.objectContaining({ where: { AND: [{ firmId: "right-firm", id: { in: ["assigned"] } }, { id: "unassigned" }] } }));
+  });
+  it("pages get null for a client that is not the member's, but a signed-out visitor is still redirected", async () => {
+    signedIn();
+    mocks.member.mockResolvedValue(row({ id: "m1", role: "ADMIN", disabled: false }));
+    mocks.client.mockResolvedValue(null);
+    expect(await findClientForMember("foreign-client")).toBeNull();
+    mocks.getClaims.mockResolvedValue({ data: null });
+    await expect(findClientForMember("foreign-client")).rejects.toThrow("redirect:/login");
   });
   it("sends a member of a closed organisation to the closed page, and refuses its actions", async () => {
     signedIn();

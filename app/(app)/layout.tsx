@@ -2,7 +2,7 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar, MobileTrigger } from "@/components/app/app-sidebar";
 import { prisma } from "@/lib/db";
 import { WorkspaceHistoryProvider } from "@/components/app/workspace-ask";
-import { requireWorkspaceSession, ROLE_LABEL } from "@/lib/auth/session";
+import { accessibleClientWhere, requireWorkspaceSession, ROLE_LABEL } from "@/lib/auth/session";
 import { evidenceEnabled } from "@/lib/evidence/config";
 import { NavigationProgress } from "@/components/app/navigation-progress";
 import { clientModules } from "@/lib/clients/modules";
@@ -11,9 +11,10 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const { firm, member } = await requireWorkspaceSession();
+  const session = await requireWorkspaceSession();
+  const { firm, member } = session;
   const [rows, modules] = await Promise.all([
-    prisma.client.findMany({ where: { firmId: firm.id }, orderBy: { name: "asc" }, select: { id: true, name: true, entities: { select: { id: true } } } }),
+    prisma.client.findMany({ where: accessibleClientWhere(session), orderBy: { name: "asc" }, select: { id: true, name: true, entities: { select: { id: true } } } }),
     clientModules(prisma, firm.id),
   ]);
   const clients = rows.map((c) => ({ ...c, modules: modules.get(c.id)?.visible ?? [] }));

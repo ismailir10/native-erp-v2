@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ firm: vi.fn(), cap: vi.fn(), seed: vi.fn(), models: vi.fn(), config: vi.fn(), save: vi.fn(), create: vi.fn() }));
-vi.mock("@/lib/tenant", () => ({ getCurrentFirm: mocks.firm, getClientForFirm: mocks.firm, getClientForMember: mocks.firm }));
+vi.mock("@/lib/tenant", () => ({ getCurrentFirm: mocks.firm, getClientForMember: mocks.firm }));
 vi.mock("@/lib/demo/seed", () => ({ seedDemo: mocks.seed, liveUploadFile: vi.fn() }));
 vi.mock("@/lib/settings/ai", () => ({ resolveAiConfig: mocks.config, fetchModels: mocks.models, saveAiSettings: mocks.save, clearAiKey: vi.fn(), validateAiInput: vi.fn(), SettingsError: class extends Error {} }));
 vi.mock("@/lib/auth/session", () => ({ requireCapability: mocks.cap, AccessError: class extends Error {} }));
