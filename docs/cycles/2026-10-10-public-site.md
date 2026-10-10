@@ -203,7 +203,7 @@ use, accounting-invariant change, promised deletion schedule, production write, 
 
 ## Tasks
 
-- [ ] T1 Public-home dispatch and shared public navigation — accept: signed-out home is public, firm/company/
+- [x] T1 Public-home dispatch and shared public navigation — accept: signed-out home is public, firm/company/
   admin/support destinations and protected routes hold; header/footer work at 390 px. Deps: approval. Reuse
   `getWorkspaceSession`, `getPlatformAdmin`, existing workspace layout, `PublicShell`, `BrandMark`, UI primitives.
 - [ ] T2 Draft Terms/Privacy and contact — accept: both legal pages render required support/trial/AI/retention
@@ -231,6 +231,20 @@ Tasks are sequential implementation commits; T4 can be researched while T2/T3 ar
 demo capture environment. This spec stage has one tightly connected document and is handled inline.
 
 ## Implementation
+
+- Approval: the owner approved the spec and requested completion through merge on 2026-10-10. This authorises
+  merging this verified PR to main, superseding the spec's owner-merge non-goal for this cycle.
+- Plan: T1 routing/shared frame inline (it establishes the integration contract); T2 legal content and T4
+  demo-capture research in parallel workers; T3 trial/mail links after T2, T5 landing after T4; T6/T7 verification,
+  review and merge sequenced by the driver. Standards/spec review uses separate workers; sensitive-path changes
+  receive security review. Every implementation task is gated before its commit.
+
+- T1: public home dispatch reuses the live session and protected workspace shell; answer history now persists
+  across root/workspace navigation. Shared header/footer, skip link and server-owned contact are in place;
+  general errors do not opt into auth background motion. Home/support/admin route tests were extended.
+  Standards, spec and security reviews passed after mailbox encoding and live-support coverage fixes.
+  Gate: lint/typecheck pass; 224 files / 1,535 tests pass. Early 390 px browser walk returns 200 on all five
+  public pages with one h1 and no horizontal overflow; full authenticated flow verification follows in T6.
 
 ## Verification
 

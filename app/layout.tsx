@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
+import { getWorkspaceSession } from "@/lib/auth/session";
+import { WorkspaceHistoryProvider } from "@/components/app/workspace-ask";
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.APP_URL || "http://localhost:3000"),
@@ -11,11 +13,12 @@ export const metadata: Metadata = {
   twitter: { card: "summary_large_image", title: "Buku", description: "Pembukuan yang bisa ditelusuri." },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const session = await getWorkspaceSession();
   return (
     <html lang="id">
       <body>
-        {children}
+        {session ? <WorkspaceHistoryProvider key={session.firm.id + session.member.id}>{children}</WorkspaceHistoryProvider> : children}
         <Toaster position="bottom-right" closeButton />
       </body>
     </html>

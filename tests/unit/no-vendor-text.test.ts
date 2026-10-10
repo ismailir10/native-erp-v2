@@ -95,6 +95,6 @@ describe("server errors become actionable Bahasa with matching log references", 
     expect(boundary).toContain("error.digest");
     expect(boundary).not.toMatch(/\{\s*error\.(message|stack)\s*\}/);
     expect(readFileSync("app/global-error.tsx", "utf8")).toContain('<html lang="id">');
-    expect(readFileSync("app/login/shell.tsx", "utf8")).toContain("PublicShell as AuthShell");
+    expect(readFileSync("app/login/shell.tsx", "utf8")).toContain("<PublicShell {...props} dotGrid />");
   });
 });
