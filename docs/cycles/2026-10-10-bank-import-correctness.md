@@ -81,3 +81,21 @@ Approval: the user approved the review's three-stage proposal on 2026-10-10: “
 - Highlight: `docs/reviews/bank-import-correctness/bank-source-closing-conflict.png` and `bank-source-closing-conflict-mobile.png` (uploaded as pinned PR assets).
 - Rounds: one integration round; regenerated conflicting PDF artifacts and refreshed stale generated Next types. No application fixes needed after combining main.
 - Not checked: external bank-issued holdouts remain unavailable. Private GitHub PR image rendering cannot be inspected without a browser login; uploaded assets and pinned links are retained in the PR. Production authenticated checks require production access; never use local fixture credentials there.
+
+## Final automated review follow-up
+
+- [x] R1: let a uniquely matching complete legacy statement reach attestation before cross-source ambiguity refusal; preserve conservative identity and immutable journals.
+- [x] R2: keep an unreviewed OCR model period inferred so it cannot establish complete source coverage.
+- Plan: R1 legacy identity and R2 OCR provenance are independent worker slices; driver reproduces the regressions, serializes DB tests, reviews the combined changes, runs full verification and handles merge. Both findings arrived on the ready PR while CI ran; merge is paused until they are resolved.
+
+- Reproduced both failures before fixing: exact sparse/cyclic legacy uploads failed row-level identity; an OCR model-expanded month became DECLARED coverage. Focused regressions passed after fixing. Added rejection cases for partial ownership, altered stored descriptions with stale hashes, and explicitly unverified source periods, plus a real MT940-shaped sparse-balance reupload.
+- Review: separate spec and standards reviewers found no blockers. Whole-source legacy identity requires one complete unchanged owner and clean original source validation; attestation rechecks under the account lock and updates metadata only. OCR model period dates remain traceable but cannot establish full coverage.
+
+### Verified locally — ca84d96, 2026-10-10
+- Gate: lint, typecheck, production build, workflow sync and diff checks passed. Unit/database: `230 passed (230)` files, `1839 passed (1839)` tests in `639.57s`. Books: `ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth.` Full browser suite: `84 passed (11.2m)`, no retries/skips.
+- App: fresh production build with local PostgreSQL, Supabase Auth and synthetic members; browser suite on port 3200, final visual inspection on port 3210.
+- Walked: full import/review/report/close, malformed source refusal, mapping, locked periods, tenant/access flows; all passed. Six legacy identity cases preserve financial records or refuse unsafe matches. OCR expanded-header regression keeps both controls REVIEW.
+- Console/network: same navigation stream-close warnings and upstream PostgreSQL query deprecation; no failed assertions.
+- Screenshots/highlights: refreshed and inspected `docs/reviews/bank-import-correctness/bank-source-review-desktop.png` and `bank-source-review-mobile.png` at 1440px/390px. Unverified-period copy visible, no horizontal overflow or clipping.
+- Rounds: one final review round resolving R1 and R2; no additional blockers from independent spec/standards review or final gate.
+- Not checked: external anonymized bank holdouts unavailable; private PR image rendering and authenticated production checks require access not available here.
