@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { getClientForFirm, getCurrentFirm, getCurrentMember } from "@/lib/tenant";
+import { getClientForMember, getCurrentMember } from "@/lib/tenant";
 import { checkDraftSize, createMappedDraft, createOcrDraft, importOcrDraft, ocrEnabled, updateOcrDraft, type OcrRowInput } from "@/lib/ocr/draft";
 import { readGrid } from "@/lib/import/grid";
 import { mappingFromJson, MAX_COLUMNS, readMapped, suggestMapping, type ColumnMapping } from "@/lib/import/mapped";
@@ -70,7 +70,9 @@ import { acceptCheck, LedgerImportError, postImport, stageImport } from "@/lib/l
 import { acceptMappings, MappingError, suggestMappings } from "@/lib/ledger-import/mapping";
 import { infraErrorMessage } from "@/lib/db-errors";
 import { deleteClient, DeleteClientError } from "@/lib/clients/delete";
-import { requireMember } from "@/lib/auth/session";
+import { AccessError, requireCapability } from "@/lib/auth/session";
+import type { Capability } from "@/lib/auth/permissions";
+import { OrgError } from "@/lib/org";
 import type { FsLine } from "@/lib/coa/template";
 import type { MapMethod } from "@/lib/generated/prisma/enums";
 
@@ -83,11 +85,26 @@ type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string; needs
 function fail(e: unknown): { ok: false; error: string; needsPassword?: boolean; needsYear?: boolean; yearGuess?: number | null } {
   if (e instanceof PdfPasswordError) return { ok: false, error: e.message, needsPassword: true };
   if (e instanceof YearNeededError) return { ok: false, error: e.message, needsYear: true, yearGuess: e.guess };
-  if (e instanceof DeleteClientError) return { ok: false, error: e.message };
+  if (e instanceof DeleteClientError || e instanceof AccessError || e instanceof OrgError) return { ok: false, error: e.message };
   if (e instanceof ParseError || e instanceof LedgerError || e instanceof CloseError || e instanceof OpeningError || e instanceof FindingError || e instanceof RemoveImportError || e instanceof MoneyError || e instanceof RateError || e instanceof RevaluationError || e instanceof LedgerImportError || e instanceof MappingError || e instanceof EntitySettingsError || e instanceof FormatError || e instanceof SubledgerError || e instanceof FakturError || e instanceof BupotError) return { ok: false, error: e.message };
   const infra = infraErrorMessage(e);
   console.error(e);
   return { ok: false, error: infra ?? "Terjadi kesalahan tak terduga. Coba lagi." };
+}
+
+/**
+ * The guard of every client action in this file (ADR 0017): the organisation is open and, for a write, writable; the role has the
+ * capability; the client is in the organisation and, for an AKUNTAN or VIEWER, assigned. tests/unit/action-guards.test.ts fails on an
+ * exported action that reaches no requireCapability.
+ */
+async function clientFor(capability: Capability, clientId: string) {
+  await requireCapability(capability, { clientId });
+  return getClientForMember(clientId);
+}
+
+/** Import, review, post, adjust, sign off, lock: the everyday work on a client's books. AI calls count as writes (they spend budget). */
+async function writeClient(clientId: string) {
+  return clientFor("books.write", clientId);
 }
 
 const MAX_UPLOAD = MAX_UPLOAD_BYTES;
@@ -103,7 +120,7 @@ export async function importAction(formData: FormData): Promise<Result<{ summary
     const yearText = String(formData.get("year") ?? "").trim();
     const year = yearText ? Number(yearText) : undefined;
     if (year !== undefined && !(Number.isInteger(year) && year >= 2000 && year <= 2100)) return { ok: false, error: "Tahun harus 4 angka, misalnya 2026.", needsYear: true };
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     banks = client.entities.flatMap((e) => e.bankAccounts);
     selected = bankAccountId;
     if (!client.entities.some((e) => e.bankAccounts.some((b) => b.id === bankAccountId))) return { ok: false, error: "Pilih rekening bank dulu." };
@@ -129,7 +146,7 @@ export async function importAction(formData: FormData): Promise<Result<{ summary
 
 /** The upload of an Atur kolom step: the client's own bank account and a file within the limit; the bytes are read here, on the server. */
 async function mappingUpload(formData: FormData) {
-  const client = await getClientForFirm(String(formData.get("clientId")));
+  const client = await writeClient(String(formData.get("clientId")));
   const bankAccountId = String(formData.get("bankAccountId"));
   if (!client.entities.some((e) => e.bankAccounts.some((b) => b.id === bankAccountId))) throw new ParseError("Pilih rekening bank dulu.");
   const file = formData.get("file");
@@ -202,7 +219,7 @@ export async function mappedDraftAction(formData: FormData): Promise<Result<{ dr
 /** *Lupakan pemetaan ini*: the firm stops reading files of that layout with it; imports already made stay. */
 export async function forgetLayoutAction(clientId: string, layoutId: string): Promise<Result> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     if (!(await forgetLayout(prisma, client.firmId, layoutId))) return { ok: false, error: "Pemetaan ini sudah tidak tersimpan." };
     return { ok: true };
   } catch (e) {
@@ -216,7 +233,7 @@ export async function ocrAction(formData: FormData): Promise<Result<{ draftId: s
     const clientId = String(formData.get("clientId"));
     const bankAccountId = String(formData.get("bankAccountId"));
     const file = formData.get("file");
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     if (!client.entities.some((e) => e.bankAccounts.some((b) => b.id === bankAccountId))) return { ok: false, error: "Pilih rekening bank dulu." };
     if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Pilih file scan rekening koran." };
     if (file.size > MAX_UPLOAD) return { ok: false, error: "File terlalu besar (maks. 5 MB)." };
@@ -235,7 +252,7 @@ export async function ocrAction(formData: FormData): Promise<Result<{ draftId: s
 /** The accountant's corrections on a scan draft; the proof re-runs on the page. */
 export async function saveOcrDraftAction(clientId: string, draftId: string, input: { rows: OcrRowInput[]; opening: string; closing: string }): Promise<Result> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     await updateOcrDraft(prisma, { firmId: client.firmId, clientId: client.id, draftId, ...input });
     revalidatePath(`/clients/${client.id}/import/ocr/${draftId}`);
     return { ok: true };
@@ -248,7 +265,7 @@ export async function saveOcrDraftAction(clientId: string, draftId: string, inpu
 /** Import a proved scan draft through the normal statement pipeline (the accountant's click). */
 export async function importOcrDraftAction(clientId: string, draftId: string): Promise<Result<{ summary: ImportSummary }>> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     const summary = await importOcrDraft(prisma, { firmId: client.firmId, clientId: client.id, draftId, provider: await resolveProvider(prisma), actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true, summary };
@@ -261,7 +278,7 @@ export async function importOcrDraftAction(clientId: string, draftId: string): P
 /** Demo shortcut: import the held-back statement without hunting for the file. */
 export async function importSampleAction(clientId: string, bankAccountId: string): Promise<Result<{ summary: ImportSummary }>> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     if (!client.entities.some((e) => e.bankAccounts.some((b) => b.id === bankAccountId))) return { ok: false, error: "Rekening tidak ditemukan." };
     const f = await liveUploadFile();
     const summary = await importStatement(prisma, { bankAccountId, fileName: f.fileName, data: f.data, provider: await resolveProvider(prisma), actorId: (await getCurrentMember()).id });
@@ -274,7 +291,7 @@ export async function importSampleAction(clientId: string, bankAccountId: string
 
 async function assertTxInFirm(bankTxId: string) {
   const t = await prisma.bankTransaction.findUniqueOrThrow({ where: { id: bankTxId }, include: { bankAccount: { include: { entity: true } } } });
-  await getClientForFirm(t.bankAccount.entity.clientId);
+  await writeClient(t.bankAccount.entity.clientId);
   return t.bankAccount.entity.clientId;
 }
 
@@ -323,7 +340,7 @@ export async function splitTransactionAction(input: { bankTxId: string; parts: S
 
 export async function suggestAgainAction(clientId: string, scope: { entityIds: string[]; period: string }): Promise<Result<{ rows: number; updated: number; note?: string }>> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     if (!scope || !/^(19|20|21)\d{2}-(0[1-9]|1[0-2])$/.test(scope.period) || !scope.entityIds.length || scope.entityIds.some((id) => !client.entities.some((e) => e.id === id))) return { ok: false, error: "Cakupan review tidak valid. Muat ulang halaman." };
     const provider = await resolveProvider(prisma);
     if (!provider) return { ok: false, error: "AI belum diatur di Pengaturan, jadi belum ada saran AI. Pilih akunnya langsung." };
@@ -343,7 +360,7 @@ export async function acceptSimilarAction(
 ): Promise<Result<{ ids: string[] }>> {
   try {
     const clientId = await assertTxInFirm(bankTxId);
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     const source = await prisma.bankTransaction.findUniqueOrThrow({ where: { id: bankTxId } });
     if (!scope || !/^(19|20|21)\d{2}-(0[1-9]|1[0-2])$/.test(scope.period) || !scope.entityIds.length || scope.entityIds.some(id => !client.entities.some(e => e.id === id)) || !scope.entityIds.includes(source.entityId)) return { ok: false, error: "Cakupan review tidak valid. Muat ulang halaman." };
     const through = new Date(Date.UTC(Number(scope.period.slice(0, 4)), Number(scope.period.slice(5)), 0));
@@ -358,7 +375,7 @@ export async function acceptSimilarAction(
 }
 
 async function periodFor(clientId: string, year: number, month: number, opts: { mustBeOpen?: boolean } = {}) {
-  const client = await getClientForFirm(clientId);
+  const client = await writeClient(clientId);
   const period = await prisma.period.upsert({
     where: { clientId_year_month: { clientId, year, month } },
     create: { firmId: client.firmId, clientId, year, month },
@@ -398,7 +415,7 @@ export async function signoffAction(clientId: string, year: number, month: numbe
 
 export async function lockAction(clientId: string, year: number, month: number): Promise<Result> {
   try {
-    await getClientForFirm(clientId);
+    await writeClient(clientId);
     await lockPeriod(prisma, clientId, year, month, "Ditutup dari halaman Tutup Buku", (await getCurrentMember()).id);
     revalidatePath("/", "layout");
     return { ok: true };
@@ -410,7 +427,7 @@ export async function lockAction(clientId: string, year: number, month: number):
 /** Admin only, in reverse order of closing, with a reason that is kept in the unlock log (lib/controls unlockPeriod). */
 export async function unlockAction(clientId: string, year: number, month: number, reason: string): Promise<Result> {
   try {
-    await getClientForFirm(clientId);
+    await clientFor("period.unlock", clientId);
     await unlockPeriod(prisma, clientId, year, month, await getCurrentMember(), reason);
     revalidatePath("/", "layout");
     return { ok: true };
@@ -422,7 +439,7 @@ export async function unlockAction(clientId: string, year: number, month: number
 /** Tutup bulan-bulan sebelumnya (lib/controls/history): what each open month before the selected one still flags, earliest first. */
 export async function historyPreviewAction(clientId: string, year: number, month: number): Promise<Result<{ preview: HistoryPreview }>> {
   try {
-    await getClientForFirm(clientId);
+    await clientFor("books.read", clientId);
     return { ok: true, preview: await historyPreview(prisma, clientId, { year, month }) };
   } catch (e) {
     return fail(e);
@@ -435,7 +452,7 @@ export async function historyPreviewAction(clientId: string, year: number, month
  */
 export async function closeHistoryMonthAction(clientId: string, until: YearMonth, target: YearMonth, note: string, fingerprint: string, last: boolean): Promise<Result> {
   try {
-    await getClientForFirm(clientId);
+    await clientFor("close.batch", clientId);
     await closeHistoryMonth(prisma, { clientId, until, month: { year: target.year, month: target.month }, note, fingerprint, actor: await getCurrentMember() });
     if (last) revalidatePath("/", "layout");
     return { ok: true };
@@ -449,7 +466,7 @@ export async function closeHistoryMonthAction(clientId: string, until: YearMonth
 export async function reverseEntryAction(input: { entryId: string; date: string }): Promise<Result> {
   try {
     const entry = await prisma.journalEntry.findUniqueOrThrow({ where: { id: input.entryId }, select: { entity: { select: { clientId: true } } } });
-    const client = await getClientForFirm(entry.entity.clientId);
+    const client = await writeClient(entry.entity.clientId);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) return { ok: false, error: "Pilih tanggal jurnal pembalik." };
     await reverseEntry(prisma, { clientId: client.id, entryId: input.entryId, date: new Date(`${input.date}T00:00:00Z`), actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
@@ -467,7 +484,7 @@ export async function adjustmentAction(input: {
   lines: { accountCode: string; debit: string; credit: string }[];
 }): Promise<Result<{ entryId: string }>> {
   try {
-    const client = await getClientForFirm(input.clientId);
+    const client = await writeClient(input.clientId);
     const entry = await postAdjustment(prisma, { clientId: client.id, entityId: input.entityId, date: new Date(`${input.date}T00:00:00Z`), memo: input.memo, lines: input.lines, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true, entryId: entry.id };
@@ -479,7 +496,7 @@ export async function adjustmentAction(input: {
 /** Adjustment schedules (accounting-rules 5a): create, post an installment or every due one, stop. */
 export async function createScheduleAction(input: Omit<ScheduleInput, "actorId">): Promise<Result<{ scheduleId: string }>> {
   try {
-    const client = await getClientForFirm(input.clientId);
+    const client = await writeClient(input.clientId);
     const s = await createSchedule(prisma, { ...input, clientId: client.id, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true, scheduleId: s.id };
@@ -491,7 +508,7 @@ export async function createScheduleAction(input: Omit<ScheduleInput, "actorId">
 /** Register a fixed asset (and its depreciation schedule, in the same transaction). Nothing posts. */
 export async function createAssetAction(input: Omit<AssetInput, "actorId">): Promise<Result<{ assetId: string }>> {
   try {
-    const client = await getClientForFirm(input.clientId);
+    const client = await writeClient(input.clientId);
     const a = await createAsset(prisma, { ...input, clientId: client.id, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true, assetId: a.id };
@@ -520,7 +537,7 @@ async function uploaded(formData: FormData, what: string) {
 }
 export async function importCensusAction(formData: FormData): Promise<Result<{ added: number; updated: number }>> {
   try {
-    const client = await getClientForFirm(String(formData.get("clientId")));
+    const client = await writeClient(String(formData.get("clientId")));
     const r = await importCensus(prisma, { clientId: client.id, entityId: String(formData.get("entityId")), ...(await uploaded(formData, "sensus karyawan")) });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true, ...r };
@@ -530,7 +547,7 @@ export async function importCensusAction(formData: FormData): Promise<Result<{ a
 }
 export async function uploadMortalityAction(formData: FormData): Promise<Result<{ tableId: string }>> {
   try {
-    const client = await getClientForFirm(String(formData.get("clientId")));
+    const client = await writeClient(String(formData.get("clientId")));
     const t = await uploadMortality(prisma, { firmId: client.firmId, name: String(formData.get("name") ?? ""), ...(await uploaded(formData, "tabel mortalita")) });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true, tableId: t.id };
@@ -554,7 +571,7 @@ export async function postBenefitsAction(input: { clientId: string; entityId: st
 /** The accountant's click: one disposal entry (rule 5b). */
 export async function disposeAssetAction(input: Omit<DisposalInput, "actorId">): Promise<Result<{ entryId: string }>> {
   try {
-    const client = await getClientForFirm(input.clientId);
+    const client = await writeClient(input.clientId);
     const r = await disposeAsset(prisma, { ...input, clientId: client.id, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true, entryId: r.entryId };
@@ -566,7 +583,7 @@ export async function disposeAssetAction(input: Omit<DisposalInput, "actorId">):
 /** Record a sales invoice or purchase bill (posts its journal unless it is a Saldo Awal item). */
 export async function createInvoiceAction(input: Omit<InvoiceInput, "actorId">): Promise<Result<{ invoiceId: string }>> {
   try {
-    const client = await getClientForFirm(input.clientId);
+    const client = await writeClient(input.clientId);
     const inv = await createInvoice(prisma, { ...input, clientId: client.id, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true, invoiceId: inv.id };
@@ -578,7 +595,7 @@ export async function createInvoiceAction(input: Omit<InvoiceInput, "actorId">):
 /** Bank lines that could settle an invoice (read-only). */
 export async function settleCandidatesAction(clientId: string, invoiceId: string): Promise<Result<{ candidates: CandidateView[] }>> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     return { ok: true, candidates: await candidateViews(prisma, client.id, invoiceId) };
   } catch (e) {
     return fail(e);
@@ -588,7 +605,7 @@ export async function settleCandidatesAction(clientId: string, invoiceId: string
 /** Settle an invoice with a bank line; a line not on the invoice's account is classified to it first (reviewer's writer). */
 export async function settleAction(input: { clientId: string; invoiceId: string; bankTransactionId: string; amount?: string | null; withheld?: string | null; whtKind?: WithholdingKind | null }): Promise<Result> {
   try {
-    const client = await getClientForFirm(input.clientId);
+    const client = await writeClient(input.clientId);
     await settleWithReclass(prisma, { ...input, clientId: client.id, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
@@ -600,7 +617,7 @@ export async function settleAction(input: { clientId: string; invoiceId: string;
 /** Cocokkan FIFO (UC-B5): one bank line across a contact's open invoices, oldest first; the rest stays as their advance. */
 export async function settleFifoAction(input: { clientId: string; bankTransactionId: string; contactId: string }): Promise<Result<{ settled: { number: string; amount: string }[]; rest: string; contact: string }>> {
   try {
-    const client = await getClientForFirm(input.clientId);
+    const client = await writeClient(input.clientId);
     const r = await settleFifo(prisma, { clientId: client.id, bankTransactionId: input.bankTransactionId, contactId: input.contactId, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true, settled: r.settled.map((x) => ({ number: x.number, amount: x.amount.toString() })), rest: r.rest.toString(), contact: r.contact };
@@ -612,7 +629,7 @@ export async function settleFifoAction(input: { clientId: string; bankTransactio
 /** Marks a bank line as a contact's advance (uang muka), or clears it. */
 export async function tagAdvanceAction(input: { clientId: string; bankTransactionId: string; contactId: string | null }): Promise<Result> {
   try {
-    const client = await getClientForFirm(input.clientId);
+    const client = await writeClient(input.clientId);
     await tagAdvance(prisma, { clientId: client.id, bankTransactionId: input.bankTransactionId, contactId: input.contactId, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
@@ -624,7 +641,7 @@ export async function tagAdvanceAction(input: { clientId: string; bankTransactio
 /** A customer's sales channel (UC-B5): free text, "" clears it. */
 export async function setContactChannelAction(input: { clientId: string; contactId: string; channel: string }): Promise<Result<{ channel: string | null }>> {
   try {
-    const client = await getClientForFirm(input.clientId);
+    const client = await writeClient(input.clientId);
     const c = await setContactChannel(prisma, { clientId: client.id, contactId: input.contactId, channel: String(input.channel ?? "") });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true, channel: c.channel };
@@ -636,7 +653,7 @@ export async function setContactChannelAction(input: { clientId: string; contact
 /** Keluarkan dokumen (UC-B5): reverses a wrongly entered invoice or bill on its own date, with the reason. */
 export async function voidInvoiceAction(input: { clientId: string; invoiceId: string; reason: string }): Promise<Result> {
   try {
-    const client = await getClientForFirm(input.clientId);
+    const client = await writeClient(input.clientId);
     await voidInvoice(prisma, { clientId: client.id, invoiceId: input.invoiceId, reason: String(input.reason ?? ""), actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
@@ -647,7 +664,7 @@ export async function voidInvoiceAction(input: { clientId: string; invoiceId: st
 
 export async function unsettleAction(clientId: string, settlementId: string): Promise<Result> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     await unsettle(prisma, { clientId: client.id, settlementId });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
@@ -659,7 +676,7 @@ export async function unsettleAction(clientId: string, settlementId: string): Pr
 /** Tax pack (accounting-rules 5d): every write is tenant-checked and returns the verbatim Bahasa error. */
 async function taxWrite(clientId: string, write: (clientId: string, actorId: string) => Promise<unknown>): Promise<Result> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     await write(client.id, (await getCurrentMember()).id);
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
@@ -744,7 +761,7 @@ export async function deleteInstalmentAction(input: { clientId: string; id: stri
 
 export async function postInstallmentAction(clientId: string, scheduleId: string, k: number): Promise<Result> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     await postInstallment(prisma, { clientId: client.id, scheduleId, k, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
@@ -755,7 +772,7 @@ export async function postInstallmentAction(clientId: string, scheduleId: string
 
 export async function postAllDueAction(clientId: string, year: number, month: number): Promise<Result<{ posted: number }>> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     const posted = await postAllDue(prisma, { clientId: client.id, year, month, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true, posted };
@@ -766,7 +783,7 @@ export async function postAllDueAction(clientId: string, year: number, month: nu
 
 export async function stopScheduleAction(clientId: string, scheduleId: string): Promise<Result> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     await stopSchedule(prisma, { clientId: client.id, scheduleId });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
@@ -777,8 +794,8 @@ export async function stopScheduleAction(clientId: string, scheduleId: string): 
 
 export async function addClientAction(input: NewClientInput): Promise<Result<{ clientId: string }>> {
   try {
-    const firm = await getCurrentFirm();
-    const client = await addClient(prisma, firm.id, input);
+    const { firm, member } = await requireCapability("client.create");
+    const client = await addClient(prisma, firm.id, input, member);
     revalidatePath("/", "layout");
     return { ok: true, clientId: client.id };
   } catch (e) {
@@ -792,7 +809,7 @@ type NewEntityInput = NewClientInput["entities"][number];
 /** "Tambah rekening" on an entity of an existing client. `fields` keys ("bank.number") say what to fix. */
 export async function addBankAccountAction(clientId: string, entityId: string, input: NewEntityInput["banks"][number]): Promise<Result<{ bankAccountId: string }>> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     const bank = await addBankAccount(prisma, client.firmId, client.id, entityId, input);
     revalidatePath("/", "layout");
     return { ok: true, bankAccountId: bank.id };
@@ -805,7 +822,7 @@ export async function addBankAccountAction(clientId: string, entityId: string, i
 /** The import result's *Catat sebagai <bank>*: the account's bank follows the file's. */
 export async function setBankAccountBankAction(clientId: string, bankAccountId: string, bank: string): Promise<Result> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     await setBankAccountBank(prisma, client.id, bankAccountId, bank);
     revalidatePath("/", "layout");
     return { ok: true };
@@ -818,7 +835,7 @@ export async function setBankAccountBankAction(clientId: string, bankAccountId: 
 /** "Tambah perusahaan atau pemilik" on an existing client. */
 export async function addEntityAction(clientId: string, input: NewEntityInput): Promise<Result<{ entityId: string }>> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await clientFor("client.create", clientId);
     const entity = await addEntity(prisma, client.firmId, client.id, input);
     revalidatePath("/", "layout");
     return { ok: true, entityId: entity.id };
@@ -831,7 +848,7 @@ export async function addEntityAction(clientId: string, input: NewEntityInput): 
 /** Which standard an entity's CALK and statements name (wording only, lib/reports/framework.ts). */
 export async function saveReportingFrameworkAction(clientId: string, entityId: string, framework: string): Promise<Result> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     await setReportingFramework(prisma, { clientId: client.id, entityId, framework });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
@@ -843,7 +860,7 @@ export async function saveReportingFrameworkAction(clientId: string, entityId: s
 /** The client's financial-year end (tahun buku): which year its reports count from. Refused once a month is closed. */
 export async function saveFiscalYearEndAction(clientId: string, endMonth: number): Promise<Result> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     const member = await getCurrentMember();
     await setFiscalYearEnd(prisma, { clientId: client.id, endMonth, actorId: member.id });
     revalidatePath(`/clients/${client.id}`, "layout");
@@ -856,7 +873,7 @@ export async function saveFiscalYearEndAction(clientId: string, endMonth: number
 /** Which adjustment and subledger modules the client's menu shows (ADR 0014 §2). Presentation only; any member; logged. */
 export async function saveClientModulesAction(clientId: string, modules: string[]): Promise<Result> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     const member = await getCurrentMember();
     await setClientModules(prisma, { clientId: client.id, modules, actorId: member.id });
     revalidatePath("/", "layout");
@@ -869,7 +886,7 @@ export async function saveClientModulesAction(clientId: string, modules: string[
 /** Rekonsiliasi subledger (UC-A1): a client's aging file at a date, compared with the ledger. */
 export async function importAgingAction(formData: FormData): Promise<Result<{ status: string; difference: string; notes: string[]; rows: number }>> {
   try {
-    const client = await getClientForFirm(String(formData.get("clientId")));
+    const client = await writeClient(String(formData.get("clientId")));
     const file = formData.get("file");
     if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Pilih file aging (XLSX, XLS atau CSV)." };
     if (file.size > MAX_UPLOAD) return { ok: false, error: "File terlalu besar (maks. 5 MB)." };
@@ -895,7 +912,7 @@ export async function importAgingAction(formData: FormData): Promise<Result<{ st
 /** Ekualisasi PPN (I5c): one Coretax faktur export for a company; keluaran or masukan is read from the file. */
 export async function importFakturAction(formData: FormData): Promise<Result<{ direction: string; created: number; updated: number; unchanged: number; masas: string[]; notes: string[] }>> {
   try {
-    const client = await getClientForFirm(String(formData.get("clientId")));
+    const client = await writeClient(String(formData.get("clientId")));
     const file = formData.get("file");
     if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Pilih file daftar faktur dari Coretax (XLSX, XLS atau CSV)." };
     if (file.size > MAX_UPLOAD) return { ok: false, error: "File terlalu besar (maks. 5 MB)." };
@@ -909,7 +926,7 @@ export async function importFakturAction(formData: FormData): Promise<Result<{ d
 
 export async function bookFakturAction(input: { clientId: string; fakturId: string; counterCode: string }): Promise<Result<{ number: string }>> {
   try {
-    const client = await getClientForFirm(input.clientId);
+    const client = await writeClient(input.clientId);
     const inv = await bookFaktur(prisma, { clientId: client.id, fakturId: input.fakturId, counterCode: input.counterCode, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true, number: inv.number };
@@ -920,7 +937,7 @@ export async function bookFakturAction(input: { clientId: string; fakturId: stri
 
 export async function deleteFakturAction(input: { clientId: string; entityId: string; direction: "KELUARAN" | "MASUKAN"; year: number; month: number }): Promise<Result<{ count: number }>> {
   try {
-    const client = await getClientForFirm(input.clientId);
+    const client = await writeClient(input.clientId);
     if (input.direction !== "KELUARAN" && input.direction !== "MASUKAN") return { ok: false, error: "Jenis faktur tidak dikenal." };
     const count = await deleteFaktur(prisma, { clientId: client.id, entityId: input.entityId, direction: input.direction, year: input.year, month: input.month, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
@@ -933,7 +950,7 @@ export async function deleteFakturAction(input: { clientId: string; entityId: st
 /** Bukti potong Unifikasi (I5d): one Coretax slip export for a company; dibuat or diterima is read from the file. */
 export async function importBupotAction(formData: FormData): Promise<Result<{ direction: string; created: number; updated: number; unchanged: number; masas: string[]; notes: string[] }>> {
   try {
-    const client = await getClientForFirm(String(formData.get("clientId")));
+    const client = await writeClient(String(formData.get("clientId")));
     const file = formData.get("file");
     if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Pilih file daftar bukti potong dari Coretax (XLSX, XLS atau CSV)." };
     if (file.size > MAX_UPLOAD) return { ok: false, error: "File terlalu besar (maks. 5 MB)." };
@@ -947,7 +964,7 @@ export async function importBupotAction(formData: FormData): Promise<Result<{ di
 
 export async function deleteBupotAction(input: { clientId: string; entityId: string; direction: "DIBUAT" | "DITERIMA"; year: number; month: number }): Promise<Result<{ count: number }>> {
   try {
-    const client = await getClientForFirm(input.clientId);
+    const client = await writeClient(input.clientId);
     if (input.direction !== "DIBUAT" && input.direction !== "DITERIMA") return { ok: false, error: "Jenis bukti potong tidak dikenal." };
     const count = await deleteBupot(prisma, { clientId: client.id, entityId: input.entityId, direction: input.direction, year: input.year, month: input.month, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
@@ -959,7 +976,7 @@ export async function deleteBupotAction(input: { clientId: string; entityId: str
 
 export async function resolveSubledgerFindingAction(input: { clientId: string; findingId: string; explanation: string }): Promise<Result> {
   try {
-    const client = await getClientForFirm(input.clientId);
+    const client = await writeClient(input.clientId);
     await resolveSubledgerFinding(prisma, { clientId: client.id, findingId: input.findingId, explanation: input.explanation, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
@@ -970,7 +987,7 @@ export async function resolveSubledgerFindingAction(input: { clientId: string; f
 
 export async function deleteSubledgerImportAction(clientId: string, importId: string): Promise<Result> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     await deleteSubledgerImport(prisma, { clientId: client.id, importId, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
@@ -982,7 +999,7 @@ export async function deleteSubledgerImportAction(clientId: string, importId: st
 /** A client's report format (UC-K3): labels, order, headings and totals of its Laba Rugi and Neraca. Presentation only; refusals name the line. */
 export async function saveReportFormatAction(clientId: string, format: unknown): Promise<Result> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     const member = await getCurrentMember();
     await saveReportFormat(prisma, { clientId: client.id, actorId: member.id, format });
     revalidatePath(`/clients/${client.id}`, "layout");
@@ -994,7 +1011,7 @@ export async function saveReportFormatAction(clientId: string, format: unknown):
 
 export async function resetReportFormatAction(clientId: string): Promise<Result> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     const member = await getCurrentMember();
     await resetReportFormat(prisma, { clientId: client.id, actorId: member.id });
     revalidatePath(`/clients/${client.id}`, "layout");
@@ -1006,7 +1023,7 @@ export async function resetReportFormatAction(clientId: string): Promise<Result>
 
 export async function openingAction(input: { clientId: string; entityId: string; date: string; lines: OpeningLineInput[] }): Promise<Result<{ finding: string | null }>> {
   try {
-    const client = await getClientForFirm(input.clientId);
+    const client = await writeClient(input.clientId);
     const m = input.date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (!m) return { ok: false, error: "Isi tanggal saldo awal." };
     const { finding } = await postOpening(prisma, { clientId: client.id, entityId: input.entityId, date: dateOnly(Number(m[1]), Number(m[2]), Number(m[3])), lines: input.lines, actorId: (await getCurrentMember()).id });
@@ -1020,7 +1037,7 @@ export async function openingAction(input: { clientId: string; entityId: string;
 /** Resolves a Temuan with the accountant's written decision (ADR 0012). */
 export async function resolveFindingAction(input: { clientId: string; findingId: string; accountCode: string; decision: string }): Promise<Result> {
   try {
-    const client = await getClientForFirm(input.clientId);
+    const client = await writeClient(input.clientId);
     await resolveOpeningFinding(prisma, { clientId: client.id, findingId: input.findingId, accountCode: input.accountCode, decision: input.decision, actorId: (await getCurrentMember()).id });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
@@ -1031,14 +1048,14 @@ export async function resolveFindingAction(input: { clientId: string; findingId:
 
 /** Demo reset is operator-only tooling; never truncate shared workspace data from a session. */
 export async function resetDemoAction(): Promise<Result> {
-  await getCurrentFirm();
+  await requireCapability("books.read");
   return { ok: false, error: "Reset data hanya tersedia melalui alat operator di lingkungan demo." };
 }
 
 /** Kurs page: typed-in rates are firm data (source MANUAL) and win over rates taken from files. */
 export async function saveRateAction(input: { clientId: string; currency: string; quote: string; date: string; kind: string; rate: string; note?: string }): Promise<Result> {
   try {
-    const client = await getClientForFirm(input.clientId);
+    const client = await writeClient(input.clientId);
     const row = validateRateInput(input);
     await upsertRate(prisma, client.firmId, { ...row, source: "MANUAL", note: input.note?.trim().slice(0, 200) || null });
     revalidatePath(`/clients/${client.id}`, "layout");
@@ -1050,7 +1067,7 @@ export async function saveRateAction(input: { clientId: string; currency: string
 
 export async function deleteRateAction(clientId: string, rateId: string): Promise<Result> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     const { count } = await prisma.exchangeRate.deleteMany({ where: { id: rateId, firmId: client.firmId } });
     if (!count) return { ok: false, error: "Kurs tidak ditemukan." };
     revalidatePath(`/clients/${client.id}`, "layout");
@@ -1063,7 +1080,7 @@ export async function deleteRateAction(clientId: string, rateId: string): Promis
 /** Month-end FX revaluation — posted only on this explicit click (rule 6b). */
 export async function revaluationAction(clientId: string, entityId: string, year: number, month: number): Promise<Result> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     if (!client.entities.some((e) => e.id === entityId)) return { ok: false, error: "Entitas tidak ditemukan." };
     await postRevaluation(prisma, client.id, entityId, year, month, (await getCurrentMember()).id);
     revalidatePath(`/clients/${client.id}`, "layout");
@@ -1076,7 +1093,7 @@ export async function revaluationAction(clientId: string, entityId: string, year
 /** AI close review (ADR 0009): explains flagged controls and proposes actions. Never posts, acks or locks. */
 export async function closeReviewAction(clientId: string, year: number, month: number): Promise<Result<{ review: CloseReviewView }>> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     const provider = await resolveProvider(prisma);
     if (!provider) return { ok: false, error: "AI belum diatur di Pengaturan. Kontrol tetap berjalan tanpa AI." };
     return { ok: true, review: await reviewClose(prisma, client.firmId, client.id, year, month, provider) };
@@ -1097,7 +1114,7 @@ export async function closeReviewAction(clientId: string, year: number, month: n
 /** Close copilot (accounting-rules 20b): one flagged control explained; a draft journal is stored, never posted here. */
 export async function explainControlAction(clientId: string, year: number, month: number, controlKey: string): Promise<Result<{ explanation: ControlExplanation }>> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     await periodFor(client.id, year, month, { mustBeOpen: true });
     const provider = await resolveProvider(prisma);
     if (!provider) return { ok: false, error: "AI belum diatur di Pengaturan. Kontrol tetap berjalan tanpa AI." };
@@ -1120,7 +1137,7 @@ export async function explainControlAction(clientId: string, year: number, month
 
 export async function postProposalAction(clientId: string, proposalId: string, accounts: string[]): Promise<Result> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     const actorId = (await getCurrentMember()).id;
     if (proposalId.startsWith(SUSPENSE_PREFIX)) await postSuspenseCorrection(prisma, { firmId: client.firmId, clientId: client.id, lineId: proposalId.slice(SUSPENSE_PREFIX.length), accounts, actorId });
     else await postProposal(prisma, { clientId: client.id, proposalId, accounts, actorId });
@@ -1133,7 +1150,7 @@ export async function postProposalAction(clientId: string, proposalId: string, a
 
 export async function dismissProposalAction(clientId: string, proposalId: string): Promise<Result> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     const actorId = (await getCurrentMember()).id;
     if (proposalId.startsWith(SUSPENSE_PREFIX)) return { ok: false, error: SUSPENSE_NOT_DISMISSABLE };
     await dismissProposal(prisma, { clientId: client.id, proposalId, actorId });
@@ -1150,7 +1167,7 @@ export async function stageLedgerAction(
   formData: FormData,
 ): Promise<Result<{ importId?: string; candidates?: { sheet: string; mode: "LEDGER" | "NERACA"; dataRows: number }[] }>> {
   try {
-    const client = await getClientForFirm(String(formData.get("clientId")));
+    const client = await writeClient(String(formData.get("clientId")));
     const file = formData.get("file");
     if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Pilih file buku besar atau neraca (XLSX atau CSV)." };
     if (file.size > MAX_UPLOAD) return { ok: false, error: "File terlalu besar (maks. 5 MB)." };
@@ -1179,7 +1196,7 @@ export async function stageLedgerAction(
 
 export async function acceptCheckAction(clientId: string, checkId: string): Promise<Result> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     await acceptCheck(prisma, client.id, checkId);
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true };
@@ -1191,7 +1208,7 @@ export async function acceptCheckAction(clientId: string, checkId: string): Prom
 /** Fills suggestions only (rules, then AI when asked). Nothing is mapped until acceptMappingsAction. */
 export async function suggestMappingsAction(clientId: string, useAi: boolean): Promise<Result<{ note?: string; aiAnswered: number; calls: number }>> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     const r = await suggestMappings(prisma, { firmId: client.firmId, clientId: client.id, provider: useAi ? await resolveProvider(prisma) : null, useAi });
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true, note: r.note, aiAnswered: r.aiAnswered, calls: r.calls };
@@ -1205,7 +1222,7 @@ export async function acceptMappingsAction(
   items: { sourceAccountId: string; accountCode?: string; newAccount?: { fsLine: string; name: string }; method: string }[],
 ): Promise<Result<{ mapped: number }>> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     const methods = ["PRIOR", "NAME", "KEYWORD", "AI", "MANUAL", "NEW"];
     if (items.some((i) => !methods.includes(i.method))) return { ok: false, error: "Metode pemetaan tidak dikenal." };
     const r = await acceptMappings(
@@ -1223,7 +1240,7 @@ export async function acceptMappingsAction(
 
 export async function postLedgerImportAction(clientId: string, importId: string): Promise<Result<{ entries: number }>> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     const r = await postImport(prisma, client.id, importId, (await getCurrentMember()).id);
     revalidatePath(`/clients/${client.id}`, "layout");
     return { ok: true, entries: r.entries };
@@ -1234,7 +1251,7 @@ export async function postLedgerImportAction(clientId: string, importId: string)
 
 export async function discardLedgerDraftAction(clientId: string, importId: string): Promise<Result> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     const count = await prisma.$transaction(async (tx) => {
       const { count } = await tx.ledgerImport.deleteMany({ where: { id: importId, clientId: client.id, status: "DRAFT" } });
       // A draft prepared from Dokumen can be prepared again after discarding it.
@@ -1277,7 +1294,7 @@ export async function disconnectGoogleAction(...args: Parameters<typeof googleAc
 /** Hapus impor (ADR 0013): admin only; the lib refuses closed months and imports something else rests on. */
 export async function removeImportAction(input: { clientId: string; importId: string; kind: "statement" | "ledger"; reason: string }): Promise<Result> {
   try {
-    const client = await getClientForFirm(input.clientId);
+    const client = await clientFor("import.remove", input.clientId);
     const member = await getCurrentMember();
     const args = { clientId: client.id, importId: input.importId, reason: input.reason, actor: { id: member.id, role: member.role } };
     if (input.kind === "statement") await removeStatementImport(prisma, args);
@@ -1292,12 +1309,12 @@ export async function removeImportAction(input: { clientId: string; importId: st
 export async function deleteClientAction(clientId: string, confirmName: string): Promise<Result> {
   let member;
   try {
-    member = await requireMember("ADMIN");
+    member = (await requireCapability("client.delete", { clientId })).member;
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Hanya admin kantor yang dapat menghapus klien." };
   }
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await getClientForMember(clientId);
     const r = await deleteClient(prisma, { firmId: client.firmId, clientId: client.id, confirmName });
     console.info(`client deleted: firm=${client.firmId} client=${client.id} name="${r.name}" by member=${member.id} at ${new Date().toISOString()}`);
     revalidatePath("/", "layout");
@@ -1310,7 +1327,7 @@ export async function deleteClientAction(clientId: string, confirmName: string):
 /** Tautan unggah klien (I1d): a secret upload-only link for the client, shown once. Any member; audited. */
 export async function createUploadLinkAction(clientId: string, days: number): Promise<{ ok: true; url: string; expires: string } | { ok: false; error: string }> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     const member = await getCurrentMember();
     const { link, token } = await createUploadLink(prisma, { firmId: client.firmId, clientId: client.id, days, actorId: member.id });
     revalidatePath(`/clients/${client.id}/import`);
@@ -1322,7 +1339,7 @@ export async function createUploadLinkAction(clientId: string, days: number): Pr
 }
 export async function revokeUploadLinkAction(clientId: string, linkId: string): Promise<Result> {
   try {
-    const client = await getClientForFirm(clientId);
+    const client = await writeClient(clientId);
     const member = await getCurrentMember();
     await revokeUploadLink(prisma, { firmId: client.firmId, clientId: client.id, linkId, actorId: member.id });
     revalidatePath(`/clients/${client.id}/import`);
@@ -1345,7 +1362,7 @@ async function publicOrigin() {
 /** Catatan manajemen (I5b, accounting-rules 20c): one AI draft of the computed sentences, numbers checked; nothing is saved here. */
 export async function draftCommentaryAction(k: { clientId: string; entityId: string; year: number; month: number }): Promise<{ ok: true; text: string; foreign: string[] } | { ok: false; error: string }> {
   try {
-    const client = await getClientForFirm(k.clientId);
+    const client = await writeClient(k.clientId);
     const provider = await resolveProvider(prisma);
     if (!provider) return { ok: false, error: "AI belum diatur di Pengaturan. Kalimat otomatis tetap dipakai." };
     const d = await draftCommentary(prisma, { ...k, clientId: client.id, firmId: client.firmId, provider });
@@ -1361,7 +1378,7 @@ export async function draftCommentaryAction(k: { clientId: string; entityId: str
 }
 export async function saveReportCommentAction(k: { clientId: string; entityId: string; year: number; month: number; text: string; source: "AI" | "ACCOUNTANT" }): Promise<{ ok: true; foreign: string[] } | { ok: false; error: string }> {
   try {
-    const client = await getClientForFirm(k.clientId);
+    const client = await writeClient(k.clientId);
     const member = await getCurrentMember();
     const r = await saveReportComment(prisma, { ...k, clientId: client.id, firmId: client.firmId, actorId: member.id });
     revalidatePath(`/clients/${client.id}/reports`);
@@ -1373,7 +1390,7 @@ export async function saveReportCommentAction(k: { clientId: string; entityId: s
 }
 export async function clearReportCommentAction(k: { clientId: string; entityId: string; year: number; month: number }): Promise<Result> {
   try {
-    const client = await getClientForFirm(k.clientId);
+    const client = await writeClient(k.clientId);
     const member = await getCurrentMember();
     await clearReportComment(prisma, { ...k, clientId: client.id, firmId: client.firmId, actorId: member.id });
     revalidatePath(`/clients/${client.id}/reports`);

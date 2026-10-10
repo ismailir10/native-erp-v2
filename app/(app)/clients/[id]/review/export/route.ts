@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { getClientForFirm, getCurrentFirm } from "@/lib/tenant";
+import { findClientForMember, getCurrentFirm } from "@/lib/tenant";
 import { parsePeriod, resolveEntityScope } from "@/lib/scope";
 import { formatPeriod } from "@/lib/format";
 import { ownerQuestions, ownerQuestionsWorkbook } from "@/lib/review-questions";
@@ -7,7 +7,7 @@ import { ownerQuestions, ownerQuestionsWorkbook } from "@/lib/review-questions";
 /** GET ?entity=<id|combined>&period=YYYY-MM — the lines waiting in Review as a question list for the client, largest first (UC-B3). */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const client = await getClientForFirm(id).catch(() => null);
+  const client = await findClientForMember(id);
   if (!client) return new Response("Klien tidak ditemukan", { status: 404 });
   const url = new URL(req.url);
   const scope = resolveEntityScope(url.searchParams.get("entity") ?? undefined, client.entities);

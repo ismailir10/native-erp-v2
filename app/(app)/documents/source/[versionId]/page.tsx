@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { evidenceEnabled } from "@/lib/evidence/config";
-import { getCurrentFirm } from "@/lib/tenant";
+import { intakeVisibleWhere, requireWorkspaceSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
 import { PageHeader, NextStep } from "@/components/app/page-header";
 import { buttonVariants } from "@/components/ui/button";
@@ -13,8 +13,8 @@ import type { EvidenceUnit } from "@/lib/evidence/types";
 export const metadata = { title: "Sumber dokumen" };
 export default async function SourcePage({ params, searchParams }: { params: Promise<{ versionId: string }>; searchParams: Promise<{ at?: string; scope?: string; period?: string; answer?: string }> }) {
   if (!evidenceEnabled()) notFound();
-  const { versionId } = await params; const { at, scope, period, answer } = await searchParams; const firm = await getCurrentFirm();
-  const version = await prisma.evidenceVersion.findFirst({ where: { id: versionId, firmId: firm.id, document: { firmId: firm.id } }, select: { id: true, name: true, hash: true, units: true, createdAt: true, document: { select: { intakeId: true, currentVersionId: true } } } });
+  const { versionId } = await params; const { at, scope, period, answer } = await searchParams; const session = await requireWorkspaceSession(); const { firm } = session;
+  const version = await prisma.evidenceVersion.findFirst({ where: { id: versionId, firmId: firm.id, document: { firmId: firm.id, intake: intakeVisibleWhere(session) } }, select: { id: true, name: true, hash: true, units: true, createdAt: true, document: { select: { intakeId: true, currentVersionId: true } } } });
   if (!version) notFound();
   const context = new URLSearchParams();
   if (scope) context.set("scope", scope);

@@ -8,6 +8,11 @@ export function formatDate(d: Date): string {
   return `${d.getUTCDate()} ${MONTHS_SHORT[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
+/** The WIB calendar day of a timestamp, e.g. an access end at 23:59 WIB → "23 Okt 2026". */
+export function formatDateWib(d: Date): string {
+  return formatDate(new Date(d.getTime() + 7 * 3600_000));
+}
+
 /** Timestamps (not date-only) shown in WIB, e.g. "24 Sep 2026 13.10". */
 export function formatDateTime(d: Date): string {
   const wib = new Date(d.getTime() + 7 * 3600_000);

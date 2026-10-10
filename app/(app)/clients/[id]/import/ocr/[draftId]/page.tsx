@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { getClientForFirm } from "@/lib/tenant";
+import { findClientForMember } from "@/lib/tenant";
 import { ocrDraft } from "@/lib/ocr/draft";
 import { OcrError } from "@/lib/ocr/pages";
 import { NextStep, PageHeader } from "@/components/app/page-header";
@@ -10,7 +10,7 @@ export const metadata = { title: "Periksa baris" };
 
 export default async function OcrDraftPage({ params }: { params: Promise<{ id: string; draftId: string }> }) {
   const { id, draftId } = await params;
-  const client = await getClientForFirm(id).catch(() => notFound());
+  const client = (await findClientForMember(id)) ?? notFound();
   const draft = await ocrDraft(prisma, client.firmId, client.id, draftId).catch((e) => (e instanceof OcrError ? notFound() : Promise.reject(e)));
   const bank = client.entities.flatMap((e) => e.bankAccounts.map((b) => ({ ...b, entity: e.name }))).find((b) => b.id === draft.bankAccountId);
   const s = (v: bigint | null) => (v === null ? "" : v.toString());

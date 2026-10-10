@@ -14,6 +14,7 @@ import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { StatusPill } from "@/components/app/status";
 import { forgetLayoutAction, importAction, importSampleAction, ocrAction, setBankAccountBankAction } from "@/app/actions";
 import { ColumnMapper } from "@/components/app/column-mapper";
+import { useAccess, WriteBlockedNote } from "@/components/app/access-context";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { BANKS, GROUP_ORDER, bankName } from "@/lib/banks";
 import type { ImportSummary } from "@/lib/import/pipeline";
@@ -27,6 +28,7 @@ const METHOD_LABEL: Record<string, string> = { TRANSFER: "Transfer antar rekenin
 /** `openingPending`: short names of the entities whose Saldo Awal is still missing; the result then leads with it (the bank balance is prefilled from this upload). */
 export function ImportForm({ clientId, banks, sample, openingPending = [] }: { clientId: string; banks: BankOption[]; sample?: { bankAccountId: string; fileName: string }; openingPending?: string[] }) {
   const router = useRouter();
+  const { canWrite } = useAccess();
   const [bankId, setBankId] = useState<string>(sample?.bankAccountId ?? banks[0]?.id ?? "");
   const [file, setFileState] = useState<File | null>(null);
   const [password, setPassword] = useState("");
@@ -302,14 +304,15 @@ export function ImportForm({ clientId, banks, sample, openingPending = [] }: { c
             </div>
           )}
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant={result || mapping ? "outline" : "default"} onClick={() => submit()} disabled={!file || !bankId || pending || (needsPassword && !password) || (!!yearHint && year.length !== 4)}>
+            <Button variant={result || mapping ? "outline" : "default"} onClick={() => submit()} disabled={!canWrite || !file || !bankId || pending || (needsPassword && !password) || (!!yearHint && year.length !== 4)}>
               {pending ? <Loader2 className="animate-spin" /> : <FileUp />} Proses mutasi
             </Button>
             {sample && (
-              <Button variant="outline" disabled={pending} onClick={() => start(async () => done(await importSampleAction(clientId, sample.bankAccountId), null, sample.bankAccountId))}>
+              <Button variant="outline" disabled={!canWrite || pending} onClick={() => start(async () => done(await importSampleAction(clientId, sample.bankAccountId), null, sample.bankAccountId))}>
                 <FileText /> Pakai file contoh ({sample.fileName})
               </Button>
             )}
+            <WriteBlockedNote />
             {sample && (
               <a href={`/demo/${sample.fileName}`} download className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
                 atau unduh file contohnya

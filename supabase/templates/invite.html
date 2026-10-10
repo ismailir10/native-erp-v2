@@ -1,4 +1,11 @@
-<h2>Undangan ke Buku</h2>
-<p>Anda diundang bergabung ke ruang kerja kantor Anda di Buku.</p>
-<p><a href="{{ .ConfirmationURL }}">Atur kata sandi dan masuk</a></p>
-<p>Tautan ini berlaku 24 jam dan hanya sekali pakai. Abaikan pesan ini bila Anda tidak mengenal pengirimnya.</p>
+<!doctype html>
+<html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Undangan ke Buku · Buku</title></head>
+<body style="margin:0;padding:0;background-color:#F4F2F0;color:#0C0A08;font-family:Arial,Helvetica,sans-serif">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F4F2F0"><tr><td align="center" style="padding:32px 16px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background-color:#ffffff;border:1px solid #E4E0DB;border-radius:16px"><tr><td style="padding:32px 24px">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td><img src="{{ .SiteURL }}/auth/callback/logo" width="40" height="40" alt="Buku" style="display:block;border:0"></td><td style="padding-left:12px;font-size:24px;font-weight:bold">Buku</td></tr></table>
+<h1 style="margin:28px 0 16px;font-size:26px;line-height:1.25;font-weight:normal">Undangan ke Buku</h1>
+<p style="margin:0 0 24px;font-size:16px;line-height:1.6">{{ if .Data.org_name }}Anda diundang ke {{ if eq .Data.org_kind "PERUSAHAAN" }}ruang kerja perusahaan{{ else }}ruang kerja kantor akuntan{{ end }} <strong>{{ .Data.org_name }}</strong>.{{ else }}Anda diundang bergabung ke ruang kerja Buku.{{ end }}{{ if .Data.access_until }} Masa uji coba berlangsung sampai <strong>{{ .Data.access_until }}</strong>.{{ end }}</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#2152E8" style="border-radius:8px"><a href="{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&amp;type=invite" style="display:inline-block;padding:14px 24px;color:#ffffff;text-decoration:none;font-weight:bold">Atur kata sandi</a></td></tr></table><p style="margin:24px 0 8px;font-size:13px;color:#5F5B58">Jika tombol tidak terbuka, salin tautan berikut:</p><p style="margin:0;font-size:12px;word-break:break-all;overflow-wrap:anywhere"><a href="{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&amp;type=invite" style="color:#2152E8">{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&amp;type=invite</a></p><p style="margin:24px 0 0;font-size:13px;color:#5F5B58">Tautan ini berlaku 1 jam dan hanya sekali pakai.</p>
+<p style="margin:28px 0 0;padding-top:20px;border-top:1px solid #E4E0DB;font-size:12px;line-height:1.6;color:#5F5B58">Buku · Pembukuan yang bisa ditelusuri.<br><!-- buku-support -->Hubungi pengelola Buku untuk bantuan.<!-- /buku-support --></p>
+</td></tr></table></td></tr></table></body></html>

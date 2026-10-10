@@ -1,12 +1,23 @@
 name: CI
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
+  workflow_dispatch:
+
+# A new push to a PR cancels the run it supersedes. Pushes to main always finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Lint, typecheck, unit tests and production build. Runs on every ready PR and on every push
+  # to main. Draft PRs skip CI until they are marked ready for review. Playwright lives in e2e.yml.
   check:
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:16
@@ -27,6 +38,9 @@ jobs:
       AI_MODEL: ""
     steps:
       - uses: actions/checkout@v4
+      # Vendored workflow skills (.agents/skills) must match their lock; offline, no deps.
+      - name: Agent workflow drift check
+        run: bash scripts/sync-agent-workflow.sh --check
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci
@@ -36,31 +50,7 @@ jobs:
         run: npm run lint && npm run typecheck
       - name: Unit + DB + ground-truth tests
         run: npm test
-      # Auth for the e2e walk: a throwaway local Supabase stack (Auth + gateway + its own Postgres on :54322).
-      # NEXT_PUBLIC_* are inlined at build time, so the stack must be up before `next build`.
-      - uses: supabase/setup-cli@v1
-        with: { version: 2.118.0 } # pinned: resolving "latest" calls the GitHub API, which rate-limits CI
-      - name: Supabase Auth (local stack)
-        run: |
-          supabase start -x realtime,storage-api,imgproxy,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
-          supabase status -o env > "$RUNNER_TEMP/supabase.env"
-          . "$RUNNER_TEMP/supabase.env"
-          echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL" >> "$GITHUB_ENV"
-          echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${PUBLISHABLE_KEY:-$ANON_KEY}" >> "$GITHUB_ENV"
-          echo "SUPABASE_SECRET_KEY=${SECRET_KEY:-$SERVICE_ROLE_KEY}" >> "$GITHUB_ENV"
+      # Without NEXT_PUBLIC_SUPABASE_* the auth client is simply unconfigured (lib/supabase/env.ts),
+      # which is enough to catch compile, route and server/client boundary errors.
       - name: Build
         run: npm run build
-      - name: Seed + verify books (layer 2)
-        run: npm run demo:reset && npm run verify:books
-      - name: Playwright investor walk (layer 3)
-        run: npx playwright install --with-deps chromium && npm run test:e2e
-      - name: Private-mode workspace parity (synthetic data)
-        run: npm run test:e2e
-        env:
-          EVIDENCE_ENABLED: "true"
-          DEMO_MODE: "false"
-          AI_API_KEY: ""
-          AI_MODEL: ""
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with: { name: playwright-report, path: test-results, retention-days: 7 }

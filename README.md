@@ -108,7 +108,7 @@ Next.js 16 (App Router, server actions) · TypeScript · Tailwind v4 · shadcn (
 | `AI_BASE_URL` | LLM gateway (default OpenCode Zen). Env-only on purpose, so a stored key can't be redirected |
 | `AI_API_KEY` / `AI_MODEL` | Fallback when nothing is saved in **Pengaturan**. Empty = rules + memory only (fully functional) |
 | `SETTINGS_SECRET` | ≥ 32 chars. Encrypts the AI key saved in Pengaturan and the Drive token. Changing it means re-saving / reconnecting |
-| `AI_MAX_CALLS_PER_IMPORT` / `AI_MONTHLY_TOKEN_BUDGET` | Credit guards (defaults 3 / 200 000) |
+| `AI_MAX_CALLS_PER_IMPORT` / `AI_MONTHLY_TOKEN_BUDGET` | Credit guards (defaults 3 / 200 000); the monthly budget is the default per organisation, overridable per organisation in the backoffice |
 | `AI_TIMEOUT_MS` / `AI_LONG_TIMEOUT_MS` | Optional per-call timeouts (defaults 90 000 for classification/mapping, 180 000 for close review and *Jelaskan*) |
 
 ## Deploy (Vercel + Supabase)
@@ -140,20 +140,85 @@ database is empty**, runs the first-admin bootstrap, and builds. `npm run demo:r
 demo database data, including members; the demo admin is recreated by the seed. The shared UI cannot trigger it. Supabase Storage,
 Edge Functions, Realtime and Row Level Security are not used: the server is the boundary and Prisma connects as `postgres`.
 
-### Invitation operations
+### Email & login appearance
+
+Auth emails are the Bahasa templates in `supabase/templates/`; subjects and the one-hour link expiry live in
+`supabase/config.toml`. Local Auth reads those files. Links open Buku's `/auth/callback` confirmation page; the token is verified
+only after **Lanjutkan** is submitted, so email scanners do not consume it.
+
+Local Auth reads its site URL from `APP_URL`, including email links and the logo. `npm run auth:local` defaults to
+`http://localhost:3000`; for e2e use `APP_URL=http://localhost:3200 npm run auth:local` (CI already exports that origin).
+Restart an existing local Auth stack after changing this value so it picks up the new configuration.
+
+For the hosted project, set `SUPABASE_PROJECT_REF` and `SUPABASE_ACCESS_TOKEN` securely in the operator's environment, plus
+`APP_URL` (Buku's HTTPS origin) and `BUKU_SUPPORT_EMAIL` (the real support address). Then, from the repository root:
 
 ```bash
-npm run access -- list                                                                        # firms and members with roles
-npm run access -- invite --firm FIRM_ID --email accountant@example.com --name "Accountant" [--role ADMIN|AKUNTAN] [--url https://origin]
+npm run auth:config             # GET and a dry-run diff; no changes
+npm run auth:config -- --apply  # PATCH only the differing public email settings
+```
+
+The script reads subjects/templates from the repo, fills the support footer, maps local callback paths to `APP_URL`, and manages
+the sender name, expiry and configured notification templates. Diffs show field names, lengths and hashes rather than template
+contents or credentials. It refuses an enabled hosted notification that has no branded template in the repo. Project selection
+comes only from the environment. SMTP credentials and all unrelated hosted settings remain untouched.
+
+Before external invitations, the owner must verify the mail domain (SPF, DKIM and DMARC), configure custom SMTP with the sender
+`Buku <noreply@your-domain>`, and ensure replies reach `BUKU_SUPPORT_EMAIL` through the mail provider. The script does not configure
+DNS, SMTP credentials or a Reply-To header. Review the templates in Gmail, Outlook and Apple Mail before sending externally.
+
+### Access operations
+
+Buku holds many organisations ([ADR 0017](docs/adrs/0017-trial-tenants-roles.md)): an accounting firm (firm → client → entity) or a
+company (its one client, hidden in the UI, is its books). Access is a **grant with a period**: running = normal; every grant ended =
+read-only (read and export, no writes, no AI); none, revoked or suspended = closed (`/akses-ditutup`). A grant ends at 23:59 WIB on
+its end date. Data is never deleted when access ends.
+
+**Buku admins** work in `/backoffice` (anyone else gets a 404): the organisations list, *Buat organisasi*, and per organisation the
+grants (give, change date, revoke with a reason), the owner's invitation, limits (active members, AI tokens per month), suspension,
+read-only **support sessions** and *Riwayat Buku*. *Pengaturan AI* holds the one AI key, model and OCR switch every organisation
+uses; organisations only see their status and their own monthly use. Everything a Buku admin does is in Buku's own log, never in
+an organisation's *Riwayat*.
+
+**Trial requests** come from the public `/daftar` page (linked from the login page as *Minta uji coba*); Supabase self-signup stays
+off. Each request waits in *Backoffice → Permintaan*: *Setujui* with an end date creates the organisation, its trial grant and the
+owner's invitation in one step (a failed invitation leaves nothing), *Tolak* needs a reason. The form gives the same answer whether a
+request was stored, a duplicate, throttled (5 per hour per address and per IP) or a bot, so it never tells who already has access.
+
+Buku admins are created only from the CLI:
+
+```bash
+npm run access -- operator add --email ops@example.com --name "Ops" [--url https://origin]   # Buku admin (invited, or an existing login)
+npm run access -- operator list | operator remove --email ops@example.com
+npm run access -- create-org --name "KAP Contoh" --kind KANTOR_AKUNTAN|PERUSAHAAN --grant TRIAL|PAID|COMP [--until 2026-10-24]
+npm run access -- grant --firm FIRM_ID --grant PAID --until 2027-10-31 [--from 2026-11-01] [--note "Paket tahunan"]
+npm run access -- revoke-grant --id GRANT_ID --reason "Salah input"
+npm run access -- suspend --firm FIRM_ID --reason "…"   |   reinstate --firm FIRM_ID
+npm run access -- list                                                                        # organisations, kinds and members with roles
+npm run access -- invite --firm FIRM_ID --email accountant@example.com --name "Accountant" [--role OWNER|ADMIN|AKUNTAN|VIEWER] [--url https://origin]
+npm run access -- set-role --firm FIRM_ID --email owner@example.com --role OWNER
 npm run access -- revoke --firm FIRM_ID --email accountant@example.com
 ```
 
 Run these with `.env` pointing at the intended environment (its database URL, Supabase URL and secret key). `invite` creates the
-Supabase user and the firm member together and sends the invitation email; the link opens */atur-sandi* where the person sets a
-password and lands in the workspace. `revoke` disables the member (checked live on every request, so it takes effect at once) and bans
-the Supabase user; re-inviting lifts both and sends a fresh password link. An address cannot be moved to another firm implicitly.
-Roles: **ADMIN** may change the AI credentials, connect Google Drive and delete a client (client *Pengaturan* → *Hapus klien*, typed name, removes all its books — for clients entered by mistake or test copies); **AKUNTAN** does everything else. *Lupa kata sandi?* on the
-login page sends a reset link and never reveals whether the address is a member. *Keluar* ends the session on that device only.
+Supabase user and the member together and sends the invitation email; the link opens Buku's confirmation page and then
+*/atur-sandi*. `revoke` disables the member (checked live on every request) and bans the Supabase user; re-inviting lifts both. An
+address cannot be moved to another organisation implicitly. A CLI invitation of an AKUNTAN or VIEWER gets every client; the team page
+chooses clients instead.
+
+**Roles** (one table: `lib/auth/permissions.ts`): **Pemilik** (OWNER) and **Admin** see every client, unlock months, remove imports,
+close many months at once, delete a client, connect Google Drive and manage the team (only an owner touches owners or hands over
+ownership); **Akuntan** works on the clients assigned to them; **Peninjau** (VIEWER) reads and exports the assigned clients. Owners and
+admins manage people in *Pengaturan kantor → Tim*: invite, role, clients, disable, hand over ownership (the last active owner stays).
+Every server action passes one guard (`requireCapability`), and `tests/unit/action-guards.test.ts` fails on one that does not.
+
+**Support sessions** let a Buku admin open an organisation's workspace as one of its members to troubleshoot: read-only, at most 60
+minutes, with a reason, after two-step login (*Backoffice → Keamanan*, an authenticator app). The organisation is not notified and
+sees no trace; Buku logs each session, page and download. Our Terms and Privacy policy must say that Buku support can access data
+this way (UU PDP).
+
+*Lupa kata sandi?* on the login page sends a reset link and never reveals whether the address is a member. *Keluar* ends the session
+on that device only. A Buku admin without an organisation lands on `/backoffice` after login.
 
 Missing Supabase configuration keeps the workspace closed and shows a setup message instead of a server error.
 
@@ -171,7 +236,7 @@ Both branches are protected from deletion and force-push, and require the CI `ch
 Supabase: project `native-erp-v2` (the real workspace, git `main`). Nothing else is hosted; development runs on the local stack.
 
 ## For contributors (humans and agents)
-Read [AGENTS.md](AGENTS.md) (also reachable as `CLAUDE.md`): the spec → build → ship loop, gates, and which skill (`.agents/skills/`) governs which folder.
+Read [AGENTS.md](AGENTS.md) (also reachable as `CLAUDE.md`): the spec → build → verify-local → ship loop, the repo profile, and which skill (`.agents/skills/`) governs which folder.
 Decisions live in [docs/adrs](docs/adrs/README.md). Demo data is synthetic — never commit real client statements.
 
 ## Document evidence workspace

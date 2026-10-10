@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { notFound } from "next/navigation";
-import { getClientForFirm } from "@/lib/tenant";
+import { findClientForMember } from "@/lib/tenant";
 import { formatPeriod } from "@/lib/format";
 import { parsePeriod, resolveEntityScope, type SearchParams } from "@/lib/scope";
 import { dataMonths, pickWorkingMonth } from "@/lib/periods";
@@ -10,8 +10,8 @@ import { scopeCurrency, isMixed } from "@/lib/reports/fx";
 export async function loadClientPage(params: Promise<{ id: string }>, searchParams: SearchParams, opts: { defaultCombined?: boolean } = {}) {
   const { id } = await params;
   const sp = await searchParams;
-  // Unknown or other-firm client → 404 page, not a 500.
-  const client = await getClientForFirm(id).catch(() => notFound());
+  // Unknown, other-organisation or unassigned client → 404 page, not a 500.
+  const client = (await findClientForMember(id)) ?? notFound();
   const months = await dataMonths([id]);
   const period = parsePeriod(sp.period, pickWorkingMonth(months));
   const scope = resolveEntityScope(sp.entity, client.entities, opts.defaultCombined ?? true);

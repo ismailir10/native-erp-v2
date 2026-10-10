@@ -22,6 +22,8 @@ import { DIRECTION_LABEL, fakturNotes, fakturRecon } from "@/lib/tax/faktur";
 import { bupotNotes, bupotRecon } from "@/lib/tax/bupot";
 import { findingLabel } from "@/lib/findings";
 import { compareSubledger } from "@/lib/reconcile/subledger";
+import { can } from "@/lib/auth/permissions";
+import type { MemberRole } from "@/lib/generated/prisma/enums";
 
 /**
  * Close controls (analog of belifi 16_CONTROLS). PASS / REVIEW / FAIL.
@@ -675,8 +677,8 @@ export const UNLOCK_REASON_MIN = 5;
  * Reopens a closed month: admin only, in reverse order of closing (never under a later closed month), with the reason typed by the
  * admin. The status change and the audit row (`PeriodUnlockLog`) are one transaction, under the same client lock as closing.
  */
-export async function unlockPeriod(db: Db, clientId: string, year: number, month: number, actor: { id: string; role: "ADMIN" | "AKUNTAN" }, reason: string) {
-  if (actor.role !== "ADMIN") throw new CloseError("Hanya admin kantor yang dapat membuka kembali periode.");
+export async function unlockPeriod(db: Db, clientId: string, year: number, month: number, actor: { id: string; role: MemberRole }, reason: string) {
+  if (!can(actor.role, "period.unlock")) throw new CloseError("Hanya admin kantor yang dapat membuka kembali periode.");
   const why = reason.trim();
   if (why.length < UNLOCK_REASON_MIN) throw new CloseError(`Tulis alasan membuka kembali periode (min. ${UNLOCK_REASON_MIN} karakter).`);
   return db.$transaction(async (tx) => {

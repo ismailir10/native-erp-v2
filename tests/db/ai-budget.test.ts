@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db, makeGroup, resetDb } from "../helpers";
-import { AiBudgetError, reserveAiBudget, runBudgetedAi, settleAiBudget } from "@/lib/ai/budget";
+import { AiBudgetError, monthlyAiUse, reserveAiBudget, runBudgetedAi, settleAiBudget } from "@/lib/ai/budget";
 import { MockProvider } from "@/lib/ai/provider";
 import { suggestWithAi } from "@/lib/ai/classify";
 
@@ -48,5 +48,20 @@ describe("AI reservations", () => {
     expect(result.suggestions.size).toBe(0);
     expect(result.usage.calls).toBe(0);
     expect(provider.calls).toBe(1);
+  });
+});
+
+describe("per-organisation AI budget (ADR 0017 §6)", () => {
+  beforeEach(resetDb);
+  it("an organisation's own monthly cap replaces the deployment default for reservations and for Pengaturan", async () => {
+    const { firm } = await makeGroup();
+    const args = { firmId: firm.id, scope: "intake:1", prompt: { system: "", user: "" }, maxCompletionTokens: 744 };
+    await db.firm.update({ where: { id: firm.id }, data: { aiMonthlyTokenBudget: 500 } });
+    await expect(reserveAiBudget(db, args)).rejects.toBeInstanceOf(AiBudgetError);
+    expect((await monthlyAiUse(db, firm.id)).limit).toBe(500);
+    await db.firm.update({ where: { id: firm.id }, data: { aiMonthlyTokenBudget: null } });
+    expect((await monthlyAiUse(db, firm.id)).limit).toBe(Number(process.env.AI_MONTHLY_TOKEN_BUDGET || 200_000));
+    await reserveAiBudget(db, args);
+    expect(await db.aiReservation.count()).toBe(1);
   });
 });

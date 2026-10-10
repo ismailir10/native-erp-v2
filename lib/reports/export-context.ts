@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { getClientForFirm, getCurrentFirm } from "@/lib/tenant";
+import { findClientForMember, getCurrentFirm } from "@/lib/tenant";
 import { parsePeriod, resolveEntityScope } from "@/lib/scope";
 import { reasonText, reportStatus } from "@/lib/reports/status";
 
@@ -8,7 +8,7 @@ import { reasonText, reportStatus } from "@/lib/reports/status";
  * period, the title, and why the statements are still a draft (absent once the month is closed). Null when the client isn't the firm's.
  */
 export async function exportContext(req: Request, clientId: string) {
-  const client = await getClientForFirm(clientId).catch(() => null);
+  const client = await findClientForMember(clientId);
   if (!client) return null;
   const url = new URL(req.url);
   const scope = resolveEntityScope(url.searchParams.get("entity") ?? undefined, client.entities);

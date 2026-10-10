@@ -54,7 +54,7 @@ describe("invitation-only membership", () => {
     const deleteUser = vi.fn(async () => ({ data: {}, error: null }));
     auth.admin.deleteUser = deleteUser as never;
     const failing = (insert: () => Promise<unknown>) =>
-      ({ firm: db.firm, firmMember: { findUnique: (a: never) => db.firmMember.findUnique(a), create: async () => { await insert(); throw new Error("insert failed"); } } }) as unknown as typeof db;
+      ({ firm: db.firm, client: db.client, firmMember: { findUnique: (a: never) => db.firmMember.findUnique(a), create: async () => { await insert(); throw new Error("insert failed"); } } }) as unknown as typeof db;
     await expect(inviteUser(failing(async () => undefined), auth, { email: "third@example.test", name: "Third", firmId: firm.id })).rejects.toThrow("insert failed");
     expect(deleteUser).toHaveBeenCalledWith(fresh);
     expect(await db.firmMember.count()).toBe(1);
@@ -80,6 +80,7 @@ describe("invitation-only membership", () => {
     auth.admin.deleteUser = deleteUser as never;
     const racing = ({
       firm: db.firm,
+      client: db.client,
       firmMember: {
         findUnique: (a: never) => db.firmMember.findUnique(a),
         create: async () => {

@@ -3,10 +3,20 @@ import { WorkspaceScopeBar } from "@/components/app/workspace-scope";
 import { WorkspaceAsk } from "@/components/app/workspace-ask";
 import { WorkspaceTasks, WorkspaceClose, WorkspaceFinancials } from "@/components/app/workspace-overview";
 import { loadWorkspace, WorkspaceScopeError, type WorkspaceSearchParams } from "@/components/app/workspace-page";
+import { redirect } from "next/navigation";
+import { requireWorkspaceSession } from "@/lib/auth/session";
+import { prisma } from "@/lib/db";
+import { companyClient, isCompany } from "@/lib/org";
 
 export const metadata = { title: "Beranda" };
 
 export default async function HomePage({ searchParams }: { searchParams: WorkspaceSearchParams }) {
+  // A company's home is its own books (ADR 0017 §1); there is no list of clients to choose from.
+  const { firm } = await requireWorkspaceSession();
+  if (isCompany(firm)) {
+    const books = await companyClient(prisma, firm);
+    redirect(books ? `/clients/${books.id}` : "/clients/new");
+  }
   const data = await loadWorkspace(searchParams);
   if ("error" in data) return <WorkspaceScopeError message={data.error} />;
   const first = data.tasks[0];

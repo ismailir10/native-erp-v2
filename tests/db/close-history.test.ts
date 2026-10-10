@@ -6,20 +6,12 @@ import { CLOSE_SIGNOFFS, CloseError, runControls } from "@/lib/controls";
 import { closeHistoryMonth, historyMonths, historyPreview } from "@/lib/controls/history";
 import { saveControlNote } from "@/lib/controls/ack";
 import { dateOnly } from "@/lib/format";
+import { createFirm } from "@/lib/setup";
+import { addMember } from "../members";
 
-const session = vi.hoisted(() => ({ role: "ADMIN" as "ADMIN" | "AKUNTAN", firmId: "", memberId: "" }));
-vi.mock("@/lib/tenant", async () => {
-  const { db } = await import("../helpers");
-  return {
-    getCurrentFirm: async () => ({ id: session.firmId }),
-    getCurrentMember: async () => ({ id: session.memberId, role: session.role }),
-    getClientForFirm: async (id: string) => {
-      const c = await db.client.findFirst({ where: { id, firmId: session.firmId }, include: { entities: true } });
-      if (!c) throw new Error("Klien tidak ditemukan");
-      return c;
-    },
-  };
-});
+const auth = vi.hoisted(() => ({ userId: null as string | null }));
+vi.mock("@/lib/auth", () => ({ authConfigured: () => true }));
+vi.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: async () => ({ auth: { getClaims: async () => ({ data: auth.userId ? { claims: { sub: auth.userId } } : null }) } }) }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 const { closeHistoryMonthAction, historyPreviewAction } = await import("@/app/actions");
 
@@ -134,16 +126,18 @@ describe("closing the history in one pass", () => {
     const admin = await member(g, "ADMIN", "admin");
     const akuntan = await member(g, "AKUNTAN", "akuntan");
     for (const m of [3, 4, 5]) await entry(g, m);
-    Object.assign(session, { firmId: g.firm.id, memberId: akuntan.id, role: "AKUNTAN" });
+    await db.clientAccess.create({ data: { memberId: akuntan.id, clientId: g.client.id } });
+    auth.userId = akuntan.userId;
     const r = await historyPreviewAction(g.client.id, 2026, 5);
     if (!r.ok) throw new Error(r.error);
     expect(r.preview.months).toHaveLength(2);
     const m = r.preview.months[0];
     expect(await closeHistoryMonthAction(g.client.id, { year: 2026, month: 5 }, m, NOTE, m.fingerprint, false)).toEqual({ ok: false, error: "Hanya admin kantor yang dapat menutup beberapa bulan sekaligus." });
-    Object.assign(session, { memberId: admin.id, role: "ADMIN" });
+    auth.userId = admin.userId;
     expect(await closeHistoryMonthAction(g.client.id, { year: 2026, month: 5 }, m, NOTE, m.fingerprint, true)).toEqual({ ok: true });
     expect(await status(g, 3)).toBe("LOCKED");
-    Object.assign(session, { firmId: "another-firm" });
+    const other = await db.$transaction((tx) => createFirm(tx, "KAP Lain"));
+    auth.userId = (await addMember(other.id, "ADMIN")).userId;
     expect((await historyPreviewAction(g.client.id, 2026, 5)).ok).toBe(false);
   });
 });

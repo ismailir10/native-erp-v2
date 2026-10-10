@@ -4,10 +4,9 @@ import { createHash, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { getCurrentFirm } from "@/lib/tenant";
 import { requireEvidenceEnabled } from "@/lib/evidence/config";
 import { DriveError, oauthAuthorizationUrl, revokeToken } from "@/lib/evidence/drive";
-import { requireMember } from "@/lib/auth/session";
+import { requireCapability } from "@/lib/auth/session";
 import { decryptSecret, settingsSecretConfigured } from "@/lib/settings/secret";
 
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
@@ -15,7 +14,7 @@ const COOKIE = "buku_drive_oauth";
 
 /** Admin-only; connecting Google grants Buku read access to the firm's Drive. */
 async function guard(): Promise<string | null> {
-  try { await requireMember("ADMIN"); }
+  try { await requireCapability("org.settings"); }
   catch (e) { return e instanceof Error ? e.message : "Masuk terlebih dahulu."; }
   requireEvidenceEnabled();
   return null;
@@ -31,7 +30,7 @@ export async function startGoogleAction(): Promise<Result<{ url: string }>> {
     const browser = randomBytes(32).toString("base64url");
     const url = oauthAuthorizationUrl(state);
     const callback = new URL(process.env.GOOGLE_REDIRECT_URI!);
-    const firm = await getCurrentFirm();
+    const { firm } = await requireCapability("org.settings");
     const cookieStore = await cookies();
     const previousBrowser = cookieStore.get(COOKIE)?.value;
     const now = new Date();
@@ -59,7 +58,7 @@ export async function disconnectGoogleAction(): Promise<Result<{ note?: string }
   try {
     const denied = await guard();
     if (denied) return { ok: false, error: denied };
-    const firm = await getCurrentFirm();
+    const { firm } = await requireCapability("org.settings");
     const connection = await prisma.$transaction(async (tx) => {
       const existing = await tx.driveConnection.findUnique({ where: { firmId: firm.id } });
       await tx.driveOAuthState.deleteMany({ where: { firmId: firm.id } });

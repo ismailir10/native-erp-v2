@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getWorkspaceSession } from "@/lib/auth/session";
+import { getPlatformAdmin } from "@/lib/auth/platform";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { appUrl } from "@/lib/supabase/env";
 
@@ -24,8 +25,10 @@ export async function signInAction(_previous: FormState, formData: FormData): Pr
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.auth.signInWithPassword(parsed.data);
   if (error) return { error: loginError(error) };
-  // The password proved identity; membership decides access. A revoked member is signed out again at once.
+  // The password proved identity; membership decides access. A revoked member is signed out again at once. A Buku admin who is
+  // not a member of any organisation goes to the backoffice instead (ADR 0017 §2).
   if (!await getWorkspaceSession()) {
+    if (await getPlatformAdmin()) redirect("/backoffice");
     await supabase.auth.signOut();
     return { error: "Akses tidak tersedia. Hubungi pengelola Buku." };
   }

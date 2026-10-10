@@ -25,6 +25,7 @@ import { completenessMatrix } from "@/lib/controls/completeness";
 import { CompletenessCard } from "@/components/app/completeness-card";
 import { CloseHistoryCard } from "@/components/app/close-history-card";
 import { HISTORY_MIN_MONTHS, historyMonths } from "@/lib/controls/history";
+import { isAdminRole } from "@/lib/auth/permissions";
 
 export const metadata = { title: "Tutup Buku" };
 
@@ -105,7 +106,7 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
           count={history.length}
           range={historyRange}
           signoffs={CLOSE_SIGNOFFS.map((s) => ({ key: s.key, label: s.label }))}
-          isAdmin={member.role === "ADMIN"}
+          isAdmin={isAdminRole(member.role)}
           base={base}
         />
       )}
@@ -164,7 +165,7 @@ export default async function ClosePage({ params, searchParams }: { params: Prom
         lockedAt={p?.lockedAt ? `${formatDateTime(p.lockedAt)} oleh ${p.lockedBy?.name ?? "Sistem"}` : null}
         blockers={blockers}
         aiReady={aiModel !== null}
-        isAdmin={member.role === "ADMIN"}
+        isAdmin={isAdminRole(member.role)}
         unlockBlocker={after ? `Buka kembali ${formatPeriod(after.year, after.month)} dulu: bulan setelahnya masih ditutup.` : null}
         unlocks={unlockRows.map((u) => ({ label: `${formatPeriod(u.year, u.month)} dibuka kembali`, reason: u.reason, by: `${u.unlockedBy.name} · ${formatDateTime(u.createdAt)}` }))}
       />

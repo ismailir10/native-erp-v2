@@ -1,4 +1,5 @@
 import type { Db } from "@/lib/db";
+import { COMPANY_NO_DELETE } from "@/lib/org";
 
 export class DeleteClientError extends Error {}
 
@@ -11,6 +12,8 @@ export class DeleteClientError extends Error {}
 export async function deleteClient(db: Db, input: { firmId: string; clientId: string; confirmName: string }) {
   const client = await db.client.findFirst({ where: { id: input.clientId, firmId: input.firmId }, select: { id: true, name: true } });
   if (!client) throw new DeleteClientError("Klien tidak ditemukan.");
+  // A company's one client is its books (ADR 0017 §1): removing it would leave an organisation without books.
+  if ((await db.firm.findUniqueOrThrow({ where: { id: input.firmId }, select: { kind: true } })).kind === "PERUSAHAAN") throw new DeleteClientError(COMPANY_NO_DELETE);
   if (input.confirmName.trim() !== client.name) throw new DeleteClientError(`Ketik nama klien persis "${client.name}" untuk menghapusnya.`);
 
   return db.$transaction(
