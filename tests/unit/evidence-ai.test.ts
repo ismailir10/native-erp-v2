@@ -65,7 +65,7 @@ describe("evidence AI boundaries", () => {
   });
   it("invalid billed plan carries usage and triggers no retry", async () => {
     let calls = 0;
-    const provider = new OpenAiCompatibleProvider({ baseUrl: "https://test.invalid", apiKey: "x", model: "m", maxCallsPerImport: 1, monthlyTokenBudget: 20_000 }, (async () => {
+    const provider = new OpenAiCompatibleProvider({ baseUrl: "https://test.invalid", apiKey: "x", model: "m", maxCallsPerRun: 20, monthlyTokenBudget: 20_000 }, (async () => {
       calls++;
       return new Response(JSON.stringify({ usage: { prompt_tokens: 200, completion_tokens: 30 }, choices: [{ message: { content: '{"intent":"POST","terms":[]}' } }] }));
     }) as typeof fetch);
@@ -77,7 +77,7 @@ describe("evidence AI boundaries", () => {
 
   it("gives evidence, classification and mapping calls 90 seconds and close review/explain 180", async () => {
     const timeout = vi.spyOn(AbortSignal, "timeout");
-    const provider = new OpenAiCompatibleProvider({ baseUrl: "https://test.invalid", apiKey: "x", model: "m", maxCallsPerImport: 1, monthlyTokenBudget: 20_000 }, (async () =>
+    const provider = new OpenAiCompatibleProvider({ baseUrl: "https://test.invalid", apiKey: "x", model: "m", maxCallsPerRun: 20, monthlyTokenBudget: 20_000 }, (async () =>
       new Response(JSON.stringify({ usage: { prompt_tokens: 1, completion_tokens: 1 }, choices: [{ message: { content: '{"items":[]}' } }] }))) as typeof fetch);
     const used = async (call: () => Promise<unknown>) => { timeout.mockClear(); await call().catch(() => {}); return timeout.mock.calls.map((c) => c[0]); };
     expect(await used(() => provider.analyzeEvidence({ context: "", passages: [] }))).toEqual([EVIDENCE_TIMEOUT_MS]);

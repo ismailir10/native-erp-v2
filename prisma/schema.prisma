@@ -392,6 +392,7 @@ model Client {
   auditEvents        AuditEvent[]
   reportFormat       ReportFormat?
   access             ClientAccess[]
+  aiRuns             AiRun[]
   coaVersion         Int                  @default(1)
   /// Modules turned on in the client menu (lib/clients/modules.ts): receivables · inventory · assets · leases · benefits. Presentation only.
   modules            String[]             @default([])
@@ -845,6 +846,41 @@ model AiSuggestion {
   reason      String
   model       String
   createdAt   DateTime  @default(now())
+}
+
+enum AiRunStatus {
+  RUNNING
+  DONE
+}
+
+/// One background pass of AI suggestions over a client's lines still on a simple guess (lib/ai/run.ts). It only replaces
+/// suggestions of lines still in review; nothing is posted (accounting-rules 17–19). At most one RUNNING run per client:
+/// the partial unique index "AiRun_one_running_per_client" lives in the migration SQL (Prisma can't express it).
+model AiRun {
+  id             String      @id @default(cuid())
+  firmId         String
+  clientId       String
+  client         Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  status         AiRunStatus @default(RUNNING)
+  /// Lines on a simple guess when the run started, plus lines that joined later (askedLines + what is still pending).
+  totalLines     Int         @default(0)
+  /// Lines whose counterparty was settled in this run: answered (cache or model) or asked and left unanswered.
+  askedLines     Int         @default(0)
+  /// Lines that received an AI suggestion in this run.
+  suggestedLines Int         @default(0)
+  calls          Int         @default(0)
+  note           String?
+  /// `${merchantKey}|${direction}` asked in this run and left unanswered: never asked again in this run.
+  skippedKeys    String[]    @default([])
+  /// The worker holding the run: a slice claims it until leaseUntil (lib/ai/run.ts runAiSlice).
+  leaseToken     String?
+  leaseUntil     DateTime?
+  heartbeatAt    DateTime    @default(now())
+  createdAt      DateTime    @default(now())
+  finishedAt     DateTime?
+
+  @@index([clientId, createdAt])
+  @@index([firmId])
 }
 
 model AiUsage {

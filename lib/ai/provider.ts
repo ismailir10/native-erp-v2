@@ -34,7 +34,7 @@ const envMs = (name: string, fallback: number) => {
   return Number.isFinite(v) && v >= 5_000 ? v : fallback;
 };
 /**
- * Timeouts. Classification/mapping batches (≤ 40 items) get 90 s — reasoning models (e.g. kimi-k3) need well over 30 s for a
+ * Timeouts. Classification/mapping batches (≤ 15 items) get 90 s — reasoning models (e.g. kimi-k3) need well over 30 s for a
  * full batch; close review and *Jelaskan* get 180 s. Both stay under Vercel's maxDuration = 300. Env overrides: AI_TIMEOUT_MS,
  * AI_LONG_TIMEOUT_MS. Evidence prompts (≤ 24 passages) keep 90 s.
  */
@@ -296,18 +296,20 @@ export interface AiProvider {
 export type OcrResult = { transcript: OcrTranscript; promptTokens: number; completionTokens: number; model: string };
 export type CommentaryResult = { text: string; promptTokens: number; completionTokens: number; model: string };
 
-export const AI_BATCH_SIZE = 40;
+/** Counterparties (or source accounts) per call: small enough that a reasoning model's thinking plus the JSON fit `maxTokensFor`. */
+export const AI_BATCH_SIZE = 15;
 export const CLASSIFICATION_PROMPT_VERSION = "classification-v2";
 export const ACCOUNT_MAPPING_PROMPT_VERSION = "account-mapping-v2";
 /** Synthetic seed answers have a distinct cache namespace, never a paid provider alias. */
 export const DEMO_AI_MODEL = "demo-seed";
 
 /**
- * Output budget per request. Reasoning models (GLM, Kimi, DeepSeek, MiniMax…) spend thousands of tokens thinking before the JSON;
- * 1 500 + 60 per item truncated minimax-m3 at 19 real bank lines (2 640). Billing is on tokens used, the reservation settles to
- * actual usage, and the monthly budget still caps the total.
+ * Output budget per request. Reasoning models (GLM, Kimi, DeepSeek, MiniMax…) spend thousands of tokens thinking before the JSON:
+ * 1 500 + 60 per item truncated minimax-m3 at 19 real bank lines (2 640), and on 2026-10-10 batches of 40 at 12 000 were still cut
+ * off in production. Hence 15 items per call (AI_BATCH_SIZE) with the full 12 000. Billing is on tokens used, the reservation
+ * settles to actual usage, and the monthly budget still caps the total.
  */
-export const maxTokensFor = (items: number) => Math.min(12_000, 6_000 + 150 * items);
+export const maxTokensFor = (items: number) => Math.min(12_000, 9_000 + 200 * items);
 
 /**
  * OpenCode Zen serves some model families on other endpoints (GPT/Grok/Muse → /responses, Claude/Qwen → /messages,
@@ -339,6 +341,8 @@ export class AiAnswerError extends Error {
     super(message);
   }
 }
+/** The model ran out of output tokens before the JSON was complete (finish_reason "length"); a smaller batch may fit. */
+export class AiTruncatedError extends AiAnswerError {}
 const TAX_TAGS = ["PPN_KELUARAN", "PPN_MASUKAN", "PPH_21", "PPH_23", "PPH_4_2", "PPH_25"] as const;
 
 /** Env-only config (caps, base URL, env key/model). Use `resolveAiConfig()` for the effective key + model. */
@@ -347,7 +351,8 @@ export function aiConfig() {
     baseUrl: (process.env.AI_BASE_URL || "https://opencode.ai/zen/v1").replace(/\/$/, ""),
     apiKey: process.env.AI_API_KEY || "",
     model: process.env.AI_MODEL || "",
-    maxCallsPerImport: Number(process.env.AI_MAX_CALLS_PER_IMPORT || 3),
+    /** Classification calls per suggestion run (import or *Minta saran AI*), split halves included. */
+    maxCallsPerRun: Number(process.env.AI_MAX_CALLS_PER_RUN || 20),
     monthlyTokenBudget: Number(process.env.AI_MONTHLY_TOKEN_BUDGET || 200_000),
   };
 }
@@ -516,7 +521,7 @@ export class OpenAiCompatibleProvider implements AiProvider {
       model: body.model ?? this.cfg.model,
     };
     const fail = (msg: string) => new AiAnswerError(msg, out.promptTokens, out.completionTokens, out.model);
-    if (body.choices?.[0]?.finish_reason === "length") throw fail(`Jawaban AI terpotong (batas ${maxTokens} token). Coba lagi atau pilih model lain.`);
+    if (body.choices?.[0]?.finish_reason === "length") throw new AiTruncatedError(`Jawaban AI terpotong (batas ${maxTokens} token). Coba lagi atau pilih model lain.`, out.promptTokens, out.completionTokens, out.model);
     if (requireItems && !readItems(out.text)) throw fail("Jawaban AI tidak terbaca (bukan JSON). Coba lagi atau pilih model lain.");
     return out;
   }
