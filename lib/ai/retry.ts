@@ -20,7 +20,7 @@ export async function simpleGuessRows(db: Db, args: { clientId: string; entityId
 }
 
 /**
- * *Minta saran AI* on Review: the same path as an import (cache, batches ≤ 40 unique keys, AI_MAX_CALLS_PER_IMPORT, monthly budget,
+ * *Minta saran AI* on Review: the same path as an import (cache, batches ≤ 15 unique keys, AI_MAX_CALLS_PER_RUN, monthly budget,
  * chart whitelist — rules 17–19), outside any transaction. It only replaces the suggestion of lines still in review; they stay on
  * 1999 until the accountant accepts (rule 14). Nothing is posted.
  */
@@ -63,7 +63,7 @@ export async function suggestAgainWithAi(db: Db, args: { clientId: string; entit
       });
       updated += res.count;
     }
-    if (ai.usage.note) break; // budget, cap or failure: no second pass (rules 17–18)
+    if (ai.usage.stopped) break; // budget, cap or a stopping failure: no second pass (rules 17–18)
   }
   return { rows: rows.length, updated, calls, cacheHits, note };
 }

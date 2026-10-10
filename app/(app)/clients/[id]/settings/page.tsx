@@ -90,7 +90,7 @@ export default async function SettingsPage({ params, searchParams }: { params: P
             <CardHeader>
               <CardTitle>Batas pemakaian</CardTitle>
               <CardDescription>
-                Maks. {cfg.maxCallsPerImport} panggilan per impor · {(await firmTokenBudget(prisma, client.firmId)).toLocaleString("id-ID")} token per bulan untuk kantor ini.
+                Maks. {cfg.maxCallsPerRun} panggilan per proses · {(await firmTokenBudget(prisma, client.firmId)).toLocaleString("id-ID")} token per bulan untuk kantor ini.
                 {lastMonth && ` Bulan terakhir: ${lastMonth.pct}% dikode otomatis (${formatMonthShort(Number(lastMonth.ym.slice(0, 4)), Number(lastMonth.ym.slice(5)))}).`}
               </CardDescription>
             </CardHeader>

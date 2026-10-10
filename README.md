@@ -109,7 +109,7 @@ Next.js 16 (App Router, server actions) · TypeScript · Tailwind v4 · shadcn (
 | `AI_BASE_URL` | LLM gateway (default OpenCode Zen). Env-only on purpose, so a stored key can't be redirected |
 | `AI_API_KEY` / `AI_MODEL` | Fallback when nothing is saved in **Pengaturan**. Empty = rules + memory only (fully functional) |
 | `SETTINGS_SECRET` | ≥ 32 chars. Encrypts the AI key saved in Pengaturan and the Drive token. Changing it means re-saving / reconnecting |
-| `AI_MAX_CALLS_PER_IMPORT` / `AI_MONTHLY_TOKEN_BUDGET` | Credit guards (defaults 3 / 200 000); the monthly budget is the default per organisation, overridable per organisation in the backoffice |
+| `AI_MAX_CALLS_PER_RUN` / `AI_MONTHLY_TOKEN_BUDGET` | Credit guards (defaults 20 calls per suggestion or mapping run, 15 items per call / 200 000 tokens); the monthly budget is the default per organisation, overridable per organisation in the backoffice |
 | `AI_TIMEOUT_MS` / `AI_LONG_TIMEOUT_MS` | Optional per-call timeouts (defaults 90 000 for classification/mapping, 180 000 for close review and *Jelaskan*) |
 
 ## Deploy (Vercel + Supabase)

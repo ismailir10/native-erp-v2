@@ -87,8 +87,10 @@ lines with no useful suggestion.
 2. Progress lives in one small new table (run per client: status, totals, note, heartbeat) — additive migration.
 3. Parallelism stays at one call at a time per run (credit protection and provider rate limits); speed comes from
    not blocking the user, not from fan-out.
-4. Existing lines already on simple guesses from today's imports are picked up by *Minta saran AI* (now background),
-   not automatically.
+4. ~~Existing lines already on simple guesses are picked up by *Minta saran AI*, not automatically.~~ Revised in
+   build (driver): a run covers every line of the client still on a simple guess (one run per client, no scopes), so
+   older lines are picked up by the next run too — simpler to reason about, still bounded by the per-run cap and the
+   monthly budget; keys already left unanswered in a run are not asked again in that run.
 5. The 503s are not separately fixed at the platform level; removing long requests removes their trigger. If they
    recur on short requests after this ships, that is a new investigation.
 
@@ -100,7 +102,7 @@ lines with no useful suggestion.
 - No new dependency, no change to accounting invariants.
 
 ## Tasks
-- [ ] T1 Batch planner — 15 per call, output cap sized for reasoning models, split once on truncation, continue on
+- [x] T1 Batch planner — 15 per call, output cap sized for reasoning models, split once on truncation, continue on
       failure, 20-call cap — accept: unit tests with a truncating MockProvider. (reuse: `suggestWithAi`, `runBudgetedAi`)
 - [ ] T2 AI run record + background runner — additive migration; start/resume/time-box/heartbeat; one run per client;
       writes suggestions only to lines still in review — accept: DB tests (fill, accepted line untouched, concurrent
@@ -114,6 +116,28 @@ lines with no useful suggestion.
       Ship Notes — accept: full gate green.
 
 ## Implementation
+- Approval: user approved the plan on 2026-10-10 ("proceed"), asking for subagent-driven development and long,
+  self-reviewed iteration.
+- Plan: T1→T5 sequential (they share `lib/ai/classify.ts`, the pipeline and the import form), one worker per task,
+  driver reviews each diff (standards + spec, security on `app/actions.ts`) and re-runs the gate before committing.
+  Laptop has 8 GB RAM and ~5 GB disk: one worker at a time, no concurrent build/test/e2e.
+- Driver decisions:
+  - `importStatement` keeps its signature; the import *action* asks it for cached answers only (free, instant) and
+    then schedules the background run. The demo seed and the 7 DB test files that pass a MockProvider keep the
+    inline path, so seed output and `verify:books` stay identical.
+  - The run's call cap is a new `AI_MAX_CALLS_PER_RUN` (default 20). Production sets `AI_MAX_CALLS_PER_IMPORT`
+    explicitly (value hidden), so reusing it would silently keep 3. Review found that ledger mapping shares the
+    batch size: at 15 per call its old 3-call cap would have dropped it from 120 to 45 accounts per click, so mapping
+    uses the same run cap and `AI_MAX_CALLS_PER_IMPORT` is no longer read (Ship Notes: the Vercel var can be removed).
+- T1: `lib/ai/provider.ts`, `lib/ai/classify.ts`, `lib/ai/retry.ts`, `lib/ledger-import/mapping.ts`, AI settings copy
+  (Pengaturan, backoffice), accounting-rules rule 18, README/.env.example, `tests/db/ai-batches.test.ts`,
+  `tests/db/ai-retry.test.ts` — 15 per call with the full 12 000 output; `AiTruncatedError`; a queue that splits a
+  cut-off batch once and moves on past other failures; budget, refused key/model and two timeouts in a row stop the run
+  (`stopped`); optional `deadline`; `remaining`/`unanswered` counts. Review fixed two worker-flagged/found issues: the
+  owner's Review pass was skipped after any note (now only after a real stop; regression test fails without the fix),
+  and ledger mapping's cap.
+  - Split-once on truncation is bounded (one extra pair of calls per cut-off batch, counted in the cap):
+    accounting-rules rule 18 ("no retry loops") is updated to say exactly that.
 
 ## Verification
 
