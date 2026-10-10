@@ -34,7 +34,7 @@ const envMs = (name: string, fallback: number) => {
   return Number.isFinite(v) && v >= 5_000 ? v : fallback;
 };
 /**
- * Timeouts. Classification/mapping batches (≤ 40 items) get 90 s — reasoning models (e.g. kimi-k3) need well over 30 s for a
+ * Timeouts. Classification/mapping batches (≤ 15 items) get 90 s — reasoning models (e.g. kimi-k3) need well over 30 s for a
  * full batch; close review and *Jelaskan* get 180 s. Both stay under Vercel's maxDuration = 300. Env overrides: AI_TIMEOUT_MS,
  * AI_LONG_TIMEOUT_MS. Evidence prompts (≤ 24 passages) keep 90 s.
  */

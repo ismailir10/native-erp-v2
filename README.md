@@ -13,7 +13,7 @@ Buku helps accountants understand the business, review accounting work, and trac
 
 | What you bring | What Buku does with it |
 |---|---|
-| **Rekening koran** | Reads bank transactions, checks continuity, suggests classifications, and reconciles transactions with the books. |
+| **Rekening koran** | Reads bank transactions, checks continuity, suggests classifications, and reconciles transactions with the books. The import answers in seconds; AI suggestions for the remaining lines follow in the background (one *Saran AI* progress line on the result and on Review). |
 | **Existing ledgers / neraca saldo** | Checks exported books, maps source accounts, and prepares reviewed imports into Buku's own ledger. |
 | **Financial statements** | Reads and compares source-reported figures, even before transaction-level books are available. |
 | **Company profiles** | Proposes business context and company/entity information for the accountant to confirm. |

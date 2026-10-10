@@ -112,7 +112,7 @@ lines with no useful suggestion.
       `verify:books` unchanged. (deps: T2)
 - [x] T4 Progress UI — "Saran AI" line on the import result and Review, auto-refresh until done — accept: verify flows
       1–4 locally. (deps: T3)
-- [ ] T5 e2e + docs (README AI section, accounting-rules AI note) + full gate; production walk after merge recorded in
+- [x] T5 e2e + docs (README AI section, accounting-rules AI note) + full gate; production walk after merge recorded in
       Ship Notes — accept: full gate green.
 
 ## Implementation
@@ -158,9 +158,43 @@ lines with no useful suggestion.
   `onBatch` hook to `suggestWithAi` (outside its try, so an apply failure isn't taken for an AI failure),
   `suggestForRows` applies each batch's answers as they settle and `runAiSlice` counts progress per batch —
   regression test "progress moves batch by batch".
+- T5: verify-local fix — the import result listed "Tebakan sederhana 60" beside "Saran AI · 60 saran"; lines handed to
+  the background now show as their own row "Untuk saran AI" (nameless lines stay "Tebakan sederhana"). Removed the
+  app-dead `suggestAgainWithAi` (its tests keep a local copy over `suggestForRows`). Docs: accounting-rules 17–18,
+  README, ADR 0003 update line, provider comment. No new e2e: the e2e server runs one shared config without AI and
+  the base URL is env-only; the background path is covered by DB tests and the local walk below.
   - Split-once on truncation is bounded (one extra pair of calls per cut-off batch, counted in the cap):
     accounting-rules rule 18 ("no retry loops") is updated to say exactly that.
 
 ## Verification
+Local, synthetic data (demo "Grup Ayam Nusantara"), `npm run dev` with a local fake OpenAI-compatible endpoint
+(`/chat/completions`, 4–8 s per call, answers over 10 items cut off with `finish_reason: "length"`) — the real provider
+code path, no credit:
+- Flow 1 (import, 60 lines / 10 counterparties): the import answered in ~3 s with "Saran AI · diproses 0 dari 60
+  transaksi"; the run finished ~5 s later (1 call); the row turned "✓ selesai · 60 saran" without a click or reload.
+- Flow 1b (45 distinct counterparties): calls 15→cut off→7+8, three times (9 calls, log of the fake endpoint);
+  progress on the page 0 → 7 → 15 → 22 → 30 → 37 → done "45 saran".
+- Flow 2 (leave and return): navigated to Review mid-run → "Saran AI diproses · 37 dari 45 transaksi", *Minta saran
+  AI* banner hidden; on finish the page refreshed itself ("Tebakan" filter 8 → 0), "Saran AI selesai · 45 saran".
+- Polling pauses while the tab is hidden (an automated background tab reports `document.hidden`); becoming visible
+  asks at once — confirmed by firing `visibilitychange`.
+- Flows 3–4 (cut-off model, budget exhausted) are covered by DB tests (`ai-batches`, `ai-run`, `ai-background`).
+- Full gate: lint ✓, typecheck ✓, `npm test` 240 files / 1908 tests ✓, `npm run build` ✓, `demo:reset` +
+  `verify:books` "ALL PASS — 1765 pemeriksaan saldo cocok dengan ground truth", `test:e2e` 84 passed / 4 failed — all
+  four environmental on this laptop and unrelated to the change: `auth-links` and `trial-signup` (local Supabase stack
+  without mail capture: "Error sending invite email"), `support-session` (TOTP enrolment step never renders locally),
+  `client-navigation` (uses `Control+a` to select all, which doesn't on macOS). CI's e2e job (Linux, full local stack)
+  is the authority — the PR carries the `e2e` label.
 
 ## Ship Notes
+- Migration: `20261010150305_ai_runs` (additive: table `AiRun`, enum `AiRunStatus`, partial unique index). Applied by
+  the Vercel build's `prisma migrate deploy`.
+- Env: new optional `AI_MAX_CALLS_PER_RUN` (default 20). `AI_MAX_CALLS_PER_IMPORT` is no longer read — the Vercel
+  production var can be deleted any time (harmless if left).
+- Background work uses next/server `after()` inside the existing `maxDuration = 300`; slices stop starting calls after
+  240 s and a stalled run resumes on the next import/Review view or status poll by a member who can write.
+- Deck: no deck change — the limits slide ("Batas pemakaian per impor dan per bulan") still holds (each import's AI work
+  is one capped run + the monthly budget); no slide says AI runs inside the import.
+- Post-merge: production `/login`, build log lists the migration, Beranda shows the real firm; then a production walk
+  with Chrome (import a statement on the test client, watch "Saran AI" finish).
+- Rollback: revert the merge; the `AiRun` table can stay (unused).

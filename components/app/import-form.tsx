@@ -26,6 +26,13 @@ import { MAX_UPLOAD_BYTES, UPLOAD_TOO_BIG } from "@/lib/upload";
 type BankOption = { id: string; label: string; entity: string; bank: string; number: string };
 
 const METHOD_LABEL: Record<string, string> = { TRANSFER: "Transfer antar rekening", RULE: "Aturan", MEMORY: "Pilihan yang diingat", AI: "Usulan AI", HEURISTIC: "Tebakan sederhana", MANUAL: "Manual" };
+/** How the lines were suggested; with AI in the background, the simple guesses waiting for it are their own row. */
+function methodRows(r: ImportSummary): [string, number][] {
+  const later = r.ai.later ?? 0;
+  return Object.entries(r.byMethod)
+    .flatMap(([m, n]): [string, number][] => (m === "HEURISTIC" && later > 0 ? [["Untuk saran AI", later], [METHOD_LABEL[m], n - later]] : [[METHOD_LABEL[m], n]]))
+    .filter(([, n]) => n > 0);
+}
 
 /** `openingPending`: short names of the entities whose Saldo Awal is still missing; the result then leads with it (the bank balance is prefilled from this upload). */
 export function ImportForm({ clientId, banks, sample, openingPending = [], aiRun: pageRun = null }: { clientId: string; banks: BankOption[]; sample?: { bankAccountId: string; fileName: string }; openingPending?: string[]; /** The client's background AI run: shown on the result, or before any upload while it is still running. */ aiRun?: AiRunView | null }) {
@@ -343,8 +350,8 @@ export function ImportForm({ clientId, banks, sample, openingPending = [], aiRun
                 <div className="rounded-md bg-review-subtle p-2 text-review"><div className="num text-xl font-semibold">{result.needsReview}</div><div className="text-xs">perlu review</div></div>
               </div>
               <ul className="space-y-1">
-                {Object.entries(result.byMethod).filter(([, n]) => n > 0).map(([m, n]) => (
-                  <li key={m} className="flex justify-between"><span className="text-muted-foreground">{METHOD_LABEL[m]}</span><span className="num font-medium">{n}</span></li>
+                {methodRows(result).map(([label, n]) => (
+                  <li key={label} className="flex justify-between"><span className="text-muted-foreground">{label}</span><span className="num font-medium">{n}</span></li>
                 ))}
               </ul>
               <div className="flex items-center justify-between border-t pt-3">

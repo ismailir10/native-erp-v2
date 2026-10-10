@@ -105,15 +105,3 @@ export async function suggestForRows(
   }
   return { updated, calls, cacheHits, remaining, stopped, notes, settled, unansweredKeys };
 }
-
-/**
- * *Minta saran AI* on Review: the same path as an import (cache, batches ≤ 15 unique keys, AI_MAX_CALLS_PER_RUN, monthly budget,
- * chart whitelist — rules 17–19), outside any transaction. It only replaces the suggestion of lines still in review; they stay on
- * 1999 until the accountant accepts (rule 14). Nothing is posted.
- */
-export async function suggestAgainWithAi(db: Db, args: { clientId: string; entityIds: string[]; through: Date; provider: AiProvider | null }) {
-  const rows = await simpleGuessRows(db, args);
-  if (!rows.length) return { rows: 0, updated: 0, calls: 0, cacheHits: 0, note: undefined as string | undefined };
-  const r = await suggestForRows(db, { clientId: args.clientId, rows, provider: args.provider });
-  return { rows: rows.length, updated: r.updated, calls: r.calls, cacheHits: r.cacheHits, note: r.notes[0] };
-}
