@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
-import { Toaster } from "@/components/ui/sonner";
+import { NotificationHost } from "@/components/app/notification-host";
 import { getWorkspaceSession } from "@/lib/auth/session";
 import { WorkspaceHistoryProvider } from "@/components/app/workspace-history";
 
@@ -27,7 +27,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang="id" className={hankenGrotesk.variable}>
       <body>
         {session ? <WorkspaceHistoryProvider key={session.firm.id + session.member.id}>{children}</WorkspaceHistoryProvider> : children}
-        <Toaster position="bottom-right" closeButton />
+        <NotificationHost workspace={Boolean(session)} />
       </body>
     </html>
   );

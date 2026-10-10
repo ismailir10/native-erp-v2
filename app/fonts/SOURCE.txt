@@ -18,3 +18,34 @@ from fontTools.varLib.instancer import instantiateVariableFont
 font = TTFont("node_modules/@fontsource-variable/hanken-grotesk/files/hanken-grotesk-latin-wght-normal.woff2")
 instantiateVariableFont(font, {"wght": (400, 700)}, inplace=True)
 font.save("app/fonts/hanken-grotesk-latin-400-700.woff2")
+
+Public headline subset: hanken-grotesk-headline-450.woff2.
+Only the unchanged landing h1 uses this 1,748-byte font, at its existing weight 450.
+The original variable body font and every other heading remain unchanged.
+Source and output SHA-256, weight and actual cmap codepoints are recorded in
+hanken-grotesk-headline-450.json; the rendered-heading test checks coverage and bytes.
+The same source version and full OFL license above apply. No dependency is added.
+The subset retains required layout features and hinting. HarfBuzz shaping of the
+complete headline matches the original 450 instance exactly, including positions.
+
+Reproduction with the same FontTools and Brotli versions above:
+from fontTools import subset
+from fontTools.ttLib import TTFont
+from fontTools.varLib.instancer import instantiateVariableFont
+font = TTFont("node_modules/@fontsource-variable/hanken-grotesk/files/hanken-grotesk-latin-wght-normal.woff2")
+instantiateVariableFont(font, {"wght": 450}, inplace=True)
+options = subset.Options()
+options.name_IDs = ["*"]
+options.name_legacy = True
+options.name_languages = ["*"]
+subsetter = subset.Subsetter(options=options)
+subsetter.populate(text="Dari rekening koran ke laporan keuangan.")
+subsetter.subset(font)
+font.save("app/fonts/hanken-grotesk-headline-450.woff2")
+
+Regenerate this subset and its hash/cmap metadata whenever the h1 needs a new
+character. The CSS class belongs only on this h1, not on other text.
+The exact subset bytes are embedded as a base64 data URL in app/globals.css,
+so the headline needs no additional font or stylesheet request. The coverage
+test checks that these embedded bytes equal the pinned WOFF2 artifact. Refresh
+the data URL with base64.b64encode(the_subset_bytes).decode("ascii") after regeneration.

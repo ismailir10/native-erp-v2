@@ -80,7 +80,7 @@ export function PublicLanding() {
         <div className="grid items-center gap-8 lg:grid-cols-[1.15fr_0.85fr] lg:gap-6">
           <div className="min-w-0">
             <p className="eyebrow text-muted-foreground">Pembukuan untuk kantor akuntan dan perusahaan</p>
-            <h1 id="landing-title" className="display mt-6 max-w-2xl text-[2.8rem] text-balance sm:text-[3.8rem] xl:text-[4rem]">Dari rekening koran ke laporan keuangan.</h1>
+            <h1 id="landing-title" className="public-headline display mt-6 max-w-2xl text-[2.8rem] text-balance sm:text-[3.8rem] xl:text-[4rem]">Dari rekening koran ke laporan keuangan.</h1>
             <p className="mt-7 max-w-md text-lg leading-relaxed text-muted-foreground">Setiap angka punya asal. Buku menjaga jejaknya, akuntan Anda memutuskan yang perlu ditinjau.</p>
             <div className="mt-8 flex flex-wrap items-center gap-4"><a href="/daftar" className={buttonVariants({ size: "lg" })}>Minta akses uji coba<ArrowUpRight aria-hidden="true" /></a><a href="/deck" className="drill inline-flex items-center gap-2 text-sm">Lihat deck<ArrowRight className="size-4" aria-hidden="true" /></a></div>
           </div>

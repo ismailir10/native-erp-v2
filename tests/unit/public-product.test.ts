@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import { PublicLanding } from "@/components/app/public-landing";
 import { PUBLIC_BANK_COUNT, PUBLIC_BANK_COVERAGE } from "@/lib/public-product";
 import capture from "@/public/product/capture-manifest.json";
+import headlineFont from "@/app/fonts/hanken-grotesk-headline-450.json";
 
 vi.mock("@/components/app/public-site-frame", () => ({ PublicSiteFrame: ({ children }: { children: React.ReactNode }) => children }));
 const render = () => {
@@ -18,6 +19,17 @@ const render = () => {
 };
 
 describe("saved public product evidence", () => {
+  it("keeps every headline character in the pinned display font", async () => {
+    const text = render().querySelector("h1")!.textContent!;
+    const bytes = await readFile(join(process.cwd(), "app/fonts", headlineFont.file));
+    expect(createHash("sha256").update(bytes).digest("hex")).toBe(headlineFont.sha256);
+    const css = await readFile(join(process.cwd(), "app/globals.css"), "utf8");
+    const embedded = css.match(/data:font\/woff2;base64,([A-Za-z0-9+/=]+)/)![1];
+    expect(Buffer.from(embedded, "base64")).toEqual(bytes);
+    for (const character of text) expect(headlineFont.codepoints).toContain(character.codePointAt(0));
+    expect(headlineFont.weight).toBe(450);
+  });
+
   it("renders the actual bank claims and qualifies inferred formats", () => {
     const dom = render();
     const disclosure = dom.querySelector("[data-testid='public-bank-formats']")!;
