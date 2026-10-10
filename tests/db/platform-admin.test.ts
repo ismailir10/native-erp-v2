@@ -61,6 +61,8 @@ describe("Buku admins and the backoffice (T06)", () => {
 
   it("lists organisations with counts and access only", async () => {
     const g = await makeGroup();
+    // The list is read on a fixed clock below; the firm's open grant must already have started then, whatever time the test runs.
+    await db.accessGrant.updateMany({ where: { firmId: g.firm.id }, data: { startsAt: new Date("2026-01-01T00:00:00Z") } });
     await addMember(g.firm.id, "OWNER", { name: "pemilik" });
     await db.$transaction((tx) => createFirm(tx, "PT Uji Perusahaan", { kind: "PERUSAHAAN", grant: { kind: "TRIAL", startsAt: new Date("2026-10-01T00:00:00Z"), endsAt: new Date("2026-10-14T16:59:59.999Z") } }));
     const rows = await listOrganisations(db, new Date("2026-10-10T03:00:00Z"));
