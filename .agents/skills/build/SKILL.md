@@ -1,44 +1,67 @@
 ---
 name: build
-description: Execute the approved tasks of the current Buku cycle doc one at a time — implement, test, gate, self-review, update the cycle doc, commit (one commit per task). Use after /spec was approved.
+description: Second stage of spec → build → verify-local → ship. Executes the approved work record one task at a time — plan the fan-out, implement a slice, test it, gate, two-axis review, simplify, update the record, commit — then runs verify-local until the work meets the proud bar. Use after the spec is approved.
 ---
 
-# /build — per-task loop
+<!-- Vendored from agent-workflow@ab828e6 by scripts/sync-agent-workflow.sh. Do not edit here: change it upstream and re-sync. Repo specifics belong in AGENTS.md § Repo profile and docs/workflow/. -->
 
-## Preflight
-- The newest `docs/cycles/*.md` has an approved Spec and unchecked Tasks. If not → `/spec`.
-- Working tree clean. Postgres up (`bash scripts/session-start.sh`).
-- Record the plan as the first Implementation bullet:
-  `- Plan: tasks [..] sequential; [..] delegated to subagents (why) | done inline (why).`
-  Delegate only independent, fully-specified slices (e.g. one parser, one page); the driver reviews the diff.
+# Build
 
-## For each unchecked task
-1. **Load context** — only the files this task needs + the governing skill(s) (AGENTS.md §4). Re-check per task.
-2. **Implement** one vertical slice. No drive-by refactors.
-3. **Test it.**
-   - Domain logic → Vitest in `tests/unit` (pure) or `tests/db` (Postgres, uses `resetDb()` + `makeGroup()` from `tests/helpers.ts`).
-   - UI → drive the page (Playwright script or e2e step). Look at a screenshot; the validator for layout is your eyes.
-   - Anything that changes a report number → `npm run verify:books` (see `verify-books` skill).
-4. **Gate:** `npm run lint && npm run typecheck && npm test`. Red → find the root cause, fix, re-run. Never skip a test.
-5. **Self-review the diff** adversarially (or `/code-review` if available): invariants in `accounting-rules`,
-   `bigint` money, tenant scoping via `getClientForFirm`, Bahasa copy, no dead code. Fix before committing.
-6. **Update the cycle doc:** tick the task; add `- T<n>: <files> — <summary>` to Implementation and the real gate
-   output tail to Verification. Never write a result you didn't just see.
-7. **Commit** (one per task):
-   ```
-   <type>(<scope>): <task title>
+Input: an approved work record. Output: a clean branch, one commit per task, that has passed `verify-local`.
+Nothing pushed (that is `ship`).
 
-   <why, briefly>
+Read `working-principles` first if you have not this session. Then read `docs/workflow/build.md` if it exists: its
+sections extend the matching steps below.
 
-   Cycle: docs/cycles/<file>.md
-   ```
+## 1. Preflight
 
-## After the last task
-1. End-of-cycle gate: `npm run lint && npm run typecheck && npm test && npm run build && npm run verify:books && npm run test:e2e`
-   (cloud sandbox: `PW_CHROMIUM=/opt/pw-browsers/chromium`). Paste the real tails into Verification.
-2. If the demo flow changed → update `docs/demo/investor-demo.md` and `e2e/investor-demo.spec.ts` together.
-3. Fill **Ship Notes**: migrations, env vars, manual steps, rollback. Commit. Hand off to `/ship`.
+1. The record is approved and has unchecked tasks. If not → `spec`.
+2. You are in the work's own worktree and branch, the tree is clean, and the branch is at most 5 commits behind the
+   freshly fetched base (otherwise rebase first).
+3. The repo profile's **Setup** has run (deps installed, local database migrated and seeded).
+
+## 2. Plan the fan-out
+
+Classify the tasks: independent (no shared files, no ordering) → parallel workers, one each; sequential → still one
+worker per slice, the driver sequences and reviews. Do a task inline only when a worker would need the whole plan as
+context or the fan-out costs more than it saves, and say why.
+
+Record the plan before starting, as the first Implementation bullet (cycle doc) or a comment on the issue:
+`- Plan: T[..] parallel, T[..] sequential, T[..] inline (why).` Add the driver and worker tiers if the repo profile asks for them.
+
+## 3. For each task
+
+1. **Load context.** Only the files the task needs, plus every rule file the profile's **Load on demand** table maps
+   to those files. Load the union of matches and re-check per task.
+2. **Check docs** for any library or framework API you are not sure of, before writing against it.
+3. **Implement** one vertical slice. No drive-by refactors.
+4. **Test it** at the seams the record names: one failing test → minimal code → green, then refactor. For UI with no
+   automated seam, drive the real page in a browser and look at a screenshot.
+5. **Task gate** (profile → **Task gate**). Red → find the root cause, fix, re-run. Never move on red.
+6. **Review on two axes, in parallel** (two reviewer workers on the task's diff, reports kept separate):
+   - **Standards** — `working-principles`, the repo's rules for the files touched, and baseline smells (duplication,
+     dead code, long functions, leaky abstractions, needless complexity). Repo rules win over the baseline.
+   - **Spec** — the diff against the record: missing acceptance criteria, scope creep, contradicted decisions. Each
+     finding quotes the record line.
+   Add a **security** reviewer when the diff touches the profile's **Sensitive paths**. Fix real findings, re-run the
+   gate, re-review. Note low-confidence nits; they don't block.
+7. **Simplify** the diff without changing behavior: remove accidental complexity, collapse duplication, reuse helpers.
+8. **Update the record:** tick the task; add `- T<n>: <files> — <summary>` to Implementation (cycle doc) or the PR
+   notes you are collecting (issue).
+9. **Commit** one commit for the task, in the profile's commit style, referencing the record.
+
+## 4. After the last task
+
+1. Run **`verify-local`** in full. This is not optional and not deferrable to CI. Iterate until it passes the proud bar
+   or hits its stop rule.
+2. If a user-facing capability, route, env var or setup step changed, update the docs the profile names in the same
+   branch.
+3. Fill **Ship Notes**: migrations, env vars, manual steps, post-merge checks, rollback path. Commit.
+4. Continue straight into `ship`, carrying forward: record, branch, commits, the verify-local evidence block, and every
+   judgment call made (for **Decisions made**).
 
 ## Rules
-- If the Spec turns out wrong, stop and say so — don't silently re-scope.
-- New dependency, schema migration or real AI calls not in the Spec → re-open the gate.
+
+- One commit per task; gates pass between tasks; no "fix it in the next task".
+- If the spec turns out wrong, stop and say so. Don't silently re-scope.
+- A new dependency, unplanned migration or auth/PII change re-opens the gate.

@@ -171,7 +171,7 @@ Both branches are protected from deletion and force-push, and require the CI `ch
 Supabase: project `native-erp-v2` (the real workspace, git `main`). Nothing else is hosted; development runs on the local stack.
 
 ## For contributors (humans and agents)
-Read [AGENTS.md](AGENTS.md) (also reachable as `CLAUDE.md`): the spec → build → ship loop, gates, and which skill (`.agents/skills/`) governs which folder.
+Read [AGENTS.md](AGENTS.md) (also reachable as `CLAUDE.md`): the spec → build → verify-local → ship loop, the repo profile, and which skill (`.agents/skills/`) governs which folder.
 Decisions live in [docs/adrs](docs/adrs/README.md). Demo data is synthetic — never commit real client statements.
 
 ## Document evidence workspace
