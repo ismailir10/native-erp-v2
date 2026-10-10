@@ -342,7 +342,7 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   print a diff, and `PATCH` only with `--apply`. It refuses a project ref that is not in env, and it never prints a secret.
   — accept: the unit test builds the payload from the repo files and diffs it against a fixture config. A dry run against a fake
   `fetch` prints the expected diff. No network in tests.
-- [ ] **T17 No vendor text, branded error pages, public shell.** After: none (touches `lib/auth/operator.ts` only at its `fail()`;
+- [~] **T17 No vendor text, branded error pages, public shell.** (claimed: agent-b) After: none (touches `lib/auth/operator.ts` only at its `fail()`;
   if T06/T08/T11 are open, note it in Handoffs). Files: `lib/errors/user-message.ts` (provider error → Bahasa, logs raw + reference id),
   `lib/auth/operator.ts` (`fail()` uses it), `app/error.tsx`, `app/global-error.tsx`, `app/not-found.tsx`, `app/layout.tsx` metadata
   (title template, Open Graph, icons), `components/app/public-shell.tsx` (used by `/login`, `/atur-sandi`, later `/daftar` and
