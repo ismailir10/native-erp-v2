@@ -216,7 +216,7 @@ use, accounting-invariant change, promised deletion schedule, production write, 
 - [x] T4 Demo capture script and optimised product assets — accept: one local-only command regenerates bank-to-
   journal, Neraca Saldo and close images with source/amount agreement and no real data/model calls. Deps: T1.
   Reuse demo seed, existing authenticated Playwright setup and source drill-down; no scenario/ledger change.
-- [ ] T5 Landing story and public metadata — accept: two audience narratives, primary/secondary actions, all
+- [x] T5 Landing story and public metadata — accept: two audience narratives, primary/secondary actions, all
   three readable product views, fixture-backed bank claims, token styling and approved motion only. Deps: T2,
   T4. Reuse the checked decks, `next/image`, existing metadata/Open Graph/favicon and motion conventions.
 - [ ] T6 Complete local verification and polish — accept: public/session/form/email flows pass; five public
@@ -263,6 +263,12 @@ demo capture environment. This spec stage has one tightly connected document and
   Browser requests cannot leave loopback or write books. Guards reject hosted origins and database query
   overrides before connection. Source, spec, standards and asset visual reviews passed.
   Gate: lint/typecheck pass; 225 files / 1,538 tests pass; capture completes with 1,765 book checks passing.
+
+- T5: the landing tells the source-to-journal story and distinct firm/company workflows using the verified
+  captures. Phone crops retain readable evidence, with native disclosures for full reports/checklists.
+  Bank and format claims come from the live registry and fixtures, with inferred formats qualified.
+  Page-specific metadata and the existing Open Graph image are retained. Source/spec/standards reviews pass.
+  Gate: lint/typecheck pass; 225 files / 1,538 tests pass, including rendered claims and asset-dimension checks.
 
 ## Verification
 

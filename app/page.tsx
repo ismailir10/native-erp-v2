@@ -16,7 +16,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const title = "Dari rekening koran ke laporan keuangan";
   const description = "Buku membantu kantor akuntan dan perusahaan meninjau pembukuan, menelusuri angka ke sumbernya, dan menutup buku setelah diperiksa.";
   return {
-    title,
+    title: { absolute: `${title} · Buku` },
     description,
     alternates: { canonical: "/" },
     openGraph: { title: `${title} · Buku`, description, url: "/", siteName: "Buku", locale: "id_ID", type: "website" },
