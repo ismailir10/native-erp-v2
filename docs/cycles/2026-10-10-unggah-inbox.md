@@ -126,7 +126,7 @@ them and asks only what it truly cannot know, once.
 - No new dependency, no AI change, accounting invariants unchanged (deterministic pipeline stays the only writer).
 
 ## Tasks
-- [ ] T1 ADR: per-client PDF password keyring (replaces "never stored") — accept: ADR merged in the PR.
+- [x] T1 ADR: per-client PDF password keyring (replaces "never stored") — accept: ADR merged in the PR.
 - [ ] T2 Sorting + per-file outcome: every file → Dokumen version + kind (bank / ledger / other) + outcome record —
       accept: DB tests for the three kinds and reload persistence. (reuse: evidence store, `parseStatementSections`,
       ledger-import read)
@@ -141,6 +141,35 @@ them and asks only what it truly cannot know, once.
 - [ ] T7 e2e + investor walk + docs (README routes, demo script) + full gate — accept: full gate green.
 
 ## Implementation
+- Approval: user approved the four-cycle plan on 2026-10-10 ("proceed"), merge on green, production check with Chrome
+  after merge; subagent-driven development.
+- Production evidence feeding this cycle (2026-10-11, after `import-ai-background` merged): a BCA tahapan import answered
+  in ~15 s, its background run settled 556 of 813 waiting lines and stopped at the 20-call cap; Review then says
+  "257 transaksi hanya punya tebakan sederhana karena AI tidak memberi saran saat impor" — no longer true (AI doesn't run
+  at import) → copy fix in T6.
+- Plan (driver): tasks regrouped for the build, same scope — T1 ADR (driver, inline); T2 inbox store + preview + keyring
+  (lib); T3 plan / confirm / process (lib); T4 actions + Drive folder; T5 Unggah page + menu + setup copy; T6 Dokumen
+  "Dibukukan", Pengaturan and Review copy; T7 e2e + docs + full gate. Sequential, one worker each (shared files);
+  driver reviews every diff and re-runs the gate.
+- Design (driver):
+  - **Inbox intake:** one `EvidenceIntake` per client flagged `isInbox` (additive column, partial unique per client),
+    found or created on first upload; files stored with the existing begin/append/finish flow, so they show in Dokumen
+    like any upload (dedupe by hash per intake is free).
+  - **`UploadItem`** (additive table): one row per dropped file — firm, client, `batchId`, file name, sha256, evidence
+    version, `kind` (BANK | LEDGER | OTHER), `status` (CHECKED | NEEDS_PASSWORD | NEEDS_ACCOUNT | BOOKED | DRAFT | KEPT |
+    FAILED), `message`, period, `sections` JSON (bank, number, holder, currency, period, rows, error per section),
+    links to the StatementImport(s) / LedgerImport. The page's per-file list reads these rows (persists across reloads).
+  - **`ClientPdfPassword`** (additive table): firm, client, `secret` (encryptSecret), added by/at, last used. Tried in
+    order on a locked PDF; a password that opens a file is added once; admins clear them in Pengaturan klien. Never
+    logged, never returned to the browser.
+  - **Requests stay short:** one server action per file to check it (store + preview), one to build the plan, one to
+    confirm the card, and one per file to process it (oldest period first, driven by the page) — no request handles
+    the whole drop. Drive folders: one action lists the folder (recursive, Dokumen's limits), then one action per file
+    fetches and checks it.
+  - **Holder name:** read from `ParsedStatement.holder` once `bank-reader-fixes` (#143) merges; until then the card works
+    without it (no mismatch warning).
+- T1: `docs/adrs/0018-pdf-password-keyring.md` + ADR index — per-client encrypted keyring, server-only, clearable by
+  admins; replaces "never stored".
 
 ## Verification
 
