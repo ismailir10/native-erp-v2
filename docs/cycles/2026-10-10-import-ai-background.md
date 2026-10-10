@@ -104,7 +104,7 @@ lines with no useful suggestion.
 ## Tasks
 - [x] T1 Batch planner — 15 per call, output cap sized for reasoning models, split once on truncation, continue on
       failure, 20-call cap — accept: unit tests with a truncating MockProvider. (reuse: `suggestWithAi`, `runBudgetedAi`)
-- [ ] T2 AI run record + background runner — additive migration; start/resume/time-box/heartbeat; one run per client;
+- [x] T2 AI run record + background runner — additive migration; start/resume/time-box/heartbeat; one run per client;
       writes suggestions only to lines still in review — accept: DB tests (fill, accepted line untouched, concurrent
       guard, budget stop, resume). (deps: T1; reuse: `suggestAgainWithAi`)
 - [ ] T3 Import answers without AI — pipeline books deterministically, schedules the run after the response; *Minta
@@ -136,6 +136,13 @@ lines with no useful suggestion.
   (`stopped`); optional `deadline`; `remaining`/`unanswered` counts. Review fixed two worker-flagged/found issues: the
   owner's Review pass was skipped after any note (now only after a real stop; regression test fails without the fix),
   and ledger mapping's cap.
+- T2: `prisma/schema.prisma` + migration `20261010150305_ai_runs` (AiRun, enum AiRunStatus, partial unique index
+  "one RUNNING run per client"), `lib/ai/run.ts` (startAiRun / runAiSlice / driveAiRun / latestAiRun / isStalled),
+  `lib/ai/retry.ts` (one shared `suggestForRows`; `suggestAgainWithAi` unchanged in behaviour), `lib/ai/classify.ts`
+  (`maxCalls` so one cap spans slices; `unansweredKeys` so a resumed run never re-asks), `tests/db/ai-run.test.ts`
+  (12 cases incl. concurrent start, lease, deadline, no re-ask, budget, cap across slices). Lease = deadline +
+  AI_TIMEOUT_MS + 30 s so a call started just before the deadline can't be overtaken; the run finishes on a recount,
+  not on `remaining`, so lines from a concurrent import aren't dropped.
   - Split-once on truncation is bounded (one extra pair of calls per cut-off batch, counted in the cap):
     accounting-rules rule 18 ("no retry loops") is updated to say exactly that.
 

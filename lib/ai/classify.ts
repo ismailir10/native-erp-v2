@@ -69,7 +69,9 @@ export type AiRunUsage = {
  * - a cut-off batch is asked once more as two halves (rule 18's only repeat); a cut-off half keeps its simple guesses;
  * - another failed batch keeps its simple guesses and the run moves on;
  * - the budget refusal, a refused key/model, or two timeouts in a row stop the run with a note;
- * - no call starts after `deadline` (epoch ms): the caller resumes later with what is left (`remaining`).
+ * - no call starts after `deadline` (epoch ms): the caller resumes later with what is left (`remaining`);
+ * - `maxCalls` (default AI_MAX_CALLS_PER_RUN) lets a background run spread one cap over several slices (lib/ai/run.ts).
+ * `unansweredKeys` names the keys asked that came back without a usable suggestion, so a resumed run doesn't ask them again.
  */
 export async function suggestWithAi(
   tx: Db,
@@ -82,8 +84,9 @@ export async function suggestWithAi(
     pending: Pending[];
     provider: AiProvider | null;
     deadline?: number;
+    maxCalls?: number;
   },
-): Promise<{ suggestions: Map<string, Classification>; usage: AiRunUsage }> {
+): Promise<{ suggestions: Map<string, Classification>; usage: AiRunUsage; unansweredKeys: string[] }> {
   args = { ...args, accounts: aiAccounts(args.accounts) };
   const suggestions = new Map<string, Classification>();
   const unique = new Map<string, Pending>();
@@ -103,23 +106,23 @@ export async function suggestWithAi(
   }
   const cacheHits = suggestions.size;
   if (misses.length === 0 || !args.provider) {
-    return { suggestions, usage: { calls: 0, cacheHits, note: !args.provider && misses.length ? "AI tidak aktif" : undefined, remaining: misses.length, unanswered: 0, stopped: !args.provider && misses.length > 0 } };
+    return { suggestions, usage: { calls: 0, cacheHits, note: !args.provider && misses.length ? "AI tidak aktif" : undefined, remaining: misses.length, unanswered: 0, stopped: !args.provider && misses.length > 0 }, unansweredKeys: [] };
   }
 
-  const cfg = aiConfig();
+  const maxCalls = args.maxCalls ?? aiConfig().maxCallsPerRun;
   const queue: { items: Pending[]; half: boolean }[] = [];
   for (let i = 0; i < misses.length; i += AI_BATCH_SIZE) queue.push({ items: misses.slice(i, i + AI_BATCH_SIZE), half: false });
 
   let calls = 0;
   let asked = 0; // unique keys whose (last) call is done, answered or not
   let truncated = 0; // of those, keys left on simple guesses because the answer was cut off
-  let unanswered = 0;
+  const unansweredKeys: string[] = [];
   let timeoutsInRow = 0;
   let stopNote: string | undefined;
   let failureNote: string | undefined;
   let capped = false;
   while (queue.length) {
-    if (calls >= cfg.maxCallsPerRun) { capped = true; break; }
+    if (calls >= maxCalls) { capped = true; break; }
     if (args.deadline !== undefined && Date.now() >= args.deadline) break;
     const { items, half } = queue[0];
     const batch: AiItem[] = items.map((p) => ({ key: p.key, direction: p.direction, sample: p.sample }));
@@ -141,7 +144,7 @@ export async function suggestWithAi(
         });
         suggestions.set(`${a.key}|${p.direction}`, { method: "AI", accountCode: a.accountCode, taxTag: a.taxTag, confidence: a.confidence, reason: `AI: ${a.reason}` });
       }
-      unanswered += items.filter((p) => !suggestions.has(`${p.key}|${p.direction}`)).length;
+      for (const p of items) if (!suggestions.has(`${p.key}|${p.direction}`)) unansweredKeys.push(`${p.key}|${p.direction}`);
     } catch (e) {
       if (e instanceof AiBudgetError) { stopNote = e.message; break; } // refused before any call: the batch stays unasked
       queue.shift();
@@ -153,7 +156,7 @@ export async function suggestWithAi(
         continue;
       }
       asked += items.length;
-      unanswered += items.length;
+      for (const p of items) unansweredKeys.push(`${p.key}|${p.direction}`);
       if (e instanceof AiTruncatedError) { truncated += items.length; timeoutsInRow = 0; continue; }
       if (isConfigFailure(e)) { stopNote = aiFailureNote(e); break; }
       if (isTimeout(e)) {
@@ -166,5 +169,5 @@ export async function suggestWithAi(
     ?? (capped ? "Batas panggilan AI per proses tercapai." : undefined)
     ?? failureNote
     ?? (truncated ? `${truncated} lawan transaksi tetap tebakan sederhana: jawaban AI terpotong.` : undefined);
-  return { suggestions, usage: { calls, cacheHits, note, remaining: misses.length - asked, unanswered, stopped: !!stopNote || capped } };
+  return { suggestions, usage: { calls, cacheHits, note, remaining: misses.length - asked, unanswered: unansweredKeys.length, stopped: !!stopNote || capped }, unansweredKeys };
 }
