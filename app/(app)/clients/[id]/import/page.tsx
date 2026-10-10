@@ -29,6 +29,8 @@ import { UploadLinksCard } from "@/components/app/upload-links-card";
 import { uploadLinks } from "@/lib/upload-links";
 import { RemoveImportButton } from "@/components/app/remove-import";
 import { isAdminRole } from "@/lib/auth/permissions";
+import { accessView, requireWorkspaceSession } from "@/lib/auth/session";
+import { aiRunForView } from "@/lib/ai/background";
 
 export const metadata = { title: "Impor Mutasi" };
 
@@ -50,6 +52,8 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
   const shownImports = showAll ? imports : imports.slice(0, HISTORY);
   // Removing an import (ADR 0013) is an admin's decision, like reopening a month.
   const isAdmin = isAdminRole((await getCurrentMember()).role);
+  // The client's background AI run (a stalled one resumes after this response when the member may write).
+  const aiRun = await aiRunForView(prisma, client, { canWrite: accessView(await requireWorkspaceSession()).canWrite });
   const tab = !hasBanks || sp.tab === "ledger" ? "ledger" : "statement";
   // Sumber first (ADR 0014): what is missing for this month, and the message that asks the client for it.
   const completeness = await completenessMatrix(prisma, client.id, period.year, period.month);
@@ -146,7 +150,7 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
             <TabsTrigger value="ledger">Neraca atau buku besar dari sistem lama</TabsTrigger>
           </TabsList>
           <TabsContent value="statement" className="space-y-6">
-      <ImportForm clientId={client.id} banks={banks} sample={sample} openingPending={setup.needsOpening.map((e) => e.shortName)} />
+      <ImportForm clientId={client.id} banks={banks} sample={sample} openingPending={setup.needsOpening.map((e) => e.shortName)} aiRun={aiRun} />
       <Card>
         <CardHeader>
           <CardTitle>Riwayat impor</CardTitle>

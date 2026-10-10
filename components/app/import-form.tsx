@@ -18,6 +18,7 @@ import { useAccess, WriteBlockedNote } from "@/components/app/access-context";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { BANKS, GROUP_ORDER, bankName } from "@/lib/banks";
 import type { ImportSummary } from "@/lib/import/pipeline";
+import type { AiRunView } from "@/lib/ai/run";
 import { cn } from "@/lib/utils";
 import { MAX_UPLOAD_BYTES, UPLOAD_TOO_BIG } from "@/lib/upload";
 
@@ -26,7 +27,7 @@ type BankOption = { id: string; label: string; entity: string; bank: string; num
 const METHOD_LABEL: Record<string, string> = { TRANSFER: "Transfer antar rekening", RULE: "Aturan", MEMORY: "Pilihan yang diingat", AI: "Usulan AI", HEURISTIC: "Tebakan sederhana", MANUAL: "Manual" };
 
 /** `openingPending`: short names of the entities whose Saldo Awal is still missing; the result then leads with it (the bank balance is prefilled from this upload). */
-export function ImportForm({ clientId, banks, sample, openingPending = [] }: { clientId: string; banks: BankOption[]; sample?: { bankAccountId: string; fileName: string }; openingPending?: string[] }) {
+export function ImportForm({ clientId, banks, sample, openingPending = [] }: { clientId: string; banks: BankOption[]; sample?: { bankAccountId: string; fileName: string }; openingPending?: string[]; /** The client's background AI run (shown from T4 of cycle 2026-10-10-import-ai-background). */ aiRun?: AiRunView | null }) {
   const router = useRouter();
   const { canWrite } = useAccess();
   const [bankId, setBankId] = useState<string>(sample?.bankAccountId ?? banks[0]?.id ?? "");

@@ -19,6 +19,7 @@ import type { WithholdingKind } from "@/lib/generated/prisma/enums";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { accountantHints } from "@/lib/classify/hints";
+import type { AiRunView } from "@/lib/ai/run";
 
 export type ReviewItem = {
   id: string;
@@ -130,6 +131,8 @@ export function ReviewQueue({
   aiReady?: boolean;
   /** The member may set the AI key (admin): the banner links to Pengaturan. */
   canSetUpAi?: boolean;
+  /** The client's background AI run (shown from T4 of cycle 2026-10-10-import-ai-background). */
+  aiRun?: AiRunView | null;
 }) {
   const router = useRouter();
   const [done, setDone] = useState<Set<string>>(new Set());
@@ -275,8 +278,8 @@ export function ReviewQueue({
     const r = await suggestAgainAction(clientId, scope);
     setAsking(false);
     if (!r.ok) return void toast.error(r.error);
-    if (r.updated > 0) toast.success(`${r.updated} dari ${r.rows} transaksi mendapat usulan AI`, { description: r.note });
-    else toast.error(r.note ?? "AI belum memberi usulan untuk transaksi ini. Pilih akunnya langsung.");
+    if (r.aiRun) toast.success("Saran AI diproses di latar belakang");
+    else toast.info("Tidak ada transaksi yang perlu ditanyakan ke AI.");
     router.refresh();
   };
 

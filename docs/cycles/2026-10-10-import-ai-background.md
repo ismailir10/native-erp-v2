@@ -107,7 +107,7 @@ lines with no useful suggestion.
 - [x] T2 AI run record + background runner — additive migration; start/resume/time-box/heartbeat; one run per client;
       writes suggestions only to lines still in review — accept: DB tests (fill, accepted line untouched, concurrent
       guard, budget stop, resume). (deps: T1; reuse: `suggestAgainWithAi`)
-- [ ] T3 Import answers without AI — pipeline books deterministically, schedules the run after the response; *Minta
+- [x] T3 Import answers without AI — pipeline books deterministically, schedules the run after the response; *Minta
       saran AI* schedules a run too — accept: DB test that no provider call happens inside the import; demo seed and
       `verify:books` unchanged. (deps: T2)
 - [ ] T4 Progress UI — "Saran AI" line on the import result and Review, auto-refresh until done — accept: verify flows
@@ -143,6 +143,13 @@ lines with no useful suggestion.
   (12 cases incl. concurrent start, lease, deadline, no re-ask, budget, cap across slices). Lease = deadline +
   AI_TIMEOUT_MS + 30 s so a call started just before the deadline can't be overtaken; the run finishes on a recount,
   not on `remaining`, so lines from a concurrent import aren't dropped.
+- T3: `lib/import/pipeline.ts` (`aiLater`: cache only via `maxCalls: 0` — passing `provider: null` would miss the cache,
+  whose key includes the model; summary `ai.later`), `lib/ocr/draft.ts`, `lib/ai/run.ts` (`runInBackground`,
+  `AiRunView`/`aiRunView`), new `lib/ai/background.ts` (the only `after()` user: `scheduleAiRun`, `aiRunForView`),
+  `app/actions.ts` (three import actions hand off to the run; *Minta saran AI* starts the run; new
+  `aiRunStatusAction` — read access sees progress, only writers resume a stalled run), import and Review pages resume
+  stalled runs for writers, `tests/db/ai-background.test.ts`. A second drive after a run finishes happens only for
+  lines created after it started (a cap-stopped run doesn't immediately spend another 20 calls).
   - Split-once on truncation is bounded (one extra pair of calls per cut-off batch, counted in the cap):
     accounting-rules rule 18 ("no retry loops") is updated to say exactly that.
 

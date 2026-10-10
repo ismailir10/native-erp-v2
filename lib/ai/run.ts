@@ -125,3 +125,32 @@ export async function latestAiRun(db: Db, clientId: string): Promise<AiRun | nul
 
 /** RUNNING with no live worker (the slice ended or the function was cut off): the next page view resumes it. */
 export const isStalled = (run: Pick<AiRun, "status" | "leaseUntil">, now = new Date()) => run.status === "RUNNING" && (!run.leaseUntil || run.leaseUntil < now);
+
+/**
+ * What the app runs after the response (next/server `after()`): start or join the client's run and work it for one time box. When it
+ * finishes while lines of a later import are still waiting (they joined right as the last slice recounted), a second run is driven once
+ * with what is left of the time box — only for such lines: keys the run left unanswered or never reached (call cap, budget) wait for the
+ * next import or *Minta saran AI*. Never throws: an `after` callback has no one to report to.
+ */
+export async function runInBackground(db: Db, args: { firmId: string; clientId: string; provider: AiProvider | null; budgetMs?: number }): Promise<void> {
+  const until = Date.now() + (args.budgetMs ?? AI_RUN_BUDGET_MS);
+  try {
+    const run = await startAiRun(db, args);
+    if (!run) return;
+    const r = await driveAiRun(db, run.id, { provider: args.provider, budgetMs: until - Date.now() });
+    if (!r.done || Date.now() >= until) return;
+    const finished = await db.aiRun.findUniqueOrThrow({ where: { id: run.id } });
+    const late = (await pendingRows(db, args.clientId, finished.skippedKeys)).some((row) => row.createdAt > finished.createdAt);
+    if (!late) return;
+    const next = await startAiRun(db, args);
+    if (next?.status === "RUNNING" && next.id !== run.id) await driveAiRun(db, next.id, { provider: args.provider, budgetMs: until - Date.now() });
+  } catch (e) {
+    // The run stays RUNNING without a lease: the next page view of the client resumes it. No file contents or names in the log.
+    console.error(`AI run for client ${args.clientId} stopped: ${e instanceof Error ? e.message.slice(0, 200) : String(e).slice(0, 200)}`);
+  }
+}
+
+/** The run as the import result and Review show it: progress only, nothing firm-external (no keys, no lease). */
+export type AiRunView = { id: string; status: AiRun["status"]; totalLines: number; askedLines: number; suggestedLines: number; note: string | null };
+export const aiRunView = (run: AiRun | null): AiRunView | null =>
+  run && { id: run.id, status: run.status, totalLines: run.totalLines, askedLines: run.askedLines, suggestedLines: run.suggestedLines, note: run.note };
