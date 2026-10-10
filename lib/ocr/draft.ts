@@ -202,7 +202,9 @@ export async function importOcrDraft(db: Db, input: { firmId: string; clientId: 
     actorId: input.actorId ?? null,
     // The generated CSV's SALDO AWAL line must not promote an inferred/manual opening to printed evidence.
     sourceProvenance: {
-      period: period ? "DECLARED" : "INFERRED",
+      // OCR header dates are model output and are not reviewed in Periksa baris.
+      // Keep them for traceability, but never promote them to independent coverage evidence.
+      period: "INFERRED",
       opening: d.header.openingSource === "PRINTED" ? "PRINTED" : "DERIVED",
       closing: !mapped && d.closing !== null ? "PRINTED" : "DERIVED",
     },

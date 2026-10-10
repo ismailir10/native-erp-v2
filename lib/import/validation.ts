@@ -23,7 +23,7 @@ export function validateStatement(st: ParsedStatement, sourceHash?: string): Sta
   const add = (code: string, severity: "CONFLICT" | "UNVERIFIED", message: string) => issues.push({ code, severity, message });
   const continuity = checkContinuity(st);
   if (!continuity.ok) add("BALANCE_CONFLICT", "CONFLICT", continuity.note ?? "Saldo sumber tidak nyambung.");
-  if (source.period === "INFERRED") add("PERIOD_INFERRED", "UNVERIFIED", "Periode file disimpulkan dari transaksi; belum membuktikan seluruh bulan tercakup.");
+  if (source.period === "INFERRED") add("PERIOD_INFERRED", "UNVERIFIED", "Periode sumber belum terverifikasi; belum membuktikan seluruh bulan tercakup.");
   if (source.opening === "DERIVED") add("OPENING_DERIVED", "UNVERIFIED", "Saldo awal dihitung dari transaksi, bukan saldo awal yang tercetak.");
   if (source.closing === "DERIVED") add("CLOSING_DERIVED", "UNVERIFIED", "Saldo akhir dihitung dari transaksi, bukan saldo akhir yang tercetak.");
   if (source.closing === "ROW" && st.rows.at(-1) && +st.rows.at(-1)!.date < +st.periodEnd) add("CLOSING_BEFORE_END", "UNVERIFIED", "Saldo terakhir tercetak sebelum akhir periode; lengkapi saldo penutup periode.");
