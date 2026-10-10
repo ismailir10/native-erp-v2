@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { getClientForFirm } from "@/lib/tenant";
+import { findClientForMember } from "@/lib/tenant";
 import { openingContext } from "@/lib/opening";
 import { findingLabel } from "@/lib/findings";
 import Link from "next/link";
@@ -18,7 +18,7 @@ export const metadata = { title: "Saldo Awal" };
 
 export default async function OpeningPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const client = await getClientForFirm(id).catch(() => notFound());
+  const client = (await findClientForMember(id)) ?? notFound();
   const [ctx, accounts] = await Promise.all([
     openingContext(prisma, client.id),
     prisma.account.findMany({ where: { clientId: client.id, isBank: false, code: { notIn: [ACCOUNT_CODES.SUSPENSE, ACCOUNT_CODES.RETAINED, ACCOUNT_CODES.CLEARING, ACCOUNT_CODES.OPENING_DIFFERENCE] } }, orderBy: { code: "asc" } }),

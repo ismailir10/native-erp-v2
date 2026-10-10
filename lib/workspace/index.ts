@@ -18,8 +18,15 @@ export function parseWorkspacePeriod(value: string) {
 }
 
 /** Only ids owned by the authenticated firm may reach accounting read helpers. */
-export async function resolveWorkspaceScope(db: Db, firmId: string, input: WorkspaceInput = {}) {
-  const clients = await db.client.findMany({ where: { firmId }, select: { id: true, name: true, entities: { where: { firmId }, select: { id: true, name: true, shortName: true, functionalCurrency: true, clientId: true, kind: true }, orderBy: { name: "asc" } } }, orderBy: { name: "asc" } });
+/**
+ * Whose workspace: the organisation and the clients the member may open (ADR 0017; "ALL" for admins and company members). Every
+ * scope, overview and answer is built from these clients only, so an unassigned client is "not found" here like anywhere else.
+ */
+export type WorkspaceAccess = { firmId: string; clientIds: string[] | "ALL" };
+
+export async function resolveWorkspaceScope(db: Db, access: WorkspaceAccess, input: WorkspaceInput = {}) {
+  const firmId = access.firmId;
+  const clients = await db.client.findMany({ where: access.clientIds === "ALL" ? { firmId } : { firmId, id: { in: access.clientIds } }, select: { id: true, name: true, entities: { where: { firmId }, select: { id: true, name: true, shortName: true, functionalCurrency: true, clientId: true, kind: true }, orderBy: { name: "asc" } } }, orderBy: { name: "asc" } });
   for (const client of clients) client.entities.sort((a, b) => Number(a.kind === "PERORANGAN") - Number(b.kind === "PERORANGAN"));
   const key = input.scope ?? "all";
   const allEntities = clients.flatMap(c => c.entities);
@@ -57,8 +64,9 @@ export function workspaceHref(path: string, scope: Pick<WorkspaceScope, "key" | 
 
 export type WorkspaceTask = { id: string; title: string; detail: string; href: string; priority: "high" | "normal"; clientId: string; entityId?: string };
 
-export async function getWorkspaceOverview(db: Db, firmId: string, input: WorkspaceInput = {}) {
-  const scope = await resolveWorkspaceScope(db, firmId, input);
+export async function getWorkspaceOverview(db: Db, access: WorkspaceAccess, input: WorkspaceInput = {}) {
+  const firmId = access.firmId;
+  const scope = await resolveWorkspaceScope(db, access, input);
   const { start, end } = periodBounds(scope.year, scope.month);
   const entities = await Promise.all(scope.entities.map(async e => {
     const [entries, history, openReview, pl, tb] = await Promise.all([
@@ -265,12 +273,13 @@ export function accountsNamed<T extends { name: string }>(question: string, acco
   return best < 1 ? [] : top.slice(0, max).map((x) => x.a);
 }
 
-export async function askWorkspace(db: Db, firmId: string, input: WorkspaceInput & { question: string }): Promise<WorkspaceAnswer> {
+export async function askWorkspace(db: Db, access: WorkspaceAccess, input: WorkspaceInput & { question: string }): Promise<WorkspaceAnswer> {
+  const firmId = access.firmId;
   const question = input.question.trim();
   if (!question || question.length > 2000) throw new WorkspaceInputError("Tulis pertanyaan antara 1 dan 2.000 karakter.");
   // A month named in the question is the month answered ("laba SKP Maret 2027"), never silently another one.
   const asked = periodIn(question);
-  const resolved = await resolveWorkspaceScope(db, firmId, asked ? { ...input, period: asked } : input);
+  const resolved = await resolveWorkspaceScope(db, access, asked ? { ...input, period: asked } : input);
   const { key, label, period, periodLabel } = resolved;
   const answer: WorkspaceAnswer = { id: randomUUID(), question, scope: { key, label, period, periodLabel }, text: "", rows: [], citations: [], limitations: [], preliminary: null };
   const intent = workspaceQuestionIntent(question);
@@ -385,7 +394,7 @@ export async function askWorkspace(db: Db, firmId: string, input: WorkspaceInput
     if (intakes.length > 10 || answer.rows.length >= 30) answer.limitations.push("Hasil dibatasi 10 kumpulan dan 30 baris; pilih klien atau perusahaan untuk mempersempit pencarian.");
     answer.limitations.push(intent === "context" ? "Profil perusahaan memakai konteks yang tersedia, termasuk tanpa tanggal; ini bukan posisi historis pada bulan terpilih. Dokumen tanpa klien tidak disertakan." : "Dokumen tanpa klien atau periode yang sesuai tidak disertakan. Periksa cakupan dokumen di Dokumen.");
   } else {
-    const data = await getWorkspaceOverview(db, firmId, { scope: key, period });
+    const data = await getWorkspaceOverview(db, access, { scope: key, period });
     if (intent === "readiness") {
       answer.text = `Kesiapan tutup buku untuk ${periodLabel}. Penutupan berlaku untuk seluruh grup/klien.`;
       for (const c of data.clients) {

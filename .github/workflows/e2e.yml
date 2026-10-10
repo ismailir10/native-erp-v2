@@ -56,12 +56,13 @@ jobs:
       - run: npm ci
       - run: npx prisma migrate deploy
       # Auth for the e2e walk: a throwaway local Supabase stack (Auth + gateway + its own Postgres on :54322).
-      # NEXT_PUBLIC_* are inlined at build time, so the stack must be up before `next build`.
+      # NEXT_PUBLIC_* are inlined at build time, so the stack must be up before `next build`. Mailpit stays on:
+      # e2e/auth-links and e2e/trial-signup read the invitation mails it captures.
       - uses: supabase/setup-cli@v1
         with: { version: 2.118.0 } # pinned: resolving "latest" calls the GitHub API, which rate-limits CI
       - name: Supabase Auth (local stack)
         run: |
-          supabase start -x realtime,storage-api,imgproxy,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+          supabase start -x realtime,storage-api,imgproxy,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
           supabase status -o env > "$RUNNER_TEMP/supabase.env"
           . "$RUNNER_TEMP/supabase.env"
           echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL" >> "$GITHUB_ENV"

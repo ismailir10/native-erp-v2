@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { accessState } from "@/lib/access/grant";
 import type { Db } from "@/lib/db";
 import { recordEvent } from "@/lib/audit";
 import { formatDate } from "@/lib/format";
@@ -37,7 +38,10 @@ export async function createUploadLink(db: Db, input: { firmId: string; clientId
   return { link, token };
 }
 
-/** The link behind a token, when it is still usable; null for an unknown, expired or revoked one (the caller shows one page for all). */
+/**
+ * The link behind a token, when it is still usable; null for an unknown, expired or revoked one (the caller shows one page for all).
+ * A link of an organisation that is not ACTIVE right now (trial ended, revoked, suspended — ADR 0017) takes no files either.
+ */
 export async function resolveUploadLink(db: Db, token: string, now = new Date()) {
   // EVIDENCE_ENABLED=false (the inbox's kill switch) closes every link too.
   if (!evidenceEnabled() || !TOKEN.test(token)) return null;
@@ -45,9 +49,9 @@ export async function resolveUploadLink(db: Db, token: string, now = new Date())
   if (!link || link.revokedAt || +link.expiresAt <= +now) return null;
   const [client, firm] = await Promise.all([
     db.client.findFirst({ where: { id: link.clientId, firmId: link.firmId }, select: { name: true } }),
-    db.firm.findUnique({ where: { id: link.firmId }, select: { name: true } }),
+    db.firm.findUnique({ where: { id: link.firmId }, select: { name: true, suspendedAt: true, grants: true } }),
   ]);
-  if (!client || !firm) return null;
+  if (!client || !firm || accessState(firm.grants, firm, now).state !== "ACTIVE") return null;
   return { ...link, clientName: client.name, firmName: firm.name };
 }
 

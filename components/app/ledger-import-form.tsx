@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { MAX_UPLOAD_BYTES, UPLOAD_TOO_BIG } from "@/lib/upload";
 import { FileUp, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAccess, WriteBlockedNote } from "@/components/app/access-context";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,6 +21,7 @@ const FROM_FILE = "__file__";
 /** Ledger / Neraca upload: the file is read and checked; nothing is posted until the accountant has seen the checks and mapped accounts. */
 export function LedgerImportForm({ clientId, entities }: { clientId: string; entities: { id: string; name: string; currency: string }[] }) {
   const router = useRouter();
+  const { canWrite } = useAccess();
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFileState] = useState<File | null>(null);
   // A file chosen before the form hydrated is picked up.
@@ -159,9 +161,10 @@ export function LedgerImportForm({ clientId, entities }: { clientId: string; ent
           <Input id="ledger-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           <FieldDescription>Hanya dipakai kalau file neraca tidak menulis tanggalnya.</FieldDescription>
         </Field>
-        <Button onClick={submit} disabled={!file || busy || (candidates !== null && !sheet)}>
+        <Button onClick={submit} disabled={!canWrite || !file || busy || (candidates !== null && !sheet)}>
           {busy ? <Loader2 className="animate-spin" /> : <FileUp />} Periksa file
         </Button>
+        <WriteBlockedNote />
       </CardContent>
     </Card>
   );

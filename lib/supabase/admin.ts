@@ -5,7 +5,7 @@ import { supabaseEnv, supabaseSecretKey } from "./env";
 export function createSupabaseAdmin() {
   const env = supabaseEnv();
   const secret = supabaseSecretKey();
-  if (!env || !secret) throw new Error("SUPABASE_SECRET_KEY belum diatur. Undangan hanya bisa dikirim dari server yang memilikinya.");
+  if (!env || !secret) throw new Error("Layanan undangan belum siap. Hubungi pengelola Buku.");
   return createClient(env.url, secret, { auth: { autoRefreshToken: false, persistSession: false } });
 }
 export type SupabaseAdmin = ReturnType<typeof createSupabaseAdmin>;

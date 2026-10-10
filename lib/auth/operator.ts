@@ -1,8 +1,10 @@
 import { z } from "zod";
 import type { Db } from "@/lib/db";
 import type { MemberRole } from "@/lib/generated/prisma/enums";
+import { isAdminRole } from "@/lib/auth/permissions";
 import { createFirm } from "@/lib/setup";
 import type { SupabaseAdmin } from "@/lib/supabase/admin";
+import { userMessage } from "@/lib/errors/user-message";
 
 export const normalizeEmail = (value: string) => z.email().parse(value.trim().toLowerCase());
 const BAN_FOREVER = "876600h";
@@ -15,7 +17,7 @@ export type AuthApi = {
 };
 
 function fail(error: { message: string } | null, fallback: string): never {
-  throw new Error(error?.message ? `${fallback} (${error.message})` : fallback);
+  throw new Error(userMessage(error, fallback));
 }
 
 const PAGE = 1000;
@@ -25,7 +27,7 @@ async function findAuthUser(auth: AuthApi, email: string) {
   if (!auth.admin.listUsers) return undefined;
   for (let page = 1; ; page++) {
     const { data, error } = await auth.admin.listUsers({ page, perPage: PAGE });
-    if (error) fail(error, "Daftar pengguna Supabase tidak bisa dibaca.");
+    if (error) fail(error, "Daftar pengguna belum bisa dibaca. Coba lagi.");
     const users = data?.users ?? [];
     const found = users.find((u) => u.email?.toLowerCase() === email);
     if (found || users.length < PAGE) return found;
@@ -36,7 +38,8 @@ async function findAuthUser(auth: AuthApi, email: string) {
  * CLI-only provisioning. Creates the Supabase user (invite email) and the firm member together.
  * A re-invitation of a revoked member lifts the ban and sends a fresh password link.
  */
-export async function inviteUser(db: Db, auth: AuthApi, input: { email: string; name: string; firmId: string; role?: MemberRole; redirectTo?: string }) {
+/** `data`: extra invitation metadata the email template reads (`org_name`, `org_kind`, `access_until`; supabase/templates/invite.html). */
+export async function inviteUser(db: Db, auth: AuthApi, input: { email: string; name: string; firmId: string; role?: MemberRole; redirectTo?: string; data?: Record<string, string> }) {
   const email = normalizeEmail(input.email);
   const name = input.name.trim();
   const role: MemberRole = input.role ?? "AKUNTAN";
@@ -54,7 +57,7 @@ export async function inviteUser(db: Db, auth: AuthApi, input: { email: string; 
     if (sent.error) fail(sent.error, "Tautan kata sandi belum terkirim.");
     return db.firmMember.update({ where: { id: existing.id }, data: { name, role, disabled: false } });
   }
-  const invited = await auth.admin.inviteUserByEmail(email, { data: { name }, ...redirect });
+  const invited = await auth.admin.inviteUserByEmail(email, { data: { ...input.data, name }, ...redirect });
   let userId = invited.data?.user?.id;
   const fresh = !!userId;
   if (!userId) {
@@ -69,7 +72,10 @@ export async function inviteUser(db: Db, auth: AuthApi, input: { email: string; 
     userId = orphan.id;
   }
   try {
-    return await db.firmMember.create({ data: { userId, email, name, role, firmId: input.firmId } });
+    // From the CLI an AKUNTAN or VIEWER gets every client of the organisation, as before roles had assignments; the team page
+    // (Pengaturan → Tim) chooses clients instead.
+    const clients = isAdminRole(role) ? [] : await db.client.findMany({ where: { firmId: input.firmId }, select: { id: true } });
+    return await db.firmMember.create({ data: { userId, email, name, role, firmId: input.firmId, clientAccess: { create: clients.map((c) => ({ clientId: c.id })) } } });
   } catch (e) {
     // Never leave a just-created Auth user without its member; a retry then starts clean. A concurrent invitation may have
     // adopted it in the meantime (its member insert won the race): then the user is theirs and stays.
@@ -85,7 +91,7 @@ export async function revokeUser(db: Db, auth: AuthApi, input: { email: string; 
   if (!member || member.firmId !== input.firmId) throw new Error("Pengguna tidak ditemukan di kantor ini. Akses tidak diubah.");
   const updated = await db.firmMember.update({ where: { id: member.id }, data: { disabled: true } });
   const banned = await auth.admin.updateUserById(member.userId, { ban_duration: BAN_FOREVER });
-  if (banned.error) fail(banned.error, "Akses dicabut di Buku, tetapi sesi Supabase belum ditutup. Ulangi perintah.");
+  if (banned.error) fail(banned.error, "Akses dicabut di Buku, tetapi sesi masuk belum ditutup. Ulangi perintah.");
   return updated;
 }
 
@@ -127,4 +133,52 @@ export async function ensureLocalAdmin(db: Db, auth: AuthApi, input: { email: st
     create: { userId, email, name: input.name, role: "ADMIN", firmId: input.firmId },
     update: { userId, name: input.name, role: "ADMIN", disabled: false, firmId: input.firmId },
   });
+}
+
+/**
+ * A Buku admin (ADR 0017 §2), CLI only. The person gets a Supabase account through an invitation (or keeps the one they have, e.g.
+ * as an organisation member); re-adding a removed admin enables the row again.
+ */
+export async function addOperator(db: Db, auth: AuthApi, input: { email: string; name: string; redirectTo?: string }) {
+  const email = normalizeEmail(input.email);
+  const name = input.name.trim();
+  if (!name) throw new Error("Nama wajib diisi.");
+  const existing = await db.platformAdmin.findUnique({ where: { email } });
+  if (existing) return db.platformAdmin.update({ where: { id: existing.id }, data: { name, disabled: false } });
+  const redirect = input.redirectTo ? { redirectTo: `${input.redirectTo.replace(/\/$/, "")}/auth/callback` } : {};
+  const known = await findAuthUser(auth, email);
+  let userId = known?.id;
+  if (!userId) {
+    const invited = await auth.admin.inviteUserByEmail(email, { data: { name }, ...redirect });
+    userId = invited.data?.user?.id;
+    if (!userId) fail(invited.error, "Undangan admin Buku belum terkirim.");
+  }
+  return db.platformAdmin.create({ data: { userId, email, name } });
+}
+
+/** Removal disables the row (kept for the platform log); the Supabase account stays, it may also be an organisation member's. */
+export async function removeOperator(db: Db, input: { email: string }) {
+  const email = normalizeEmail(input.email);
+  const existing = await db.platformAdmin.findUnique({ where: { email } });
+  if (!existing) throw new Error("Admin Buku tidak ditemukan.");
+  return db.platformAdmin.update({ where: { id: existing.id }, data: { disabled: true } });
+}
+
+export async function listOperators(db: Db) {
+  return db.platformAdmin.findMany({ orderBy: { email: "asc" } });
+}
+
+/**
+ * An operator's role change for one member, e.g. naming an organisation's first OWNER after the trial migration (M1). The only active
+ * OWNER of an organisation cannot be moved off OWNER here; ownership moves in Pengaturan → Tim.
+ */
+export async function setMemberRole(db: Db, input: { email: string; firmId: string; role: MemberRole }) {
+  const email = normalizeEmail(input.email);
+  const member = await db.firmMember.findUnique({ where: { email } });
+  if (!member || member.firmId !== input.firmId) throw new Error("Pengguna tidak ditemukan di kantor ini. Peran tidak diubah.");
+  if (member.role === "OWNER" && input.role !== "OWNER") {
+    const owners = await db.firmMember.count({ where: { firmId: input.firmId, role: "OWNER", disabled: false } });
+    if (owners <= 1 && !member.disabled) throw new Error("Ini satu-satunya pemilik aktif. Jadikan anggota lain pemilik dulu.");
+  }
+  return db.firmMember.update({ where: { id: member.id }, data: { role: input.role } });
 }

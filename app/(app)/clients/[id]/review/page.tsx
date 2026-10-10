@@ -14,6 +14,7 @@ import { simpleGuessRows } from "@/lib/ai/retry";
 import { isSimpleGuess } from "@/lib/classify/fallback";
 import { resolveAiConfig } from "@/lib/settings/ai";
 import { getCurrentMember } from "@/lib/tenant";
+import { isAdminRole } from "@/lib/auth/permissions";
 
 export const metadata = { title: "Review transaksi" };
 
@@ -66,7 +67,7 @@ export default async function ReviewPage({ params, searchParams }: { params: Pro
           </a>
         </div>
       )}
-      <ReviewQueue items={items} accounts={options} scope={{ entityIds: scope.entityIds, period: period.key }} clientId={client.id} simpleGuesses={simpleGuesses} aiReady={Boolean(ai.apiKey && ai.model)} canSetUpAi={member.role === "ADMIN"} />
+      <ReviewQueue items={items} accounts={options} scope={{ entityIds: scope.entityIds, period: period.key }} clientId={client.id} simpleGuesses={simpleGuesses} aiReady={Boolean(ai.apiKey && ai.model)} canSetUpAi={isAdminRole(member.role)} />
     </div>
   );
 }

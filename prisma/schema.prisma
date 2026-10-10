@@ -196,15 +196,171 @@ enum Direction {
   OUT
 }
 
+/// An organisation on Buku (ADR 0017): an accounting firm with many clients, or a company whose books are its one client.
 model Firm {
+  id                   String           @id @default(cuid())
+  name                 String
+  kind                 OrgKind          @default(KANTOR_AKUNTAN)
+  /// Set by a Buku admin: closes the workspace whatever its grants say (abuse, non-payment). Null = not suspended.
+  suspendedAt          DateTime?
+  /// Monthly AI token cap for this organisation; null = the AI_MONTHLY_TOKEN_BUDGET default.
+  aiMonthlyTokenBudget Int?
+  /// Most active members allowed; null = no cap.
+  seatLimit            Int?
+  createdAt            DateTime         @default(now())
+  clients              Client[]
+  rules                Rule[]
+  aiUsage              AiUsage[]
+  rates                ExchangeRate[]
+  members              FirmMember[]
+  grants               AccessGrant[]
+  supportSessions      SupportSession[]
+}
+
+enum OrgKind {
+  KANTOR_AKUNTAN
+  /// A company keeping its own books: exactly one Client (the company), hidden in the UI.
+  PERUSAHAAN
+}
+
+enum GrantKind {
+  TRIAL
+  PAID
+  /// Free of charge (Buku's own, partners, the firm that was here before grants existed).
+  COMP
+}
+
+/// A period of access for an organisation. The access state is computed from these (lib/access/grant.ts), never stored.
+model AccessGrant {
+  id          String         @id @default(cuid())
+  firmId      String
+  firm        Firm           @relation(fields: [firmId], references: [id])
+  kind        GrantKind
+  startsAt    DateTime
+  /// Null = no end.
+  endsAt      DateTime?
+  note        String?
+  grantedById String?
+  grantedBy   PlatformAdmin? @relation("GrantGrantedBy", fields: [grantedById], references: [id])
+  revokedAt   DateTime?
+  revokedById String?
+  revokedBy   PlatformAdmin? @relation("GrantRevokedBy", fields: [revokedById], references: [id])
+  createdAt   DateTime       @default(now())
+
+  @@index([firmId])
+}
+
+/// Which clients an AKUNTAN or VIEWER works on. OWNER and ADMIN see every client of their organisation without rows here.
+model ClientAccess {
+  id        String     @id @default(cuid())
+  memberId  String
+  member    FirmMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  clientId  String
+  client    Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdAt DateTime   @default(now())
+
+  @@unique([memberId, clientId])
+  @@index([clientId])
+}
+
+/// A Buku admin (backoffice). Created only by the CLI; never a FirmMember by virtue of this row.
+model PlatformAdmin {
+  id              String               @id @default(cuid())
+  userId          String               @unique @db.Uuid
+  email           String               @unique
+  name            String
+  disabled        Boolean              @default(false)
+  createdAt       DateTime             @default(now())
+  grantsGiven     AccessGrant[]        @relation("GrantGrantedBy")
+  grantsRevoked   AccessGrant[]        @relation("GrantRevokedBy")
+  auditEvents     PlatformAuditEvent[]
+  supportSessions SupportSession[]
+  signupDecisions SignupRequest[]
+}
+
+enum SignupStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// A trial request from /daftar, decided in the backoffice.
+model SignupRequest {
+  id          String         @id @default(cuid())
+  email       String
+  name        String
+  orgName     String
+  orgKind     OrgKind
+  phone       String?
+  note        String?
+  status      SignupStatus   @default(PENDING)
+  reason      String?
+  firmId      String?
+  decidedById String?
+  decidedBy   PlatformAdmin? @relation(fields: [decidedById], references: [id])
+  decidedAt   DateTime?
+  ip          String?
+  createdAt   DateTime       @default(now())
+
+  @@index([status, createdAt])
+  @@index([email])
+}
+
+/// Fixed-window counter for public forms (key = "signup:email:<addr>" or "signup:ip:<ip>").
+model SignupThrottle {
+  key         String   @id
+  windowStart DateTime
+  count       Int
+}
+
+/// What Buku admins did (grants, suspensions, support sessions). Platform-side and append-only; never shown to tenants.
+model PlatformAuditEvent {
   id        String         @id @default(cuid())
-  name      String
+  adminId   String?
+  admin     PlatformAdmin? @relation(fields: [adminId], references: [id])
+  firmId    String?
+  kind      String
+  summary   String
+  before    Json?
+  after     Json?
   createdAt DateTime       @default(now())
-  clients   Client[]
-  rules     Rule[]
-  aiUsage   AiUsage[]
-  rates     ExchangeRate[]
-  members   FirmMember[]
+
+  @@index([firmId, createdAt])
+}
+
+/// A Buku admin's read-only look into a tenant's workspace as one of its members (ADR 0017 §2). Append-only.
+model SupportSession {
+  id         String               @id @default(cuid())
+  adminId    String
+  admin      PlatformAdmin        @relation(fields: [adminId], references: [id])
+  firmId     String
+  firm       Firm                 @relation(fields: [firmId], references: [id])
+  asMemberId String
+  asMember   FirmMember           @relation("SupportViewedAs", fields: [asMemberId], references: [id])
+  reason     String
+  startedAt  DateTime             @default(now())
+  expiresAt  DateTime
+  endedAt    DateTime?
+  views      SupportSessionView[]
+
+  @@index([firmId, startedAt])
+  @@index([adminId, startedAt])
+}
+
+enum SupportViewKind {
+  VIEW
+  EXPORT
+}
+
+model SupportSessionView {
+  id        String          @id @default(cuid())
+  sessionId String
+  session   SupportSession  @relation(fields: [sessionId], references: [id])
+  path      String
+  kind      SupportViewKind @default(VIEW)
+  at        DateTime        @default(now())
+
+  @@index([sessionId, at])
 }
 
 model Client {
@@ -235,6 +391,7 @@ model Client {
   subledgerImports   SubledgerImport[]
   auditEvents        AuditEvent[]
   reportFormat       ReportFormat?
+  access             ClientAccess[]
   coaVersion         Int                  @default(1)
   /// Modules turned on in the client menu (lib/clients/modules.ts): receivables · inventory · assets · leases · benefits. Presentation only.
   modules            String[]             @default([])
@@ -1102,13 +1259,20 @@ model FirmMember {
   voidedInvoices   Invoice[]             @relation("InvoiceVoidedBy")
   findingsResolved Finding[]             @relation("FindingResolvedBy")
   proposalsDecided ProposedEntry[]       @relation("ProposalDecidedBy")
+  clientAccess     ClientAccess[]
+  supportViewedAs  SupportSession[]      @relation("SupportViewedAs")
 
   @@index([firmId])
 }
 
+/// Capabilities per role live in lib/auth/permissions.ts (ADR 0017 §5).
 enum MemberRole {
   ADMIN
   AKUNTAN
+  /// Pemilik: everything an ADMIN does, plus managing ADMINs and transferring ownership. At least one active per organisation.
+  OWNER
+  /// Peninjau: reads and exports the assigned clients, changes nothing.
+  VIEWER
 }
 
 enum ScheduleKind {

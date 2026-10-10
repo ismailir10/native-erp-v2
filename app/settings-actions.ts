@@ -1,8 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getCurrentFirm } from "@/lib/tenant";
-import { requireMember } from "@/lib/auth/session";
+import { requirePlatformAdmin } from "@/lib/auth/platform";
 import { prisma } from "@/lib/db";
 import { settingsSecretConfigured } from "@/lib/settings/secret";
 import { clearAiKey, fetchModels, resolveAiConfig, saveAiSettings, SettingsError, validateAiInput } from "@/lib/settings/ai";
@@ -10,15 +9,15 @@ import { infraErrorMessage } from "@/lib/db-errors";
 import { setOcrEnabled } from "@/lib/ocr/draft";
 
 /**
- * Pengaturan → AI. Every action requires a workspace session; credential changes need the ADMIN role.
- * The stored key never leaves the server. Results only carry the last 4 characters.
+ * AI provider and OCR switch: Buku's own, set in the backoffice by Buku admins only (ADR 0017 §6). Every organisation spends this
+ * key, so no organisation member may change it. The stored key never leaves the server; results only carry the last 4 characters.
  */
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
-/** Admin-only; the message is the one the form shows verbatim. */
+/** Buku admins only; the message is the one the form shows verbatim. */
 async function guard(): Promise<string | null> {
-  try { await requireMember("ADMIN"); return null; }
-  catch (e) { return e instanceof Error ? e.message : "Masuk terlebih dahulu."; }
+  try { await requirePlatformAdmin({ refuse: "error" }); return null; }
+  catch (e) { return e instanceof Error ? e.message : "Hanya admin Buku yang dapat mengubah ini."; }
 }
 
 function fail(e: unknown): { ok: false; error: string } {
@@ -56,7 +55,7 @@ export async function clearAiKeyAction(): Promise<Result> {
 /** Model ids from GET {baseUrl}/models (no tokens). OpenCode Zen serves this list without checking the key. */
 export async function listModelsAction(): Promise<Result<{ models: string[] }>> {
   try {
-    await getCurrentFirm();
+    await requirePlatformAdmin({ refuse: "error" });
     const cfg = await resolveAiConfig(prisma);
     return { ok: true, models: await fetchModels(cfg.baseUrl, cfg.apiKey) };
   } catch (e) {
@@ -64,7 +63,7 @@ export async function listModelsAction(): Promise<Result<{ models: string[] }>> 
   }
 }
 
-/** Baca scan dengan AI (I2a, UU PDP): admin only; scan images go to the configured AI provider only while this is on. */
+/** Baca scan dengan AI (I2a, UU PDP): Buku admins only; scan images go to the configured AI provider only while this is on. */
 export async function setOcrAction(on: boolean): Promise<Result> {
   try {
     const denied = await guard();

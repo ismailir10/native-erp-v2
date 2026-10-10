@@ -19,15 +19,17 @@ type Status = {
   modelSource: Source;
   gatewayHost: string;
   maxCallsPerImport: number;
-  monthlyTokenBudget: number;
-  /** Tokens used this calendar month (logged + reserved). */
+  /** Tokens used this calendar month by every organisation together (logged + reserved). */
   monthlyTokensUsed: number;
+  /** The monthly cap of an organisation without its own (AI_MONTHLY_TOKEN_BUDGET); each organisation's is set on its page. */
+  defaultTokenBudget: number;
   /** Most recent real AI call, the only proof the key works (the model list is public). */
   lastCall: { at: string; ok: boolean; model: string; note: string | null } | null;
 };
 
 const SOURCE_LABEL: Record<"pengaturan" | "env", string> = { pengaturan: "disimpan di sini", env: "dari environment variable" };
 
+/** Buku's AI provider (backoffice only, ADR 0017 §6). Organisations see AiStatusCard instead. */
 export function AiSettingsForm({ status, canSave }: { status: Status; canSave: boolean }) {
   const router = useRouter();
   const [apiKey, setApiKey] = useState("");
@@ -53,9 +55,9 @@ export function AiSettingsForm({ status, canSave }: { status: Status; canSave: b
       <CardHeader>
         <CardTitle>AI untuk usulan akun</CardTitle>
         <CardDescription>
-          Dipakai hanya untuk mutasi yang belum dikenali aturan atau memori. Maks. {status.maxCallsPerImport} panggilan per impor; bulan ini terpakai{" "}
-          <span data-testid="ai-monthly-use">{status.monthlyTokensUsed.toLocaleString("id-ID")} dari {status.monthlyTokenBudget.toLocaleString("id-ID")} token</span>{" "}
-          (batas diatur pengelola aplikasi). Tanpa kunci, Buku tetap jalan dengan aturan saja.
+          Satu kunci untuk semua organisasi; dipakai hanya untuk mutasi yang belum dikenali aturan atau memori. Maks. {status.maxCallsPerImport} panggilan
+          per impor. Bulan ini terpakai <span data-testid="ai-monthly-use">{status.monthlyTokensUsed.toLocaleString("id-ID")} token</span> di semua organisasi;
+          batas bawaan {status.defaultTokenBudget.toLocaleString("id-ID")} token per organisasi per bulan. Tanpa kunci, Buku tetap jalan dengan aturan saja.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">

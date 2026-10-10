@@ -1,13 +1,13 @@
-import { getCurrentFirm } from "@/lib/tenant";
+import { requireWorkspaceSession, workspaceAccess } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
 import { getWorkspaceOverview, WorkspaceInputError } from "@/lib/workspace";
 import { NextStep, PageHeader } from "@/components/app/page-header";
 
 export type WorkspaceSearchParams = Promise<Record<string, string | string[] | undefined>>;
 export async function loadWorkspace(searchParams: WorkspaceSearchParams) {
-  const [firm, params] = await Promise.all([getCurrentFirm(), searchParams]);
+  const [session, params] = await Promise.all([requireWorkspaceSession(), searchParams]);
   try {
-    return await getWorkspaceOverview(prisma, firm.id, { scope: typeof params.scope === "string" ? params.scope : undefined, period: typeof params.period === "string" ? params.period : undefined });
+    return await getWorkspaceOverview(prisma, workspaceAccess(session), { scope: typeof params.scope === "string" ? params.scope : undefined, period: typeof params.period === "string" ? params.period : undefined });
   } catch (error) {
     if (error instanceof WorkspaceInputError) return { error: error.message };
     throw error;

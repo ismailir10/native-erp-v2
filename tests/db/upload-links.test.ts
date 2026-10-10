@@ -39,6 +39,8 @@ describe("upload links", () => {
   });
 
   it("refuses an unknown, expired or revoked token alike", async () => {
+    // The checks below run on a simulated September 2026 clock; the firm's open grant must already cover it (ADR 0017).
+    await db.accessGrant.updateMany({ where: { firmId: g.firm.id }, data: { startsAt: new Date("2026-01-01T00:00:00Z") } });
     const { token } = await createUploadLink(db, { firmId: g.firm.id, clientId: g.client.id, days: 7, now: new Date("2026-09-01T00:00:00Z") });
     expect(await resolveUploadLink(db, token, new Date("2026-09-07T23:00:00Z"))).not.toBeNull();
     expect(await resolveUploadLink(db, token, new Date("2026-09-08T00:00:01Z"))).toBeNull();

@@ -24,12 +24,13 @@ function tinyPng(): Buffer {
 
 test("a photographed statement is explained and points to Baca scan dengan AI", async ({ page }) => {
   await page.goto("/settings");
-  // This month's AI use is visible next to the deployment's limit (production run 2026-10-09).
+  // This month's AI use is visible next to the organisation's limit (production run 2026-10-09); the switch itself is Buku's (ADR 0017 §6).
   await expect(page.getByTestId("ai-monthly-use")).toHaveText(/^[\d.]+ dari [\d.]+ token$/);
   const setting = page.getByTestId("ocr-setting");
   await expect(setting).toContainText("Baca scan dengan AI");
   await expect(setting).toContainText("UU PDP");
-  await expect(setting.getByRole("checkbox", { name: "Izinkan Buku mengirim gambar scan rekening koran ke penyedia AI" })).toBeVisible();
+  await expect(setting).toContainText("Diatur oleh Buku");
+  await expect(setting.getByRole("checkbox")).toHaveCount(0);
 
   const id = await addClient(page, { name: "QA Scan" });
   await uploadStatement(page, id, "foto-rekening.png", tinyPng(), "image/png");

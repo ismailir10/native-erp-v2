@@ -28,6 +28,7 @@ import { DataRequestCard } from "@/components/app/data-request-card";
 import { UploadLinksCard } from "@/components/app/upload-links-card";
 import { uploadLinks } from "@/lib/upload-links";
 import { RemoveImportButton } from "@/components/app/remove-import";
+import { isAdminRole } from "@/lib/auth/permissions";
 
 export const metadata = { title: "Impor Mutasi" };
 
@@ -48,7 +49,7 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
   const showAll = sp.riwayat === "semua";
   const shownImports = showAll ? imports : imports.slice(0, HISTORY);
   // Removing an import (ADR 0013) is an admin's decision, like reopening a month.
-  const isAdmin = (await getCurrentMember()).role === "ADMIN";
+  const isAdmin = isAdminRole((await getCurrentMember()).role);
   const tab = !hasBanks || sp.tab === "ledger" ? "ledger" : "statement";
   // Sumber first (ADR 0014): what is missing for this month, and the message that asks the client for it.
   const completeness = await completenessMatrix(prisma, client.id, period.year, period.month);

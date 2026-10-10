@@ -1,5 +1,5 @@
 import type { Db } from "@/lib/db";
-import { createBankAccount, createClient, createEntity, freeGlCodes, type ClientSpec } from "@/lib/setup";
+import { createBankAccount, createClient, createEntity, freeGlCodes, type ClientCreator, type ClientSpec } from "@/lib/setup";
 import { isCurrency } from "@/lib/fx/currency";
 import { isFramework, type Framework } from "@/lib/reports/framework";
 import { isBlankBankRow } from "@/lib/blank-bank";
@@ -92,9 +92,9 @@ export function validateNewClient(input: NewClientInput): ClientSpec {
   return { name, industry: input.industry.trim(), entities: [...entities].sort((a, b) => rank[a.kind] - rank[b.kind]) };
 }
 
-export async function addClient(db: Db, firmId: string, input: NewClientInput) {
+export async function addClient(db: Db, firmId: string, input: NewClientInput, creator?: ClientCreator) {
   const spec = validateNewClient(input);
-  const { client } = await db.$transaction((tx) => createClient(tx, firmId, spec));
+  const { client } = await db.$transaction((tx) => createClient(tx, firmId, spec, { creator }));
   return client;
 }
 

@@ -1,5 +1,7 @@
 import type { Tx } from "@/lib/db";
-import type { BankCode, EntityKind, ReportingFramework } from "@/lib/generated/prisma/enums";
+import type { BankCode, EntityKind, GrantKind, MemberRole, OrgKind, ReportingFramework } from "@/lib/generated/prisma/enums";
+import { isAdminRole } from "@/lib/auth/permissions";
+import { assertCanAddClient } from "@/lib/org";
 import { bankAccountCode, COA_TEMPLATE, overdraftAccountCode } from "@/lib/coa/template";
 import { FIRM_RULES, type RuleLike } from "@/lib/classify/rules";
 
@@ -10,15 +12,28 @@ export type ClientSpec = {
   rules?: Omit<RuleLike, "clientId">[];
 };
 
-export async function createFirm(tx: Tx, name: string) {
-  const firm = await tx.firm.create({ data: { name } });
+export type FirmGrant = { kind: GrantKind; startsAt: Date; endsAt: Date | null; note?: string; grantedById?: string };
+
+/**
+ * An organisation with its firm-level rules and its first access grant (ADR 0017). The default grant is open-ended COMP: what
+ * operator, demo and test paths have always meant by "a firm". Trial approvals pass their own TRIAL grant.
+ */
+export async function createFirm(tx: Tx, name: string, opts: { kind?: OrgKind; grant?: FirmGrant } = {}) {
+  const firm = await tx.firm.create({ data: { name, kind: opts.kind } });
   await tx.rule.createMany({ data: FIRM_RULES.map((r) => ({ ...r, firmId: firm.id, source: "SEED" })) });
+  const grant = opts.grant ?? { kind: "COMP", startsAt: firm.createdAt, endsAt: null };
+  await tx.accessGrant.create({ data: { firmId: firm.id, ...grant } });
   return firm;
 }
 
+/** A client made by an AKUNTAN is assigned to its maker, or they could not open what they just created. Admins see all anyway. */
+export type ClientCreator = { id: string; role: MemberRole };
+
 /** Client + COA template + one GL account per bank account + client rules. */
-export async function createClient(tx: Tx, firmId: string, spec: ClientSpec) {
+export async function createClient(tx: Tx, firmId: string, spec: ClientSpec, opts: { creator?: ClientCreator } = {}) {
+  await assertCanAddClient(tx, firmId);
   const client = await tx.client.create({ data: { firmId, name: spec.name, industry: spec.industry } });
+  if (opts.creator && !isAdminRole(opts.creator.role)) await tx.clientAccess.create({ data: { memberId: opts.creator.id, clientId: client.id } });
   await tx.account.createMany({ data: COA_TEMPLATE.map((a) => ({ ...a, firmId, clientId: client.id })) });
   let bankIndex = 0;
   let overdraftIndex = 0;

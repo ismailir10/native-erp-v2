@@ -13,6 +13,9 @@ export default defineConfig({
   // The usability sweep (every page × desktop/phone, screenshots) runs on demand: `npm run ux:sweep`.
   testIgnore: process.env.UX_SWEEP ? [] : ["**/ux-sweep.spec.ts"],
   timeout: 90_000,
+  // Assertions often wait on a server action plus a render (an answer, a client page). Under 1 s locally, but a slow shared CI
+  // runner has taken over 5 s (the default) on different steps from run to run.
+  expect: { timeout: 15_000 },
   workers: 1,
   retries: 0,
   globalSetup: "./e2e/global-setup.ts",
