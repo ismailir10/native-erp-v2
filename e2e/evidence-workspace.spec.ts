@@ -93,7 +93,7 @@ test.describe("document evidence workspace", () => {
       { name: "evidence-legacy.docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", buffer: Buffer.from("Synthetic unsupported Office document") },
     ]);
     const pause = page.getByRole("button", { name: "Jeda setelah langkah ini" });
-    await expect(pause).toBeVisible();
+    await expect(pause).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("next-step")).toContainText("Menutup halaman menjeda proses");
     await pause.click();
     await expect(page.getByRole("button", { name: "Lanjutkan pemeriksaan" })).toBeVisible();

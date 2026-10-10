@@ -1,7 +1,5 @@
-import { parseRupiah } from "@/lib/money";
-import { dateOnly } from "@/lib/format";
 import { ParseError, type ParsedRow, type ParsedStatement } from "@/lib/import/types";
-import { closingFromRows, monthBoundsOf, parseDateDMY, periodFromText, readCsv, SenWatch, splitMarker } from "@/lib/import/parsers/common";
+import { parseBankAmount, calendarDate, closingProvenance, sourceCurrency, closingFromRows, monthBoundsOf, parseDateDMY, periodFromText, readCsv, SenWatch, splitMarker } from "@/lib/import/parsers/common";
 
 /**
  * KlikBCA CSV mutasi exports. Two exports, two layouts:
@@ -27,6 +25,8 @@ const flagOf = (cell: string | undefined) => (/^\s*(DB|DR|D)\.?\s*$/i.test(cell 
 
 export function parseBca(text: string): ParsedStatement {
   const rows = readCsv(text);
+  const headerAt = rows.findIndex((r) => /^Tanggal Transaksi/i.test(r[0]));
+  const currency = sourceCurrency(rows.slice(0, Math.max(0, headerAt)).map((r) => r.join(" ")), rows[headerAt] ?? [], rows.slice(headerAt + 1).flatMap((r) => r.slice(3)), rows.slice(headerAt + 1));
   let accountNumber: string | null = null;
   let period: { start: Date; end: Date } | null = null;
   let opening: bigint | null = null;
@@ -39,8 +39,8 @@ export function parseBca(text: string): ParsedStatement {
     if (/^Periode/i.test(r[0])) period = periodFromText(line);
     if (headerIdx < 0 && /^Tanggal Transaksi/i.test(r[0])) headerIdx = i;
     const total = line.match(/:\s*,?\s*"?(-?[\d.,]+\d)/)?.[1];
-    if (/^Saldo Awal/i.test(r[0]) && total) opening = parseRupiah(total);
-    if (/^Saldo Akhir/i.test(r[0]) && total) closing = parseRupiah(total);
+    if (/^Saldo Awal/i.test(r[0]) && total) opening = parseBankAmount(total);
+    if (/^Saldo Akhir/i.test(r[0]) && total) closing = parseBankAmount(total);
   });
   if (headerIdx < 0) throw new ParseError("Header 'Tanggal Transaksi' BCA tidak ditemukan");
   if (!period) throw new ParseError("Baris 'Periode' BCA tidak ditemukan");
@@ -67,7 +67,7 @@ export function parseBca(text: string): ParsedStatement {
         const month = Number(m[2]);
         // Year-less date: take the period year; a December row in a Jan-start period belongs to the prior year.
         const year = month < start.getUTCMonth() + 1 ? end.getUTCFullYear() : start.getUTCFullYear();
-        date = dateOnly(year, month, Number(m[1]));
+        date = calendarDate(year, month, Number(m[1]));
       } else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(t)) {
         date = parseDateDMY(t);
       } else throw new ParseError(`Tanggal BCA tidak valid di baris ${i + 1}: "${rawDate}"`);
@@ -77,12 +77,12 @@ export function parseBca(text: string): ParsedStatement {
     const flag = amountCell.flag ?? flagOf(cFlag >= 0 ? r[cFlag] : undefined);
     sen.check(r[cAmt], i + 1);
     sen.check(r[cBal], i + 1);
-    const amount = parseRupiah(amountCell.text);
+    const amount = parseBankAmount(amountCell.text);
     parsed.push({
       date,
       description: (r[1] ?? "").replace(/\s+/g, " ").trim(),
       amount: flag === "DB" ? -amount : amount,
-      balance: r[cBal] ? parseRupiah(r[cBal]) : null,
+      balance: r[cBal] ? parseBankAmount(r[cBal]) : null,
       rowNumber: i + 1,
       rawRow: r.join(","),
     });
@@ -90,6 +90,8 @@ export function parseBca(text: string): ParsedStatement {
   const openingBalance = opening ?? (parsed[0]?.balance != null ? parsed[0].balance - parsed[0].amount : 0n);
   return {
     format: "BCA",
+    currency,
+    provenance: { period: "DECLARED", opening: opening !== null ? "PRINTED" : "DERIVED", closing: closing !== null ? "PRINTED" : closingProvenance(parsed) },
     accountNumber,
     periodStart: start,
     periodEnd: end,
@@ -110,7 +112,8 @@ export function parseBcaIndividual(text: string): ParsedStatement {
   };
   const headerIdx = lines.findIndex((l) => /^"?Date"?\s*,\s*"?Description"?/i.test(l));
   if (headerIdx < 0) throw new ParseError("Header 'Date, Description' KlikBCA tidak ditemukan");
-  const amountOf = (t: string | null) => (t && /\d/.test(t) ? parseRupiah(t) : null);
+  const currency = sourceCurrency(lines.slice(0, headerIdx).map((l) => cells(l).join(" ")), cells(lines[headerIdx]), lines.slice(headerIdx + 1).flatMap((l) => cells(l).slice(-3)));
+  const amountOf = (t: string | null) => (t && /\d/.test(t) ? parseBankAmount(t) : null);
   const opening = amountOf(meta(/^"?Starting Balance"?\s*,/i));
   const closing = amountOf(meta(/^"?Ending Balance"?\s*,/i));
   const sen = new SenWatch();
@@ -128,12 +131,12 @@ export function parseBcaIndividual(text: string): ParsedStatement {
     const flag = flagOf(flagCell);
     sen.check(amount, i + 1);
     sen.check(balance, i + 1);
-    const value = parseRupiah(amount);
+    const value = parseBankAmount(amount);
     parsed.push({
       date,
       description: c.slice(1, c.length - 4).join(",").replace(/\s+/g, " ").trim(),
       amount: flag === "DB" ? -value : value,
-      balance: balance ? parseRupiah(balance) : null,
+      balance: balance ? parseBankAmount(balance) : null,
       rowNumber: i + 1,
       rawRow: line,
     });
@@ -143,6 +146,8 @@ export function parseBcaIndividual(text: string): ParsedStatement {
   if (openingBalance === null) throw new ParseError("Saldo awal tidak dapat ditentukan (tidak ada Starting Balance dan kolom saldo kosong)");
   return {
     format: "BCA",
+    currency,
+    provenance: { period: "INFERRED", opening: opening !== null ? "PRINTED" : "DERIVED", closing: closing !== null ? "PRINTED" : closingProvenance(parsed) },
     accountNumber: meta(/^"?Account No\.?"?\s*,/i)?.replace(/\D/g, "") || null,
     periodStart: start,
     periodEnd: end,

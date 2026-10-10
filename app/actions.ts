@@ -38,7 +38,7 @@ import { deleteInstalment, setInstalment } from "@/lib/tax/instalment";
 import { recordInventoryCount } from "@/lib/inventory";
 import { acceptSuggestion, addCorrection, addCredit, deleteCorrection, deleteCredit, deleteLoss, dismissSuggestion, setCorrectionPercent, setLoss, setRegime, setTaxMonth, type CorrectionInput, type CreditInput } from "@/lib/tax/records";
 import type { TaxPostingKind, TaxRegime } from "@/lib/generated/prisma/enums";
-import { AccountMismatchError, ParseError, ScanError, UnreadableFileError, YearNeededError } from "@/lib/import/types";
+import { AccountMismatchError, AmbiguousDateError, ParseError, ScanError, UnreadableFileError, YearNeededError } from "@/lib/import/types";
 import { PdfPasswordError } from "@/lib/import/parsers/pdf";
 import { MoneyError, parseMoney } from "@/lib/money";
 import { dateOnly } from "@/lib/format";
@@ -139,7 +139,7 @@ export async function importAction(formData: FormData): Promise<Result<{ summary
     // A scan or photo: the form offers Baca scan dengan AI when the workspace switch is on and a model is configured (I2a).
     if (e instanceof ScanError) return { ok: false, error: e.message, scanned: { ocrReady: (await ocrEnabled(prisma)) && (await resolveProvider(prisma)) !== null } };
     // A text file no reader knows: the form offers Atur kolom.
-    if (e instanceof UnreadableFileError) return { ok: false, error: e.message, mappable: true };
+    if (e instanceof UnreadableFileError || e instanceof AmbiguousDateError) return { ok: false, error: e.message, mappable: true };
     return fail(e);
   }
 }

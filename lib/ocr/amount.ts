@@ -1,3 +1,4 @@
+import { parseBankAmount } from "@/lib/import/parsers/common";
 import { parseMoney } from "@/lib/money";
 
 /**
@@ -7,6 +8,8 @@ import { parseMoney } from "@/lib/money";
 export function readAmount(text: string | null | undefined): bigint | null {
   let t = (text ?? "").trim().replace(/\s*(CR|DB|K|D)$/i, "").replace(/\s/g, "");
   if (!t) return null;
+  // Validate the source grammar before normalising separators; keep parseMoney below so OCR never rounds sen.
+  try { parseBankAmount(t); } catch { return null; }
   // English grouping: commas in threes, an optional dot fraction → Indonesian notation.
   const en = t.match(/^([-(]?(?:Rp\.?)?)(\d{1,3}(?:,\d{3})+)(?:\.(\d+))?(\)?)$/i);
   if (en) t = `${en[1]}${en[2].replace(/,/g, ".")}${en[3] ? `,${en[3]}` : ""}${en[4]}`;

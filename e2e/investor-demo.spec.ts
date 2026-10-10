@@ -106,7 +106,18 @@ test("statement in → reviewed → traceable reports → combined → closed", 
   await expect(page.getByText(/\d+ kontrol lolos/).first()).toBeVisible();
   await expect(page.getByText("Gagal")).toHaveCount(0);
   const flagged = page.locator('[data-testid^="control-"]').filter({ hasText: "Perlu dicek" });
-  await expect(flagged).toHaveCount(2);
+  await expect(flagged).toHaveCount(6);
+  // Mandiri's derived opening and BRI's transaction-only period remain explicit
+  // source-review controls even when the journals balance.
+  for (const type of ["bank", "cont"]) {
+    const sourceReviews = page.getByTestId(`control-${type}`).filter({ hasText: "Perlu dicek" });
+    await expect(sourceReviews).toHaveCount(2);
+    for (let i = 0; i < 2; i++) {
+      await sourceReviews.nth(i).getByRole("button", { name: "Beri catatan" }).click();
+      await page.getByRole("dialog").getByRole("textbox").fill("Demo sintetis: saldo dan periode sumber turunan belum membuktikan kelengkapan; keterbatasan dicatat untuk penelaahan.");
+      await page.getByRole("button", { name: "Simpan catatan" }).click();
+    }
+  }
   const stock = page.getByTestId("control-inv");
   await expect(stock).toContainText("Persediaan akhir Agustus 2026 belum dicatat");
   await stock.getByRole("button", { name: "Beri catatan" }).click();

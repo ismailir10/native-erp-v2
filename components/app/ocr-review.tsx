@@ -32,7 +32,7 @@ export function OcrReview({ clientId, draftId, imported, openingSource, source =
   const [onlyProblems, setOnlyProblems] = useState(false);
   const [busy, setBusy] = useState(false);
   const proof = useMemo(
-    () => proveRows(d.rows.map((r) => ({ date: r.date, description: r.description, debit: readAmount(r.debit), credit: readAmount(r.credit), balance: readAmount(r.balance) })), readAmount(d.opening), readAmount(d.closing), { chained: mapped }),
+    () => proveRows(d.rows.map((r) => ({ date: r.date, description: r.description, debit: readAmount(r.debit), credit: readAmount(r.credit), balance: readAmount(r.balance) })), readAmount(d.opening), readAmount(d.closing), { chained: mapped, requireClosing: !mapped }),
     [d, mapped],
   );
   const unreadable = d.rows.some((r) => [r.debit, r.credit, r.balance].some((v) => v.trim() !== "" && readAmount(v) === null)) || [d.opening, d.closing].some((v) => v.trim() !== "" && readAmount(v) === null);
@@ -79,9 +79,9 @@ export function OcrReview({ clientId, draftId, imported, openingSource, source =
             <FieldDescription>{openingSource === "PRINTED" ? (mapped ? "Dari baris saldo awal di file." : "Tercetak di scan.") : openingSource === "DERIVED" ? "Dihitung dari saldo pertama di file dikurangi mutasinya, jadi baris pertama belum teruji sendiri. Bandingkan dengan saldo akhir bulan sebelumnya." : openingSource === "PREVIOUS" ? "Dari saldo akhir impor sebelumnya rekening ini (tidak tercetak di scan)." : openingSource === "MANUAL" ? "Diisi akuntan." : "Isi dari scan atau dari saldo akhir bulan sebelumnya."}</FieldDescription>
           </Field>
           <Field>
-            <FieldLabel htmlFor="ocr-closing">Saldo akhir (bila tercetak)</FieldLabel>
+            <FieldLabel htmlFor="ocr-closing">{mapped ? "Saldo akhir (bila tercetak)" : "Saldo akhir tercetak (wajib)"}</FieldLabel>
             <Input id="ocr-closing" inputMode="decimal" className="num text-right" disabled={imported} value={d.closing} onChange={(e) => setD({ ...d, closing: e.target.value })} />
-            <FieldDescription>{proof.closingOk === false ? "Tidak sama dengan saldo baris terakhir." : proof.closingOk ? "Sama dengan saldo baris terakhir." : "Kosongkan bila tidak tercetak."}</FieldDescription>
+            <FieldDescription>{proof.closingOk === false ? "Tidak sama dengan saldo baris terakhir." : proof.closingOk ? "Sama dengan saldo baris terakhir." : mapped ? "Kosongkan bila tidak tercetak." : "Salin saldo akhir dari scan sebelum mengimpor."}</FieldDescription>
           </Field>
         </div>
         <div className="flex items-center gap-2">

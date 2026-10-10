@@ -1,6 +1,5 @@
-import { parseRupiah } from "@/lib/money";
 import { ParseError, type ParsedRow, type ParsedStatement } from "@/lib/import/types";
-import { closingFromRows, monthBoundsOf, openingFromBalances, parseDateDMY, readCsv, SenWatch } from "@/lib/import/parsers/common";
+import { parseBankAmount, assertSingleSide, closingProvenance, sourceCurrency, closingFromRows, monthBoundsOf, openingFromBalances, parseDateDMY, readCsv, SenWatch } from "@/lib/import/parsers/common";
 
 /** BRI (BRImo/CMS) CSV — semicolon-delimited, ISO dates, plain decimals. Approximated. */
 export function isBriCsv(text: string) {
@@ -17,17 +16,19 @@ export function parseBri(text: string): ParsedStatement {
   const [cDate, cDesc, cDb, cCr, cBal] = ["TGL_TRAN", "DESK_TRAN", "MUTASI_DEBET", "MUTASI_KREDIT", "SALDO_AKHIR_MUTASI"].map(col);
   if ([cDate, cDesc, cDb, cCr].some((c) => c < 0)) throw new ParseError("Kolom BRI tidak lengkap");
 
+  const currency = sourceCurrency(rows.slice(0, headerIdx).map((r) => r.join(" ")), rows[headerIdx], rows.slice(headerIdx + 1).flatMap((r) => [cDb, cCr, cBal].filter((c) => c >= 0).map((c) => r[c] ?? "")), rows.slice(headerIdx + 1));
   const sen = new SenWatch();
   const parsed: ParsedRow[] = [];
   for (let i = headerIdx + 1; i < rows.length; i++) {
     const r = rows[i];
     if (!r[cDate]) continue;
     for (const c of [cDb, cCr, cBal]) if (c >= 0) sen.check(r[c], i + 1);
+    assertSingleSide(r[cDb], r[cCr], i + 1);
     parsed.push({
       date: parseDateDMY(r[cDate]),
       description: r[cDesc].replace(/\s+/g, " ").trim(),
-      amount: parseRupiah(r[cCr]) - parseRupiah(r[cDb]),
-      balance: cBal >= 0 && r[cBal] ? parseRupiah(r[cBal]) : null,
+      amount: parseBankAmount(r[cCr]) - parseBankAmount(r[cDb]),
+      balance: cBal >= 0 && r[cBal] ? parseBankAmount(r[cBal]) : null,
       rowNumber: i + 1,
       rawRow: r.join(";"),
     });
@@ -44,6 +45,8 @@ export function parseBri(text: string): ParsedStatement {
   }
   return {
     format: "BRI",
+    currency,
+    provenance: { period: "INFERRED", opening: "DERIVED", closing: closingProvenance(parsed) },
     accountNumber: acctRow?.[1]?.replace(/[^\d]/g, "") ?? null,
     periodStart: start,
     periodEnd: end,

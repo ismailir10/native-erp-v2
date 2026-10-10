@@ -11,8 +11,8 @@ import { bankName } from "@/lib/banks";
 import { readGrid } from "@/lib/import/grid";
 import { readMappedDetail, signatureOf, type ColumnMapping } from "@/lib/import/mapped";
 import { OcrError, pageImages } from "@/lib/ocr/pages";
-import { proveRows, type OcrRow, type Proof } from "@/lib/ocr/prove";
-import { buildOcrPrompt, OCR_MAX_TOKENS, OCR_PROMPT_VERSION, OCR_TOKENS_PER_PAGE, type OcrTranscript } from "@/lib/ocr/transcribe";
+import { validDate, proveRows, type OcrRow, type Proof } from "@/lib/ocr/prove";
+import { buildOcrPrompt, parseOcrTranscript, OCR_MAX_ROWS, OCR_MAX_TOKENS, OCR_PROMPT_VERSION, OCR_TOKENS_PER_PAGE, type OcrTranscript } from "@/lib/ocr/transcribe";
 
 /**
  * Scanned statements (I2a, accounting-rules 16b): AI transcribes the page images, the running balance proves every row, the accountant
@@ -30,7 +30,7 @@ export async function setOcrEnabled(db: Pick<Db, "appSetting">, on: boolean) {
 
 const OCR_TOKEN_LIMIT = 120_000;
 /** Rows a *Periksa baris* draft holds (each is an editable line on the page). */
-export const DRAFT_MAX_ROWS = 2000;
+export const DRAFT_MAX_ROWS = OCR_MAX_ROWS;
 
 /** A file too long for one draft is refused before the draft exists, with what to do. */
 export function checkDraftSize(rows: number) {
@@ -67,15 +67,18 @@ export async function createOcrDraft(db: Db, input: { firmId: string; clientId: 
   const scope = `ocr:${input.clientId}`;
   const hit = await db.evidenceAiCache.findFirst({ where: { key, firmId: input.firmId, scope } });
   let transcript: OcrTranscript;
-  if (hit) transcript = hit.payload as unknown as OcrTranscript;
+  if (hit) transcript = parseOcrTranscript(JSON.stringify(hit.payload));
   else {
     const r = await runBudgetedAi(
       db,
       { firmId: input.firmId, scope, prompt: buildOcrPrompt(images.length), maxCompletionTokens: OCR_MAX_TOKENS + OCR_TOKENS_PER_PAGE * images.length, scopeTokenLimit: OCR_TOKEN_LIMIT, model: input.provider.model, keysRequested: 1, note: `Baca scan ${input.fileName}` },
       async () => {
         const out = await input.provider!.readStatement!({ images });
-        if (!out.transcript.rows.length) throw new AiAnswerError("AI tidak menemukan baris transaksi di scan ini.", out.promptTokens, out.completionTokens, out.model);
-        return out;
+        let checked: OcrTranscript;
+        try { checked = parseOcrTranscript(JSON.stringify(out.transcript)); }
+        catch (e) { throw new AiAnswerError(e instanceof Error ? e.message : "Hasil scan tidak valid.", out.promptTokens, out.completionTokens, out.model); }
+        if (!checked.rows.length) throw new AiAnswerError("AI tidak menemukan baris transaksi di scan ini.", out.promptTokens, out.completionTokens, out.model);
+        return { ...out, transcript: checked };
       },
     );
     transcript = r.transcript;
@@ -96,7 +99,7 @@ export async function createOcrDraft(db: Db, input: { firmId: string; clientId: 
       fileHash,
       pages: images.length,
       model: input.provider.model,
-      header: json({ bank: transcript.bank, accountNumber: transcript.accountNumber, periodStart: transcript.periodStart, periodEnd: transcript.periodEnd, openingSource: readAmount(transcript.opening) !== null ? "PRINTED" : opening !== null ? "PREVIOUS" : null }),
+      header: json({ bank: transcript.bank, accountNumber: transcript.accountNumber, periodStart: transcript.periodStart, periodEnd: transcript.periodEnd, currency: transcript.currency ?? null, openingSource: readAmount(transcript.opening) !== null ? "PRINTED" : opening !== null ? "PREVIOUS" : null }),
       rows: json(rows.map(toStored)),
       opening: opening?.toString() ?? null,
       closing: closing?.toString() ?? null,
@@ -113,7 +116,7 @@ export type OcrDraftView = {
   pages: number;
   model: string;
   /** DERIVED (Atur kolom only): the first printed balance less its movement — the first rows then prove nothing on their own. */
-  header: { bank: string; accountNumber: string; periodStart: string; periodEnd: string; openingSource: "PRINTED" | "PREVIOUS" | "MANUAL" | "DERIVED" | null };
+  header: { bank: string; accountNumber: string; periodStart: string; periodEnd: string; openingSource: "PRINTED" | "PREVIOUS" | "MANUAL" | "DERIVED" | null; currency?: string | null };
   opening: bigint | null;
   closing: bigint | null;
   rows: OcrRow[];
@@ -131,7 +134,7 @@ export async function ocrDraft(db: Db, firmId: string, clientId: string, draftId
   const opening = d.opening === null ? null : BigInt(d.opening);
   const closing = d.closing === null ? null : BigInt(d.closing);
   const source = d.source === "MAPPING" ? "MAPPING" : "OCR";
-  return { id: d.id, clientId: d.clientId, bankAccountId: d.bankAccountId, fileName: d.fileName, pages: d.pages, model: d.model, header: d.header as OcrDraftView["header"], opening, closing, rows, proof: proveRows(rows, opening, closing, { chained: source === "MAPPING" }), status: d.status as OcrDraftView["status"], importId: d.importId, source };
+  return { id: d.id, clientId: d.clientId, bankAccountId: d.bankAccountId, fileName: d.fileName, pages: d.pages, model: d.model, header: d.header as OcrDraftView["header"], opening, closing, rows, proof: proveRows(rows, opening, closing, { chained: source === "MAPPING", requireClosing: source === "OCR" }), status: d.status as OcrDraftView["status"], importId: d.importId, source };
 }
 
 export type OcrRowInput = { date: string; description: string; debit: string; credit: string; balance: string };
@@ -165,20 +168,47 @@ const cell = (s: string) => s.replace(/[;\r\n"]+/g, " ").replace(/\s{2,}/g, " ")
 const dmy = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 
 /** The proved rows as the semicolon CSV the generic parser reads (opening on a SALDO AWAL line). */
-export function draftCsv(rows: OcrRow[], opening: bigint): string {
-  const lines = ["Tanggal;Keterangan;Debet;Kredit;Saldo", `${dmy(rows[0].date)};SALDO AWAL;;;${money(opening)}`];
+export function draftCsv(rows: OcrRow[], opening: bigint, evidence?: { closing: bigint | null; period?: { start: string; end: string }; currency?: string | null }): string {
+  const prefix: string[] = [];
+  if (evidence?.currency) prefix.push(`Currency: ${cell(evidence.currency)}`);
+  if (evidence?.period) {
+    const { start, end } = evidence.period;
+    if (!validDate(start) || !validDate(end) || start > end || rows.some((r) => r.date < start || r.date > end)) throw new OcrError("Periode scan tidak valid atau tidak mencakup semua transaksi. Periksa periode dan tanggal pada scan.");
+    prefix.push(`Periode: ${dmy(start)} - ${dmy(end)}`);
+  }
+  const lines = [...prefix, "Tanggal;Keterangan;Debet;Kredit;Saldo", `${dmy(rows[0].date)};SALDO AWAL;;;${money(opening)}`];
   // A row without a printed balance (chained proof, *Atur kolom*) keeps its Saldo cell empty, as the bank printed it.
   for (const r of rows) lines.push(`${dmy(r.date)};${cell(r.description)};${r.debit ? money(r.debit) : ""};${r.credit ? money(r.credit) : ""};${r.balance === null ? "" : money(r.balance)}`);
+  if (evidence?.closing !== undefined && evidence.closing !== null) lines.push(`${dmy(evidence.period?.end ?? rows[rows.length - 1].date)};SALDO AKHIR;;;${money(evidence.closing)}`);
   return `${lines.join("\n")}\n`;
 }
 
 export async function importOcrDraft(db: Db, input: { firmId: string; clientId: string; draftId: string; provider: AiProvider | null; actorId?: string | null }): Promise<ImportSummary> {
   const d = await ocrDraft(db, input.firmId, input.clientId, input.draftId);
   if (d.status !== "DRAFT") throw new OcrError("Draf ini sudah diimpor.");
+  if (d.source === "OCR" && d.closing === null) throw new OcrError("Saldo akhir yang tercetak belum ada. Salin saldo akhir dari scan sebelum mengimpor.");
   if (!d.proof.importable || d.opening === null) throw new OcrError(`Masih ada ${d.proof.problems} baris yang belum terbukti oleh saldo berjalan. Betulkan dulu sebelum mengimpor.`);
   const base = d.fileName.replace(/\.[A-Za-z0-9]+$/, "");
   const mapped = d.source === "MAPPING";
-  const summary = await importStatement(db, { bankAccountId: d.bankAccountId, fileName: `${base} (${mapped ? "pemetaan kolom" : "OCR"}).csv`, data: Buffer.from(draftCsv(d.rows, d.opening), "utf8"), provider: input.provider, actorId: input.actorId ?? null });
+  const period = !mapped && (d.header.periodStart || d.header.periodEnd)
+    ? { start: d.header.periodStart, end: d.header.periodEnd }
+    : undefined;
+  const csv = draftCsv(d.rows, d.opening, { closing: d.closing, currency: d.header.currency, period });
+  const summary = await importStatement(db, {
+    bankAccountId: d.bankAccountId,
+    fileName: `${base} (${mapped ? "pemetaan kolom" : "OCR"}).csv`,
+    data: Buffer.from(csv, "utf8"),
+    provider: input.provider,
+    actorId: input.actorId ?? null,
+    // The generated CSV's SALDO AWAL line must not promote an inferred/manual opening to printed evidence.
+    sourceProvenance: {
+      // OCR header dates are model output and are not reviewed in Periksa baris.
+      // Keep them for traceability, but never promote them to independent coverage evidence.
+      period: "INFERRED",
+      opening: d.header.openingSource === "PRINTED" ? "PRINTED" : "DERIVED",
+      closing: !mapped && d.closing !== null ? "PRINTED" : "DERIVED",
+    },
+  });
   const note = mapped ? "Dibaca dengan pemetaan kolom; setiap baris terbukti oleh saldo berjalan." : `Dibaca AI (${d.model}) dari scan ${d.pages} halaman; setiap baris terbukti oleh saldo berjalan.`;
   const imp = await db.statementImport.findUnique({ where: { id: summary.importId }, select: { parseNotes: true } });
   await db.statementImport.update({ where: { id: summary.importId }, data: { parseNotes: [...(imp?.parseNotes ?? []), note] } });

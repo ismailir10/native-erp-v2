@@ -54,11 +54,11 @@ describe("repairStatement (UC-B1)", () => {
     expect(() => repairStatement(statement(far))).toThrow(/Tanggal 25 Des 2023 di baris \d+ jauh dari periode file \(3 Agu 2026 – 20 Agu 2026\)/);
   });
 
-  it("trusts a chain that holds over a wrong closing header, and says both numbers", () => {
+  it("preserves a conflicting closing header and says both numbers", () => {
     const st = repairStatement(statement([row(aug(1), 1000n, 11_000n), row(aug(2), 1500n, 12_500n)], 10_000n, 12_000n));
-    expect(st.closingBalance).toBe(12_500n);
-    expect(st.notes).toEqual(["Saldo akhir di file Rp 12.000 ≠ saldo berjalan Rp 12.500; saldo berjalan dipakai. Periksa saldo akhir di file."]);
-    expect(checkContinuity(st).ok).toBe(true);
+    expect(st.closingBalance).toBe(12_000n);
+    expect(st.notes).toEqual(["Saldo akhir di file Rp 12.000 ≠ saldo berjalan Rp 12.500; saldo akhir tercetak dipertahankan. Periksa kedua nilai pada file sumber."]);
+    expect(checkContinuity(st).ok).toBe(false);
   });
 
   it("says both readings of an opening header the first row contradicts", () => {

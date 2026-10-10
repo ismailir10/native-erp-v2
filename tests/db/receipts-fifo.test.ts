@@ -162,9 +162,21 @@ describe("receipts against notes (FIFO)", () => {
     const g = await makeGroup();
     await db.entity.update({ where: { id: g.pt.entity.id }, data: { functionalCurrency: "SGD" } });
     await db.bankAccount.update({ where: { id: g.pt.banks[0].id }, data: { currency: "SGD" } });
-    const { tx } = await setup(g);
+    // Legacy foreign-currency row: parser imports are now IDR-only. Settlement still
+    // supports existing minor-unit records without routing SGD through a Rupiah reader.
+    const legacy = await db.statementImport.create({ data: {
+      firmId: g.firm.id, bankAccountId: g.pt.banks[0].id, fileName: "legacy-sgd", format: "GENERIC",
+      periodStart: dateOnly(2026, 8, 1), periodEnd: dateOnly(2026, 8, 31), openingBalance: 0n, closingBalance: 20_000n,
+      rowCount: 1, continuityOk: true,
+    } });
+    const receipt = await db.bankTransaction.create({ data: { importId: legacy.id,
+      firmId: g.firm.id, bankAccountId: g.pt.banks[0].id, entityId: g.pt.entity.id,
+      date: dateOnly(2026, 8, 20), description: "TOKO SEJAHTERA", merchantKey: "TOKO SEJAHTERA",
+      direction: "IN", amount: 20_000n, balance: 20_000n, rowNumber: 1, rawRow: "legacy SGD cents", hash: "legacy-sgd",
+      status: "NEEDS_REVIEW", method: "HEURISTIC", confidence: 0, reason: "Legacy fixture", accountCode: "1999",
+    } });
     const a = await createInvoice(db, { clientId: g.client.id, entityId: g.pt.entity.id, direction: "SALES", contactName: "Toko Sejahtera", number: "S-1", issueDate: "2026-08-01", dueDate: "2026-08-10", dpp: "100,50", counterCode: "4100" });
-    const r = await settleFifo(db, { clientId: g.client.id, bankTransactionId: (await tx("TOKO SEJAHTERA")).id, contactId: a.contactId });
+    const r = await settleFifo(db, { clientId: g.client.id, bankTransactionId: receipt.id, contactId: a.contactId });
     expect(r.settled).toEqual([{ number: "S-1", amount: 10_050n }]);
   });
 

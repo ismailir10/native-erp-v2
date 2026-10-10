@@ -1,10 +1,9 @@
 import { detectBank } from "@/lib/banks";
 import { dateOnly } from "@/lib/format";
-import { parseRupiah } from "@/lib/money";
-import { chronologicalOrder, closingFromRows, dateParts, dayMonthEvidence, monthBoundsOf, openingFromBalances, splitMarker, type DayMonthOrder } from "@/lib/import/parsers/common";
+import { parseBankAmount, assertSingleSide, sourceCurrency, chronologicalOrder, closingFromRows, dateParts, dayMonthEvidence, monthBoundsOf, openingFromBalances, splitMarker, type DayMonthOrder } from "@/lib/import/parsers/common";
 import { guessYear } from "@/lib/import/parsers/tabular";
 import { layoutSignature, sameRow, type Grid, type GridSheet } from "@/lib/import/grid";
-import { ParseError, UnreadableFileError, YearNeededError, type ParsedRow, type ParsedStatement } from "@/lib/import/types";
+import { ParseError, SourceAmountError, SourceCurrencyError, SourceDateError, UnreadableFileError, YearNeededError, type ParsedRow, type ParsedStatement } from "@/lib/import/types";
 
 /**
  * *Atur kolom*: the accountant's reading of a file Buku's readers don't know. Columns are 0-based indexes of the grid (`lib/import/grid.ts`),
@@ -102,8 +101,9 @@ function amountCell(text: string | undefined, row: number, what: string): { valu
   const { text: bare, flag } = splitMarker(t);
   if (!/\d/.test(bare) || /\p{L}{2,}/u.test(bare.replace(/Rp\.?|IDR/gi, ""))) throw new ParseError(`Baris ${row}: kolom ${what} berisi "${t}", bukan angka. Periksa pemetaan kolomnya.`);
   try {
-    return { value: parseRupiah(bare), flag };
-  } catch {
+    return { value: parseBankAmount(bare), flag };
+  } catch (error) {
+    if (error instanceof SourceAmountError) throw error;
     throw new ParseError(`Baris ${row}: kolom ${what} berisi "${t}", bukan angka. Periksa pemetaan kolomnya.`);
   }
 }
@@ -119,6 +119,7 @@ function directionOf(text: string | undefined): "DB" | "CR" | null {
 /** The signed movement of a row (+ in, − out), or null when its amount cells are empty. */
 function movementOf(cells: string[], a: AmountMapping, row: number): bigint | null {
   if (a.style === "split") {
+    assertSingleSide(cells[a.debit], cells[a.credit], row);
     const d = amountCell(cells[a.debit], row, "Debet");
     const c = amountCell(cells[a.credit], row, "Kredit");
     if (!d && !c) return null;
@@ -156,6 +157,15 @@ export function readMapped(grid: Grid, m: ColumnMapping, ctx: { fileName?: strin
 export function readMappedDetail(grid: Grid, m: ColumnMapping, ctx: { fileName?: string } = {}): { statement: ParsedStatement; printedOpening: boolean } {
   const sheet = checkMapping(m, grid);
   const header = headerOf(sheet, m.firstRow);
+  const moneyColumns = [...(m.amount.style === "split" ? [m.amount.debit, m.amount.credit] : [m.amount.column]), m.balance];
+  const sourceRows = sheet.rows.slice(m.firstRow - 1);
+  // A mapping can assign custom column names. Those mapped money headers still declare their units.
+  const currency = sourceCurrency(
+    sheet.rows.slice(0, m.firstRow - 1).map((row) => row.join(" ")),
+    [...(header ?? []), ...moneyColumns.map((column) => `Amount ${header?.[column] ?? ""}`)],
+    sourceRows.flatMap((row) => moneyColumns.map((column) => row[column] ?? "")),
+    sourceRows,
+  );
   const isXlsx = grid.kind === "XLSX";
   const rows: ParsedRow[] = [];
   let printedOpening: bigint | null = null;
@@ -208,7 +218,7 @@ export function readMappedDetail(grid: Grid, m: ColumnMapping, ctx: { fileName?:
   const preamble = sheet.rows.slice(0, m.firstRow - 1).map((r) => r.join(" ")).join("\n");
   const notes = skipped ? [`${skipped} baris tanpa tanggal atau tanpa nominal dilewati (judul halaman, total, catatan).`] : [];
   return {
-    statement: { format: detectBank(preamble), accountNumber: null, periodStart: start, periodEnd: end, openingBalance: opening, closingBalance: closingFromRows(rows, opening), rows, notes },
+    statement: { format: detectBank(preamble), currency, accountNumber: null, periodStart: start, periodEnd: end, openingBalance: opening, closingBalance: closingFromRows(rows, opening), rows, notes },
     printedOpening: printedOpening !== null,
   };
 }
@@ -278,7 +288,7 @@ export function readWithLayout(grid: Grid, layouts: RememberedLayout[], ctx: { f
         st = readMapped(grid, mapping, ctx);
       } catch (e) {
         // Still a file the accountant can map again (the new mapping replaces this one on import).
-        if (e instanceof ParseError && !(e instanceof YearNeededError)) throw new UnreadableFileError(`File ini cocok dengan pemetaan kolom tersimpan ("${layout.label}"), tetapi tidak terbaca: ${e.message}`);
+        if (e instanceof ParseError && !(e instanceof YearNeededError) && !(e instanceof SourceCurrencyError) && !(e instanceof SourceAmountError) && !(e instanceof SourceDateError)) throw new UnreadableFileError(`File ini cocok dengan pemetaan kolom tersimpan ("${layout.label}"), tetapi tidak terbaca: ${e.message}`);
         throw e;
       }
       return { ...st, layout: { id: layout.id, label: layout.label }, notes: [`Dibaca dengan pemetaan kolom tersimpan (dari "${layout.label}").`, ...(st.notes ?? [])] };

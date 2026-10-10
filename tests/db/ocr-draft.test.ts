@@ -4,6 +4,9 @@ import { db, makeGroup, resetDb } from "../helpers";
 import { MockProvider } from "@/lib/ai/provider";
 import { encodePng } from "@/lib/ocr/png";
 import { createOcrDraft, draftCsv, importOcrDraft, ocrDraft, setOcrEnabled, updateOcrDraft } from "@/lib/ocr/draft";
+import { runControls } from "@/lib/controls";
+import { statementCoverage, statementEvidence } from "@/lib/controls/coverage";
+import { readValidation } from "@/lib/import/validation";
 import type { OcrTranscript } from "@/lib/ocr/transcribe";
 
 // Scanned statements (I2a): AI transcribes (a recorded extraction here), the running balance proves, the accountant fixes and imports.
@@ -80,7 +83,70 @@ describe("OCR draft", () => {
     const s = await ocrDraft(db, g.firm.id, g.client.id, (await createOcrDraft(db, { ...base(), fileName: "sept.pdf", data: Buffer.concat([scan, Buffer.from("\n%sept")]), provider: sept })).id);
     expect(s.opening).toBe(1_250_000n);
     expect(s.header.openingSource).toBe("PREVIOUS");
-    expect(s.proof.importable).toBe(true);
+    expect(s.proof.importable).toBe(false);
+    const before = await db.journalEntry.count();
+    await expect(importOcrDraft(db, { firmId: g.firm.id, clientId: g.client.id, draftId: s.id, provider: null })).rejects.toThrow(/Saldo akhir/);
+    expect(await db.journalEntry.count()).toBe(before);
+  });
+
+  it("does not treat an expanded model period as reviewed full-month coverage", async () => {
+    await setOcrEnabled(db, true);
+    // Only August 3 has a transcribed row; the model expands the invisible header to all of August.
+    const transcript: OcrTranscript = {
+      ...RECORDED, periodStart: "2026-08-01", periodEnd: "2026-08-31",
+      opening: "1.000.000,00", closing: "1.500.000,00", rows: [RECORDED.rows[0]],
+    };
+    const created = await createOcrDraft(db, { ...base(), provider: mock(transcript) });
+    const draft = await ocrDraft(db, g.firm.id, g.client.id, created.id);
+    expect(draft.proof.importable).toBe(true);
+    const summary = await importOcrDraft(db, { firmId: g.firm.id, clientId: g.client.id, draftId: draft.id, provider: null });
+    const imported = await db.statementImport.findUniqueOrThrow({ where: { id: summary.importId } });
+    // Retain the transcribed header for traceability, without claiming that its coverage was checked by the accountant.
+    expect(imported.periodEnd.toISOString().slice(0, 10)).toBe("2026-08-31");
+    const validation = readValidation(imported.sourceValidation)!;
+    expect(validation.source.period).toBe("INFERRED");
+    expect(validation.issues).toContainEqual(expect.objectContaining({ code: "PERIOD_INFERRED", severity: "UNVERIFIED" }));
+    const end = new Date("2026-08-31T00:00:00Z");
+    const coverage = await statementCoverage(db, g.pt.banks[0].id, null, new Date("2026-08-01T00:00:00Z"), end);
+    expect(coverage.state).toBe("partial");
+    const evidence = statementEvidence([imported], end, null);
+    expect(evidence.uncertain).toBe(true);
+    expect(evidence.checkpoint).toBeUndefined();
+    const controls = await runControls(db, g.client.id, 2026, 8);
+    expect(controls.find((c) => c.key === `bank:${g.pt.banks[0].id}`)?.status).toBe("REVIEW");
+    expect(controls.find((c) => c.key === `cont:${g.pt.banks[0].id}`)?.status).toBe("REVIEW");
+  });
+
+  it.each([
+    ["foreign currency", { ...RECORDED, currency: "USD", opening: "10.50" }, /USD/],
+    ["oversized response", { ...RECORDED, rows: Array(2001).fill(RECORDED.rows[0]) }, /2.000/],
+    ["malformed row", { ...RECORDED, rows: [null] }, /Baris 1/],
+    ["malformed amount", { ...RECORDED, rows: [{ ...RECORDED.rows[0], credit: "12,34,56" }] }, /tidak terbaca/],
+  ] as const)("refuses %s before storing a draft, cache or journal", async (_name, transcript, error) => {
+    await setOcrEnabled(db, true);
+    await expect(createOcrDraft(db, { ...base(), provider: mock(transcript as unknown as OcrTranscript) })).rejects.toThrow(error);
+    expect(await db.ocrDraft.count()).toBe(0);
+    expect(await db.evidenceAiCache.count()).toBe(0);
+    expect(await db.statementImport.count()).toBe(0);
+    expect(await db.bankTransaction.count()).toBe(0);
+    expect(await db.journalEntry.count()).toBe(0);
+  });
+
+  it("refuses dual-sided corrections even when their net movement ties to every printed balance", async () => {
+    await setOcrEnabled(db, true);
+    const created = await createOcrDraft(db, { ...base(), provider: mock() });
+    const d = await updateOcrDraft(db, {
+      firmId: g.firm.id, clientId: g.client.id, draftId: created.id,
+      opening: "1.000.000", closing: "1.500.000",
+      rows: [{ date: "2026-08-03", description: "SETORAN", debit: "100.000", credit: "600.000", balance: "1.500.000" }],
+    });
+    expect(d.proof.rows[0].state).toBe("BAD_AMOUNT");
+    expect(d.proof.importable).toBe(false);
+    await expect(importOcrDraft(db, { firmId: g.firm.id, clientId: g.client.id, draftId: d.id, provider: null })).rejects.toThrow(/belum terbukti/);
+    expect(await db.statementImport.count()).toBe(0);
+    expect(await db.bankTransaction.count()).toBe(0);
+    expect(await db.journalEntry.count()).toBe(0);
+    expect((await db.ocrDraft.findUniqueOrThrow({ where: { id: d.id } })).status).toBe("DRAFT");
   });
 
   it("refuses a scan of another account, and builds the CSV the generic parser reads", async () => {

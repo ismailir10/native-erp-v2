@@ -22,13 +22,12 @@ describe("MT940", () => {
     expect(st.periodEnd.toISOString().slice(0, 10)).toBe("2026-08-31");
   });
 
-  it("shows a gap between days instead of hiding it", async () => {
-    const st = await parseStatement(
+  it("refuses a gap between days instead of hiding it", async () => {
+    await expect(parseStatement(
       "gap.txt",
       file(":20:A", ":25:0000012345", ":60F:C260731IDR1000,00", ":61:2608010801C100,00NTRFNONREF", ":86:SETOR", ":62F:C260801IDR1100,00",
         ":20:B", ":25:0000012345", ":60F:C260801IDR1200,00", ":61:2608020802D50,00NTRFNONREF", ":86:TARIK", ":62F:C260802IDR1150,00"),
-    );
-    expect(checkContinuity(st).ok).toBe(false);
+    )).rejects.toThrow(/tidak nyambung/);
   });
 
   it("refuses an empty day whose balance doesn't continue the day before", async () => {

@@ -18,6 +18,14 @@ export type ParsedRow = {
 
 export type ParsedStatement = {
   format: BankCode;
+  /** Explicit currency from the source, when available. Bank imports currently support IDR only. */
+  currency?: string;
+  /** Distinguish printed evidence from values calculated from the rows under test. */
+  provenance?: {
+    period: "DECLARED" | "INFERRED";
+    opening: "PRINTED" | "DERIVED";
+    closing: "PRINTED" | "ROW" | "DERIVED";
+  };
   accountNumber: string | null;
   periodStart: Date;
   periodEnd: Date;
@@ -43,6 +51,15 @@ export type DepositProduct = { number: string; product: string; currency: string
 
 export class ParseError extends Error {}
 
+/** A source currency conflict cannot be bypassed by trying another reader or remembered mapping. */
+export class SourceCurrencyError extends ParseError {}
+
+/** A recognized bank's impossible date must not be reinterpreted in another locale. */
+export class SourceDateError extends ParseError {}
+
+/** A user-selected date order can resolve this; automatic fallbacks cannot. */
+export class AmbiguousDateError extends SourceDateError {}
+
 /** A scan or photo with no text to read (I2a): the import page offers *Baca scan dengan AI* when the workspace switch is on. */
 export class ScanError extends ParseError {}
 
@@ -62,3 +79,6 @@ export class YearNeededError extends ParseError {
     super("File ini tidak mencantumkan tahun (tanggal hanya hari/bulan). Isi tahun bulan pertamanya.");
   }
 }
+
+/** Invalid monetary evidence must not be reinterpreted by a fallback reader. */
+export class SourceAmountError extends ParseError {}
