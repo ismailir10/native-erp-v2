@@ -30,7 +30,7 @@ startup-program reviewers, retaining the genuine synthetic evidence from the pre
   distinctions, visible synthetic labels and working trial/deck/legal links. No horizontal overflow or em dashes.
 - [x] Keyboard, semantic headings, image descriptions, native disclosure behavior and reduced motion pass.
   Mobile production-build Lighthouse performance and accessibility each remain at least 95 on all three public pages.
-- [ ] Local task/full gates pass; desktop/phone visual iterations and separate standards/spec reviews show no
+- [x] Local task/full gates pass; desktop/phone visual iterations and separate standards/spec reviews show no
   unresolved in-scope polish. Deck coverage, human review, traceability, close, exports and data claims still agree.
 
 ## Verify flows
@@ -75,7 +75,7 @@ data/configuration writes or new capability claims.
   evidence and full-view disclosures; reuse tokens, saved captures, money formatter and approved motion.
 - [x] T3 Integrate the updated base and resolve evidence/cache/loading findings without changing product,
   auth, context or client-control implementations. Depends on T1; required by existing accuracy/performance criteria.
-- [ ] T2 Verify and prepare release: complete gates, independent reviews, final screenshots/Lighthouse and accurate
+- [x] T2 Verify and prepare release: complete gates, independent reviews, final screenshots/Lighthouse and accurate
   cycle/PR evidence. Exact-head CI and owner-authorised merge are subsequent release gates tracked in Ship Notes.
   Depends on T1 and T3; the Rupiah qualification must match the integrated deck.
 
@@ -144,6 +144,8 @@ data/configuration writes or new capability claims.
 
 ### Pre-integration verification: b334875d7bcc8641f31a5d7cc472ab9834445b0d, 2026-10-10
 
+Historical runtime evidence; shared screenshot paths now hold the final integrated captures below.
+
 - Gate: `npm run lint && npm run typecheck && npm test` passes: 226 files / 1,540 tests (337.48 seconds).
   `npm run build && npm run demo:reset && npm run verify:books && npm run test:e2e` passes:
   `ALL PASS` / 1,765 checks; `86 passed (9.0m)`. Logs: `/workspace/work/composition-verified-*.log`.
@@ -176,8 +178,42 @@ data/configuration writes or new capability claims.
   access. The preceding cycle's legal/domain/contact operator prerequisites remain; this visual change neither
   asserts legal sign-off nor submits a startup-program application.
 
-## Ship Notes
+### Verified locally: a942a65c62f739cd58bab5004c48749c68fc0fba, 2026-10-10
 
+- Gate: lint, typecheck and production build pass. Unit/database suite: 236 files / 1,871 tests
+  passed (564.78 seconds). Synthetic reset and book verification pass: `ALL PASS` / 1,765 checks. Complete browser suite: `88 passed (10.9m)`.
+  Logs: `/workspace/work/composition-final-*.log`; the built code is identical to the marked runtime commit.
+- App: production build at http://localhost:3200, Postgres 16 synthetic books and local GoTrue/Mailpit/Kong Auth.
+  Unit tests use `buku_test`; browser tests use `buku`. No paid model keys or production data/configuration writes.
+- Walked: home, Terms, Privacy, login and trial at 1440/390 px; source/journal proof, current 9 REVIEW / 12 PASS
+  close details, report totals and complete native disclosures; deck/trial/legal routes, keyboard skip/focus,
+  anchors at 1440/1024/768/390 and reduced motion. Ten public checks have empty errors/failures and no overflow.
+  Metadata, image completion and descriptive alternatives pass. Reading order was inspected through browser
+  accessibility snapshots, not a separate assistive-device audit.
+- Member regression: unchanged full tests cover firm/company/admin/support dispatch, scanner-safe invitation
+  and recovery, roles/tenant restrictions, trial expiry, protected writes, client palette/sidebar navigation,
+  text typed before hydration and persistent scope/period/history. The initially missed shortcut also passes
+  all nine focused navigation/input/history cases (44.5 seconds) after restoring original shell loading.
+- Evidence: source row 11 and its Rp 335.350.000 balanced journal, current Mandiri blockers, all-entity close and
+  exact Rp 12.552.852.217 TB totals remain genuine synthetic captures. All fourteen hashes match saved bytes.
+  Guarded scratch regeneration verifies fourteen outputs, 222 source rows and 1,765 books checks without writes.
+- Lighthouse: required optimized images, default simulated mobile slow 4G, 412 × 823, CPU slowdown 4×,
+  Lighthouse 13.5.0 / Chromium 151.0.7922.173. Performance/accessibility: home 95/100, Terms 96/100,
+  Privacy 96/100. All CLS 0; home LCP 2.9 seconds, TBT 50 ms and 284,442 transferred script bytes.
+  Reports: `/workspace/work/composition-final-lighthouse-{home,syarat,kebijakan-privasi}.json`.
+  No relaxed settings or repeat-until-green measurement. Historical scores/failures above are superseded.
+- Screenshots: `/workspace/work/composition-production-{home,terms,privacy,login,trial}-{1440,390}.png`,
+  expanded close/TB views and current acknowledgement capture `test-results/daftar-terima-kasih-390.png`.
+  Highlights: `/workspace/work/composition-production-home-1440-top.png` and
+  `/workspace/work/composition-mobile-hero.png` (390 × 888 complete opening).
+- Review: five visual rounds resolved hierarchy, contours, source/account accuracy, close detail scale,
+  phone length and readable report totals. Driver and separate standards/spec reviewers inspected frozen
+  source, final desktop/phone views and public metrics. Both independent gate/record reviews pass with no unresolved finding.
+- Not checked: signed-in production real-firm view and target Vercel build logs require unavailable project/member
+  access. Existing legal/domain/contact operator prerequisites remain; no legal sign-off, startup eligibility
+  or submitted application is asserted.
+
+## Ship Notes
 
 - Deck review: no deck change. Both audience decks still agree with uploaded files and registry-backed coverage,
   human approval of AI suggestions, source traceability, close controls, derived reports and Excel/PDF exports.
