@@ -8,9 +8,7 @@ import { requireWorkspaceSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
 import { companyClient, isCompany } from "@/lib/org";
 
-export const metadata = { title: "Beranda" };
-
-export default async function HomePage({ searchParams }: { searchParams: WorkspaceSearchParams }) {
+export default async function WorkspaceHome({ searchParams }: { searchParams: WorkspaceSearchParams }) {
   // A company's home is its own books (ADR 0017 §1); there is no list of clients to choose from.
   const { firm } = await requireWorkspaceSession();
   if (isCompany(firm)) {

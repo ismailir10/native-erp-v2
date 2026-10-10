@@ -15,6 +15,8 @@ describe("auth email configuration from the repository", () => {
     });
     for (const [key, value] of Object.entries(payload)) if (key.startsWith("mailer_templates_")) {
       expect(value).toContain('mailto:dukungan%40buku.example');
+      expect(value).toContain('href="{{ .SiteURL }}/syarat"');
+      expect(value).toContain('href="{{ .SiteURL }}/kebijakan-privasi"');
       expect(value).not.toMatch(/ConfirmationURL|supabase|<!-- buku-support -->/i);
     }
     expect(payload.mailer_templates_invite_content).toContain("{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}");

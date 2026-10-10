@@ -27,7 +27,7 @@ test("a Buku admin lands on the organisations list with each one's access", asyn
   await expect(page.getByTestId("ocr-setting").getByRole("checkbox")).toBeVisible();
   // The workspace is not theirs: no membership, back to the backoffice.
   await page.goto("/");
-  await page.waitForURL(/\/(login|backoffice)/);
+  await expect(page).toHaveURL(/\/backoffice$/);
 });
 
 test("an organisation member gets a 404 at the backoffice", async ({ page }) => {
