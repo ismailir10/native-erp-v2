@@ -271,7 +271,7 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   Every client list uses `accessibleClientWhere`, and every client page uses `getClientForMember`.
   — accept: the DB test shows an AKUNTAN with one of two clients sees one on Beranda, the work board, reports and the workspace
   scope. A grep for `firmId: firm.id` client lists outside `lib/tenant.ts` comes back empty, or each hit is justified in Implementation.
-- [ ] **T06 Platform admin + backoffice shell.** After: T01. Files: `lib/auth/platform.ts`, `app/backoffice/**` (layout and the
+- [~] **T06 Platform admin + backoffice shell.** (claimed: driver) After: T01. Files: `lib/auth/platform.ts`, `app/backoffice/**` (layout and the
   organisations list), `lib/auth/operator.ts` (`addOperator`, `removeOperator`), `scripts/access.ts` (`operator add|remove|list`),
   plus `tests/db/platform-admin.test.ts`.
   `requirePlatformAdmin()` (live row, `disabled` respected) returns 404 to everyone else. The list shows the columns from A1
