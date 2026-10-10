@@ -10,8 +10,14 @@ import { lineKey, simpleGuessRows, suggestForRows } from "@/lib/ai/retry";
  * posted (rules 17–19). Calls are capped per run (AI_MAX_CALLS_PER_RUN across all slices) and by the monthly budget.
  */
 
-/** A slice ends well inside the platform's 300 s limit. */
-export const AI_RUN_BUDGET_MS = 240_000;
+/** The function limit the background work runs under: `maxDuration = 300` in app/(app)/layout.tsx and app/api/ai-run/route.ts. */
+export const FUNCTION_LIMIT_MS = 300_000;
+/**
+ * No call starts after a slice's deadline, but one started just before it may take up to AI_TIMEOUT_MS: the deadline leaves room for
+ * that call and 20 s of bookkeeping inside the function limit (190 s with the default 90 s timeout), so the platform never cuts a
+ * call off mid-answer (an interrupted call loses its answer and keeps its budget reservation).
+ */
+export const AI_RUN_BUDGET_MS = Math.max(30_000, FUNCTION_LIMIT_MS - AI_TIMEOUT_MS - 20_000);
 /** A run that finished this recently is still shown (progress item on the import result and Review). */
 const RECENT_MS = 24 * 60 * 60 * 1000;
 
@@ -137,21 +143,25 @@ export const isStalled = (run: Pick<AiRun, "status" | "leaseUntil">, now = new D
  * with what is left of the time box — only for such lines: keys the run left unanswered or never reached (call cap, budget) wait for the
  * next import or *Minta saran AI*. Never throws: an `after` callback has no one to report to.
  */
-export async function runInBackground(db: Db, args: { firmId: string; clientId: string; provider: AiProvider | null; budgetMs?: number }): Promise<void> {
+export async function runInBackground(db: Db, args: { firmId: string; clientId: string; provider: AiProvider | null; budgetMs?: number }): Promise<{ continueRunId: string | null }> {
   const until = Date.now() + (args.budgetMs ?? AI_RUN_BUDGET_MS);
+  // This worker held the run's lease and its time box ended with work left: the caller schedules the next slice.
+  const unfinished = (runId: string, r: AiSliceResult) => ({ continueRunId: r.claimed && !r.done ? runId : null });
   try {
     const run = await startAiRun(db, args);
-    if (!run) return;
+    if (!run) return { continueRunId: null };
     const r = await driveAiRun(db, run.id, { provider: args.provider, budgetMs: until - Date.now() });
-    if (!r.done || Date.now() >= until) return;
+    if (!r.done || Date.now() >= until) return unfinished(run.id, r);
     const finished = await db.aiRun.findUniqueOrThrow({ where: { id: run.id } });
     const late = (await pendingRows(db, args.clientId, finished.skippedKeys)).some((row) => row.createdAt > finished.createdAt);
-    if (!late) return;
+    if (!late) return { continueRunId: null };
     const next = await startAiRun(db, args);
-    if (next?.status === "RUNNING" && next.id !== run.id) await driveAiRun(db, next.id, { provider: args.provider, budgetMs: until - Date.now() });
+    if (next?.status !== "RUNNING" || next.id === run.id) return { continueRunId: null };
+    return unfinished(next.id, await driveAiRun(db, next.id, { provider: args.provider, budgetMs: until - Date.now() }));
   } catch (e) {
     // The run stays RUNNING without a lease: the next page view of the client resumes it. No file contents or names in the log.
     console.error(`AI run for client ${args.clientId} stopped: ${e instanceof Error ? e.message.slice(0, 200) : String(e).slice(0, 200)}`);
+    return { continueRunId: null };
   }
 }
 

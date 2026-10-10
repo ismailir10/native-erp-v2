@@ -19,6 +19,7 @@ const PUBLIC_ACTIONS: Record<string, string> = {
 const OTHER_GUARD: Record<string, string> = {
   "app/auth/callback/confirm/route.ts": "public email authentication before membership exists; same-origin POST, allowlisted token type and Auth verification (email-templates.test.ts, auth-links.spec.ts)",
   "app/kirim/[token]/upload/route.ts": "token-only client upload; lib/upload-links resolveUploadLink refuses a link of an organisation that is not ACTIVE",
+  "app/api/ai-run/route.ts": "server-to-server continuation of a background AI run; a short-lived HMAC token (lib/ai/run-token.ts) names one existing RUNNING run, and lib/ai/background continueRun refuses a run someone is working on or of an organisation that is not ACTIVE",
 };
 const GUARDS = /\b(requireCapability|requirePlatformAdmin)\(/;
 
