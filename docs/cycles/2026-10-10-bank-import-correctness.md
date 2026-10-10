@@ -50,7 +50,7 @@ Approval: the user approved the review's three-stage proposal on 2026-10-10: “
 - Full browser gate, final output: `71 passed (9.1m)`; no skipped tests. This includes date-order mapping, contradictory closing, locked PDF import, investor close and existing access boundaries.
 - Final production rebuild passed after the OCR copy review. Lint/typecheck were rerun successfully for that wording change. Inspected OCR at 1440×900 and 375×812: required closing visible, import disabled while absent, no page overflow. Synthetic screenshots are in `docs/reviews/bank-import-correctness/`.
 - Review changed the OCR notice from an incorrect count of unproven transaction rows to checks on dates, amounts or balances; the missing closing is now described accurately.
-- GitHub CI: pending draft PR creation; recorded in the PR checks after shipping.
+- GitHub CI: running on draft PR #137; final status is recorded in the PR checks.
 
 ## Ship Notes
 - Migration: additive nullable JSONB column `StatementImport.sourceValidation`; no data rewrite/backfill and no journal migration. Deploy through the normal reviewed PR process; no production migration executed in this session.
@@ -58,4 +58,7 @@ Approval: the user approved the review's three-stage proposal on 2026-10-10: “
 - Existing legacy/derived/inferred sources can now show REVIEW; printed conflicts show FAIL. Exact complete legacy re-upload can attest matching financial rows; ambiguous or conflicting sources require explicit correction/removal in an open period. Historical locked journals are never rewritten.
 - Rollback: revert application changes; the nullable column can remain unused. Do not drop financial imports or alter journals as a rollback shortcut.
 - External anonymized bank-issued holdouts were unavailable. Synthetic coverage is deliberately not represented as external real-world validation.
-- Local release gates are complete. Draft PR, deck review and CI are the remaining ship steps; no merge or deployment is authorized.
+- Draft PR: https://github.com/ismailir10/accounting-erp/pull/137, independent of #134. No merge or production deployment performed.
+- Deck claims reviewed in all three HTML files: source interpretation/completeness (kantor 1/3/5/6, perusahaan 3/4), bank formats/count and Rupiah limit (kantor 5, perusahaan 4/13), close/conflict behavior (kantor 5/11, perusahaan 11), multi-currency entry route (kantor 13, perusahaan 13), OCR limitations/data flow (kantor 8/16, perusahaan 12), and illustrative demo numbers. Counts, traceability and accounting figures remain valid.
+- Updated kantor slides 1/5/6/13 and perusahaan 3/4/13 to describe checks rather than unconditional proof, state Rupiah bank imports and the ledger route for FX, and remove the claim that an explanatory note can clear a source balance conflict. Chooser retains slide counts and drops stale PDF byte-size labels. Regenerated both downloadable PDFs.
+- Inspected every changed slide at 1440×900 and 375×812; no page/slide overflow, copy wraps cleanly. Wide source tables retain their existing internal scroll and phone hint. Captures live in `docs/reviews/bank-import-correctness/deck-*.png`.
