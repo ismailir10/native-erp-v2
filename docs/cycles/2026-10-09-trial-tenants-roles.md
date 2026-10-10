@@ -313,13 +313,13 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   Handoffs if T04 is open), plus `e2e/company-org.spec.ts`.
   — accept: the e2e test shows a PERUSAHAAN org landing on its books, the sidebar listing entities, no *Klien* copy (text scan), and a
   second client refused by the server.
-- [ ] **T13 Seed + demo + cross-cutting e2e.** After: T09, T10, T11, T12. Files: `lib/demo/seed*.ts`, `scripts/seed.ts`,
+- [x] **T13 Seed + demo + cross-cutting e2e.** After: T09, T10, T11, T12. Files: `lib/demo/seed*.ts`, `scripts/seed.ts`,
   `scripts/e2e-setup.ts`, `e2e/global-setup.ts`, `e2e/tenant-isolation.spec.ts`.
   The seed adds an open-ended grant to the demo firm, a demo PERUSAHAAN org (synthetic, 2 entities) and a local platform admin
   (DEMO_MODE only, refuses production as `ensureLocalAdmin` does).
   — accept: the e2e test, logged in as firm A, opens firm B's client URL and gets 404. `npm run verify:books` prints ALL PASS (demo
   numbers unchanged).
-- [ ] **T14 Docs, end-of-cycle gates, Ship Notes.** After: all. Files: `README.md` (Invitation operations → Access operations:
+- [~] **T14 Docs, end-of-cycle gates, Ship Notes.** After: all. Files: `README.md` (Invitation operations → Access operations:
   operators, grants, signup, roles), `AGENTS.md` §6 one line, `docs/adrs/0017-*.md` status → Accepted, `docs/adrs/README.md` row,
   and this doc. Deck per `/ship` step 3.
   — accept: lint + typecheck + test + build + verify:books + test:e2e all green, with the output pasted under Verification.
@@ -464,6 +464,11 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   issuer *Buku*). `supabase/config.toml` enables TOTP. `scripts/e2e-table-counts.ts` feeds the e2e no-trace check. **For T14
   (Ship Notes):** hosted Supabase must have TOTP MFA enabled (default on hosted projects), so check it in `scripts/auth-config.ts` or
   in the dashboard. The support bar was checked by e2e only, without screenshots: the TOTP flow needs a fresh factor per run.
+- T13: **Changed from the plan:** the demo seed needs no change. `createFirm` gives the demo firm an open COMP grant, and the seed
+  creates no logins (every account comes from `scripts/e2e-setup.ts`, which since T10–T18 adds the trial firms, *PT Uji Perusahaan*,
+  `ops@buku.example` with fresh TOTP, and the AKUNTAN's assignments). So no demo company or Buku admin goes into a database that
+  `demo:reset` builds for the investor walk. `e2e/tenant-isolation.spec.ts`: an AKUNTAN narrowed to one client gets 404 on 20 pages and
+  5 downloads of another client of the same firm (another firm: `qa-access.spec.ts`).
 
 ## Verification
 - T15/T16 origin follow-up: lint ✓, typecheck ✓; full Vitest → 215 files / 1471 tests passed. CLI accepts the environment-based config (its status then reports the intentionally absent full-stack
@@ -505,6 +510,8 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
 - T18: full `npx vitest run` → 219 files, 1504 tests passed; `npm run build` ✓; `playwright test support-session, auth-links`
   (local stack restarted with TOTP and `APP_URL=http://localhost:3200`) → 3 passed. Tenant row counts were identical before and
   after walking 18 client pages and a download.
+- T13: `playwright test tenant-isolation` → 1 passed. `npm run demo:reset && npm run verify:books` → **ALL PASS — 1765 pemeriksaan
+  saldo cocok dengan ground truth.** Full e2e on the T18 head (`npm run build` then `playwright test`) → **80 passed (7.4 m)**.
 
 ## Ship Notes
 
