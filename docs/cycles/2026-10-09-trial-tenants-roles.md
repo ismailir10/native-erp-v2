@@ -319,7 +319,7 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   (DEMO_MODE only, refuses production as `ensureLocalAdmin` does).
   — accept: the e2e test, logged in as firm A, opens firm B's client URL and gets 404. `npm run verify:books` prints ALL PASS (demo
   numbers unchanged).
-- [~] **T14 Docs, end-of-cycle gates, Ship Notes.** After: all. Files: `README.md` (Invitation operations → Access operations:
+- [x] **T14 Docs, end-of-cycle gates, Ship Notes.** After: all. Files: `README.md` (Invitation operations → Access operations:
   operators, grants, signup, roles), `AGENTS.md` §6 one line, `docs/adrs/0017-*.md` status → Accepted, `docs/adrs/README.md` row,
   and this doc. Deck per `/ship` step 3.
   — accept: lint + typecheck + test + build + verify:books + test:e2e all green, with the output pasted under Verification.
@@ -529,6 +529,14 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   `playwright test trial-signup, backoffice, auth-links, support-session` (local stack, `APP_URL=http://localhost:3200`) → all passed.
   Screenshots of /daftar and Permintaan at 1440 and 390 px were looked at; the 390 px Permintaan page first overflowed (backoffice
   nav), fixed and now asserted (no horizontal scroll).
+- T14 (end of cycle, head after T09 and the deck fix): `npm run lint` ✓, `npm run typecheck` ✓, `npm test` → 220 files, all
+  passed; `npm run build` ✓; `npm run demo:reset && npm run verify:books` → **ALL PASS — 1765 pemeriksaan saldo cocok dengan ground
+  truth**; `npm run test:e2e` (local stack) → **82 passed (8.0 m)**. Deck: `kantor.html` slide 08 and `perusahaan.html` slide 12
+  (roles, AI key and scan switch are Buku's), PDFs regenerated and looked at.
+  CI: on slow runners (9.3–9.5 min for the e2e step, main's last green run took 5.3 min) single assertions that wait on a server
+  action and a render timed out at Playwright's 5 s default, a different step each run (support bar, *Tanya Buku* answer, client
+  page from the palette); all of them take under 1 s locally and the branch adds no query to those paths. `playwright.config.ts`
+  now sets `expect.timeout` to 15 s. The support e2e also says whether a session was refused (toast) or did not resolve (URL).
 
 ## Ship Notes
 **Migrations** (applied by the Vercel build's `prisma migrate deploy`): `20261009232747_trial_tenants` (additive: new tables, enum
