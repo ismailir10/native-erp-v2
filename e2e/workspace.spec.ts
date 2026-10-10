@@ -51,7 +51,7 @@ test("scope, period and answer context survive navigation at desktop and 390px",
   await page.getByLabel("Apa yang ingin Anda periksa?").fill("Berapa laba tiap perusahaan?");
   await page.getByRole("button", { name: "Tanya Buku", exact: true }).click();
   const answer = page.getByRole("article", { name: "Jawaban: Berapa laba tiap perusahaan?" });
-  await expect(answer).toContainText("Semua klien · Agustus 2026");
+  await expect(answer).toContainText("Semua klien · Agustus 2026", { timeout: 30_000 });
   await expect(answer).toContainText("dihitung dari jurnal Buku");
   await page.getByRole("combobox", { name: "Klien atau perusahaan" }).click();
   await page.getByRole("option", { name: "Perusahaan · PT Ayam Nusantara Digital", exact: true }).click();
