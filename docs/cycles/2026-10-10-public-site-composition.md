@@ -28,9 +28,9 @@ startup-program reviewers, retaining the genuine synthetic evidence from the pre
   captures are accessible without making their tiny text the main visual on desktop or phone.
 - [x] The story has deliberate changes in scale and composition, one primary action per view, clear audience
   distinctions, visible synthetic labels and working trial/deck/legal links. No horizontal overflow or em dashes.
-- [x] Keyboard, semantic headings, image descriptions, native disclosure behavior and reduced motion pass.
+- [ ] Keyboard, semantic headings, image descriptions, native disclosure behavior and reduced motion pass.
   Mobile production-build Lighthouse performance and accessibility each remain at least 95 on all three public pages.
-- [x] Local task/full gates pass; desktop/phone visual iterations and separate standards/spec reviews show no
+- [ ] Local task/full gates pass; desktop/phone visual iterations and separate standards/spec reviews show no
   unresolved in-scope polish. Deck coverage, human review, traceability, close, exports and data claims still agree.
 
 ## Verify flows
@@ -75,16 +75,44 @@ data/configuration writes or new capability claims.
   evidence and full-view disclosures; reuse tokens, saved captures, money formatter and approved motion.
 - [x] T3 Integrate the updated base and resolve evidence/cache/loading findings without changing product,
   auth or client-control behavior. Depends on T1; required by existing accuracy/performance criteria.
-- [x] T4 Register the existing shortcut listener during hydration commit after exact-head CI exposed the
-  remaining passive-effect timing gap. Stabilize the existing switcher context value. Preserve default SSR,
-  original control behavior and unchanged browser assertions. Group the original member shell behind one
-  default-SSR boundary and trim only unused font weights to retain the original mobile performance target.
-- [x] T2 Verify and prepare release: complete gates, independent reviews, final screenshots/Lighthouse and accurate
+- [ ] T4 Resolve the immediate shortcut regression and meet the original mobile performance target. Keep
+  global shortcut/input/provider behavior eager and preserve original control behavior and browser assertions.
+  Isolate sidebar navigation and scope selectors in their own default-SSR boundaries with one shared original
+  sidebar context. Retain the reviewed font range and exact headline subset; grouped-shell loading is removed.
+- [ ] T2 Verify and prepare release: complete gates, independent reviews, final screenshots/Lighthouse and accurate
   cycle/PR evidence. Exact-head CI and owner-authorised merge are subsequent release gates tracked in Ship Notes.
   Depends on T1, T3 and T4; the Rupiah qualification must match the integrated deck.
 
 ## Implementation
 
+- Current status: in progress. Exact-head private-mode CI rejected the grouped-shell runtime despite its
+  passing local and demo-mode suites. Its verification and performance results below are historical and do
+  not establish release readiness. The current paired-notification candidate has a home performance median
+  of 94, up from the preceding 93 median but still below the unchanged 95 target. Complete current local
+  gates and browser evidence are running; both exact-head CI modes and the scope decision below remain
+  pending. No current runtime release pass is asserted.
+- Current topology: session/access queries, filtered clients, module mapping, company conditions and banner
+  calculation remain in the original server AppLayout. Ask, client palette, history, access and navigation
+  progress stay eager. SidebarProvider, useSidebar, SidebarInset and SidebarTrigger
+  are extracted byte-for-byte into one client context module and re-exported by the original sidebar module.
+  The mobile trigger is eager and renders the former MobileTrigger wrapper's identical JSX. Only the original
+  AppSidebar navigation and WorkspaceScopeBar selectors have their own loading-null, default-SSR boundaries;
+  neither wraps the editable Ask input or a global provider. Scope URL canonicalization waits for its hydration.
+  The shortcut's existing handler uses a layout effect, with unchanged conditions/deps/cleanup and a memoized
+  context value. No control implementation, auth decision or browser assertion is changed.
+- Notification delivery: the root NotificationHost uses the existing root session boolean or a backoffice
+  pathname to render the unchanged Toaster with its original bottom-right/closeButton props. Public/auth and
+  link-upload forms have inline feedback and no toast producers. SupportBar remains under the original support
+  condition and keeps its props, audit/expiry/exit implementation. Each notification component has its own
+  loading-null default-SSR boundary, outside eager inputs and global providers. Original Sonner subscription
+  replays active queued notifications. These boundaries change loading only; auth/session checks are untouched.
+- Headline delivery: the existing Hanken 450 headline uses an exact 1,748-byte character subset embedded in
+  the existing stylesheet as a data URL. Only the unchanged landing h1 receives its class. Original root/body
+  font and all other text retain their existing font. Artifact/source hashes, actual cmap, weight, reproduction
+  recipe and full OFL provenance are recorded in `app/fonts/`. Independent parsing and HarfBuzz shaping verify
+  all 40 headline glyph selections, advances and positions match the original 450 instance exactly. The
+  rendered-heading guard verifies character coverage, pinned hash and equality of embedded/artifact bytes;
+  new headline characters require regeneration. No dependency or additional font request is added.
 - Approval: owner explicitly requested continued visual iteration on 2026-10-10; standing completion-through-merge
   authorization persists. No additional approval is required for this bounded refinement.
 - Plan: T1 illustration worker and composition driver in parallel with disjoint files; the driver integrates and
@@ -121,11 +149,11 @@ data/configuration writes or new capability claims.
   records each WebP's SHA-256, and required `next/image` plus responsive picture sources use that hash in their
   URLs. Next.js permits the exact manifest path/hash pairs alongside existing query-free images. Tests recompute
   file hashes and verify rendered URLs. A separate guarded capture into scratch verified future regeneration.
-- Loading: the integrated page initially measured 91/100, below the original mobile target. Branch-local member
+- Historical loading: the integrated page initially measured 91/100, below the original mobile target. Branch-local member
   imports reached 94/100 but retained workspace controls. The T3 thin client facade splits only Ask and Scope
   through default-SSR dynamic imports. At T3 the app shell retains its original direct imports; component
-  implementations, JSX/props, guards, root history and early-input adoption are untouched. T4 below changes
-  only the switcher listener registration phase and stability of its existing context value.
+  implementations, JSX/props, guards, root history and early-input adoption were untouched. The two-leaf and
+  subsequent grouped-shell candidates were later rejected by exact-head CI; neither remains the release candidate.
   Pure button variants are extracted unchanged and re-exported; server style users avoid the interactive
   primitive. Shared public navigation retains client routing with prefetch disabled; signed-out home uses
   document links. T3 required optimized-image measurements are home 95/100, Terms 96/100 and Privacy
@@ -138,18 +166,19 @@ data/configuration writes or new capability claims.
   the switcher provider eager still failed (8 of 9 focused cases). Restoring the shell's original loading paths
   passed the local reproduction with all nine unchanged focused cases passing (44.5 seconds), including the
   immediate shortcut, desktop/phone switching, early typed input and persistent context. The lower-transfer
-  shell version and failed runs are not release evidence. The final two-leaf runtime requires renewed full
+  shell version and failed runs are not release evidence. That two-leaf runtime required renewed full
   gates; interrupted runs and below-target measurements do not count as passes.
 
-- T3 task gate: lint, typecheck and production build pass; 236 files / 1,871 unit/database tests pass
-  (564.78 seconds). The two-leaf runtime and final public measurements/captures are frozen. The full book and
-  authenticated browser gate is tracked by T2 below.
+- Historical T3 task gate: lint, typecheck and production build passed; 236 files / 1,871 unit/database tests
+  passed (564.78 seconds). These two-leaf results do not cover the current diagnostic candidates or satisfy
+  the reopened T2 release gate.
 
 ## Verification
 
 ### Pre-integration verification: b334875d7bcc8641f31a5d7cc472ab9834445b0d, 2026-10-10
 
-Historical runtime evidence; shared screenshot paths now hold the final integrated captures below.
+Historical runtime evidence; shared screenshot paths are reused by later diagnostic builds and do not
+identify this runtime without a pinned capture.
 
 - Gate: `npm run lint && npm run typecheck && npm test` passes: 226 files / 1,540 tests (337.48 seconds).
   `npm run build && npm run demo:reset && npm run verify:books && npm run test:e2e` passes:
@@ -206,7 +235,8 @@ Historical runtime evidence; shared screenshot paths now hold the final integrat
   Lighthouse 13.5.0 / Chromium 151.0.7922.173. Performance/accessibility: home 95/100, Terms 96/100,
   Privacy 96/100. All CLS 0; home LCP 2.9 seconds, TBT 50 ms and 284,442 transferred script bytes.
   Reports: `/workspace/work/composition-final-lighthouse-{home,syarat,kebijakan-privasi}.json`.
-  No relaxed settings or repeat-until-green measurement. Historical scores/failures above are superseded.
+  No relaxed settings or repeat-until-green measurement. This candidate was subsequently rejected by CI;
+  these scores do not establish current release readiness.
 - Screenshots: `/workspace/work/composition-production-{home,terms,privacy,login,trial}-{1440,390}.png`,
   expanded close/TB views and current acknowledgement capture `test-results/daftar-terima-kasih-390.png`.
   Highlights: `/workspace/work/composition-production-home-1440-top.png` and
@@ -218,12 +248,15 @@ Historical runtime evidence; shared screenshot paths now hold the final integrat
   access. Existing legal/domain/contact operator prerequisites remain; no legal sign-off, startup eligibility
   or submitted application is asserted.
 
-### Verified locally: e18d4016bf5191ff4b3bb45a1ba29cb30f79638a, 2026-10-10
+### Historical local verification: e18d4016bf5191ff4b3bb45a1ba29cb30f79638a, 2026-10-10
+
+Rejected for release by the subsequent exact-head private-mode E2E failure. The observed local results are
+preserved below; grouped-shell source, metrics, reviews and gates do not cover the current diagnostic candidate.
 
 - Gate: lint, typecheck and production build pass. Unit/database suite: 236 files / 1,871 tests
   passed (581.16 seconds). Synthetic reset and book verification pass: `ALL PASS` / 1,765 checks.
   Complete unchanged browser suite: `88 passed (10.9m)`. Logs: `/workspace/work/composition-font-*.log`.
-  The built runtime is identical to this commit; subsequent verification-record edits change no runtime file.
+  The tested build was identical to this commit. Later rollback and diagnostic changes require renewed gates.
 - App: production build at http://localhost:3200, synthetic Postgres 16 books and local GoTrue/Mailpit/Kong Auth.
   Unit/database tests use `buku_test`; browser tests use `buku`. Paid model keys remain blank. No production writes.
 - Walked: all five public/auth pages at 1440/390 px, source/journal proof, current 9 REVIEW / 12 PASS close,
@@ -260,13 +293,76 @@ Historical runtime evidence; shared screenshot paths now hold the final integrat
   access. Existing legal/domain/contact operator prerequisites remain. No legal sign-off, startup acceptance
   or submitted application is asserted. Exact-head CI is a subsequent release gate, not a local test result.
 
+### Historical diagnostic benchmark: localized sidebar/scope and inline headline, 2026-10-10
+
+The plan was fixed before additional samples, after the first final-build sample was observed. Exactly three
+samples were retained for every page, using unchanged default mobile slow-4G/CPU-4 settings, a fresh browser
+per sample and no parallel work. The count was not expanded or filtered by outcome. Earlier historical 97
+scores are excluded. Removing an unused sidebar import left compiled JS/CSS/font URLs and transfers identical.
+
+| Page | Performance samples | Median | Range | Accessibility samples | CLS |
+|---|---|---|---|---|---|
+| Home | 93, 92, 96 | 93 | 92 to 96 | 100, 100, 100 | 0 in every sample |
+| Terms | 97, 97, 97 | 97 | 97 to 97 | 100, 100, 100 | 0 in every sample |
+| Privacy | 98, 96, 96 | 96 | 96 to 98 | 100, 100, 100 | 0 in every sample |
+
+Home fails the unchanged 95 performance target. Legal medians pass; these results do not establish current
+release readiness or guarantee every run's score. Plan/results: `/workspace/work/composition-safe-benchmark-{plan,results}.json`;
+all nine reports: `/workspace/work/composition-safe-lighthouse-{page}{,-2,-3}.json`. These results precede
+the paired-notification source below and do not cover it.
+
+### Current diagnostic benchmark: paired notification boundaries, 2026-10-10
+
+The plan was fixed before any sample: exactly three per page, unchanged default mobile slow-4G/CPU-4
+settings, fresh browsers and no parallel work. All nine results are retained. No sample expansion, filtering
+or further measurement is used to turn this result into a pass.
+
+| Page | Performance samples | Median | Range | Accessibility samples | CLS |
+|---|---|---|---|---|---|
+| Home | 94, 96, 94 | 94 | 94 to 96 | 100, 100, 100 | 0 in every sample |
+| Terms | 97, 96, 97 | 97 | 96 to 97 | 100, 100, 100 | 0 in every sample |
+| Privacy | 96, 97, 97 | 97 | 96 to 97 | 100, 100, 100 | 0 in every sample |
+
+Home transfers 245,055 script bytes in every sample. Its median improves from 93 to 94, but still fails
+the original 95 target; both legal medians pass. Plan/results:
+`/workspace/work/composition-notifications-benchmark-{plan,results}.json`. Current complete local gates
+and browser evidence are underway, with no complete pass asserted; prior interrupted runs do not count.
+
+The owner has been asked to choose between keeping 95 with separate public/member routes, or accepting
+the measured 94 while completing functional verification and merge. That decision is pending. The original
+criterion remains unchanged until an explicit answer; even a changed performance criterion would still
+require full functional gates, independent evidence review and both exact-head CI modes before release.
+
+### Current partial verification: 374fa378b1768eecf111b4b76f7bcb213f0ed60f, 2026-10-10
+
+- Lint, typecheck and production build pass. Unit/database gate: 236 files / 1,872 tests passed
+  (370.62 seconds). The earlier interrupted unit run does not count.
+- Synthetic reset and book verification pass: ALL PASS, 1,765 balance checks. No production data or paid
+  model calls are used.
+- Ten public/auth desktop and phone page checks pass with no browser errors, failed resources or overflow.
+  Native close/TB disclosures, keyboard skip/focus, four-width anchors and reduced motion pass.
+- Held sidebar/scope chunks: first Ctrl+K, retained Ask typing, canonical scope, phone menu and client
+  navigation pass at both widths. Global handlers and editable input remain eager.
+- The headline uses one custom font at both widths; CDP rendered glyph counts match the original font
+  baseline (39 desktop / 38 phone, excluding collapsed line-break spaces). Heading wraps remain 2 / 3 lines.
+- Notification identity proof: anonymous pages request no Toaster wrapper; real member login and the
+  admin without workspace membership load it. Queued-toast injection remains unverified: the bounded
+  runtime hook did not settle. Installed Sonner retains/replays active queued toasts; normal error-toast
+  delivery is exercised by the complete browser suite, which is still running.
+- Driver and independent source/hero visual reviews pass. Fresh highlight bytes match the repository
+  uploads recorded in `/workspace/work/composition-notifications-highlight-evidence.json`.
+- Pending: complete private/demo suites, the home performance decision and both exact-head CI modes.
+  The unchanged 95 performance criterion fails at median 94. This is partial evidence, not release sign-off.
+
 ## Ship Notes
 
 - Deck review: no deck change. Both audience decks still agree with uploaded files and registry-backed coverage,
   human approval of AI suggestions, source traceability, close controls, derived reports and Excel/PDF exports.
   The paper/ledger composition borrows their drawing grammar without importing illustrative charts or loops.
-- Release: update existing draft PR #142 with final evidence/highlights, retain the e2e label and mark ready. Require check
-  and e2e success on the exact pushed head before the owner-authorised merge. No preview or separate promotion.
+- Release: PR #142 is draft again. Keep the e2e label; update evidence/highlights and mark ready only after
+  the pending scope decision is resolved and the candidate passes its applicable local release criteria.
+  Require check and both demo/private E2E success on
+  the exact pushed head before the owner-authorised merge. No preview or separate promotion.
 - Blast radius: public composition, typed capture/hash metadata, exact optimizer queries, unchanged button
   styles, member UI import boundaries, switcher listener/context-value timing and equivalent font delivery, existing evidence assertions, three refreshed close assets and this
   record. No auth/schema/accounting, hosted configuration or dependency changes; no migrations or operator
@@ -282,57 +378,47 @@ Historical runtime evidence; shared screenshot paths now hold the final integrat
   Local a942 results above remain historical evidence and do not satisfy release. New exact-runtime gates
   and exact-head CI are required.
 
-- T4 investigation: local leaf Suspense boundaries installed the shell listener while chunks were held, but
-  initial phone hydration could replace the still-pending SSR textarea. Stabilizing the switcher context
-  value preserved the desktop interleaved case but did not eliminate that phone startup issue. This
-  experiment was removed entirely; the two default-SSR wrappers remain identical to a942. Failed experiments
-  are historical findings, not release evidence.
-- T4 final candidate: only the existing keyboard listener uses `useLayoutEffect`, registering synchronously
-  at hydration commit instead of in the later passive-effect phase. Listener conditions, deps and cleanup
-  are identical; the recents effect stays passive. The same `{open, clients}` context value is memoized by
-  those two inputs, avoiding unrelated palette-state propagation while retaining real input changes. No
-  other provider, context, input-adoption, tenant/auth or navigation implementation changes. Delayed chunks
-  cannot imply readiness before hydration; verify retained SSR typing and the unchanged immediate default-load
-  shortcut on desktop and phone, followed by complete gates.
+- Rejected loading experiments: local Suspense around pending Ask/Scope could replace the phone SSR
+  textarea; memoizing the switcher context did not resolve that case. Five individual shell leaves and the
+  grouped shell passed focused local tests but did not establish release correctness. The whole-home
+  prototype also missed the desktop shortcut and showed a phone heading fallback. All those files/boundaries
+  were removed. Earlier held-chunk probes checked typing and shortcuts after Ask hydration; they did not
+  prove readiness at browser load or replace the unchanged immediate-shortcut suite and exact-head CI.
 
-- T4 delayed-loading probe: both leaf entry chunks are deliberately held. SSR question text survives release
-  on desktop and phone; after the real Ask control becomes enabled, Ctrl+K, client navigation and canonical
-  scope work. Releasing held chunks and sending the shortcut at browser load alone can precede hydration
-  commit and does not establish readiness. The probe therefore does not claim before-hydration keyboard
-  capture; the unchanged immediate default-load suite and exact-head CI remain required separately.
+| Historical candidate | Focused cases | Home performance | Script bytes | Disposition |
+|---|---|---|---|---|
+| Listener at commit, Ask/Scope leaves | 9 passed, 45.0 seconds | 94 | Not recorded here | Below target |
+| Five individual leaves | 9 passed, 45.6 seconds | 91 | 280,252; 21 requests | Removed |
+| Grouped shell before font optimization | 9 passed, 45.4 seconds | 94 | 196,142 | Below target |
+| Grouped shell with reviewed font optimization | Full local gates passed at e18d | 95 | 196,142 | Rejected by private CI |
 
-- T4 performance: the listener-at-commit candidate passes all nine unchanged focused cases (45.0 seconds)
-  and held-leaf SSR typing/scope checks at both widths, but home measures 94/100 (legal 97/100 and 96/100),
-  below the original target. This measurement is not final evidence. The next bounded loading change splits
-  only sidebar/mobile-trigger/client-bar leaves, with all providers and contexts eager, original JSX/props
-  and default SSR preserved. No new local Suspense fallback or control implementation changes.
+The retained Hanken range optimization preserves all 268 glyphs, Unicode mappings, vertical metrics and
+used weights 400/450/500/600/700. Tested outlines/advances differ by at most one font unit from axis rounding;
+representative HarfBuzz glyph selection matches, with combined positioning rounding at most two units
+(0.032 px at 16 px). Font family, CSS variable, display swap and root history key remain unchanged. Full
+license, source hash and transformation recipe accompany the artifact; timestamps/table serialization can
+change reproduction bytes. These font facts do not validate the removed grouped-shell loading behavior.
 
-- T4 loading finding: the five-leaf candidate passes the unchanged focused suite (45.6 seconds) and delayed
-  typing/scope tests, but home measures 91/100 with 280,252 script bytes and 21 requests. Its extra request
-  overhead outweighs the small transfer saving. This experiment is removed. The final candidate groups the
-  unchanged member shell JSX behind one default-SSR client boundary; its original providers and controls
-  import together inside it. All server session/access/client queries, module filtering and banner rendering
-  remain in AppLayout. The existing serializable props and banner/children slots retain placement and guards.
-  Ask/Scope wrappers stay as before; root history stays keyed in the original root. No independent lazy
-  provider wrappers, custom loading fallback or new context module.
-
-- T4 font delivery: the grouped shell passes the unchanged focused suite (45.4 seconds) and held-chunk
-  SSR typing/scope checks at both widths, cutting home scripts to 196,142 bytes, but home measures 94/100
-  (legal 96/100 each). These are intermediate measurements. The same Hanken Grotesk font now ships only
-  its used 400 through 700 weight range, including 450 headings: 23,184 bytes instead of 34,704. All 268
-  glyphs, Unicode mappings, vertical metrics and GSUB shaping remain. Axis optimization introduces at most
-  one font unit of outline/advance rounding across tested 400/450/500/600/700 instances; no glyphs or used
-  weights are removed. The source hash, recipe and complete OFL license accompany the asset. Font family,
-  CSS variable, display swap and root history key remain unchanged, with no project dependency added.
-  HarfBuzz shaping on eight representative strings at each used weight retains identical glyph selection;
-  combined positioning/advance rounding is at most two font units (0.032 px at 16 px). The recipe reproduces
-  the transformation; timestamps/table serialization can change bytes, while the SHA identifies this artifact.
-  Fresh screenshots preserve heading wraps, spacing and readability. Final default mobile scores are home
-  95/100, Terms 97/100 and Privacy 96/100, all CLS 0; scripts are 196,142 bytes. Ten browser page checks and
-  four-width anchors, native disclosures and reduced-motion checks pass without errors/failures or overflow.
-  Complete new task/full gates pass; fresh exact-head CI remains required.
-
-- T4 task gate: final grouped-shell/font source is frozen. Lint, typecheck and production build pass;
-  236 files / 1,871 unit/database tests pass (581.16 seconds). Independent standards/spec source and
-  fresh desktop/phone visual reviews pass without findings. The full synthetic reset/book/browser gate
-  completes T2; no source changes occur after these measurements.
+- Renewed CI re-opened: head `97543391932a4ffee80a472bf95d3395d1ff0235` passed check run
+  `38053070246`, including 1,871 tests
+  (429.94 seconds). E2E run `38053070309` passed all 88 demo-mode cases (6.7 minutes), but private mode
+  passed 87 and failed the immediate Beranda Ctrl+K case at `client-navigation.spec.ts:69`: the expected
+  client bar did not appear. PR #142 returned to draft. The artifact request returned 403, so no trace was
+  accessible and no trace-derived diagnosis is claimed.
+- Confirmed diagnostic: with grouped-shell chunks held, the browser reached load while the shell was still
+  unready; Ctrl+K was not captured and no palette appeared. This confirms that browser load alone did not
+  establish shortcut readiness for that candidate. It does not establish a broader root cause. The grouped
+  shell and Ask wrappers were removed, restoring original eager shell providers/controls and eager Ask.
+- Historical performance investigation: the restored eager shell/Ask measured home 93/100 with 307,092 script
+  bytes in a quiet mobile run. An earlier overlapping measurement was discarded. The global `inlineCss`
+  experiment also measured 93/100 and increased HTML to 83,296 bytes from 19,756; the flag was removed.
+  Notification experiments measured 91/100 and 92/100 and were removed. A pure server-wrapper experiment
+  transferred 339,064 script bytes; no Lighthouse result was recorded and it was removed. The selector-only
+  default-SSR local boundary measured 92/100 with 289,201 script bytes, below the unchanged 95 target.
+  The sidebar/scope candidate with lazy mobile trigger measured 93/100 with 254,799 script bytes and passed
+  held-chunk checks at both widths. The headline-only eager candidate measured 94/100 with LCP 3,101 ms
+  and 307,092 script bytes. Neither measurement passes the original performance target.
+- In progress: make the current eager-provider/input and localized-navigation source concrete with complete
+  local/browser evidence. Paired notification loading improves the home median to 94 but still fails the
+  unchanged target. Original control implementations and assertions remain; scope decision, T4 and T2
+  are pending. No current release pass is asserted.
