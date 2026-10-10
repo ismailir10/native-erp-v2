@@ -6,9 +6,9 @@ import { getWorkspaceSession } from "@/lib/auth/session";
 import { WorkspaceHistoryProvider } from "@/components/app/workspace-history";
 
 const hankenGrotesk = localFont({
-  src: "../node_modules/@fontsource-variable/hanken-grotesk/files/hanken-grotesk-latin-wght-normal.woff2",
+  src: "./fonts/hanken-grotesk-latin-400-700.woff2",
   variable: "--font-hanken-grotesk",
-  weight: "100 900",
+  weight: "400 700",
   display: "swap",
 });
 
