@@ -1,0 +1,147 @@
+# One Unggah inbox: drop the client's files, Buku sorts and books them
+
+## Context
+A production walk on 2026-10-10 took one test client from "no rekening" to seven imported statements (a PT's BCA
+giro; the owner's BCA giro + tahapan, BNI, Mandiri, BRI and SMBC). Bank reading itself works (see
+`2026-10-10-bank-reader-fixes.md` for the three layouts that don't yet). The journey around it makes the user think
+at every step:
+
+- **No bank upload until a rekening exists.** With zero rekening, Impor Mutasi shows only "Impor Buku Besar"; nothing
+  says to go to Pengaturan. Pengaturan says "Belum ada rekening bank. Buku diisi dari file buku besar atau neraca." as
+  if that were a choice.
+- **Rekening typed by hand.** Seven rekening ≈ 30 clicks and fields, every value copied off the statements.
+- **Rekening picked before the file.** A file uploaded with the default (wrong) rekening is blocked although Buku
+  knows the right one ("Pakai rekening …"). The select resets to the first rekening on every load. A file whose number
+  isn't readable (BNI wondr today) imports into whatever is selected.
+- **One file at a time; a password per file.** Two banks lock their PDFs; the same password is asked again for every
+  file. Passwords differ per client and sometimes per bank.
+- **Results don't stay.** Errors are toasts that vanish; the previous file's result stays on screen as if it were the
+  new file's; the result card says "Nyambung" while Kelengkapan data above says "Tidak nyambung" for the same file.
+- **Combined files.** SMBC's three-account PDF imports the selected account; the other two are listed "tidak diimpor"
+  with no way to add them there.
+- **Two places for the same file.** Dokumen reads the statements, labels them "Rekening koran", then asks for six
+  fields by hand (Peran, Entitas, Mata uang, Dari, Sampai, Rekening) and cannot book them; Impor Mutasi books but
+  doesn't keep the file for questions. Dokumen also confirmed an AI-proposed "Mata uang: INDONESIA".
+
+Who feels it: the accountant every month for every client. Principle: drop the files; Buku reads what is printed on
+them and asks only what it truly cannot know, once.
+
+## Decisions
+1. **One "Unggah" page per client** replaces Impor Mutasi in the menu (1 · Sumber → Unggah). Drop any number of files
+   or paste a Google Drive folder link (the firm's existing Drive connection). Every file is kept in Dokumen (its
+   library, versions, questions — unchanged), and Buku sorts it:
+   - **rekening koran** → booked through the existing bank import;
+   - **buku besar / neraca** → a ledger-import draft, opened for the usual mapping check;
+   - **anything else** → kept as a document only.
+   The global Dokumen page stays the library; its own upload box sends files through the same sorting.
+2. **Rekening come from the files.** A number Buku knows routes to its rekening automatically (no select, no
+   "Pakai rekening"). New numbers — including the other accounts of a combined PDF — appear together in **one confirm
+   card**: "Rekening baru: BCA ·3814 a.n. <holder> → milik [entitas ▾]" with *Tambah & impor*. The entity is
+   preselected when the holder matches an entity name; a person's name that matches no entity offers "Tambah pemilik
+   <name>" in the same card. A file with no readable number asks for its rekening in that card — never silently into
+   a default.
+3. **Password keyring per client.** Every password that opened a file for this client is kept, encrypted (same
+   secret as the AI key); the next locked file tries them all; only a file none opens asks, once, and that password
+   joins the keyring. Admins can clear it in Pengaturan klien. Replaces today's "never stored" rule → ADR.
+4. **Every file gets a line that stays.** The page shows the latest drop as a list: file → what Buku did (booked into
+   BCA ·3814 for Jan 2026, 242 rows / ledger draft waiting for mapping / kept as document) or its own error in plain
+   words. Continuity wording matches Kelengkapan data ("nyambung dengan Desember" / "selisih Rp … dengan bulan
+   sebelumnya"). The AI progress line from `2026-10-10-import-ai-background.md` sits on each booked statement. No
+   toast-only states.
+5. **Holder mismatch warns, doesn't block.** A holder that matches no entity of the client shows "Nama di file:
+   <holder> — bukan perusahaan atau pemilik klien ini. Klien yang benar?" on the card; *Tetap impor* proceeds.
+6. **Files are processed oldest period first** within a drop, so continuity checks read naturally.
+7. **Dokumen's bank path simplifies.** A statement that was booked shows "Dibukukan → BCA ·3814 · Jan 2026" instead of
+   the six-field role form; the manual form remains only for files Buku couldn't classify. Country names are no
+   longer accepted as a currency fact.
+
+## Acceptance criteria
+- [ ] With zero rekening, Unggah is the first thing on the client's Sumber step; dropping a statement proposes the
+      rekening in the confirm card — no visit to Pengaturan. Pengaturan's empty-rekening copy no longer reads as a
+      choice.
+- [ ] Dropping the walk's file set at once (7+ statements, mixed banks, two locked) asks at most once per distinct
+      password and once for the confirm card, then books every readable statement into the right rekening, oldest
+      first; the SMBC file adds and books all three accounts.
+- [ ] A known rekening number never needs a click; a file without a readable number never books into a default.
+- [ ] Passwords: a second drop next month with the same locked files asks nothing; clearing the keyring makes it ask
+      again; passwords never appear in logs, URLs or responses.
+- [ ] Every file in a drop has a persistent line (also after reload) with its outcome or its own error; no stale
+      result from another file; continuity wording agrees with Kelengkapan data.
+- [ ] A Drive folder link with subfolders imports the same way as dropped files (files already imported are skipped
+      as duplicates, as today).
+- [ ] Ledger/neraca files land as ledger-import drafts; other files only in Dokumen; nothing outside bank statements
+      is booked without the existing review.
+- [ ] Dokumen shows booked statements as booked (link to the import), not the six-field form.
+- [ ] `verify:books` ALL PASS; investor demo walk passes (updated for the new menu label if needed).
+- [ ] Deck claims to review (ship.md § Deck review): any slide about uploading statements.
+
+## Verify flows
+1. **Empty client, whole set** (Admin, synthetic statements of 5 banks incl. two locked and one combined PDF): drop all
+   → password asked once → one card with every new rekening and a proposed pemilik → *Tambah & impor* → every file's
+   line shows booked; Kelengkapan shows the months.
+2. **Next month** (Akuntan): drop the next month's files → no password, no card → booked in seconds.
+3. **Edge — wrong client**: drop a statement whose holder is another company → warning on the card → *Tetap impor*
+   works; *Batal* books nothing and keeps the file in Dokumen only.
+4. **Error — unreadable**: a photo of a statement and a corrupt PDF in the same drop → each has its own line with the
+   reason (OCR offer for the photo, as today); the rest books.
+5. **Drive folder**: paste a folder link with bank subfolders → same outcome as flow 1.
+
+## UX notes
+- Menu: 1 · Sumber → **Unggah** (was Impor Mutasi), Saldo Awal unchanged.
+- Page top: one big drop zone "Tarik file klien ke sini — rekening koran, buku besar, neraca, atau dokumen lain. Bisa
+  banyak sekaligus, atau tempel tautan folder Google Drive." Below it: the latest drop's file list; below that,
+  Riwayat (history) as today.
+- Confirm card: one card for the whole drop; primary *Tambah & impor*, secondary *Batal*. Entity select appears only
+  when more than one entity fits.
+- Password: one inline field "Kata sandi PDF (dipakai untuk semua file terkunci, disimpan untuk klien ini)".
+- Copy in Bahasa Indonesia, sentence case (ui-rules).
+
+## Test seams
+- Unit: file sorting (bank / ledger / other), holder ↔ entity matching, oldest-first ordering.
+- DB integration: drop with known + new + numberless + combined files; keyring (try all, add, clear, never logged);
+  per-file outcome records survive reload; Drive folder path with a mocked Drive client.
+- e2e: flow 1 on synthetic files (extend the bank-import spec); investor walk updated.
+
+## Non-goals
+- AI timing (cycle `import-ai-background`, ships first) and reader fixes (cycle `bank-reader-fixes`, independent).
+- Creating a new client from files (cycle `new-client-from-files`, after this one).
+- Review-load reduction (own cycle later, measured after AI suggestions improve).
+- Non-IDR bank posting (unchanged refusal).
+
+## Assumptions
+1. Every dropped file is stored as a Dokumen version (existing tables), so per-file outcomes hang off what already
+   exists; at most one additive column/table if a drop needs grouping.
+2. The keyring is one additive table (client, encrypted password, added by, added at); ADR records the change from
+   "never stored".
+3. Holder names come from the reader (`bank-reader-fixes` adds `holder`); until it merges, the card works without the
+   name and skips the mismatch warning.
+4. Drive folder reading reuses Dokumen's Drive code (folder walk, download) and walks subfolders (the walk's files
+   sat in "REKENING KORAN/<bank>/"), with Dokumen's existing limits.
+5. Large drops run file by file within a few short requests (bank import is seconds once AI is in the background).
+
+## Gate re-openers
+- **Schema (additive):** password keyring table; possibly a drop/batch grouping.
+- **Security/PII:** stored PDF passwords (encrypted, admin-clearable, never logged) → ADR + security review in ship.
+- **Sensitive paths:** `app/actions.ts`, `lib/settings/**` (encryption helper reuse).
+- No new dependency, no AI change, accounting invariants unchanged (deterministic pipeline stays the only writer).
+
+## Tasks
+- [ ] T1 ADR: per-client PDF password keyring (replaces "never stored") — accept: ADR merged in the PR.
+- [ ] T2 Sorting + per-file outcome: every file → Dokumen version + kind (bank / ledger / other) + outcome record —
+      accept: DB tests for the three kinds and reload persistence. (reuse: evidence store, `parseStatementSections`,
+      ledger-import read)
+- [ ] T3 Rekening from files: route known numbers; build the confirm card model (new numbers, combined sections,
+      numberless files, holder ↔ entity, proposed pemilik); server action *Tambah & impor* — accept: DB tests incl.
+      SMBC three accounts and wrong-client warning. (reuse: `addBankAccount`, `addEntity`, `importStatement`)
+- [ ] T4 Keyring: encrypt/store/try-all/clear; never logged — accept: DB + unit tests; grep proves no plaintext path.
+- [ ] T5 Unggah page + menu: drop zone, Drive link, password field, confirm card, per-file list, oldest-first —
+      accept: verify flows 1–5 locally. (deps: T2–T4)
+- [ ] T6 Dokumen: booked statements show "Dibukukan →"; no country-as-currency facts; Pengaturan empty-rekening copy —
+      accept: verify on the walk's files.
+- [ ] T7 e2e + investor walk + docs (README routes, demo script) + full gate — accept: full gate green.
+
+## Implementation
+
+## Verification
+
+## Ship Notes
