@@ -342,7 +342,7 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   print a diff, and `PATCH` only with `--apply`. It refuses a project ref that is not in env, and it never prints a secret.
   — accept: the unit test builds the payload from the repo files and diffs it against a fixture config. A dry run against a fake
   `fetch` prints the expected diff. No network in tests.
-- [~] **T17 No vendor text, branded error pages, public shell.** (claimed: agent-b) After: none (touches `lib/auth/operator.ts` only at its `fail()`;
+- [x] **T17 No vendor text, branded error pages, public shell.** After: none (touches `lib/auth/operator.ts` only at its `fail()`;
   if T06/T08/T11 are open, note it in Handoffs). Files: `lib/errors/user-message.ts` (provider error → Bahasa, logs raw + reference id),
   `lib/auth/operator.ts` (`fail()` uses it), `app/error.tsx`, `app/global-error.tsx`, `app/not-found.tsx`, `app/layout.tsx` metadata
   (title template, Open Graph, icons), `components/app/public-shell.tsx` (used by `/login`, `/atur-sandi`, later `/daftar` and
@@ -364,6 +364,10 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   Screenshots of the bar at desktop and 390 px.
 
 ## Implementation
+- T17: shared `PublicShell` (existing `AuthShell` imports re-export it), branded 404/render/root-error pages, Buku metadata and
+  Open Graph image. Render errors show only a validated Next digest, matching the server log. `userMessage` maps provider codes
+  to Bahasa plus a unique reference, logs credential-redacted diagnostics, and now wraps operator failures. The AST regression
+  scan checks visible literals and thrown error copy while allowing code identifiers/imports. Missing invite configuration is generic.
 - T16: `auth:config` reads the repo's subjects/templates/expiry, fills the configured support address, and maps callback paths to
   `APP_URL`. Default GET + hashed-value diff; explicit `--apply` PATCHes changed public fields only. Project/token come from env;
   SMTP secrets stay untouched, and enabled unbranded hosted notices are refused. README documents the owner setup and external-client check.
@@ -428,6 +432,9 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   `createFirm(tx, name, { kind: "PERUSAHAAN", grant })` and then `createClient` once with the company's entities.
 
 ## Verification
+- T17: lint ✓, typecheck ✓, production build ✓; full Vitest → 215 files / 1471 tests passed. Focused error/auth tests → 2 files / 19 tests passed. Production Chromium checks
+  and inspected screenshots cover login, password, 404 and forced render failure at 390/1440 px, plus the Open Graph PNG.
+  The forced failure used a separate local process with an unavailable DB port; its visible digest matched the server log.
 - T16: lint ✓, typecheck ✓; full Vitest → 213 files / 1457 tests passed, including 19 auth-config checks with fake fetch
   (dry run, apply, idempotence, unknown notices and secret-safe output). CLI without project configuration exits 1 before network.
   No hosted configuration was read or changed; the owner supplies the project/token/domain/support address and runs the documented command.
@@ -455,6 +462,10 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
 ## Ship Notes
 
 ## Handoffs
+- **From T17 (agent-b), for driver/T04/T06:** `userMessage(error, fallback?)` is ready for unexpected server errors. Preserve
+  intentional domain/AccessError wording, but map unexpected `error.message` passthroughs in protected `app/evidence-actions.ts`
+  and the delete catch in `app/actions.ts`. These files were not edited by agent-b. T06 was claimed by the driver while T16 was
+  in progress and remains with that owner; preserve the T17 operator `fail()` change when integrating it.
 - **From T15 (agent-b), for T09/T11:** invitation metadata is `org_name`, `org_kind` (`KANTOR_AKUNTAN` / `PERUSAHAAN`), and
   `access_until` (a formatted Bahasa/WIB date); all are optional with template fallbacks. The shared guard scanner needs the
   explicit public `/auth/callback/confirm` exemption included with T15: same-origin POST + allowlisted token + Auth verification,

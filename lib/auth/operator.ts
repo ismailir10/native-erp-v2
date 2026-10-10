@@ -4,6 +4,7 @@ import type { MemberRole } from "@/lib/generated/prisma/enums";
 import { isAdminRole } from "@/lib/auth/permissions";
 import { createFirm } from "@/lib/setup";
 import type { SupabaseAdmin } from "@/lib/supabase/admin";
+import { userMessage } from "@/lib/errors/user-message";
 
 export const normalizeEmail = (value: string) => z.email().parse(value.trim().toLowerCase());
 const BAN_FOREVER = "876600h";
@@ -16,7 +17,7 @@ export type AuthApi = {
 };
 
 function fail(error: { message: string } | null, fallback: string): never {
-  throw new Error(error?.message ? `${fallback} (${error.message})` : fallback);
+  throw new Error(userMessage(error, fallback));
 }
 
 const PAGE = 1000;
@@ -26,7 +27,7 @@ async function findAuthUser(auth: AuthApi, email: string) {
   if (!auth.admin.listUsers) return undefined;
   for (let page = 1; ; page++) {
     const { data, error } = await auth.admin.listUsers({ page, perPage: PAGE });
-    if (error) fail(error, "Daftar pengguna Supabase tidak bisa dibaca.");
+    if (error) fail(error, "Daftar pengguna belum bisa dibaca. Coba lagi.");
     const users = data?.users ?? [];
     const found = users.find((u) => u.email?.toLowerCase() === email);
     if (found || users.length < PAGE) return found;
@@ -89,7 +90,7 @@ export async function revokeUser(db: Db, auth: AuthApi, input: { email: string; 
   if (!member || member.firmId !== input.firmId) throw new Error("Pengguna tidak ditemukan di kantor ini. Akses tidak diubah.");
   const updated = await db.firmMember.update({ where: { id: member.id }, data: { disabled: true } });
   const banned = await auth.admin.updateUserById(member.userId, { ban_duration: BAN_FOREVER });
-  if (banned.error) fail(banned.error, "Akses dicabut di Buku, tetapi sesi Supabase belum ditutup. Ulangi perintah.");
+  if (banned.error) fail(banned.error, "Akses dicabut di Buku, tetapi sesi masuk belum ditutup. Ulangi perintah.");
   return updated;
 }
 
