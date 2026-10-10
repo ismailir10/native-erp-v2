@@ -481,6 +481,8 @@ model StatementImport {
   continuityNote    String?
   /// Choices the parser made that change how the file is read (direction from the balance, sheets joined), shown to the accountant.
   parseNotes        String[]          @default([])
+  /// Versioned source evidence; null means legacy/unknown, never verified completeness.
+  sourceValidation  Json?
   /// Time deposits the file lists (SMBC "Detail Produk Deposito"): [{number, product, currency, rate, maturity, idrBalance}],
   /// idrBalance a whole-Rupiah string. Offered in Saldo Awal; never posted from here.
   deposits          Json              @default("[]")

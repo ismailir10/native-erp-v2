@@ -20,7 +20,7 @@ Approval: the user approved the review's three-stage proposal on 2026-10-10: “
 
 ## Tasks
 - [x] T1 Strict source interpretation — currency, calendar dates, MT940 block integrity; regression cases fail before writes.
-- [ ] T2 Conservative duplicate identity — preserve exact idempotence and twins; reject ambiguous overlap, retain distinct balance-supported transactions.
+- [x] T2 Conservative duplicate identity — preserve exact idempotence and twins; reject ambiguous overlap, retain distinct balance-supported transactions.
 - [ ] T3 Source validation and reconciliation — preserve independent totals and coverage provenance, persist validation, correctly reconcile sparse balances and partial periods; ambiguity/OCR guards.
 - [ ] T4 Adversarial corpus and release review — mutations, full accounting and browser gates, review fixes, docs/deck claims, draft PR and CI.
 

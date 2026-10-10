@@ -69,16 +69,15 @@ describe("a remembered Atur kolom layout", () => {
     await mapAugust(g);
     const broken = Buffer.from(["Value Dt;Ref;Particulars;Withdrawn;Lodged;Position", "01/09/2026;R1;SETOR;TUNAI;;100", ""].join("\n"));
     const err = await importStatement(db, { bankAccountId: g.pt.banks[0].id, fileName: "x.csv", data: broken, provider: null }).catch((e) => e);
-    // Still a file the accountant can map again: the import page offers Atur kolom.
-    expect(err).toBeInstanceOf(UnreadableFileError);
-    expect(err.message).toBe('File ini cocok dengan pemetaan kolom tersimpan ("kas-agustus.csv"), tetapi tidak terbaca: Baris 2: kolom Debet berisi "TUNAI", bukan angka. Periksa pemetaan kolomnya.');
+    // Malformed monetary evidence must not fall through to another reader.
+    expect(err.message).toMatch(/Nominal sumber tidak valid.*TUNAI/);
   });
 
   it("is not applied to a foreign-currency account (a mapped read parses Rupiah)", async () => {
     const g = await makeGroup();
     await mapAugust(g);
     const usd = await db.bankAccount.update({ where: { id: g.pt.banks[0].id }, data: { currency: "USD" } });
-    await expect(importStatement(db, { bankAccountId: usd.id, fileName: "kas-september.csv", data: unknownCsv(9), provider: null })).rejects.toThrow(UnreadableFileError);
+    await expect(importStatement(db, { bankAccountId: usd.id, fileName: "kas-september.csv", data: unknownCsv(9), provider: null })).rejects.toThrow(/Rupiah/);
   });
 
   it("is skipped for a file whose dates prove the other day/month order", async () => {

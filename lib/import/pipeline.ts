@@ -1,4 +1,9 @@
-import type { Db, Tx } from "@/lib/db";
+import { revalidateLegacy } from "@/lib/import/revalidate";
+import { guardTransferCounterparts } from "@/lib/import/transfer-guard";
+import { createHash } from "node:crypto";
+import { validateStatement, readValidation } from "@/lib/import/validation";
+import { dedupeStatement as dedupe } from "@/lib/import/dedupe";
+import type { Db } from "@/lib/db";
 import type { BankCode, ClassifyMethod, Direction } from "@/lib/generated/prisma/enums";
 import { ACCOUNT_CODES, isClassifiable } from "@/lib/coa/template";
 import { parseStatementSections } from "@/lib/import/parsers";
@@ -8,7 +13,7 @@ import type { RememberedLayout } from "@/lib/import/mapped";
 import { matchRule, sortRules } from "@/lib/classify/rules";
 import { financingSuggestion, taxPaymentSuggestion } from "@/lib/classify/financing";
 import { simpleGuess } from "@/lib/classify/fallback";
-import { matchTransfers, type TransferCandidate } from "@/lib/classify/transfer";
+import { matchTransfers } from "@/lib/classify/transfer";
 import { AUTO_POST_CONFIDENCE, type Classification } from "@/lib/classify/types";
 import { aiScope, suggestWithAi } from "@/lib/ai/classify";
 import { demoteUnbacked, tradeBacking } from "@/lib/ai/unbacked";
@@ -46,7 +51,7 @@ export type ImportSummary = {
 
 export async function importStatement(
   db: Db,
-  args: { evidenceVersionId?: string; evidenceUnitKey?: string; bankAccountId: string; fileName: string; data: Buffer; provider: AiProvider | null; password?: string; year?: number; actorId?: string | null },
+  args: { sourceProvenance?: ParsedStatement["provenance"]; evidenceVersionId?: string; evidenceUnitKey?: string; bankAccountId: string; fileName: string; data: Buffer; provider: AiProvider | null; password?: string; year?: number; actorId?: string | null },
 ): Promise<ImportSummary> {
   const bankAccount = await db.bankAccount.findUniqueOrThrow({
     where: { id: args.bankAccountId },
@@ -54,6 +59,9 @@ export async function importStatement(
   });
   const entity = bankAccount.entity;
   const client = entity.client;
+  if (bankAccount.currency !== "IDR" || entity.functionalCurrency !== "IDR") {
+    throw new ParseError("Rekening koran baru didukung untuk rekening dan pembukuan Rupiah. Untuk valas, impor lewat buku besar dengan kurs.");
+  }
 
   // The firm's Atur kolom layouts for this account's bank, tried only when every reader refuses the file (`parseStatementSections`). Rupiah
   // accounts only: a mapped read parses amounts as Rupiah, as the first mapping (`createMappedDraft`) requires too.
@@ -71,11 +79,13 @@ export async function importStatement(
   if (st.accountNumber && digits(st.accountNumber) !== digits(bankAccount.number)) {
     throw new AccountMismatchError(`Nomor rekening di file (${st.accountNumber}) berbeda dengan rekening terpilih (${bankAccount.number}).`, [st.accountNumber]);
   }
-  if (st.section && st.section.currency !== "IDR") {
-    throw new ParseError(`Rekening ${st.accountNumber} dalam ${st.section.currency}. Rekening koran valas belum didukung; impor lewat buku besar dengan kurs.`);
+  const sourceCurrency = st.currency ?? st.section?.currency;
+  if (sourceCurrency && sourceCurrency !== "IDR") {
+    throw new ParseError(`Rekening ${st.accountNumber} dalam ${sourceCurrency}. Rekening koran valas belum didukung; impor lewat buku besar dengan kurs.`);
   }
   // The section as parsed (and repaired against its balance, rule 12): `st` is replaced below, the other sections are told apart from it.
   const chosen = st;
+  if (args.sourceProvenance) st = { ...st, provenance: args.sourceProvenance };
   if (st.error) throw new UnreadableFileError(st.error);
   // A date that is nowhere near a statement (an Excel serial misread as 1905) must never become a period of the books.
   const odd = st.rows.find((r) => r.date.getUTCFullYear() < 2000 || r.date.getUTCFullYear() > 2100);
@@ -84,6 +94,10 @@ export async function importStatement(
   const LIMIT = 10n ** 15n;
   const huge = st.rows.find((r) => r.amount > LIMIT || r.amount < -LIMIT || (r.balance !== null && (r.balance > LIMIT || r.balance < -LIMIT)));
   if (huge) throw new ParseError(`Nominal terlalu besar di baris ${huge.rowNumber}${huge.sheet ? ` (lembar ${huge.sheet})` : ""} (maks. 15 angka). Periksa kolom jumlah dan saldo di file.`);
+  if ([st.openingBalance, st.closingBalance].some((v) => v > LIMIT || v < -LIMIT)) throw new ParseError("Saldo awal atau akhir terlalu besar (maks. 15 angka). Periksa angka pada sumber.");
+  const unresolved = st.rows.find((r) => r.balanceOnly);
+  if (unresolved) throw new ParseError(`Baris ${unresolved.rowNumber}: saldo berubah tetapi nominal transaksi belum terbukti. Perbaiki nominal pada sumber sebelum mengimpor; tidak ada mutasi yang diimpor.`);
+  const validation = validateStatement(st, createHash("sha256").update(args.data).digest("hex"));
   // A line that moves no money (0 debit and 0 credit) is no bank transaction and can't be journaled: left out, said so, row numbers kept.
   const zeroRows = st.rows.filter((r) => r.amount === 0n);
   if (zeroRows.length) {
@@ -127,9 +141,10 @@ export async function importStatement(
   // Hashed as one list, like the file was hashed before (two identical written rows keep their ordinals).
   const asWrittenHashes = rowHashes(st.rows.map((r) => (r.written ? { ...r, amount: r.written.amount ?? r.amount, date: r.written.date ?? r.date } : r)));
   const written = st.rows.map((r, i) => (r.written ? asWrittenHashes[i] : null));
-  const seen = await dedupe(db, bankAccount.id, st, hashes, written);
+  const seen = await dedupe(db, bankAccount.id, st, hashes, written, validation.sourceHash);
   const fresh = st.rows.map((r, i) => ({ r, hash: hashes[i] })).filter((_, i) => !seen.duplicate[i]);
-  const notes = [...(st.notes ?? []), ...seen.notes];
+  if (seen.notes.some((n) => n.includes("sebelum diperbaiki"))) validation.issues.push({ code: "LEGACY_WRITTEN_ROWS", severity: "CONFLICT", message: "Mutasi lama masih memakai nilai sebelum perbaikan. Hapus impor lama dan impor ulang sumber yang benar." });
+  const notes = [...(st.notes ?? []), ...seen.notes, ...validation.issues.map((i) => i.message)];
 
   // Saldo Awal already contains everything up to its date: a new row on or before it would be counted twice and break the bank
   // reconciliation. Only rows not yet imported count, so a statement that was imported before stays importable.
@@ -158,7 +173,12 @@ export async function importStatement(
 
   // Nothing new and the statement is already on file: no second history row claiming an import that changed nothing.
   if (fresh.length === 0 && !args.evidenceVersionId) {
-    const existing = await db.statementImport.findFirst({ where: { bankAccountId: bankAccount.id, periodStart: { lte: st.periodEnd }, periodEnd: { gte: st.periodStart } }, orderBy: { createdAt: "asc" }, select: { id: true } });
+    await revalidateLegacy(db, bankAccount.id, st, hashes, validation, args.fileName);
+    const candidates = await db.statementImport.findMany({ where: { bankAccountId: bankAccount.id, periodStart: st.periodStart, periodEnd: st.periodEnd }, orderBy: { createdAt: "asc" }, select: { id: true, sourceValidation: true } });
+    const existing = candidates.find((c) => {
+      const v = readValidation(c.sourceValidation);
+      return v !== null && v.sourceHash === validation.sourceHash && Object.entries(validation.source).every(([key, value]) => v.source[key as keyof typeof v.source] === value) && v.issues.length === validation.issues.length && v.issues.every((issue, i) => issue.code === validation.issues[i].code && issue.severity === validation.issues[i].severity && issue.message === validation.issues[i].message);
+    });
     if (existing) {
       return {
         importId: existing.id,
@@ -198,10 +218,10 @@ export async function importStatement(
   const window = items.length
     ? { gte: new Date(items[0].date.getTime() - 6 * 86_400_000), lte: new Date(items[items.length - 1].date.getTime() + 6 * 86_400_000) } // ≥ 2 business days across any weekend
     : undefined;
-  const openCounterparts: TransferCandidate[] = window
+  const openCounterparts = window
     ? (
         await db.bankTransaction.findMany({
-          where: { bankAccount: { entity: { clientId: client.id } }, matchedTxId: null, pairRefused: false, splits: { none: {} }, date: window, bankAccountId: { not: bankAccount.id } },
+          where: { bankAccount: { currency: bankAccount.currency, entity: { clientId: client.id, functionalCurrency: entity.functionalCurrency } }, matchedTxId: null, pairRefused: false, splits: { none: {} }, settlements: { none: {} }, date: window, bankAccountId: { not: bankAccount.id } },
         })
       ).map((t) => ({ ...t, id: t.id }))
     : [];
@@ -265,8 +285,9 @@ export async function importStatement(
     async (tx) => {
       // Two copies of a statement imported at once must not both pass the dedupe: serialise per bank account and look again.
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`import:${bankAccount.id}`}, 0))::text`;
-      const now = await dedupe(tx, bankAccount.id, st, hashes, written);
+      const now = await dedupe(tx, bankAccount.id, st, hashes, written, validation.sourceHash);
       if (now.duplicate.some((d, i) => d !== seen.duplicate[i])) throw new ParseError("Rekening ini baru saja menerima impor lain. Ulangi impor file ini.");
+      await guardTransferCounterparts(tx, client.id, openCounterparts.filter((row) => !!transfers.get(row.id)?.matchedTxId));
       const imp = await tx.statementImport.create({
         data: {
           firmId: client.firmId,
@@ -284,6 +305,7 @@ export async function importStatement(
           continuityOk: continuity.ok,
           continuityNote: continuity.note,
           parseNotes: notes,
+          sourceValidation: validation,
           deposits: (st.deposits ?? []).map((d) => ({ ...d, idrBalance: d.idrBalance.toString() })),
           importedById: args.actorId ?? null,
         },
@@ -373,56 +395,4 @@ function monthsOf(start: Date, end: Date): string[] {
   const out: string[] = [];
   for (let k = index(start); k <= index(end); k++) out.push(formatPeriod(Math.floor(k / 12), (k % 12) + 1));
   return out;
-}
-
-/**
- * Lines of `st` already in the books of the bank account. First the same row again (same file: same hash). Then, only when the file
- * covers what is already there — every line already imported within the file's statement period has a twin (same date and amount) in
- * the file — the same bank line from another source of that statement: a PDF and the accountant's Excel copy word descriptions
- * differently, and a PDF may print the balance only once a day. Twins are matched one to one; the balance only picks among them (a
- * source that missed a line has every later balance off). A file that doesn't cover the period (a supplement, a partial slice) keeps its
- * lines, with a note when some look like lines already there.
- */
-async function dedupe(db: Db | Tx, bankAccountId: string, st: ParsedStatement, hashes: string[], written: (string | null)[] = []) {
-  const already = await db.bankTransaction.findMany({
-    where: { bankAccountId, date: { gte: st.periodStart, lte: st.periodEnd } },
-    select: { id: true, hash: true, date: true, amount: true, balance: true },
-    orderBy: [{ date: "asc" }, { rowNumber: "asc" }],
-  });
-  const unmatched = new Set(already.map((t) => t.id));
-  let asWritten = 0;
-  const duplicate = hashes.map((h, i) => {
-    const same = already.find((t) => t.hash === h && unmatched.has(t.id)) ?? (written[i] ? already.find((t) => t.hash === written[i] && unmatched.has(t.id)) : undefined);
-    if (same) unmatched.delete(same.id);
-    if (same && same.hash !== h) asWritten++;
-    return !!same;
-  });
-  // Coverage: every remaining line already imported in the period must have a twin among the file's remaining lines.
-  const key = (d: Date, a: bigint) => `${+d}|${a}`;
-  const offered = new Map<string, number>();
-  st.rows.forEach((r, i) => !duplicate[i] && offered.set(key(r.date, r.amount), (offered.get(key(r.date, r.amount)) ?? 0) + 1));
-  const needed = new Map<string, number>();
-  for (const t of already.filter((x) => unmatched.has(x.id))) needed.set(key(t.date, t.amount), (needed.get(key(t.date, t.amount)) ?? 0) + 1);
-  const covers = [...needed].every(([k, n]) => (offered.get(k) ?? 0) >= n);
-  let fromOtherSource = 0;
-  let lookAlike = 0;
-  st.rows.forEach((r, i) => {
-    if (duplicate[i]) return;
-    const twins = already.filter((t) => unmatched.has(t.id) && +t.date === +r.date && t.amount === r.amount);
-    if (!twins.length) return;
-    if (!covers) {
-      lookAlike++;
-      return;
-    }
-    const twin = twins.find((t) => t.balance !== null && t.balance === r.balance) ?? twins[0];
-    unmatched.delete(twin.id);
-    duplicate[i] = true;
-    fromOtherSource++;
-  });
-  const notes = [
-    ...(asWritten ? [`${asWritten} baris sudah diimpor sebelumnya seperti tertulis di file, sebelum diperbaiki; dilewati. Untuk memakai perbaikannya, hapus impor lama lalu impor ulang file ini.`] : []),
-    ...(fromOtherSource ? [`${fromOtherSource} baris sama dengan mutasi yang sudah diimpor dari file lain (tanggal dan nominal sama, keterangan berbeda); dilewati.`] : []),
-    ...(lookAlike ? [`${lookAlike} baris bertanggal dan bernominal sama dengan mutasi yang sudah ada, tetapi file ini tidak mencakup semua mutasi periodenya, jadi tetap diimpor. Periksa Rekonsiliasi bank bulan itu.`] : []),
-  ];
-  return { duplicate, notes };
 }

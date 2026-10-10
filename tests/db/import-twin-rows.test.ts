@@ -30,12 +30,13 @@ describe("identical lines in one statement without a running balance", () => {
     expect(await db.bankTransaction.count({ where: { bankAccountId: g.pt.banks[0].id } })).toBe(3);
   });
 
-  it("a longer file overlapping the first adds only its new lines", async () => {
+  it("a changed overlapping file without balance evidence is refused without altering its twins", async () => {
     const g = await makeGroup();
     await importStatement(db, { bankAccountId: g.pt.banks[0].id, fileName: "cms-agu.csv", data: file(...fees, receipt), provider: null });
-    const more = await importStatement(db, { bankAccountId: g.pt.banks[0].id, fileName: "cms-agu-penuh.csv", data: file(...fees, receipt, "10/08/2026;TARIKAN TUNAI;500.000,00;0,00;"), provider: null });
-    expect(more.rows - more.duplicates).toBe(1);
-    expect(await db.bankTransaction.count({ where: { bankAccountId: g.pt.banks[0].id } })).toBe(4);
+    const journals = await db.journalEntry.count();
+    await expect(importStatement(db, { bankAccountId: g.pt.banks[0].id, fileName: "cms-agu-penuh.csv", data: file(...fees, receipt, "10/08/2026;TARIKAN TUNAI;500.000,00;0,00;"), provider: null })).rejects.toThrow(/saldo tidak membuktikan identitasnya/);
+    expect(await db.bankTransaction.count({ where: { bankAccountId: g.pt.banks[0].id } })).toBe(3);
+    expect(await db.journalEntry.count()).toBe(journals);
   });
 });
 

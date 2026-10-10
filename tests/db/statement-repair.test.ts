@@ -18,7 +18,7 @@ describe("statement repair in the pipeline (UC-B1)", () => {
     expect(first.rows).toBe(3);
     const imp = await db.statementImport.findFirstOrThrow({ where: { bankAccountId: bca.id } });
     expect(imp.continuityOk).toBe(true);
-    expect(imp.parseNotes).toEqual([expect.stringMatching(/^Baris 4: arah dibalik — file menulis masuk Rp 500.000, tetapi saldo turun sebesar itu/)]);
+    expect(imp.parseNotes).toEqual(expect.arrayContaining([expect.stringMatching(/^Baris 4: arah dibalik — file menulis masuk Rp 500.000, tetapi saldo turun sebesar itu/)]));
     const row = await db.bankTransaction.findFirstOrThrow({ where: { bankAccountId: bca.id, description: { contains: "BAYAR TOKO" } } });
     expect(row.amount).toBe(-500_000n);
     expect(row.rawRow).toContain("500.000,00");
