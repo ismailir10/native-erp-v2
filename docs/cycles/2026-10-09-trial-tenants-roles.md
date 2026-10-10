@@ -283,7 +283,7 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   `lib/ai/provider.ts`, plus `tests/db/ai-budget.test.ts` (extend).
   — accept: a firm ADMIN can no longer save AI credentials (action refused, form gone). The budget uses
   `Firm.aiMonthlyTokenBudget ?? env`. Existing AI tests stay green, still with MockProvider only.
-- [~] **T08 Grants and organisations in backoffice + CLI.** After: T06, T02. Files: `lib/access/admin.ts` (createOrganisation,
+- [x] **T08 Grants and organisations in backoffice + CLI.** After: T06, T02. Files: `lib/access/admin.ts` (createOrganisation,
   grant, extend, revokeGrant, suspend, reinstate, all writing `PlatformAuditEvent`), `app/backoffice/orgs/**`,
   `app/backoffice-actions.ts`, `scripts/access.ts` (`grant`, `revoke-grant`, `suspend`), plus `tests/db/access-admin.test.ts`.
   `createOrganisation(kind)` also creates the single client for PERUSAHAAN (reuse `createFirm`/`createClient` from `lib/setup.ts`).
@@ -351,7 +351,7 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   and fails on `supabase|prisma|postgres` (code identifiers and comments exempt). A forced render error shows the branded page with a
   reference id. Screenshots at desktop and 390 px.
 
-- [ ] **T18 Support session (A4).** After: T04, T05, T06. Files: `lib/auth/support.ts` (start, end, resolve; an httpOnly cookie
+- [~] **T18 Support session (A4).** After: T04, T05, T06. Files: `lib/auth/support.ts` (start, end, resolve; an httpOnly cookie
   holding the session id, checked live against `SupportSession` and `PlatformAdmin` on every request), the `lib/auth/session.ts` branch
   (a platform admin with a live support cookie resolves to the target member's session with `support: {…}` and `access` forced
   read-only, so `requireCapability` refuses writes), `app/backoffice/orgs/[id]/support/**` (reason form, history),
@@ -446,6 +446,14 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   has `firmTokenBudget`: `Firm.aiMonthlyTokenBudget ?? AI_MONTHLY_TOKEN_BUDGET`, used by reservations and `monthlyAiUse`. The budget
   refusal says *hubungi Buku* instead of naming the env var. Editing a firm's cap is on the organisation page (T08). **Follow-up, not
   this cycle:** the OCR consent is one global switch; a per-organisation consent (UU PDP) needs a column.
+- T08: `lib/access/admin.ts` (`createOrganisation`, which also gives a company its one client with the company as first entity;
+  `grantAccess`, `extendGrant`, `revokeGrant` with a reason, `setSuspended`, `setLimits`; all write `PlatformAuditEvent`, `adminId` null
+  for the CLI, and never a tenant `AuditEvent`). `app/backoffice-actions.ts` (`requirePlatformAdmin({ refuse: "error" })`; invite
+  owner/admin). The list page gets *Buat organisasi* (14/30 days/no end shortcuts) and rows link to `/backoffice/orgs/[id]`: access
+  table with change date/revoke, give access, members plus invite owner, limits (seats, AI tokens), suspension, *Riwayat Buku*. CLI:
+  `create-org`, `grant`, `revoke-grant`, `suspend`, `reinstate`. **For T09:** approval = `createOrganisation(db, adminId, { kind,
+  grant: { kind: "TRIAL", endsOn } })` then `inviteUser(role OWNER)`; on invite failure delete nothing that has data, just the new
+  organisation (it is empty) or report and keep it (decide in T09).
 
 ## Verification
 - T15/T16 origin follow-up: lint ✓, typecheck ✓; full Vitest → 215 files / 1471 tests passed. CLI accepts the environment-based config (its status then reports the intentionally absent full-stack
@@ -482,6 +490,8 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   qa-access` → all passed. `auth-links` (T15) failed locally and is handed back (no mail catcher, then link origin 3000 ≠ 3200).
 - T07: full `npx vitest run` → 216 files, 1476 tests passed; `npm run build` ✓; `playwright test backoffice, qa-access,
   ocr-scan` → 7 passed.
+- T08: full `npx vitest run` → 217 files, 1480 tests passed; `npm run build` ✓; `playwright test backoffice` → 3 passed; CLI
+  create-org → grant → suspend → reinstate run against the local DB. Screenshots of the list (1440, 390 px) and an organisation page were looked at.
 
 ## Ship Notes
 

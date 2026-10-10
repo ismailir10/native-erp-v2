@@ -38,3 +38,18 @@ export async function listOrganisations(db: Db, now = new Date()) {
   }));
 }
 export type OrganisationRow = Awaited<ReturnType<typeof listOrganisations>>[number];
+
+/** One organisation for its backoffice page: grants, people and Buku's log of what was done to it. Still no books. */
+export async function organisationDetail(db: Db, firmId: string, now = new Date()) {
+  const firm = await db.firm.findUnique({
+    where: { id: firmId },
+    include: {
+      grants: { include: { grantedBy: { select: { name: true } }, revokedBy: { select: { name: true } } }, orderBy: { startsAt: "desc" } },
+      members: { select: { id: true, email: true, name: true, role: true, disabled: true }, orderBy: [{ disabled: "asc" }, { createdAt: "asc" }] },
+      _count: { select: { clients: true } },
+    },
+  });
+  if (!firm) return null;
+  const events = await db.platformAuditEvent.findMany({ where: { firmId }, include: { admin: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: 50 });
+  return { firm, access: accessState(firm.grants, firm, now), events, aiUse: await monthlyAiUse(db, firmId) };
+}

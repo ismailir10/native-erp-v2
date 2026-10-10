@@ -6,6 +6,9 @@ import { requirePlatformAdmin } from "@/lib/auth/platform";
 import { listOrganisations } from "@/lib/backoffice/orgs";
 import { prisma } from "@/lib/db";
 import { formatDateWib } from "@/lib/format";
+import Link from "next/link";
+import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { CreateOrganisationForm } from "@/components/backoffice/org-forms";
 
 export const metadata = { title: "Organisasi" };
 
@@ -20,12 +23,16 @@ export default async function OrganisationsPage() {
     <div className="space-y-6">
       <PageHeader title="Organisasi" description="Kantor akuntan dan perusahaan yang memakai Buku, beserta masa aksesnya." />
       <NextStep>{ending ? `${ending} organisasi berakhir dalam 7 hari. Perpanjang atau biarkan menjadi hanya baca.` : rows.length ? "Tidak ada akses yang berakhir dalam 7 hari." : "Belum ada organisasi."}</NextStep>
+      <Card>
+        <CardHeader><CardTitle>Buat organisasi</CardTitle><CardDescription>Untuk kantor akuntan atau perusahaan yang dihubungi langsung.</CardDescription></CardHeader>
+        <CardContent><CreateOrganisationForm /></CardContent>
+      </Card>
       <Card className="p-0">
         <Table data-testid="organisations">
           <TableHeader>
             <TableRow>
               <TableHead className="pl-6">Organisasi</TableHead>
-              <TableHead>Akses</TableHead>
+              <TableHead className="hidden sm:table-cell">Akses</TableHead>
               <TableHead className="text-right">Anggota</TableHead>
               <TableHead className="hidden text-right md:table-cell">Klien</TableHead>
               <TableHead className="hidden text-right md:table-cell">Entitas</TableHead>
@@ -37,10 +44,11 @@ export default async function OrganisationsPage() {
             {rows.map((r) => (
               <TableRow key={r.id} data-testid="organisation-row">
                 <TableCell className="pl-6">
-                  <p className="font-medium">{r.name}</p>
+                  <Link href={`/backoffice/orgs/${r.id}`} className="drill font-medium">{r.name}</Link>
                   <p className="text-xs text-muted-foreground">{KIND[r.kind]}{r.ownerEmail ? ` · ${r.ownerEmail}` : ""}</p>
+                  <div className="mt-1 sm:hidden"><AccessStatus access={r.access} suspended={r.suspended} /></div>
                 </TableCell>
-                <TableCell><AccessStatus access={r.access} suspended={r.suspended} /></TableCell>
+                <TableCell className="hidden sm:table-cell"><AccessStatus access={r.access} suspended={r.suspended} /></TableCell>
                 <TableCell className="num text-right">{r.seatLimit === null ? r.members : `${r.members}/${r.seatLimit}`}</TableCell>
                 <TableCell className="num hidden text-right md:table-cell">{r.clients}</TableCell>
                 <TableCell className="num hidden text-right md:table-cell">{r.entities}</TableCell>

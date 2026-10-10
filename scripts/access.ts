@@ -1,5 +1,7 @@
 import "dotenv/config";
 import { createPrisma } from "../lib/db";
+import { createOrganisation, grantAccess, revokeGrant, setSuspended } from "../lib/access/admin";
+import { formatDateWib } from "../lib/format";
 import { addOperator, initializeWorkspace, inviteUser, listMembers, listOperators, removeOperator, revokeUser, setMemberRole } from "../lib/auth/operator";
 import { createSupabaseAdmin } from "../lib/supabase/admin";
 import { appUrl } from "../lib/supabase/env";
@@ -12,6 +14,11 @@ const USAGE = [
   "invite --firm ID --email ALAMAT --name NAMA [--role OWNER|ADMIN|AKUNTAN|VIEWER] [--url ORIGIN]",
   "revoke --firm ID --email ALAMAT",
   "set-role --firm ID --email ALAMAT --role OWNER|ADMIN|AKUNTAN|VIEWER",
+  "create-org --name NAMA --kind KANTOR_AKUNTAN|PERUSAHAAN --grant TRIAL|PAID|COMP [--until YYYY-MM-DD]",
+  "grant --firm ID --grant TRIAL|PAID|COMP [--until YYYY-MM-DD] [--from YYYY-MM-DD] [--note CATATAN]",
+  "revoke-grant --id GRANT_ID --reason ALASAN",
+  "suspend --firm ID --reason ALASAN",
+  "reinstate --firm ID",
   "operator add --email ALAMAT --name NAMA [--url ORIGIN]",
   "operator remove --email ALAMAT",
   "operator list",
@@ -31,6 +38,8 @@ async function main() {
   }
   const allowed: Record<string, string[]> = {
     init: ["name"], list: [], invite: ["firm", "email", "name", "role", "url"], revoke: ["firm", "email"], "set-role": ["firm", "email", "role"],
+    "create-org": ["name", "kind", "grant", "until"], grant: ["firm", "grant", "until", "from", "note"], "revoke-grant": ["id", "reason"],
+    suspend: ["firm", "reason"], reinstate: ["firm"],
     "operator add": ["email", "name", "url"], "operator remove": ["email"], "operator list": [],
   };
   if (!Object.hasOwn(allowed, command)) throw new Error(`Pilih salah satu: ${USAGE}.`);
@@ -51,6 +60,29 @@ async function main() {
       for (const firm of firms) console.log(`${firm.id} · ${firm.name} · ${firm.kind}`);
       if (!firms.length) console.log("Belum ada kantor. Gunakan access init --name NAMA.");
       for (const member of await listMembers(db)) console.log(`  ${member.email} · ${member.name} · ${member.role}${member.disabled ? " · DICABUT" : ""} · kantor ${member.firm.name}`);
+    } else if (command === "create-org" || command === "grant") {
+      // Buku admin operations from the CLI (ADR 0017): logged with no admin row, read as "CLI" in the backoffice.
+      const kind = options.get("grant");
+      if (kind !== "TRIAL" && kind !== "PAID" && kind !== "COMP") throw new Error("--grant harus TRIAL, PAID atau COMP.");
+      const grant = { kind, startsOn: options.get("from"), endsOn: options.get("until") ?? null, note: options.get("note") } as const;
+      if (command === "grant") {
+        if (!options.get("firm")) throw new Error("--firm ID wajib diisi.");
+        const g = await grantAccess(db, null, options.get("firm")!, grant);
+        console.log(`Akses ${g.kind} diberikan · ${g.endsAt ? `s.d. ${formatDateWib(g.endsAt)} 23.59 WIB` : "tanpa batas"} · id ${g.id}.`);
+      } else {
+        const orgKind = options.get("kind");
+        if (orgKind !== "KANTOR_AKUNTAN" && orgKind !== "PERUSAHAAN") throw new Error("--kind harus KANTOR_AKUNTAN atau PERUSAHAAN.");
+        const firm = await createOrganisation(db, null, { name: options.get("name") ?? "", kind: orgKind, grant });
+        console.log(`Organisasi dibuat: ${firm.id} · ${firm.name}. Undang pemiliknya dengan access invite --role OWNER.`);
+      }
+    } else if (command === "revoke-grant") {
+      if (!options.get("id")) throw new Error("--id GRANT_ID wajib diisi.");
+      const g = await revokeGrant(db, null, options.get("id")!, options.get("reason") ?? "");
+      console.log(`Akses dicabut: ${g.id} · organisasi ${g.firmId}.`);
+    } else if (command === "suspend" || command === "reinstate") {
+      if (!options.get("firm")) throw new Error("--firm ID wajib diisi.");
+      const firm = await setSuspended(db, null, options.get("firm")!, command === "suspend", options.get("reason") ?? "");
+      console.log(`${firm.name}: ${firm.suspendedAt ? "ditangguhkan" : "dipulihkan"}.`);
     } else if (command === "set-role") {
       const member = await setMemberRole(db, { firmId: options.get("firm")!, email: options.get("email")!, role: role as MemberRole });
       console.log(`Peran diubah: ${member.email} → ${member.role} · kantor ${member.firmId}.`);

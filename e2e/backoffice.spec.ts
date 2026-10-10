@@ -34,3 +34,35 @@ test("an organisation member gets a 404 at the backoffice", async ({ page }) => 
   const response = await page.goto("/backoffice");
   expect(response?.status()).toBe(404);
 });
+
+test("a Buku admin creates a trial company, extends it with a paid grant, suspends and reinstates it", async ({ browser, baseURL }) => {
+  const { email, password } = JSON.parse(readFileSync(".playwright/credentials-ops.json", "utf8")) as { email: string; password: string };
+  const context = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] } });
+  const page = await context.newPage();
+  await page.goto("/login");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Kata sandi").fill(password);
+  await page.getByRole("button", { name: "Masuk", exact: true }).click();
+  await page.waitForURL(/\/backoffice$/, { timeout: 30_000 });
+
+  const name = `PT Coba ${Date.now()}`;
+  const form = page.getByTestId("create-organisation");
+  await form.getByLabel("Nama organisasi").fill(name);
+  await form.getByRole("combobox", { name: "Jenis" }).click();
+  await page.getByRole("option", { name: "Perusahaan" }).click();
+  await form.getByRole("button", { name: "14 hari" }).click();
+  await form.getByRole("button", { name: "Buat organisasi" }).click();
+  await page.waitForURL(/\/backoffice\/orgs\//);
+  await expect(page.getByRole("heading", { name })).toBeVisible();
+  await expect(page.getByTestId("grants")).toContainText("Uji coba");
+  await expect(page.getByTestId("platform-events")).toContainText("dibuat");
+
+  await page.getByTestId("grant-form").getByRole("button", { name: "Beri akses" }).click();
+  await expect(page.getByTestId("grants")).toContainText("Berbayar");
+
+  await page.getByTestId("suspend-form").getByLabel("Alasan").fill("Uji penangguhan");
+  await page.getByRole("button", { name: "Tangguhkan" }).click();
+  await expect(page.getByText("Ditangguhkan").first()).toBeVisible();
+  await page.getByRole("button", { name: "Pulihkan" }).click();
+  await expect(page.getByTestId("platform-events")).toContainText("Dipulihkan");
+});
