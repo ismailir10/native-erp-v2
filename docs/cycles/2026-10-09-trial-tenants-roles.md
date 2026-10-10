@@ -258,14 +258,14 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   `requireMember(role)` maps to capabilities.
   — accept: the DB test sets up two orgs plus an assigned AKUNTAN and a VIEWER. A foreign client, an unassigned client and a READ_ONLY
   write each throw. An ADMIN resolves every client of its own org.
-- [ ] **T04 Guard every write path + coverage test.** After: T03. Files: `app/actions.ts`, `app/settings-actions.ts`,
+- [~] **T04 Guard every write path + coverage test.** After: T03. Files: `app/actions.ts`, `app/settings-actions.ts`,
   `app/evidence-actions.ts`, `app/google-actions.ts`, `app/workspace-actions.ts`, `app/api/**`, `app/kirim/[token]/upload/route.ts`,
   `lib/controls/index.ts`, `lib/controls/history.ts` and `lib/imports/remove.ts` (role checks → `can()`), plus `tests/unit/action-guards.test.ts`.
   Each exported action calls `requireCapability` with the narrowest capability and its `clientId`. The upload route checks the
   link's organisation state. The test reads every `"use server"` file and fails on an exported async function that calls no
   `requireCapability` / `getClientForMember` / `requirePlatformAdmin`.
   — accept: guard test green; `qa-access.spec.ts` still green; a READ_ONLY org's import returns the expiry message (DB test).
-- [ ] **T05 Read-path scoping.** After: T03. Files: `app/(app)/layout.tsx`, `app/(app)/page.tsx`, `app/(app)/work/**`,
+- [~] **T05 Read-path scoping.** After: T03. Files: `app/(app)/layout.tsx`, `app/(app)/page.tsx`, `app/(app)/work/**`,
   `app/(app)/reports/**`, `app/(app)/documents/**`, `app/(app)/clients/**/page.tsx` (resolver swap only), `lib/workspace/**`,
   `lib/queries.ts`, plus `tests/db/read-scope.test.ts`.
   Every client list uses `accessibleClientWhere`, and every client page uses `getClientForMember`.
