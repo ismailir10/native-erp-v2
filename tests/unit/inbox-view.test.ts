@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BankSection, InboxItem } from "@/lib/inbox/check";
-import { accountDisplay, batchSummary, itemSummary, lineMessage, monthSpan, needsManualPath, sectionSummary, statusView } from "@/lib/inbox/view";
+import { accountDisplay, batchSummary, bookedView, itemSummary, lineMessage, monthSpan, needsManualPath, sectionSummary, statusView } from "@/lib/inbox/view";
 
 const section = (over: Partial<BankSection> = {}): BankSection => ({
   bank: "BCA",
@@ -67,5 +67,22 @@ describe("Unggah line wording", () => {
 
   it("sums the drop up in one sentence", () => {
     expect(batchSummary([{ status: "BOOKED" }, { status: "BOOKED" }, { status: "DRAFT" }, { status: "KEPT" }])).toBe("4 file selesai: 2 dibukukan, 1 draf buku besar, 1 disimpan di Dokumen.");
+  });
+});
+
+describe("Dokumen's booked line", () => {
+  const item = (over: Partial<Parameters<typeof bookedView>[0]> = {}) => ({ clientId: "c1", status: "BOOKED", sections: [section()], ledgerImportId: null, ...over });
+  it("names the rekening and month a booked statement went to, linking to Unggah", () => {
+    expect(bookedView(item())).toEqual({ status: "BOOKED", label: "Dibukukan → BCA ·5566 · Jan 2026", href: "/clients/c1/import" });
+  });
+  it("lists only the statements that were booked (not valas, not unreadable)", () => {
+    const sections = [section(), section({ number: "999-1111", currency: "USD" }), section({ number: "888-2222", error: "Saldo tidak terbaca" })];
+    expect(bookedView(item({ sections }))?.label).toBe("Dibukukan → BCA ·5566 · Jan 2026");
+  });
+  it("links a ledger draft to its mapping page", () => {
+    expect(bookedView(item({ status: "DRAFT", sections: [], ledgerImportId: "l1" }))).toEqual({ status: "DRAFT", label: "Draf buku besar →", href: "/clients/c1/import/ledger/l1" });
+  });
+  it("leaves every other file to the role form", () => {
+    for (const status of ["KEPT", "FAILED", "CHECKED"]) expect(bookedView(item({ status }))).toBeNull();
   });
 });

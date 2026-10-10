@@ -136,7 +136,7 @@ them and asks only what it truly cannot know, once.
 - [x] T4 Keyring: encrypt/store/try-all/clear; never logged — accept: DB + unit tests; grep proves no plaintext path.
 - [x] T5 Unggah page + menu: drop zone, Drive link, password field, confirm card, per-file list, oldest-first —
       accept: verify flows 1–5 locally. (deps: T2–T4)
-- [ ] T6 Dokumen: booked statements show "Dibukukan →"; no country-as-currency facts; Pengaturan empty-rekening copy —
+- [x] T6 Dokumen: booked statements show "Dibukukan →"; no country-as-currency facts; Pengaturan empty-rekening copy —
       accept: verify on the walk's files.
 - [ ] T7 e2e + investor walk + docs (README routes, demo script) + full gate — accept: full gate green.
 
@@ -212,6 +212,14 @@ them and asks only what it truly cannot know, once.
   negative SMBC account) → "6 file selesai: 3 dibukukan, 1 draf buku besar, 1 disimpan di Dokumen, 1 gagal" (SMBC: May
   2026 is closed in the demo) → "Saran AI selesai · 5 saran"; the list survives a reload. Walk fixes: no "Coba cara lain"
   for failures another form can't fix (closed month, valas, password, size); one line per account instead of "; ".
+
+- T6: Dokumen shows a booked file as "Dibukukan → BCA ·3814 · Jan 2026" (or "Draf buku besar →") instead of the role
+  form, from the version's newest booked/draft UploadItem in the existing workspace query; currency facts must be
+  registry codes at parse, store, confirm and display (an "INDONESIA" fact is never stored or shown — older ones are
+  hidden and can't be confirmed); Pengaturan's empty-rekening copy points to Unggah; Review's banner says "{n}
+  transaksi belum punya saran AI."; Pengaturan klien gets a "Kata sandi PDF" card (admins: count + "Hapus semua"
+  behind the confirm dialog); deck slides (kantor 08, perusahaan 12) say passwords are kept encrypted and can be
+  cleared — `deck:pdf` regenerated, the new sentence checked in both PDFs with Buku's own PDF reader.
 
 ## Verification
 

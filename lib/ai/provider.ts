@@ -1,4 +1,6 @@
 import { parseMoney } from "@/lib/money";
+import { isCurrency } from "@/lib/fx/currency";
+import { factAllowed } from "@/lib/evidence/types";
 import type { Direction, TaxTag } from "@/lib/generated/prisma/enums";
 import { buildOcrPrompt, OCR_MAX_TOKENS, OCR_TOKENS_PER_PAGE, parseOcrTranscript, type OcrInput, type OcrTranscript } from "@/lib/ocr/transcribe";
 import { buildCommentaryPrompt, COMMENTARY_MAX_TOKENS, parseCommentary, type CommentaryInput } from "@/lib/reports/commentary-ai";
@@ -80,7 +82,7 @@ export function parseEvidenceAnalysis(text: string, input: EvidenceInput): Evide
     if (!row || typeof row !== "object") continue;
     const f = row as Record<string, unknown>;
     if (typeof f.key !== "string" || !FACT_KEYS.has(f.key) || typeof f.value !== "string" || !f.value.trim() || f.value.length > 300 || typeof f.locator !== "string") continue;
-    if (!passages.get(f.locator)?.includes(f.value)) continue;
+    if (!passages.get(f.locator)?.includes(f.value) || !factAllowed(f.key, f.value)) continue;
     facts.push({ key: f.key, value: f.value, locator: f.locator });
   }
   const dateInSource = (date: unknown): string | null => {
@@ -95,7 +97,7 @@ export function parseEvidenceAnalysis(text: string, input: EvidenceInput): Evide
     entity: typeof value.entity === "string" && value.entity.length <= 200 && value.entity.trim() && source.includes(value.entity) ? value.entity : null,
     // Dates are hints; callers must confirm coverage before any import.
     periodStart, periodEnd: periodStart && periodEnd && periodEnd < periodStart ? null : periodEnd,
-    currency: typeof value.currency === "string" && /^[A-Z]{3}$/.test(value.currency) && source.includes(value.currency) ? value.currency : null,
+    currency: typeof value.currency === "string" && isCurrency(value.currency) && source.includes(value.currency) ? value.currency : null,
     facts,
   };
 }

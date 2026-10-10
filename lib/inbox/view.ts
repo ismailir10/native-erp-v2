@@ -107,3 +107,17 @@ export function batchSummary(items: Pick<InboxItem, "status">[]): string {
     .map(([n, label]) => `${n} ${label}`);
   return `${items.length} file selesai${parts.length ? `: ${parts.join(", ")}` : ""}.`;
 }
+
+/** A file Unggah already booked or staged, as Dokumen shows it instead of the role form (cycle 2026-10-10-unggah-inbox, Decision 7). */
+export type BookedView = { status: "BOOKED" | "DRAFT"; label: string; href: string };
+
+/** "Dibukukan → BCA ·3814 · Jan 2026" (linking to the client's Unggah) or "Draf buku besar →" (linking to the draft). */
+export function bookedView(item: { clientId: string; status: string; sections: unknown; ledgerImportId: string | null }): BookedView | null {
+  const unggah = `/clients/${item.clientId}/import`;
+  if (item.status === "DRAFT") return { status: "DRAFT", label: "Draf buku besar →", href: item.ledgerImportId ? `${unggah}/ledger/${item.ledgerImportId}` : unggah };
+  if (item.status !== "BOOKED") return null;
+  // Only the IDR statements without a reading error were booked (lib/inbox/process.ts); the rest stayed in the file's message.
+  const sections = Array.isArray(item.sections) ? (item.sections as BankSection[]) : [];
+  const booked = sections.filter((s) => !s.error && (s.currency ?? "IDR") === "IDR").map(sectionSummary);
+  return { status: "BOOKED", label: booked.length ? `Dibukukan → ${booked.join("; ")}` : "Dibukukan →", href: unggah };
+}
