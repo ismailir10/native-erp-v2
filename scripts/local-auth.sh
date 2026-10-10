@@ -4,6 +4,8 @@
 # into .env. Idempotent.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# Match the app origin used by email templates (CI exports APP_URL; e2e uses port 3200).
+export APP_URL="${APP_URL:-http://localhost:3000}"
 SUPABASE="npx -y supabase@2.118.0" # pinned, as in CI
 command -v docker >/dev/null 2>&1 || { echo "local-auth: Docker is required (docker.com, or colima on macOS)" >&2; exit 1; }
 docker info >/dev/null 2>&1 || { echo "local-auth: start Docker first" >&2; exit 1; }

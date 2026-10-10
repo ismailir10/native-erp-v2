@@ -364,6 +364,8 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   Screenshots of the bar at desktop and 390 px.
 
 ## Implementation
+- T15/T16 integration: local Auth `site_url` reads `APP_URL` so templates and their logo match CI/e2e port 3200; the local
+  startup script exports a port-3000 default for normal development. README documents selecting/restarting the e2e origin.
 - T17: shared `PublicShell` (existing `AuthShell` imports re-export it), branded 404/render/root-error pages, Buku metadata and
   Open Graph image. Render errors show only a validated Next digest, matching the server log. `userMessage` maps provider codes
   to Bahasa plus a unique reference, logs credential-redacted diagnostics, and now wraps operator failures. The AST regression
@@ -439,6 +441,10 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   `mailpit` is no longer excluded, so `e2e/auth-links.spec.ts` can capture mail. Its link origin is handed back to T15/T16 (PR comment).
 
 ## Verification
+- T15/T16 origin follow-up: lint ✓, typecheck ✓; full Vitest → 215 files / 1471 tests passed. CLI accepts the environment-based config (its status then reports the intentionally absent full-stack
+  DB container); captured-mail invite/recovery e2e passed again in 20.0 s against real local Auth on the app origin.
+  After rebasing the driver's T06 and mailpit fix: lint/typecheck/build ✓, focused auth/config/error/platform tests → 6 files /
+  76 tests passed; combined auth-links/backoffice browser tests → 3 passed (20.7 s).
 - T17: lint ✓, typecheck ✓, production build ✓; full Vitest → 215 files / 1471 tests passed. Focused error/auth tests → 2 files / 19 tests passed. Production Chromium checks
   and inspected screenshots cover login, password, 404 and forced render failure at 390/1440 px, plus the Open Graph PNG.
   The forced failure used a separate local process with an unavailable DB port; its visible digest matched the server log.

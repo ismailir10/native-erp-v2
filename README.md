@@ -146,6 +146,10 @@ Auth emails are the Bahasa templates in `supabase/templates/`; subjects and the 
 `supabase/config.toml`. Local Auth reads those files. Links open Buku's `/auth/callback` confirmation page; the token is verified
 only after **Lanjutkan** is submitted, so email scanners do not consume it.
 
+Local Auth reads its site URL from `APP_URL`, including email links and the logo. `npm run auth:local` defaults to
+`http://localhost:3000`; for e2e use `APP_URL=http://localhost:3200 npm run auth:local` (CI already exports that origin).
+Restart an existing local Auth stack after changing this value so it picks up the new configuration.
+
 For the hosted project, set `SUPABASE_PROJECT_REF` and `SUPABASE_ACCESS_TOKEN` securely in the operator's environment, plus
 `APP_URL` (Buku's HTTPS origin) and `BUKU_SUPPORT_EMAIL` (the real support address). Then, from the repository root:
 

@@ -13,6 +13,7 @@ describe("Buku email templates", () => {
   it("covers every email flow and the enabled password-change notice", () => {
     expect(files).toEqual(expect.arrayContaining(["invite.html", "recovery.html", "confirmation.html", "email-change.html", "magic-link.html", "reauthentication.html", "password-changed.html"]));
     expect(config).toMatch(/otp_expiry\s*=\s*3600/);
+    expect(config).toContain('site_url = "env(APP_URL)"');
   });
   for (const file of files) it(`${file} is branded, Bahasa, and links only to Buku`, () => {
     const html = readFileSync(`supabase/templates/${file}`, "utf8");
