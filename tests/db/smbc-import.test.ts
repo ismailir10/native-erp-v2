@@ -75,10 +75,9 @@ describe("SMBC combined statement + PRK overdraft account", () => {
       }),
     );
     const controls = await runControls(db, client.id, 2026, 5);
-    expect(controls.filter((c) => c.key.startsWith("bank:")).map((c) => [c.status, c.detail]).sort()).toEqual([
-      ["PASS", "Saldo bank = buku besar = -Rp 3.581.066.684"],
-      ["PASS", "Saldo bank = buku besar = Rp 220.646.633"],
-    ]);
+    // The final transaction balances precede month end; the PDF has no independent
+    // closing checkpoint. Correct liability posting alone must not prove completeness.
+    expect(controls.filter((c) => c.key.startsWith("bank:")).map((c) => c.status)).toEqual(["REVIEW", "REVIEW"]);
     const bs = await balanceSheet(db, { clientId: client.id, entityIds: [entity] }, dateOnly(2026, 5, 31));
     expect(bs.liabilities.find((i) => i.fsLine === "UTANG_BANK")?.amount).toBe(3_581_066_684n);
   });

@@ -4,7 +4,7 @@ import { periodBounds } from "@/lib/format";
 import { formatMoney } from "@/lib/money";
 import { dueProposals } from "@/lib/adjust/schedules";
 import { inventoryRows } from "@/lib/inventory";
-import { openingDate, statementCoverage } from "@/lib/controls/coverage";
+import { openingDate, statementCoverage, statementEvidence, sourceCheckpointConflicts } from "@/lib/controls/coverage";
 import { isUnmapped } from "@/lib/reports/ledger";
 import { findingLabel } from "@/lib/findings";
 
@@ -57,7 +57,12 @@ export async function reportStatus(db: Db, clientId: string, entityIds: string[]
   const missing: string[] = [];
   for (const e of entities) {
     const opening = await openingDate(db, e.id);
-    for (const ba of e.bankAccounts) if ((await statementCoverage(db, ba.id, opening, start, end)).state === "missing") missing.push(ba.label);
+    for (const ba of e.bankAccounts) {
+      const cover = await statementCoverage(db, ba.id, opening, start, end);
+      if (cover.state === "before") continue;
+      const evidence = cover.state === "missing" ? null : statementEvidence(cover.coverage, end);
+      if (cover.state !== "covered" || !evidence?.checkpoint || evidence.uncertain || evidence.conflict || (await sourceCheckpointConflicts(db, e.id, ba.accountId, cover.coverage, end)).length) missing.push(ba.label);
+    }
   }
   if (missing.length) reasons.push({ kind: "statements", accounts: missing });
 

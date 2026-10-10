@@ -27,7 +27,7 @@ export default async function OcrDraftPage({ params }: { params: Promise<{ id: s
       ) : draft.proof.importable ? (
         <NextStep>Semua baris terbukti oleh saldo berjalan. Periksa sekilas, lalu impor.</NextStep>
       ) : (
-        <NextStep>{draft.proof.problems} baris belum terbukti oleh saldo berjalan. {mapped ? "Bandingkan dengan file (atau kembali dan atur kolomnya lagi)" : "Bandingkan dengan scan"}, betulkan angkanya, lalu impor.</NextStep>
+        <NextStep>Ada {draft.proof.problems} hal yang perlu diperiksa pada tanggal, nominal, atau saldo. {mapped ? "Bandingkan dengan file (atau kembali dan atur kolomnya lagi)" : "Bandingkan dengan scan"}, betulkan angkanya, lalu impor.</NextStep>
       )}
       <OcrReview
         clientId={client.id}

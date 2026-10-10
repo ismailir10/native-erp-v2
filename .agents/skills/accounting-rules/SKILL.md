@@ -274,11 +274,11 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
 12. Parse → continuity check (opening + Σ = every printed balance → closing) → dedupe by row hash → classify → post, all-or-nothing in one transaction.
     A statement with new rows that ends before the account's first imported statement must hand over to it (its closing balance = that
     statement's opening balance); otherwise the whole file is refused (another year or account's file would become the history and drive Saldo Awal).
-    **The running balance is the source of truth** (`repairStatement`, use-case UC-B1), applied to every parsed section before the dedupe:
+    **Independent printed balances constrain repairs** (`repairStatement`, use-case UC-B1), applied to every parsed section before the dedupe:
     - a row the chain contradicts (direction typed the wrong way, an amount missing beside a moved balance) is repaired **only when every
       printed balance then chains**, else left as written and the import shows the break;
-    - a year typo with one fix inside the statement's months is read in that year; a year the statement can't hold refuses the file;
-    - when only the closing header disagrees with a chain that holds, the chain wins.
+    - a declared period rejects out-of-period dates; heuristic year repairs are confined to inferred periods and stay unverified;
+    - a printed closing header remains independent evidence: disagreement with the rows stays a conflict, never overwritten by the chain.
 
     Every repair is a note with the value as written (`parseNotes`); the row keeps it in `rawRow`, and the dedupe also knows the row by its
     written hash, so a file imported before a repair never doubles. A second Saldo Awal that doesn't continue the balance in a PDF section
@@ -356,9 +356,9 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
 16. Parsers detect format from **content**, not file name, and raise `ParseError` with a Bahasa message the UI shows verbatim.
 16a. **Two-number dates are read in one order per file, never guessed per row** (QA E17, `dayMonthEvidence` in `lib/import/parsers/common.ts`):
     day/month (Indonesian) unless a value proves month/day (a second number > 12) — then the whole file is month/day and says so;
-    every number ≤ 12 → the order in which a statement runs in time (day/month on a tie or when neither does, with a note); both
+    every number ≤ 12 → use a fixed bank/Indonesian-column contract, otherwise require an unambiguous chronology or an explicit column mapping; both
     kinds in one file → a statement is refused, a ledger gets BLOCK `DATE_ORDER_MIXED` (INFO `DATE_ORDER_US` / `DATE_ORDER_UNSURE`
-    otherwise). Known bank formats (BCA, BRI CSV) and PDFs keep their fixed day/month reading.
+    otherwise). Known bank formats (including bank-specific PDF layouts) keep their fixed day/month reading; generic English PDFs require the same independent date-order evidence as generic tables.
 
 ## AI (credit is limited — treat every call as money)
 16b. **Scanned statements (OCR)** (`lib/ocr`, I2a): only a scan or photo (a PDF without text, JPG, PNG) is ever sent to a model, and only
@@ -426,6 +426,7 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     bank-derived entries never pair, two rows of one ledger file only with the same memo, OPENING/RECLASS never). All REVIEW, never FAIL;
     7190/7200 exempt from flux/flip. The AI close review may send the flagged accounts' month series and the month's journal lines behind
     them (memo ≤ 80 chars) under rule 20a's caps.
+22c. Source validation persists declared/inferred periods and printed/derived balances. Monthly bank completeness requires the union of declared intervals through month end; legacy/unknown, repaired or inferred evidence is REVIEW. Contradictory source balances are FAIL. An earlier printed row balance is never treated as the month-end balance.
 23. Tutup Buku requires: no FAIL, every REVIEW acknowledged with a note, all sign-offs ticked.
     *Tutup bulan-bulan sebelumnya* (`lib/controls/history.ts`, admin only) closes the open months before the selected one in order, one
     month per call: the same rule per month, with one note written on each REVIEW still without a note and the sign-offs given by the

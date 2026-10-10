@@ -80,7 +80,42 @@ describe("OCR draft", () => {
     const s = await ocrDraft(db, g.firm.id, g.client.id, (await createOcrDraft(db, { ...base(), fileName: "sept.pdf", data: Buffer.concat([scan, Buffer.from("\n%sept")]), provider: sept })).id);
     expect(s.opening).toBe(1_250_000n);
     expect(s.header.openingSource).toBe("PREVIOUS");
-    expect(s.proof.importable).toBe(true);
+    expect(s.proof.importable).toBe(false);
+    const before = await db.journalEntry.count();
+    await expect(importOcrDraft(db, { firmId: g.firm.id, clientId: g.client.id, draftId: s.id, provider: null })).rejects.toThrow(/Saldo akhir/);
+    expect(await db.journalEntry.count()).toBe(before);
+  });
+
+  it.each([
+    ["foreign currency", { ...RECORDED, currency: "USD", opening: "10.50" }, /USD/],
+    ["oversized response", { ...RECORDED, rows: Array(2001).fill(RECORDED.rows[0]) }, /2.000/],
+    ["malformed row", { ...RECORDED, rows: [null] }, /Baris 1/],
+    ["malformed amount", { ...RECORDED, rows: [{ ...RECORDED.rows[0], credit: "12,34,56" }] }, /tidak terbaca/],
+  ] as const)("refuses %s before storing a draft, cache or journal", async (_name, transcript, error) => {
+    await setOcrEnabled(db, true);
+    await expect(createOcrDraft(db, { ...base(), provider: mock(transcript as unknown as OcrTranscript) })).rejects.toThrow(error);
+    expect(await db.ocrDraft.count()).toBe(0);
+    expect(await db.evidenceAiCache.count()).toBe(0);
+    expect(await db.statementImport.count()).toBe(0);
+    expect(await db.bankTransaction.count()).toBe(0);
+    expect(await db.journalEntry.count()).toBe(0);
+  });
+
+  it("refuses dual-sided corrections even when their net movement ties to every printed balance", async () => {
+    await setOcrEnabled(db, true);
+    const created = await createOcrDraft(db, { ...base(), provider: mock() });
+    const d = await updateOcrDraft(db, {
+      firmId: g.firm.id, clientId: g.client.id, draftId: created.id,
+      opening: "1.000.000", closing: "1.500.000",
+      rows: [{ date: "2026-08-03", description: "SETORAN", debit: "100.000", credit: "600.000", balance: "1.500.000" }],
+    });
+    expect(d.proof.rows[0].state).toBe("BAD_AMOUNT");
+    expect(d.proof.importable).toBe(false);
+    await expect(importOcrDraft(db, { firmId: g.firm.id, clientId: g.client.id, draftId: d.id, provider: null })).rejects.toThrow(/belum terbukti/);
+    expect(await db.statementImport.count()).toBe(0);
+    expect(await db.bankTransaction.count()).toBe(0);
+    expect(await db.journalEntry.count()).toBe(0);
+    expect((await db.ocrDraft.findUniqueOrThrow({ where: { id: d.id } })).status).toBe("DRAFT");
   });
 
   it("refuses a scan of another account, and builds the CSV the generic parser reads", async () => {

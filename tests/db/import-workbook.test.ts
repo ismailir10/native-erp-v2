@@ -43,7 +43,7 @@ describe("workbook statement import", () => {
 
     for (const month of [5, 6, 7]) {
       const bank = (await runControls(db, g.client.id, 2026, month)).find((c) => c.key === `bank:${bankAccountId}`);
-      expect(bank?.status, `bulan ${month}`).toBe("PASS");
+      expect(bank?.status, `bulan ${month}`).toBe("REVIEW"); // inferred worksheet dates do not prove a full month
     }
   });
 
@@ -53,10 +53,10 @@ describe("workbook statement import", () => {
     expect(s.continuityOk).toBe(false);
     expect(s.continuityNote).toMatch(/JUN!3/);
     const cont = (await runControls(db, g.client.id, 2026, 6)).find((c) => c.key === `cont:${g.pt.banks[0].id}`);
-    expect(cont?.status).toBe("REVIEW");
+    expect(cont?.status).toBe("FAIL");
   });
 
-  it("skips the same bank lines from another source of the statement, one to one, and keeps a genuine extra", async () => {
+  it("refuses ambiguous overlap instead of losing or double counting a transfer", async () => {
     const g = await makeGroup();
     const bankAccountId = g.pt.banks[0].id;
     await postOpening(db, { clientId: g.client.id, entityId: g.pt.entity.id, date: dateOnly(2026, 4, 30), lines: [{ accountCode: "1101", debit: "10000000", credit: "0" }] });
@@ -72,25 +72,22 @@ describe("workbook statement import", () => {
       "03/06/2026;TRSF E-BANKING CR TOKO DUA MEI;0;5000000;20970000",
       "",
     ].join("\n");
-    const s = await importStatement(db, { bankAccountId, fileName: "bca-mei-juni.csv", data: Buffer.from(csv), provider: null });
-    expect(s).toMatchObject({ rows: 4, duplicates: 3 });
-    expect(s.notes).toContain("3 baris sama dengan mutasi yang sudah diimpor dari file lain (tanggal dan nominal sama, keterangan berbeda); dilewati.");
-    const may = await db.bankTransaction.findMany({ where: { bankAccountId, date: dateOnly(2026, 5, 2) } });
-    expect(may.map((t) => t.amount)).toEqual([3_000_000n, 3_000_000n]);
-    // Imported again, the bank export adds nothing.
-    expect((await importStatement(db, { bankAccountId, fileName: "bca-mei-juni.csv", data: Buffer.from(csv), provider: null })).duplicates).toBe(4);
+    const before = await db.journalEntry.count();
+    await expect(importStatement(db, { bankAccountId, fileName: "bca-mei-juni.csv", data: Buffer.from(csv), provider: null })).rejects.toThrow(/saldo tidak membuktikan identitasnya/);
+    expect(await db.bankTransaction.count()).toBe(4);
+    expect(await db.journalEntry.count()).toBe(before);
   });
 
-  it("keeps a supplemental file's lines when it doesn't cover what is already imported", async () => {
+  it("recognizes a cross-source line only with its matching balance", async () => {
     const g = await makeGroup();
     const bankAccountId = g.pt.banks[0].id;
     await importStatement(db, { bankAccountId, fileName: "salinan.xls", data: workingCopy(), provider: null, year: 2026 });
     // A one-line supplement for 2 May: same date and amount as TOKO SATU's transfer, but the file doesn't hold May's other lines.
     const csv = ["Tanggal;Keterangan;Debet;Kredit;Saldo", "01/05/2026;SALDO AWAL;0;0;10000000", "02/05/2026;SETORAN TUNAI CABANG;0;3000000;13000000", ""].join("\n");
     const s = await importStatement(db, { bankAccountId, fileName: "tambahan.csv", data: Buffer.from(csv), provider: null });
-    expect(s).toMatchObject({ rows: 1, duplicates: 0 });
-    expect(s.notes.at(-1)).toMatch(/^1 baris bertanggal dan bernominal sama .* tetap diimpor\. Periksa Rekonsiliasi bank bulan itu\.$/);
-    expect(await db.bankTransaction.count({ where: { bankAccountId, date: dateOnly(2026, 5, 2) } })).toBe(2);
+    expect(s).toMatchObject({ rows: 1, duplicates: 1 });
+    expect(s.notes.some((n) => n.includes("tanggal, nominal, dan saldo yang sama"))).toBe(true);
+    expect(await db.bankTransaction.count({ where: { bankAccountId, date: dateOnly(2026, 5, 2) } })).toBe(1);
   });
 
   it("never posts two copies of a statement imported at the same time", async () => {

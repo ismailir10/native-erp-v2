@@ -75,6 +75,9 @@ describe("printed amounts", async () => {
     expect(readAmount("12500.00")).toBe(12_500n);
     expect(readAmount("")).toBeNull();
     expect(readAmount("1.25O.000")).toBeNull();
+    expect(readAmount("12,34,56")).toBeNull();
+    expect(readAmount("1.23.456")).toBeNull();
+    expect(readAmount("1,2.00")).toBeNull();
     expect(readAmount("12.500,50")).toBeNull(); // sen are not whole Rupiah: unreadable, never rounded
   });
 });

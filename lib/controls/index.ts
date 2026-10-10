@@ -15,7 +15,7 @@ import { ckpn, settingAt } from "@/lib/receivables/ckpn";
 import { leasesVsLedger } from "@/lib/leases/register";
 import { valuation } from "@/lib/benefits/valuation";
 import { inventoryRows } from "@/lib/inventory";
-import { openingDate, statementCoverage } from "@/lib/controls/coverage";
+import { openingDate, statementCoverage, statementEvidence, sourceCheckpointConflicts } from "@/lib/controls/coverage";
 import { packApplies, taxPack } from "@/lib/tax/pack";
 import { masaReport, rowNotes, pph25Notes } from "@/lib/tax/masa-report";
 import { DIRECTION_LABEL, fakturNotes, fakturRecon } from "@/lib/tax/faktur";
@@ -153,10 +153,6 @@ async function collectControls(db: Db, clientId: string, year: number, month: nu
       }
     }
     for (const ba of e.bankAccounts) {
-      const lastTx = await db.bankTransaction.findFirst({
-        where: { bankAccountId: ba.id, date: { lte: end }, balance: { not: null } },
-        orderBy: [{ date: "desc" }, { rowNumber: "desc" }],
-      });
       const cover = await statementCoverage(db, ba.id, opening, start, end);
       const glRow = tb.find((r) => r.account.id === ba.accountId);
       const gl = glRow?.net ?? 0n;
@@ -171,24 +167,34 @@ async function collectControls(db: Db, clientId: string, year: number, month: nu
         continue;
       }
       const { coverage } = cover;
-      const stmt = lastTx?.balance ?? coverage[coverage.length - 1].closingBalance;
-      const ok = stmt === gl;
+      const evidence = statementEvidence(coverage, end);
+      const checkpointConflicts = await sourceCheckpointConflicts(db, e.id, ba.accountId, coverage, end);
+      evidence.conflict ||= checkpointConflicts.length > 0;
+      evidence.messages.push(...checkpointConflicts);
+      const { checkpoint } = evidence;
+      const verified = cover.state === "covered" && !evidence.uncertain && !!checkpoint && !evidence.conflict;
+      const differs = checkpoint && checkpoint.closingBalance !== gl;
+      statementMissing ||= !verified;
       controls.push({
         key,
         title: `Rekonsiliasi ${ba.label}`,
         scope: e.shortName,
-        status: ok ? "PASS" : "FAIL",
-        detail: ok ? `Saldo bank = buku besar = ${fmt(gl)}` : `Bank ${fmt(stmt)} vs buku besar ${fmt(gl)}`,
+        status: evidence.conflict || differs ? "FAIL" : verified ? "PASS" : "REVIEW",
+        detail: differs ? `Bank ${fmt(checkpoint.closingBalance)} vs buku besar ${fmt(gl)}`
+          : evidence.conflict ? "Saldo pada sumber bertentangan; periksa kelengkapan mutasi."
+          : verified ? `Saldo bank = buku besar = ${fmt(gl)}`
+          : "Cakupan atau saldo akhir bulan belum terbukti dari sumber. Impor rekening koran lengkap sampai akhir bulan.",
         href: `${base}/ledger/${ba.account.code}?entity=${e.id}`,
+        ack: acks.get(key),
       });
-      const broken = coverage.filter((c) => !c.continuityOk);
       const ckey = `cont:${ba.id}`;
       controls.push({
         key: ckey,
         title: `Kelengkapan mutasi ${ba.label}`,
         scope: e.shortName,
-        status: broken.length ? "REVIEW" : "PASS",
-        detail: broken.length ? broken.map((b) => `${b.fileName}: ${b.continuityNote}`).join("; ") : "Saldo berjalan nyambung dari awal ke akhir",
+        status: evidence.conflict ? "FAIL" : verified ? "PASS" : "REVIEW",
+        detail: evidence.messages.join("; ")
+          || (verified ? "Saldo berjalan nyambung dan sumber mencakup bulan penuh" : "Periode sumber belum mencakup bulan penuh atau saldo akhir bulan belum tersedia."),
         ack: acks.get(ckey),
       });
     }

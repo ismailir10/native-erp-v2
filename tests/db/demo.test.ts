@@ -10,7 +10,7 @@ import { fakturRecon } from "@/lib/tax/faktur";
 
 /** Layer 2: the seeded demo (built through the real pipeline) matches generator ground truth. */
 describe("demo seed vs ground truth", () => {
-  it("seeds, verifies ALL PASS, and the live upload clears the pending controls with 0 AI calls", async () => {
+  it("seeds, verifies ALL PASS, and the live upload clears transfers while inferred source coverage stays in review with 0 AI calls", async () => {
     await seedDemo(db);
     const before = await verifyBooks(db);
     expect(before.failures).toEqual([]);
@@ -44,7 +44,8 @@ describe("demo seed vs ground truth", () => {
 
     const after = Object.fromEntries((await runControls(db, client.id, 2026, 8)).map((c) => [c.key, c.status]));
     expect(after.intercompany).toBe("PASS");
-    expect(after[`bank:${bri.id}`]).toBe("PASS");
+    expect(after[`bank:${bri.id}`]).toBe("REVIEW");
+    expect(after[`cont:${bri.id}`]).toBe("REVIEW"); // CMS rows do not declare full-month coverage
     expect((await verifyBooks(db, { includeLive: true })).failures).toEqual([]);
   }, 120_000);
 });
