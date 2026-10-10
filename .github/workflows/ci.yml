@@ -38,6 +38,9 @@ jobs:
       AI_MODEL: ""
     steps:
       - uses: actions/checkout@v4
+      # Vendored workflow skills (.agents/skills) must match their lock; offline, no deps.
+      - name: Agent workflow drift check
+        run: bash scripts/sync-agent-workflow.sh --check
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci
