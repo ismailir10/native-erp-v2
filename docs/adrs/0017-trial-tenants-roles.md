@@ -1,6 +1,6 @@
 # 0017 — Trial access, many organisations, four roles
 
-**Status.** Proposed, 2026-10-09 (cycle [trial-tenants-roles](../cycles/2026-10-09-trial-tenants-roles.md)). Becomes Accepted when that cycle ships.
+**Status.** Accepted, 2026-10-10 (cycle [trial-tenants-roles](../cycles/2026-10-09-trial-tenants-roles.md); approved 2026-10-09).
 Updates [0008](0008-one-workspace.md) (production is no longer one firm) and [0010](0010-supabase-platform.md) §2 (AI credentials, roles).
 
 **Context.** Buku is in its trial phase, and prospects are accounting firms *and* companies (the two decks). Access is a CLI invitation
@@ -30,6 +30,9 @@ the AI key, model and OCR switch are global settings any firm ADMIN can change.
    `/auth/callback`, confirmed by a button so mail scanners cannot use up the link). The sender is Buku's own domain over custom
    SMTP. The templates and auth email settings are applied from the repo by a script, not pasted. Provider error text never
    reaches a user.
+
+**As built.** The migration does not rewrite roles (FirmMember is protected from migrations): the operator names an organisation's
+first OWNER with `access set-role`. The OCR consent is one switch for all organisations; a per-organisation consent is a follow-up.
 
 **Consequences.** Production holds many tenants, so isolation is a tested property: DB tests across two organisations and an e2e
 cross-tenant 404. The server stays the boundary; RLS remains unused. One person still belongs to one organisation, and an org

@@ -514,6 +514,30 @@ Wave 4  T09 signup (after T08) ─▶ T13 seed+e2e walk ─▶ T14 docs, gates, 
   saldo cocok dengan ground truth.** Full e2e on the T18 head (`npm run build` then `playwright test`) → **80 passed (7.4 m)**.
 
 ## Ship Notes
+**Migrations** (applied by the Vercel build's `prisma migrate deploy`): `20261009232747_trial_tenants` (additive: new tables, enum
+values, Firm columns, CHECKs, append-only triggers) and `20261009232748_trial_tenants_backfill` (one open COMP grant per existing
+firm; every AKUNTAN assigned to every client). No row of `FirmMember`, `AppSetting`, `Firm` or `DriveConnection` is rewritten.
+
+**After the deploy (owner, once, in this order):**
+1. `npm run access -- operator add --email <you> --name <name>`: your Buku admin account. Then *Backoffice → Keamanan*: set up the
+   authenticator app (needed for support sessions).
+2. `npm run access -- list` to find the firm id, then `npm run access -- set-role --firm <id> --email <you> --role OWNER` to name the
+   existing firm's owner (the migration leaves everyone's role as it was).
+3. *Backoffice → Pengaturan AI*: the AI key and model now live here. The existing key in `AppSetting` keeps working; nothing to
+   re-enter unless you change it.
+4. Before the first external trial (from the Spec's owner actions): Buku domain → `APP_URL`; Resend domain (SPF, DKIM, DMARC) as
+   Supabase SMTP, sender *Buku*; a support address (`BUKU_SUPPORT_EMAIL`); `npm run auth:config -- --apply` (T16, README *Email &
+   login appearance*); check TOTP MFA is enabled on the hosted project (Authentication → MFA); publish Terms and Privacy covering
+   support access (UU PDP).
+
+**Env vars:** none new for the app. `APP_URL` now also drives the local Auth site URL (`npm run auth:local`, CI); `BUKU_SUPPORT_EMAIL`,
+`SUPABASE_PROJECT_REF` and `SUPABASE_ACCESS_TOKEN` are only for `auth:config` (T16).
+
+**Rollback:** revert the merge. The new tables and columns are additive and unused by the old code, so leave the database as is
+(no down-migration). A revert brings back the old AI settings page, which reads the same `AppSetting` rows.
+
+**Follow-ups (not this cycle):** a per-organisation OCR consent; one person in several organisations (org switcher); billing;
+deleting long-expired trials.
 
 ## Handoffs
 - **From T17 (agent-b), for driver/T04/T06:** `userMessage(error, fallback?)` is ready for unexpected server errors. Preserve

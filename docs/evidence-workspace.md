@@ -22,7 +22,7 @@ Defaults: 10 MiB/file, 100 MiB retained snapshots plus pending uploads/intake, 5
 Structured monetary figures require known source currency, scale, date and unambiguous labels/values. Multi-column or ambiguous layouts remain cited text instead of guessed comparisons. Missing formula caches are unresolved, never treated as zero by evidence extraction. Scaled statements cannot enter bookkeeping until exported in full units. Foreign-currency bank files remain evidence; existing bank posting supports IDR.
 
 ## Deployment
-Apply committed migrations and configure [invitation-only access](../README.md#invitation-operations) before rollout. Production (`main`) is the only deployed environment ([ADR 0011](adrs/0011-main-only-releases.md)); an on-demand preview uses the synthetic staging project with its own users, data and credentials.
+Apply committed migrations and configure [access](../README.md#access-operations) before rollout. Production (`main`) is the only deployed environment ([ADR 0011](adrs/0011-main-only-releases.md)); an on-demand preview uses the synthetic staging project with its own users, data and credentials.
 
 - `EVIDENCE_ENABLED=true` enables documents in each environment; explicit `false` is an operational kill switch. `DEMO_MODE` controls synthetic fixture availability, not authentication or document UI.
 - Retain Vercel protection on previews. Real client files belong in production (the one workspace) or local only, per [real-data policy](real-data.md) and [ADR 0008](adrs/0008-one-workspace.md).

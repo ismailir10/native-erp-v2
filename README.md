@@ -108,7 +108,7 @@ Next.js 16 (App Router, server actions) · TypeScript · Tailwind v4 · shadcn (
 | `AI_BASE_URL` | LLM gateway (default OpenCode Zen). Env-only on purpose, so a stored key can't be redirected |
 | `AI_API_KEY` / `AI_MODEL` | Fallback when nothing is saved in **Pengaturan**. Empty = rules + memory only (fully functional) |
 | `SETTINGS_SECRET` | ≥ 32 chars. Encrypts the AI key saved in Pengaturan and the Drive token. Changing it means re-saving / reconnecting |
-| `AI_MAX_CALLS_PER_IMPORT` / `AI_MONTHLY_TOKEN_BUDGET` | Credit guards (defaults 3 / 200 000) |
+| `AI_MAX_CALLS_PER_IMPORT` / `AI_MONTHLY_TOKEN_BUDGET` | Credit guards (defaults 3 / 200 000); the monthly budget is the default per organisation, overridable per organisation in the backoffice |
 | `AI_TIMEOUT_MS` / `AI_LONG_TIMEOUT_MS` | Optional per-call timeouts (defaults 90 000 for classification/mapping, 180 000 for close review and *Jelaskan*) |
 
 ## Deploy (Vercel + Supabase)
@@ -167,20 +167,51 @@ Before external invitations, the owner must verify the mail domain (SPF, DKIM an
 `Buku <noreply@your-domain>`, and ensure replies reach `BUKU_SUPPORT_EMAIL` through the mail provider. The script does not configure
 DNS, SMTP credentials or a Reply-To header. Review the templates in Gmail, Outlook and Apple Mail before sending externally.
 
-### Invitation operations
+### Access operations
+
+Buku holds many organisations ([ADR 0017](docs/adrs/0017-trial-tenants-roles.md)): an accounting firm (firm → client → entity) or a
+company (its one client, hidden in the UI, is its books). Access is a **grant with a period**: running = normal; every grant ended =
+read-only (read and export, no writes, no AI); none, revoked or suspended = closed (`/akses-ditutup`). A grant ends at 23:59 WIB on
+its end date. Data is never deleted when access ends.
+
+**Buku admins** work in `/backoffice` (anyone else gets a 404): the organisations list, *Buat organisasi*, and per organisation the
+grants (give, change date, revoke with a reason), the owner's invitation, limits (active members, AI tokens per month), suspension,
+read-only **support sessions** and *Riwayat Buku*. *Pengaturan AI* holds the one AI key, model and OCR switch every organisation
+uses; organisations only see their status and their own monthly use. Everything a Buku admin does is in Buku's own log, never in
+an organisation's *Riwayat*. Buku admins are created only from the CLI:
 
 ```bash
-npm run access -- list                                                                        # firms and members with roles
-npm run access -- invite --firm FIRM_ID --email accountant@example.com --name "Accountant" [--role ADMIN|AKUNTAN] [--url https://origin]
+npm run access -- operator add --email ops@example.com --name "Ops" [--url https://origin]   # Buku admin (invited, or an existing login)
+npm run access -- operator list | operator remove --email ops@example.com
+npm run access -- create-org --name "KAP Contoh" --kind KANTOR_AKUNTAN|PERUSAHAAN --grant TRIAL|PAID|COMP [--until 2026-10-24]
+npm run access -- grant --firm FIRM_ID --grant PAID --until 2027-10-31 [--from 2026-11-01] [--note "Paket tahunan"]
+npm run access -- revoke-grant --id GRANT_ID --reason "Salah input"
+npm run access -- suspend --firm FIRM_ID --reason "…"   |   reinstate --firm FIRM_ID
+npm run access -- list                                                                        # organisations, kinds and members with roles
+npm run access -- invite --firm FIRM_ID --email accountant@example.com --name "Accountant" [--role OWNER|ADMIN|AKUNTAN|VIEWER] [--url https://origin]
+npm run access -- set-role --firm FIRM_ID --email owner@example.com --role OWNER
 npm run access -- revoke --firm FIRM_ID --email accountant@example.com
 ```
 
 Run these with `.env` pointing at the intended environment (its database URL, Supabase URL and secret key). `invite` creates the
-Supabase user and the firm member together and sends the invitation email; the link opens */atur-sandi* where the person sets a
-password and lands in the workspace. `revoke` disables the member (checked live on every request, so it takes effect at once) and bans
-the Supabase user; re-inviting lifts both and sends a fresh password link. An address cannot be moved to another firm implicitly.
-Roles: **ADMIN** may change the AI credentials, connect Google Drive and delete a client (client *Pengaturan* → *Hapus klien*, typed name, removes all its books — for clients entered by mistake or test copies); **AKUNTAN** does everything else. *Lupa kata sandi?* on the
-login page sends a reset link and never reveals whether the address is a member. *Keluar* ends the session on that device only.
+Supabase user and the member together and sends the invitation email; the link opens Buku's confirmation page and then
+*/atur-sandi*. `revoke` disables the member (checked live on every request) and bans the Supabase user; re-inviting lifts both. An
+address cannot be moved to another organisation implicitly. A CLI invitation of an AKUNTAN or VIEWER gets every client; the team page
+chooses clients instead.
+
+**Roles** (one table: `lib/auth/permissions.ts`): **Pemilik** (OWNER) and **Admin** see every client, unlock months, remove imports,
+close many months at once, delete a client, connect Google Drive and manage the team (only an owner touches owners or hands over
+ownership); **Akuntan** works on the clients assigned to them; **Peninjau** (VIEWER) reads and exports the assigned clients. Owners and
+admins manage people in *Pengaturan kantor → Tim*: invite, role, clients, disable, hand over ownership (the last active owner stays).
+Every server action passes one guard (`requireCapability`), and `tests/unit/action-guards.test.ts` fails on one that does not.
+
+**Support sessions** let a Buku admin open an organisation's workspace as one of its members to troubleshoot: read-only, at most 60
+minutes, with a reason, after two-step login (*Backoffice → Keamanan*, an authenticator app). The organisation is not notified and
+sees no trace; Buku logs each session, page and download. Our Terms and Privacy policy must say that Buku support can access data
+this way (UU PDP).
+
+*Lupa kata sandi?* on the login page sends a reset link and never reveals whether the address is a member. *Keluar* ends the session
+on that device only. A Buku admin without an organisation lands on `/backoffice` after login.
 
 Missing Supabase configuration keeps the workspace closed and shows a setup message instead of a server error.
 
