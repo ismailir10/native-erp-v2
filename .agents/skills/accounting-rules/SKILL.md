@@ -378,7 +378,9 @@ Lineage: these come from the one-time chickin/belifi reconciliation work (bank m
     batched (≤15/call), cached in `AiSuggestion` with firm/client isolation (key implementation: `lib/ai/classify.ts`).
     **No request waits on a paid call:** an import with a model set uses cached answers only and hands the rest to the
     client's background run (`lib/ai/run.ts`, one RUNNING run per client, time-boxed slices after the response via
-    `lib/ai/background.ts`); the run only replaces the suggestion of lines still in review — nothing posts.
+    `lib/ai/background.ts`); the run only replaces the suggestion of lines still in review — nothing posts. Only an import or
+    *Minta saran AI* starts a run; resuming (a status poll, `app/api/ai-run`) works the run it validated and never opens a new
+    one, so a run that stopped at its call cap stays stopped.
     Account mapping (rule 9a) follows the same discipline: names + type hints only (no amounts, no descriptions), ≤15 per call,
     cached by `(normalised name, type hint, coaVersion)`, whitelisted against the client chart, counted in the same caps.
     Timeouts: 90 s per classification/mapping call, 180 s for close review and *Jelaskan* (`AI_TIMEOUT_MS`, `AI_LONG_TIMEOUT_MS`).

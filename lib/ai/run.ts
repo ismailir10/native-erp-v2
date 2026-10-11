@@ -165,6 +165,21 @@ export async function runInBackground(db: Db, args: { firmId: string; clientId: 
   }
 }
 
+/**
+ * Resume one stalled run (a status poll or the next-slice request): work only that run for one time box. Unlike runInBackground it
+ * never starts a run — when this one finished in the meantime (call cap, budget), its leftover lines wait for the next import or
+ * *Minta saran AI* instead of opening a fresh call cap. Never throws.
+ */
+export async function resumeAiRun(db: Db, runId: string, args: { provider: AiProvider | null; budgetMs?: number }): Promise<{ continueRunId: string | null }> {
+  try {
+    const r = await driveAiRun(db, runId, args);
+    return { continueRunId: r.claimed && !r.done ? runId : null };
+  } catch (e) {
+    console.error(`AI run ${runId} stopped: ${e instanceof Error ? e.message.slice(0, 200) : String(e).slice(0, 200)}`);
+    return { continueRunId: null };
+  }
+}
+
 /** The run as the import result and Review show it: progress only, nothing firm-external (no keys, no lease). */
 export type AiRunView = { id: string; status: AiRun["status"]; totalLines: number; askedLines: number; suggestedLines: number; note: string | null };
 export const aiRunView = (run: AiRun | null): AiRunView | null =>

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db, makeGroup, resetDb } from "../helpers";
 import { MockProvider, type AiItem } from "@/lib/ai/provider";
 import { importStatement } from "@/lib/import/pipeline";
-import { AI_RUN_BUDGET_MS, FUNCTION_LIMIT_MS, latestAiRun, runInBackground, startAiRun } from "@/lib/ai/run";
+import { AI_RUN_BUDGET_MS, FUNCTION_LIMIT_MS, latestAiRun, resumeAiRun, runInBackground, startAiRun } from "@/lib/ai/run";
 import { AI_TIMEOUT_MS } from "@/lib/ai/provider";
 import { continueRun, requestNextSlice } from "@/lib/ai/background";
 import { dateOnly } from "@/lib/format";
@@ -206,6 +206,28 @@ describe("runInBackground", () => {
     await db.aiRun.update({ where: { id: run.id }, data: { status: "DONE" } });
     expect(await continueRun(db, run.id, { now, schedule })).toBe(false); // finished
     expect(await continueRun(db, "cmv2unknown00000000000000", { now, schedule })).toBe(false);
+  });
+
+  it("resuming drives only the run it validated: a run that finished in the meantime never starts a new one", async () => {
+    const g = await makeGroup();
+    await lines(g, keys(3, "TOKO"));
+    const run = (await startAiRun(db, { firmId: g.firm.id, clientId: g.client.id }))!;
+    // Another worker finished it at the call cap with the lines still on a simple guess (Codex review of #145).
+    await db.aiRun.update({ where: { id: run.id }, data: { status: "DONE", finishedAt: new Date(), note: "Batas panggilan AI tercapai." } });
+    const late = spy(Object.fromEntries(keys(3, "TOKO").map((k) => [k, answer("6160")])));
+    expect(await resumeAiRun(db, run.id, { provider: late.provider })).toEqual({ continueRunId: null });
+    expect(late.asked).toEqual([]);
+    expect(await db.aiRun.count()).toBe(1);
+
+    // A stalled run is worked to the end, as the same run.
+    const g2 = await makeGroup();
+    await lines(g2, keys(2, "WARUNG"));
+    const stalled = (await startAiRun(db, { firmId: g2.firm.id, clientId: g2.client.id }))!;
+    const resumed = spy(Object.fromEntries(keys(2, "WARUNG").map((k) => [k, answer("6160")])));
+    expect(await resumeAiRun(db, stalled.id, { provider: resumed.provider })).toEqual({ continueRunId: null });
+    expect(resumed.asked).toHaveLength(2);
+    expect((await db.aiRun.findUniqueOrThrow({ where: { id: stalled.id } })).status).toBe("DONE");
+    expect(await db.aiRun.count({ where: { clientId: g2.client.id } })).toBe(1);
   });
 
   it("asks for the next slice with a signed token, only when the app can sign it", async () => {
