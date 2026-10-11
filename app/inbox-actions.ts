@@ -13,7 +13,7 @@ import { evidenceEnabled } from "@/lib/evidence/config";
 import { downloadDriveFile, DriveError, getDriveFile, listDriveChildren, parseDriveFolderUrl } from "@/lib/evidence/drive";
 import { driveToken } from "@/lib/evidence/jobs";
 import { OnboardingError } from "@/lib/onboarding";
-import { checkFile, type InboxItem } from "@/lib/inbox/check";
+import { adoptVersion, checkFile, type InboxItem } from "@/lib/inbox/check";
 import { batchItems, confirmBatch, InboxError, planBatch, skipItems, unlockBatch, type ConfirmError, type InboxPlan } from "@/lib/inbox/plan";
 import { failureMessage, processNext } from "@/lib/inbox/process";
 import { clearKeyring, keyringSize, NeedsPasswordError } from "@/lib/inbox/keyring";
@@ -64,6 +64,30 @@ export async function inboxCheckFileAction(clientId: string, form: FormData): Pr
     const item = await checkFile(prisma, { firmId: who.firmId, clientId: who.clientId, batchId, name: file.name, data: Buffer.from(await file.arrayBuffer()), password, actorId: who.memberId });
     return { ok: true, item };
   } catch (e) {
+    return fail(e);
+  }
+}
+
+/**
+ * Dokumen's *Bukukan lewat Unggah*: a rekening koran stored in a client's collection becomes a new Unggah drop (its bytes not stored
+ * again); the page then books that drop straight away when nothing needs asking (`?lanjut=<batchId>`: only that drop, never a newer
+ * one). A file already booked opens Unggah as it is.
+ */
+export async function inboxFromDocumentAction(intakeId: string, versionId: string): Promise<Result<{ href: string }>> {
+  try {
+    if (typeof intakeId !== "string" || typeof versionId !== "string" || !intakeId || !versionId) return { ok: false, error: INVALID };
+    if (!evidenceEnabled()) throw new InboxError("Dokumen belum diaktifkan di lingkungan ini.");
+    const { firm } = await requireCapability("books.write");
+    const intake = await prisma.evidenceIntake.findFirst({ where: { id: intakeId, firmId: firm.id }, select: { clientId: true } });
+    if (!intake) throw new InboxError("Kumpulan dokumen tidak ditemukan.");
+    if (!intake.clientId) throw new InboxError("Hubungkan kumpulan ini ke klien dulu.");
+    const who = await access("books.write", intake.clientId);
+    const batchId = crypto.randomUUID();
+    const item = await adoptVersion(prisma, { firmId: who.firmId, clientId: who.clientId, batchId, versionId, actorId: who.memberId });
+    const href = `/clients/${who.clientId}/import`;
+    return { ok: true, href: item.batchId === batchId ? `${href}?lanjut=${batchId}` : href };
+  } catch (e) {
+    if (e instanceof Error && e.message === "Dokumen tidak ditemukan.") return { ok: false, error: e.message };
     return fail(e);
   }
 }

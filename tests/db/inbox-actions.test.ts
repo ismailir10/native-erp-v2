@@ -8,6 +8,7 @@ import { toBcaCsv } from "@/lib/demo/writers";
 import { MockProvider } from "@/lib/ai/provider";
 import { addPassword } from "@/lib/inbox/keyring";
 import { batchItems } from "@/lib/inbox/plan";
+import { createIntake, hash } from "@/lib/evidence/store";
 
 // The Unggah actions through the real guard (ADR 0017 §5): only the login token, the AI setting and `after()` scheduling are faked.
 const state = vi.hoisted(() => ({ userId: null as string | null, provider: null as unknown, scheduled: 0 }));
@@ -141,6 +142,48 @@ describe("Unggah actions", () => {
     expect(await actions.inboxKeyringAction(other.client.id)).toEqual({ ok: true, count: 0 });
     expect(await actions.clearInboxKeyringAction(g.client.id)).toEqual({ ok: true, cleared: 1 });
     expect(await actions.inboxKeyringAction(g.client.id)).toEqual({ ok: true, count: 0 });
+  });
+});
+
+describe("Unggah: a rekening koran handed over from Dokumen", () => {
+  /** A file stored in a Dokumen collection, as an upload leaves it. */
+  async function stored(firmId: string, clientId: string | undefined, data: Buffer) {
+    const intake = await createIntake(db, firmId, clientId);
+    const doc = await db.evidenceDocument.create({ data: { firmId, intakeId: intake.id, sourceKey: randomUUID(), name: "bca-jan.csv", path: "bca-jan.csv", mimeType: "text/csv", status: "READY" } });
+    const version = await db.evidenceVersion.create({ data: { firmId, documentId: doc.id, hash: hash(data), data: new Uint8Array(data), name: doc.name, size: data.length, extracted: true } });
+    return { intakeId: intake.id, versionId: version.id };
+  }
+
+  it("starts a new drop for the client's file, opens Unggah to book it, and never books it twice", async () => {
+    const g = await makeGroup();
+    const other = await db.$transaction((tx) => createClient(tx, g.firm.id, { name: "Klien Dua", industry: "retail", entities: [{ name: "PT Dua", shortName: "Dua", kind: "PT", banks: [] }] }));
+    const file = await stored(g.firm.id, g.client.id, bcaCsv(1));
+    const foreign = await stored(g.firm.id, other.client.id, bcaCsv(1));
+    const firmWide = await stored(g.firm.id, undefined, bcaCsv(1));
+
+    state.userId = (await addMember(g.firm.id, "VIEWER", { clients: [g.client.id] })).userId;
+    expect(await actions.inboxFromDocumentAction(file.intakeId, file.versionId)).toEqual({ ok: false, error: "Peran Peninjau hanya dapat melihat dan mengunduh laporan." });
+
+    state.userId = (await addMember(g.firm.id, "AKUNTAN", { clients: [g.client.id] })).userId;
+    expect(await actions.inboxFromDocumentAction(foreign.intakeId, foreign.versionId)).toEqual({ ok: false, error: "Klien tidak ditemukan" });
+    expect(await actions.inboxFromDocumentAction(firmWide.intakeId, firmWide.versionId)).toEqual({ ok: false, error: "Hubungkan kumpulan ini ke klien dulu." });
+    // A version of another collection, named with this client's collection.
+    expect(await actions.inboxFromDocumentAction(file.intakeId, foreign.versionId)).toEqual({ ok: false, error: "Dokumen tidak ditemukan." });
+    expect(await db.uploadItem.count()).toBe(0);
+
+    const handed = await actions.inboxFromDocumentAction(file.intakeId, file.versionId);
+    const item = await db.uploadItem.findFirstOrThrow();
+    expect(handed).toEqual({ ok: true, href: `/clients/${g.client.id}/import?lanjut=${item.batchId}` });
+    const latest = await batchItems(db, { firmId: g.firm.id, clientId: g.client.id });
+    expect(latest.items).toMatchObject([{ status: "CHECKED", kind: "BANK", evidenceVersionId: file.versionId }]);
+
+    // The known BCA Giro: Unggah books it without asking.
+    const booked = await actions.inboxProcessNextAction(g.client.id, latest.batchId!);
+    expect(booked).toMatchObject({ ok: true, item: { status: "BOOKED" }, remaining: 0 });
+
+    // Clicked again from Dokumen: Unggah opens as it is, nothing new to book.
+    expect(await actions.inboxFromDocumentAction(file.intakeId, file.versionId)).toEqual({ ok: true, href: `/clients/${g.client.id}/import` });
+    expect(await db.uploadItem.count()).toBe(1);
   });
 });
 

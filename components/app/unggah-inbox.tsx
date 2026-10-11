@@ -61,7 +61,8 @@ function openManualTab() {
   document.getElementById(MANUAL_ANCHOR)?.scrollIntoView({ block: "start" });
 }
 
-export function UnggahInbox({ clientId, initial, drive, aiRun: pageRun = null }: { clientId: string; initial: { batchId: string | null; items: InboxItem[] }; drive: Drive; aiRun?: AiRunView | null }) {
+/** `handedOver`: Dokumen's *Bukukan lewat Unggah* opened the page on its drop (`?lanjut=<batchId>`) — it books at once when nothing needs asking. */
+export function UnggahInbox({ clientId, initial, drive, aiRun: pageRun = null, handedOver = false }: { clientId: string; initial: { batchId: string | null; items: InboxItem[] }; drive: Drive; aiRun?: AiRunView | null; handedOver?: boolean }) {
   const router = useRouter();
   const { canWrite } = useAccess();
   const ai = useAiRun(clientId, pageRun);
@@ -160,16 +161,30 @@ export function UnggahInbox({ clientId, initial, drive, aiRun: pageRun = null }:
     } else apply(next);
   }
 
-  // After a reload: an interrupted drop shows what it still needs (a member who can only read sees the lines).
+  // After a reload: an interrupted drop shows what it still needs (a member who can only read sees the lines). A drop handed over from
+  // Dokumen carries on as far as it can alone, like a fresh drop; the flag leaves the URL so a later reload asks for *Lanjutkan* again.
   const resumed = useRef(false);
   useEffect(() => {
+    if (handedOver) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("lanjut");
+      window.history.replaceState(null, "", url);
+    }
     if (resumed.current || !canWrite || !initial.batchId || !initial.items.some((i) => OPEN_STATUSES.includes(i.status))) return;
     resumed.current = true;
     const id = initial.batchId;
     void (async () => {
       const r = await inboxPlanAction(clientId, id).catch(() => null);
-      if (r?.ok) apply(r.plan);
-      else if (r) setError(r.error);
+      if (!r) return;
+      if (!r.ok) setError(r.error);
+      else if (handedOver) {
+        setBusy(true);
+        try {
+          await continueWith(r.plan);
+        } finally {
+          setBusy(false);
+        }
+      } else apply(r.plan);
     })();
     // Runs once for the server's batch.
     // eslint-disable-next-line react-hooks/exhaustive-deps

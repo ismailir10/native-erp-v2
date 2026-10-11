@@ -1335,6 +1335,7 @@ export async function postEvidenceBankAction(...args: Parameters<typeof evidence
 export async function startGoogleAction(...args: Parameters<typeof googleActions.startGoogleAction>) { return googleActions.startGoogleAction(...args); }
 export async function disconnectGoogleAction(...args: Parameters<typeof googleActions.disconnectGoogleAction>) { return googleActions.disconnectGoogleAction(...args); }
 export async function inboxCheckFileAction(...args: Parameters<typeof inboxActions.inboxCheckFileAction>) { return inboxActions.inboxCheckFileAction(...args); }
+export async function inboxFromDocumentAction(...args: Parameters<typeof inboxActions.inboxFromDocumentAction>) { return inboxActions.inboxFromDocumentAction(...args); }
 export async function inboxPlanAction(...args: Parameters<typeof inboxActions.inboxPlanAction>) { return inboxActions.inboxPlanAction(...args); }
 export async function inboxUnlockAction(...args: Parameters<typeof inboxActions.inboxUnlockAction>) { return inboxActions.inboxUnlockAction(...args); }
 export async function inboxConfirmAction(...args: Parameters<typeof inboxActions.inboxConfirmAction>) { return inboxActions.inboxConfirmAction(...args); }
