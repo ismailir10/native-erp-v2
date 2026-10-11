@@ -61,7 +61,7 @@ function openManualTab() {
   document.getElementById(MANUAL_ANCHOR)?.scrollIntoView({ block: "start" });
 }
 
-/** `handedOver`: Dokumen's *Bukukan lewat Unggah* opened the page (`?lanjut=1`) — its drop books at once when nothing needs asking. */
+/** `handedOver`: Dokumen's *Bukukan lewat Unggah* opened the page on its drop (`?lanjut=<batchId>`) — it books at once when nothing needs asking. */
 export function UnggahInbox({ clientId, initial, drive, aiRun: pageRun = null, handedOver = false }: { clientId: string; initial: { batchId: string | null; items: InboxItem[] }; drive: Drive; aiRun?: AiRunView | null; handedOver?: boolean }) {
   const router = useRouter();
   const { canWrite } = useAccess();

@@ -56,7 +56,9 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
   // The client's background AI run (a stalled one resumes after this response when the member may write).
   const aiRun = await aiRunForView(prisma, client, { canWrite: accessView(await requireWorkspaceSession()).canWrite });
   // The Unggah inbox (cycle 2026-10-10-unggah-inbox): the client's latest drop, so its lines survive a reload. Reads only.
-  const inbox = await batchItems(prisma, { firmId: client.firmId, clientId: client.id });
+  // A hand-off from Dokumen (`?lanjut=<batchId>`) opens exactly that drop, so the flag can only ever carry on the drop it was made for.
+  const handoff = typeof sp.lanjut === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sp.lanjut) ? sp.lanjut : undefined;
+  const inbox = await batchItems(prisma, { firmId: client.firmId, clientId: client.id, batchId: handoff });
   const drive = !evidenceEnabled() ? "off" : (await prisma.driveConnection.findUnique({ where: { firmId: client.firmId }, select: { firmId: true } })) ? "ready" : "disconnected";
   // Sumber first (ADR 0014): what is missing for this month, and the message that asks the client for it.
   const completeness = await completenessMatrix(prisma, client.id, period.year, period.month);
@@ -197,7 +199,7 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
         <NextStep href={setup.next?.href} cta={setup.next?.cta}>{setup.next?.text}</NextStep>
       )}
       <SetupSteps progress={setup} />
-      <UnggahInbox clientId={client.id} initial={inbox} drive={drive} aiRun={aiRun} handedOver={sp.lanjut === "1"} />
+      <UnggahInbox clientId={client.id} initial={inbox} drive={drive} aiRun={aiRun} handedOver={Boolean(handoff) && inbox.items.length > 0} />
       {completeness.rows.length > 0 && <CompletenessCard months={completeness.months} rows={completeness.rows} />}
       <UnggahTabs history={history} manual={manual} />
       {request && <DataRequestCard message={request.text} items={request.items} clientId={client.id} canLink={evidenceEnabled()} />}

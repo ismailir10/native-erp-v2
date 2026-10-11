@@ -172,7 +172,8 @@ describe("Unggah: a rekening koran handed over from Dokumen", () => {
     expect(await db.uploadItem.count()).toBe(0);
 
     const handed = await actions.inboxFromDocumentAction(file.intakeId, file.versionId);
-    expect(handed).toEqual({ ok: true, href: `/clients/${g.client.id}/import?lanjut=1` });
+    const item = await db.uploadItem.findFirstOrThrow();
+    expect(handed).toEqual({ ok: true, href: `/clients/${g.client.id}/import?lanjut=${item.batchId}` });
     const latest = await batchItems(db, { firmId: g.firm.id, clientId: g.client.id });
     expect(latest.items).toMatchObject([{ status: "CHECKED", kind: "BANK", evidenceVersionId: file.versionId }]);
 

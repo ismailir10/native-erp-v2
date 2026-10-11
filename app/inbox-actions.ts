@@ -70,7 +70,8 @@ export async function inboxCheckFileAction(clientId: string, form: FormData): Pr
 
 /**
  * Dokumen's *Bukukan lewat Unggah*: a rekening koran stored in a client's collection becomes a new Unggah drop (its bytes not stored
- * again); the page then books it straight away when nothing needs asking (`?lanjut=1`). A file already booked opens Unggah as it is.
+ * again); the page then books that drop straight away when nothing needs asking (`?lanjut=<batchId>`: only that drop, never a newer
+ * one). A file already booked opens Unggah as it is.
  */
 export async function inboxFromDocumentAction(intakeId: string, versionId: string): Promise<Result<{ href: string }>> {
   try {
@@ -84,7 +85,7 @@ export async function inboxFromDocumentAction(intakeId: string, versionId: strin
     const batchId = crypto.randomUUID();
     const item = await adoptVersion(prisma, { firmId: who.firmId, clientId: who.clientId, batchId, versionId, actorId: who.memberId });
     const href = `/clients/${who.clientId}/import`;
-    return { ok: true, href: item.batchId === batchId ? `${href}?lanjut=1` : href };
+    return { ok: true, href: item.batchId === batchId ? `${href}?lanjut=${batchId}` : href };
   } catch (e) {
     if (e instanceof Error && e.message === "Dokumen tidak ditemukan.") return { ok: false, error: e.message };
     return fail(e);

@@ -8,7 +8,7 @@ import { ScanError, SourceAmountError, SourceCurrencyError, SourceDateError, Sta
 import { sniffFile } from "@/lib/import/workbook";
 import type { RememberedLayout } from "@/lib/import/mapped";
 import { addPassword, NeedsPasswordError, openWithKeyring } from "./keyring";
-import { withLiveOutcome } from "./live";
+import { liveImports, liveOutcome } from "./live";
 import { storeFile } from "./store";
 
 /** One statement of a bank file as read (amounts in whole Rupiah as strings: JSON has no bigint). */
@@ -202,9 +202,15 @@ export async function adoptVersion(db: Db, input: { firmId: string; clientId: st
     select: { id: true, name: true, hash: true, data: true },
   });
   if (!version) throw new Error("Dokumen tidak ditemukan.");
-  // As the books stand now: a line whose import was removed (or draft discarded) no longer counts as booked.
+  // As the books stand now: a line counts as done only while every import it made still exists (a combined file with one section's
+  // import removed is handed over again; booking it skips the sections still there as duplicates) or its ledger draft is live.
   const earlier = await db.uploadItem.findMany({ where: { firmId, clientId, evidenceVersionId: version.id, status: { in: ["BOOKED", "DRAFT"] } }, orderBy: { createdAt: "desc" } });
-  const done = (await withLiveOutcome(db, firmId, earlier)).find((r) => r.status === "BOOKED" || r.status === "DRAFT");
+  const live = await liveImports(db, firmId, earlier);
+  const done = earlier.find((r) => {
+    const now = liveOutcome(r, live);
+    if (now.status === "DRAFT" || (now.status === "BOOKED" && now.ledgerImportId)) return true;
+    return now.status === "BOOKED" && r.statementImportIds.every((id) => live.statements.has(id));
+  });
   if (done) return itemView(done);
   const fileName = version.name.trim().slice(0, 240) || "file";
   const result = await classify(db, { firmId, clientId, name: fileName, data: Buffer.from(version.data), actorId: input.actorId });

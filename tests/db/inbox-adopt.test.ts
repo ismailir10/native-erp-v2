@@ -78,4 +78,17 @@ describe("Unggah: adopt a file stored in Dokumen", () => {
     expect(rebook).toMatchObject({ batchId: "b4", status: "CHECKED" });
     expect(await db.uploadItem.count()).toBe(2);
   });
+
+  it("hands a combined file over again when one of its sections' imports was removed (review of #148)", async () => {
+    const g = await makeGroup();
+    const version = await stored(g.firm.id, g.client.id);
+    const date = d(2026, 1, 1);
+    const kept = await db.statementImport.create({ data: { firmId: g.firm.id, bankAccountId: g.pt.banks[0].id, fileName: "gabungan.pdf", format: "BCA", periodStart: date, periodEnd: date, openingBalance: 0n, closingBalance: 0n, rowCount: 1, continuityOk: true } });
+    const line = await db.uploadItem.create({ data: { firmId: g.firm.id, clientId: g.client.id, batchId: "b1", fileName: "gabungan.pdf", sha256: version.hash, evidenceVersionId: version.id, kind: "BANK", status: "BOOKED", statementImportIds: [kept.id] } });
+    expect((await adoptVersion(db, { firmId: g.firm.id, clientId: g.client.id, batchId: "b2", versionId: version.id })).id).toBe(line.id);
+
+    await db.uploadItem.update({ where: { id: line.id }, data: { statementImportIds: [kept.id, "removed-section-import"] } });
+    const again = await adoptVersion(db, { firmId: g.firm.id, clientId: g.client.id, batchId: "b3", versionId: version.id });
+    expect(again).toMatchObject({ batchId: "b3", status: "CHECKED" });
+  });
 });
