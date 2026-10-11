@@ -28,8 +28,8 @@ import { cn } from "@/lib/utils";
  */
 
 type Dropped = { key: string; file: File; preview: PreviewFile | null; error: string | null; reading: boolean; password?: string };
-type CardEntity = { key: string; name: string; kind: ProposedKind; fromClientName?: boolean; touched?: boolean; removed?: boolean };
-type CardState = { entities: CardEntity[]; owner: Record<string, string> };
+type CardEntity = { key: string; name: string; kind: ProposedKind; fromClientName?: boolean; fromProposal?: boolean; touched?: boolean; removed?: boolean };
+export type CardState = { entities: CardEntity[]; owner: Record<string, string>; moved: Record<string, true> };
 
 const OFFLINE = "Koneksi terputus. Periksa internet lalu coba lagi.";
 const NEW_OWNER = "__new_owner__";
@@ -40,18 +40,25 @@ const KIND_OPTIONS: { value: ProposedKind; label: string }[] = [
 ];
 const digits = (s: string | null | undefined) => (s ?? "").replace(/\D/g, "");
 
-/** The card after (more) files were read: what the user already decided stays; new entities and rekening come in as proposed. */
-function reconcile(p: ClientProposal, prev: CardState | null): CardState {
-  const entities = [...(prev?.entities ?? [])];
-  for (const e of p.entities) if (!entities.some((x) => x.key === e.key)) entities.push({ key: e.key, name: e.name, kind: e.kind, fromClientName: e.fromClientName });
+/**
+ * The card after (more) files were read: what the user decided stays (a rekening they moved, an entity they named, added or removed);
+ * everything else follows the new proposal — a rekening first read without a holder moves to the company a later file names, and a
+ * proposed entity nobody touched and no rekening uses any more goes.
+ */
+export function reconcile(p: ClientProposal, prev: CardState | null): CardState {
+  const moved = prev?.moved ?? {};
   const owner: Record<string, string> = {};
   for (const e of p.entities) {
     for (const b of e.banks) {
-      const kept = prev?.owner[b.key];
-      owner[b.key] = kept && entities.some((x) => x.key === kept) ? kept : e.key;
+      const kept = moved[b.key] ? prev?.owner[b.key] : undefined;
+      owner[b.key] = kept && prev?.entities.some((x) => x.key === kept) ? kept : e.key;
     }
   }
-  return { entities, owner };
+  const used = new Set(Object.values(owner));
+  const proposed = new Set(p.entities.map((e) => e.key));
+  const entities = (prev?.entities ?? []).filter((x) => proposed.has(x.key) || used.has(x.key) || x.touched || x.removed || !x.fromProposal);
+  for (const e of p.entities) if (!entities.some((x) => x.key === e.key)) entities.push({ key: e.key, name: e.name, kind: e.kind, fromClientName: e.fromClientName, fromProposal: true });
+  return { entities, owner, moved };
 }
 
 /** The rekening keys a file's statements name (Rupiah, read, with a number): a file all of whose rekening were left out isn't booked. */
@@ -74,6 +81,7 @@ export function NewClientStart({ company, manual: manualAtStart }: { company: bo
   const [error, setError] = useState<string | null>(null);
   const [fields, setFields] = useState<Record<string, string>>({});
   const [focusError, setFocusError] = useState(0);
+  const [created, setCreated] = useState<{ href: string; failed: string[] } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const seq = useRef(0);
 
@@ -151,6 +159,12 @@ export function NewClientStart({ company, manual: manualAtStart }: { company: bo
     try {
       const before = locked.length;
       const next = await read(locked.map((d) => ({ ...d, reading: true })), value);
+      // Only an answer that came back still locked says the password is wrong; a lost request says why it was lost.
+      const lost = next.find((d) => locked.some((l) => l.key === d.key) && d.error);
+      if (lost) {
+        setPasswordError(lost.error);
+        return;
+      }
       const left = next.filter((d) => d.preview?.status === "NEEDS_PASSWORD").length;
       setPassword("");
       if (left === before) setPasswordError(`Kata sandi ini tidak membuka ${left === 1 ? "file terkunci" : `${left} file terkunci`}. Coba kata sandi lain.`);
@@ -166,9 +180,10 @@ export function NewClientStart({ company, manual: manualAtStart }: { company: bo
   function moveAccount(accountKey: string, target: string) {
     setCard((c) => {
       if (!c) return c;
-      if (target !== NEW_OWNER) return { ...c, owner: { ...c.owner, [accountKey]: target } };
+      const moved = { ...c.moved, [accountKey]: true as const };
+      if (target !== NEW_OWNER) return { ...c, owner: { ...c.owner, [accountKey]: target }, moved };
       const key = `pemilik-${seq.current++}`;
-      return { entities: [...c.entities, { key, name: "", kind: "PERORANGAN" }], owner: { ...c.owner, [accountKey]: key } };
+      return { entities: [...c.entities, { key, name: "", kind: "PERORANGAN" }], owner: { ...c.owner, [accountKey]: key }, moved };
     });
   }
 
@@ -211,7 +226,7 @@ export function NewClientStart({ company, manual: manualAtStart }: { company: bo
       const uploads = dropped.filter((d) => d.file.size <= MAX_UPLOAD_BYTES);
       const leftOut = new Set([...accounts.keys()].filter((k) => !active.some((e) => e.key === card.owner[k])));
       const skip: string[] = [];
-      let failed = 0;
+      const failed: string[] = [];
       for (const [i, d] of uploads.entries()) {
         setStatus(`Mengunggah file ${i + 1} dari ${uploads.length}…`);
         const fd = new FormData();
@@ -220,7 +235,7 @@ export function NewClientStart({ company, manual: manualAtStart }: { company: bo
         if (d.password) fd.set("password", d.password);
         const u = await inboxCheckFileAction(r.clientId, fd).catch(() => ({ ok: false as const, error: OFFLINE }));
         if (!u.ok) {
-          failed++;
+          failed.push(`${d.file.name}: ${u.error}`);
           continue;
         }
         // A file whose every rekening was left out of the client stays in Dokumen only (Decision 3).
@@ -228,8 +243,13 @@ export function NewClientStart({ company, manual: manualAtStart }: { company: bo
         if (keys.length && keys.every((k) => leftOut.has(k))) skip.push(u.item.id);
       }
       if (skip.length) await inboxSkipAction(r.clientId, batchId, skip).catch(() => null);
-      if (failed) toast.error(failed === 1 ? "1 file gagal diunggah. Tarik lagi di Unggah." : `${failed} file gagal diunggah. Tarik lagi di Unggah.`);
       toast.success(`${name.trim()} ditambahkan`);
+      if (failed.length) {
+        // The client exists: say which files didn't reach it and why, and let the user go on to Unggah (where they can drop them again).
+        setStatus(null);
+        setCreated({ href: `/clients/${r.clientId}/import?lanjut=${batchId}`, failed });
+        return;
+      }
       setStatus("Membuka Unggah…");
       leaving = true;
       router.push(`/clients/${r.clientId}/import?lanjut=${batchId}`);
@@ -458,9 +478,23 @@ export function NewClientStart({ company, manual: manualAtStart }: { company: bo
             </ul>
             <div className="space-y-2 px-4">
               {error && <p role="alert" className="text-sm text-fail" data-testid="client-proposal-error">{error}</p>}
-              <Button disabled={busy || reading} onClick={() => void create()}>
-                {busy && !reading && <Loader2 className="animate-spin" />} Buat klien & impor
-              </Button>
+              {created ? (
+                <div className="space-y-2" data-testid="client-upload-failed">
+                  <div role="alert" className="space-y-1 text-sm text-fail">
+                    <p>Klien sudah dibuat, tetapi {created.failed.length === 1 ? "1 file" : `${created.failed.length} file`} belum masuk. Tarik lagi di Unggah:</p>
+                    <ul className="list-disc pl-5">
+                      {created.failed.map((f) => (
+                        <li key={f} className="break-all">{f}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <Button onClick={() => router.push(created.href)}>Buka Unggah</Button>
+                </div>
+              ) : (
+                <Button disabled={busy || reading} onClick={() => void create()}>
+                  {busy && !reading && <Loader2 className="animate-spin" />} Buat klien & impor
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
