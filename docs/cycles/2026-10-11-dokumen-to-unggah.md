@@ -40,7 +40,7 @@ reads the rekening and period from the file and books it with one card; Dokumen 
   keeps its waiting line (the import pipeline also dedupes rows).
 
 ## Verification
-Verified locally — `0d6cb82` (on `main` @ `0020a07`):
+Verified locally — `18cb6c9` (on `main` @ `0020a07`):
 - `npm run lint` clean · `npm run typecheck` clean · `npm test` → 251 files, 1982 tests passed.
 - `npm run build` OK · `npm run demo:reset && npm run verify:books` → "ALL PASS — 1765 pemeriksaan saldo cocok dengan ground
   truth."
