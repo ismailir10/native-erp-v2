@@ -66,6 +66,8 @@ export function UnggahInbox({ clientId, initial, drive, aiRun: pageRun = null }:
   const { canWrite } = useAccess();
   const ai = useAiRun(clientId, pageRun);
   const [batchId, setBatchId] = useState<string | null>(initial.batchId);
+  // Passwords that opened this drop's files, offered again when booking: a server without SETTINGS_SECRET keeps none. Memory only.
+  const opened = useRef<string[]>([]);
   const [lines, setLines] = useState<Line[]>(() => initial.items.map(lineOf));
   const [phase, setPhase] = useState<Phase>(() => (initial.items.length && !initial.items.some((i) => OPEN_STATUSES.includes(i.status)) ? "done" : "idle"));
   const [plan, setPlan] = useState<InboxPlan | null>(null);
@@ -94,7 +96,7 @@ export function UnggahInbox({ clientId, initial, drive, aiRun: pageRun = null }:
     let ok = true;
     let idle = 0;
     for (let guard = 0; guard < 1000; guard++) {
-      const r = await inboxProcessNextAction(clientId, id).catch(() => ({ ok: false as const, error: OFFLINE }));
+      const r = await inboxProcessNextAction(clientId, id, opened.current).catch(() => ({ ok: false as const, error: OFFLINE }));
       if (!r.ok) {
         setError(r.error);
         ok = false;
@@ -176,6 +178,7 @@ export function UnggahInbox({ clientId, initial, drive, aiRun: pageRun = null }:
   /** Checks the drop's files one by one (each stored and read), then plans the drop and carries on as far as it can alone. */
   async function intake(names: { key: string; fileName: string; tooBig?: boolean }[], check: (index: number, id: string) => Promise<{ ok: true; item: InboxItem } | { ok: false; error: string }>) {
     const id = crypto.randomUUID();
+    opened.current = [];
     setBatchId(id);
     setPlan(null);
     setRanAi(false);
@@ -267,8 +270,9 @@ export function UnggahInbox({ clientId, initial, drive, aiRun: pageRun = null }:
         setPasswordError(r.error);
         return;
       }
-      setPassword("");
       const left = r.plan.needsPassword.length;
+      if (left < before && !opened.current.includes(password.trim())) opened.current = [...opened.current, password.trim()].slice(-10);
+      setPassword("");
       if (left === before) setPasswordError(`Kata sandi ini tidak membuka ${left === 1 ? "file terkunci" : `${left} file terkunci`}. Coba kata sandi lain.`);
       else if (left) setPasswordError(`${left} file masih terkunci dengan kata sandi lain.`);
       await continueWith(r.plan);

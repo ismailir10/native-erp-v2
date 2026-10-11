@@ -29,31 +29,31 @@ async function stored(db: Db, scope: Scope) {
 }
 
 /**
- * Opens a file with `tryOpen`: first without a password; when it is a locked PDF, with the offered password (if any), then with each
+ * Opens a file with `tryOpen`: first without a password; when it is a locked PDF, with the offered password(s), then with each
  * stored one. `tryOpen` throws `PdfPasswordError` for a password that doesn't open the file; any other error is the caller's and
- * passes through. `usedOffered`: the offered password opened it (the caller adds it to the keyring).
+ * passes through. `usedOffered`: an offered password opened it (the caller adds it to the keyring).
  */
 export async function openWithKeyring<T>(
   db: Db,
   scope: Scope,
   tryOpen: (password?: string) => Promise<T>,
-  opts: { offered?: string } = {},
+  opts: { offered?: string | readonly string[] } = {},
 ): Promise<{ result: T; usedKeyring: boolean; usedOffered: boolean }> {
   try {
     return { result: await tryOpen(undefined), usedKeyring: false, usedOffered: false };
   } catch (e) {
     if (!(e instanceof PdfPasswordError)) throw e;
   }
-  const offered = opts.offered || undefined;
-  if (offered) {
+  const offered = [opts.offered ?? []].flat().filter(Boolean);
+  for (const password of offered) {
     try {
-      return { result: await tryOpen(offered), usedKeyring: false, usedOffered: true };
+      return { result: await tryOpen(password), usedKeyring: false, usedOffered: true };
     } catch (e) {
       if (!(e instanceof PdfPasswordError)) throw e;
     }
   }
   for (const key of await stored(db, scope)) {
-    if (key.password === offered) continue;
+    if (offered.includes(key.password)) continue;
     try {
       const result = await tryOpen(key.password);
       await db.clientPdfPassword.update({ where: { id: key.id }, data: { lastUsedAt: new Date() } });
@@ -62,7 +62,7 @@ export async function openWithKeyring<T>(
       if (!(e instanceof PdfPasswordError)) throw e;
     }
   }
-  throw new NeedsPasswordError(Boolean(offered));
+  throw new NeedsPasswordError(offered.length > 0);
 }
 
 /**

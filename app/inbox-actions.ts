@@ -93,6 +93,7 @@ export async function inboxUnlockAction(clientId: string, batchId: string, passw
 }
 
 const idSchema = z.string().min(1).max(64);
+const passwordsSchema = z.array(z.string().min(1).max(200)).max(10);
 const confirmSchema = z.strictObject({
   accounts: z
     .array(
@@ -141,13 +142,20 @@ export async function inboxSkipAction(clientId: string, batchId: string, itemIds
  * Books the drop's next file (the page calls this until `item` is null). After the last file of a drop that booked a statement, the
  * client's background AI run is scheduled once, so suggestions arrive without a request waiting on a paid call.
  */
-export async function inboxProcessNextAction(clientId: string, batchId: string): Promise<Result<{ item: InboxItem | null; remaining: number; aiRun: AiRunView | null }>> {
+export async function inboxProcessNextAction(
+  clientId: string,
+  batchId: string,
+  passwords: string[] = [],
+): Promise<Result<{ item: InboxItem | null; remaining: number; aiRun: AiRunView | null }>> {
   try {
     const who = await access("books.write", clientId);
     const id = batchOf(batchId);
+    // The passwords that opened this drop's files, held by the page for the drop only (never stored without SETTINGS_SECRET).
+    const offered = passwordsSchema.safeParse(passwords);
+    if (!offered.success) return { ok: false, error: "Kata sandi tidak valid." };
     const provider = await resolveProvider(prisma);
     const scope = { firmId: who.firmId, clientId: who.clientId, batchId: id };
-    const { item, remaining } = await processNext(prisma, { ...scope, actorId: who.memberId, provider });
+    const { item, remaining } = await processNext(prisma, { ...scope, actorId: who.memberId, provider, passwords: offered.data });
     let aiRun: AiRunView | null = null;
     if (item && remaining === 0 && provider && (await prisma.uploadItem.count({ where: { ...scope, status: "BOOKED" } }))) {
       aiRun = await scheduleAiRun(prisma, { id: who.clientId, firmId: who.firmId }, provider);

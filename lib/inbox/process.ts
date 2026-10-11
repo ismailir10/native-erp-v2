@@ -19,7 +19,8 @@ import { accountDisplay, planBatch, VALAS_BLOCKED } from "./plan";
  */
 
 type Scope = { firmId: string; clientId: string; batchId: string };
-export type ProcessInput = Scope & { actorId?: string | null; provider: AiProvider | null };
+/** `passwords`: the ones that opened this drop's files, offered by the page (a server without SETTINGS_SECRET keeps none). */
+export type ProcessInput = Scope & { actorId?: string | null; provider: AiProvider | null; passwords?: readonly string[] };
 
 const LEDGER_DRAFT = "Draf buku besar siap dipetakan.";
 const CHOOSE_SHEET = "File ini berisi beberapa tabel. Buka Impor buku besar untuk memilih sheet.";
@@ -77,7 +78,7 @@ async function bookBank(db: Db, row: UploadItem, data: Buffer, input: ProcessInp
       let summary: ImportSummary;
       if (key) summary = await run(key.password);
       else {
-        const opened = await openWithKeyring(db, { firmId: input.firmId, clientId: input.clientId }, async (password) => ({ summary: await run(password), password }));
+        const opened = await openWithKeyring(db, { firmId: input.firmId, clientId: input.clientId }, async (password) => ({ summary: await run(password), password }), { offered: input.passwords });
         key = { password: opened.result.password };
         summary = opened.result.summary;
       }

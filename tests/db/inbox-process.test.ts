@@ -154,6 +154,19 @@ describe("Unggah: book the drop file by file", () => {
     await expectBalanced();
   });
 
+  it("books a locked PDF with the drop's password when the server can't keep it (no SETTINGS_SECRET)", async () => {
+    vi.stubEnv("SETTINGS_SECRET", "");
+    const g = await setup();
+    await g.check("mandiri-agu.pdf", mandiriPdf(8, "rahasia"));
+    const plan = await unlockBatch(db, { ...g.scope, password: "rahasia", actorId: "m1" });
+    expect(plan.needsPassword).toEqual([]);
+    expect(await db.clientPdfPassword.count()).toBe(0);
+    // The page offers the passwords that opened this drop's files with every booking call.
+    const r = await processNext(db, { ...g.scope, actorId: null, provider: g.provider, passwords: ["salah", "rahasia"] });
+    expect([r.item!.status, r.item!.message]).toEqual(["BOOKED", "Dibukukan ke Mandiri ·2222 · Agustus 2026 · 1 baris"]);
+    await expectBalanced();
+  });
+
   it("says when a file was already booked and when its balance has a gap", async () => {
     const g = await setup();
     await g.check("bca-jan.csv", bcaCsv(1));
