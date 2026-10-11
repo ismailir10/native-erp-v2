@@ -164,6 +164,9 @@ async function classify(db: Db, input: Omit<CheckInput, "batchId">): Promise<Out
   return outcome("OTHER", "KEPT", KEPT);
 }
 
+/** An item's columns for what `classify` read. */
+const outcomeData = (r: Outcome) => ({ kind: r.kind, status: r.status, message: r.message, periodStart: r.periodStart, periodEnd: r.periodEnd, sections: json(r.sections) });
+
 type CheckInput = { firmId: string; clientId: string; batchId: string; name: string; data: Buffer; password?: string; actorId?: string | null };
 
 /**
@@ -183,20 +186,26 @@ export async function checkFile(db: Db, input: CheckInput): Promise<InboxItem> {
     return itemView(await db.uploadItem.create({ data: { ...base, sha256: hash(input.data), kind: "OTHER", status: "FAILED", message } }));
   }
   const result = await classify(db, { ...input, name: fileName });
-  const row = await db.uploadItem.create({
-    data: {
-      ...base,
-      sha256: stored.sha256,
-      evidenceVersionId: stored.versionId,
-      kind: result.kind,
-      status: result.status,
-      message: result.message,
-      periodStart: result.periodStart,
-      periodEnd: result.periodEnd,
-      sections: json(result.sections),
-    },
+  return itemView(await db.uploadItem.create({ data: { ...base, sha256: stored.sha256, evidenceVersionId: stored.versionId, ...outcomeData(result) } }));
+}
+
+/**
+ * Dokumen's *Bukukan lewat Unggah* (cycle 2026-10-11-dokumen-to-unggah): a file already stored in one of this client's Dokumen
+ * collections becomes a line of a new Unggah drop — read exactly like a dropped file (keyring included), its bytes not stored again.
+ * A version Unggah already booked or staged returns that line and creates none, so a second click never books twice.
+ */
+export async function adoptVersion(db: Db, input: { firmId: string; clientId: string; batchId: string; versionId: string; actorId?: string | null }): Promise<InboxItem> {
+  const { firmId, clientId } = input;
+  const version = await db.evidenceVersion.findFirst({
+    where: { id: input.versionId, firmId, document: { firmId, intake: { firmId, clientId } } },
+    select: { id: true, name: true, hash: true, data: true },
   });
-  return itemView(row);
+  if (!version) throw new Error("Dokumen tidak ditemukan.");
+  const done = await db.uploadItem.findFirst({ where: { firmId, clientId, evidenceVersionId: version.id, status: { in: ["BOOKED", "DRAFT"] } }, orderBy: { createdAt: "desc" } });
+  if (done) return itemView(done);
+  const fileName = version.name.trim().slice(0, 240) || "file";
+  const result = await classify(db, { firmId, clientId, name: fileName, data: Buffer.from(version.data), actorId: input.actorId });
+  return itemView(await db.uploadItem.create({ data: { firmId, clientId, batchId: input.batchId, fileName, sha256: version.hash, evidenceVersionId: version.id, ...outcomeData(result) } }));
 }
 
 /**
@@ -207,9 +216,5 @@ export async function recheckItem(db: Db, row: UploadItem, input: { password?: s
   if (!row.evidenceVersionId) return itemView(row);
   const version = await db.evidenceVersion.findFirstOrThrow({ where: { id: row.evidenceVersionId, firmId: row.firmId }, select: { data: true } });
   const result = await classify(db, { firmId: row.firmId, clientId: row.clientId, name: row.fileName, data: Buffer.from(version.data), password: input.password, actorId: input.actorId });
-  const updated = await db.uploadItem.update({
-    where: { id: row.id },
-    data: { kind: result.kind, status: result.status, message: result.message, periodStart: result.periodStart, periodEnd: result.periodEnd, sections: json(result.sections) },
-  });
-  return itemView(updated);
+  return itemView(await db.uploadItem.update({ where: { id: row.id }, data: outcomeData(result) }));
 }
