@@ -243,6 +243,11 @@ Verified locally — `08f54ab` (rebased on `main` @ `7acb301`):
   in the walk below and `inbox-check` / `inbox-process`; 5 (Drive folder) against a fake Drive in
   `tests/db/inbox-drive.test.ts` only — no Drive connection locally, checked in production after merge. 3 (wrong-client
   warning) waits for the holder name from `bank-reader-fixes` (#143); the card works without it.
+- CI e2e on #146 found a real bug: with no `SETTINGS_SECRET` (CI's e2e env) the password opened the locked PDF at check
+  time but couldn't be kept, so booking found it locked again and asked in a loop. Fixed in `3312727`: the page offers the
+  passwords that opened this drop's files with each booking call (memory only); CI e2e gets a test-only secret like
+  production. Locally: `unggah-inbox` books all three files with `SETTINGS_SECRET=` (only the keyring-count step differs,
+  as it should), and passes with the secret together with `investor-demo`; `npm test` 250 files / 1975 tests.
 - Highlight shots (production build, demo client, six walk files): `unggah-card.jpg` (one card, four new rekening, PRK
   badge, JPY account refused) and `unggah-result.jpg` ("6 file selesai: 3 dibukukan, 1 draf buku besar, 1 disimpan di
   Dokumen, 1 gagal", one line per account).
