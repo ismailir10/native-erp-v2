@@ -83,5 +83,24 @@ seven rekening — every value was printed on the statements the accountant alre
   holder names from #143 — the code path (remove an entity → its files skipped) is in place.
 
 ## Verification
+Verified locally — `2c54d16` (on `main` @ `9c6d891`; the next commit only changes the deck):
+- `npm run lint` clean · `npm run typecheck` clean · `npm test` → 253 files, 1996 tests passed.
+- `npm run build` OK · `npm run demo:reset && npm run verify:books` → "ALL PASS — 1765 pemeriksaan saldo cocok dengan ground
+  truth."
+- `npm run test:e2e` → 88 passed, 4 failed: `auth-links`, `client-navigation`, `support-session`, `trial-signup` — the
+  same four environment-only failures as `main` on this laptop (they pass on CI). All 21 specs moved to `openClientForm`
+  pass; `new-client-from-files` (2 tests) passes. After the summary change: `new-client-from-files`, `unggah-inbox`,
+  `dokumen-to-unggah`, `investor-demo` → 8 passed.
+- Worker's browser walk (dev server): two BCA CSVs + a locked Mandiri PDF → wrong password refused, right one opens → one
+  card (company named after the client, BCA ·1299 with 2 files, Mandiri ·9999) → moving Mandiri to *Pemilik baru…*
+  without a name is refused on the row; with "Budi Santoso" the client gets a PT and a pemilik → Unggah "3 file selesai:
+  3 dibukukan."; at 390 px no horizontal scroll; an unreadable `.txt` shows the nothing-read card and *Isi manual* keeps
+  the name.
+- Verify flow 2 (two companies, remove one) waits for holder names (#143); its code path is unit-tested.
+- Highlight shots: `new-client-card.jpg` (the one card), `new-client-booked.jpg` (Unggah right after creation).
+- Deck: kantor slide 15 step 1 now "Tambah klien dari file"; checked at 1440×900 (fits) and 375 (no overflow).
 
 ## Ship Notes
+- No migration, no env change. Rollback: revert the PR (the manual form is unchanged at `?manual=1`).
+- Post-merge: in production, Tambah klien shows the drop zone and *Isi manual*; a statement dropped there proposes its
+  rekening (no client is created during the check).
