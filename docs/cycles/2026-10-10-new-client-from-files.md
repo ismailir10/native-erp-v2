@@ -97,6 +97,10 @@ Verified locally — `2c54d16` (on `main` @ `9c6d891`; the next commit only chan
   3 dibukukan."; at 390 px no horizontal scroll; an unreadable `.txt` shows the nothing-read card and *Isi manual* keeps
   the name.
 - Verify flow 2 (two companies, remove one) waits for holder names (#143); its code path is unit-tested.
+- Review of #149 (`ce2c2d3`): the card follows later files (only a rekening the user moved keeps its owner; an unused
+  proposed entity goes), upload failures after creation are listed with their reason and a *Buka Unggah* button, a lost
+  request while unlocking isn't reported as a wrong password. Gate: `npm test` 254 files / 1998 tests, build, e2e
+  `new-client-from-files`, `unggah-inbox`, `add-entity`, `investor-demo` → 6 passed.
 - Highlight shots: `new-client-card.jpg` (the one card), `new-client-booked.jpg` (Unggah right after creation).
 - Deck: kantor slide 15 step 1 now "Tambah klien dari file"; checked at 1440×900 (fits) and 375 (no overflow).
 
