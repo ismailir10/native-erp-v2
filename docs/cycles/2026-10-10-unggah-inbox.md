@@ -248,6 +248,9 @@ Verified locally — `08f54ab` (rebased on `main` @ `7acb301`):
   passwords that opened this drop's files with each booking call (memory only); CI e2e gets a test-only secret like
   production. Locally: `unggah-inbox` books all three files with `SETTINGS_SECRET=` (only the keyring-count step differs,
   as it should), and passes with the secret together with `investor-demo`; `npm test` 250 files / 1975 tests.
+- Review of #146 (`01b7c17`): lines are derived from the imports that still exist (`lib/inbox/live.ts`; Unggah list, plan and
+  Dokumen), and classification uses the firm's *Atur kolom* layouts. Gate: lint, typecheck, `npm test` (1 fixture fixed to
+  a real ledger draft), build, e2e `unggah-inbox`, `investor-demo`, `evidence-workspace`, `ledger-import` → 7 passed.
 - Highlight shots (production build, demo client, six walk files): `unggah-card.jpg` (one card, four new rekening, PRK
   badge, JPY account refused) and `unggah-result.jpg` ("6 file selesai: 3 dibukukan, 1 draf buku besar, 1 disimpan di
   Dokumen, 1 gagal", one line per account).
