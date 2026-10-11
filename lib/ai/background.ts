@@ -1,7 +1,7 @@
 import { after } from "next/server";
 import type { Db } from "@/lib/db";
 import type { AiProvider } from "@/lib/ai/provider";
-import { aiRunView, isStalled, latestAiRun, runInBackground, startAiRun, type AiRunView } from "@/lib/ai/run";
+import { aiRunView, isStalled, latestAiRun, resumeAiRun, runInBackground, startAiRun, type AiRunView } from "@/lib/ai/run";
 import { signRunToken } from "@/lib/ai/run-token";
 import { accessState } from "@/lib/access/grant";
 import { resolveProvider } from "@/lib/settings/ai";
@@ -17,6 +17,12 @@ type Client = { id: string; firmId: string };
 /** One time box of the client's run, then — when it ended with work left — the request for the next one. */
 async function work(db: Db, client: Client, provider: AiProvider | null) {
   const { continueRunId } = await runInBackground(db, { firmId: client.firmId, clientId: client.id, provider });
+  if (continueRunId) await requestNextSlice(continueRunId);
+}
+
+/** The same for a run already validated as stalled: only that run is worked, never a new one (no fresh call cap). */
+async function resume(db: Db, runId: string, provider: AiProvider | null) {
+  const { continueRunId } = await resumeAiRun(db, runId, { provider });
   if (continueRunId) await requestNextSlice(continueRunId);
 }
 
@@ -56,7 +62,7 @@ export async function aiRunForView(db: Db, client: Client, opts: { canWrite: boo
   const run = await latestAiRun(db, client.id);
   if (run && opts.canWrite && isStalled(run)) {
     const provider = await resolveProvider(db);
-    after(() => work(db, client, provider));
+    after(() => resume(db, run.id, provider));
   }
   return aiRunView(run);
 }
@@ -72,6 +78,6 @@ export async function continueRun(db: Db, runId: string, opts: { now?: Date; sch
   const firm = await db.firm.findUnique({ where: { id: run.firmId }, select: { suspendedAt: true, grants: true } });
   if (!firm || accessState(firm.grants, firm, now).state !== "ACTIVE") return false;
   const provider = await resolveProvider(db);
-  (opts.schedule ?? after)(() => work(db, { id: run.clientId, firmId: run.firmId }, provider));
+  (opts.schedule ?? after)(() => resume(db, runId, provider));
   return true;
 }

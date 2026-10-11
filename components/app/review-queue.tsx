@@ -362,7 +362,7 @@ export function ReviewQueue({
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-review/40 bg-review-subtle px-4 py-3 text-sm" data-testid="simple-guesses">
           {aiReady ? (
             <>
-              <span>{simpleGuesses} transaksi hanya punya tebakan sederhana karena AI tidak memberi saran saat impor.</span>
+              <span>{simpleGuesses} transaksi belum punya saran AI.</span>
               <Button variant="outline" size="sm" disabled={asking} onClick={askAi}>
                 {asking && <Loader2 className="animate-spin" />} Minta saran AI untuk {simpleGuesses} transaksi
               </Button>

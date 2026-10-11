@@ -217,3 +217,7 @@ Codex review of #144 found two P1s, both confirmed and fixed in `task/ai-run-sli
    a run or exceed the per-run cap. Without `APP_URL`/`SETTINGS_SECRET` nothing is sent and page views resume as before.
    Tests: `tests/unit/ai-run-token.test.ts`, `tests/db/ai-background.test.ts` (time box → continue id, lease, access
    states, signed request); `action-guards` names the route's guard.
+- Review of #145 (fixed in the Unggah PR): a status poll and the next-slice request both resumed through
+  `runInBackground`, which starts a run when none is RUNNING — so a run that a racing worker had just stopped at its call
+  cap was replaced by a new one with a fresh cap, spending credit nobody asked for. Resuming now drives only the validated
+  run (`resumeAiRun`); only an import or *Minta saran AI* starts one. Also untracked the `node_modules` symlink #145 added.

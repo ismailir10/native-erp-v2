@@ -84,7 +84,7 @@ test("BUG-005: rates are read by currency pair (0.745, 1.085, 105.234, 16.250) a
   await page.getByRole("option", { name: /^USD/ }).first().click();
   await page.getByLabel("Nomor rekening").nth(1).fill(nextAccount());
   await page.getByRole("button", { name: "Simpan klien" }).click();
-  await expect(page.getByRole("heading", { name: "Impor Mutasi" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Unggah", exact: true })).toBeVisible();
   const id = page.url().match(/clients\/([^/]+)\//)![1];
 
   await page.goto(`/clients/${id}/rates`);

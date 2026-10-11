@@ -19,7 +19,7 @@ test("fixed assets: register a purchase, depreciate, dispose at a gain", async (
   await page.getByLabel("Nama singkat").fill("ASET");
   await page.getByRole("button", { name: "Hapus rekening" }).click();
   await page.getByRole("button", { name: "Simpan klien" }).click();
-  await expect(page.getByRole("heading", { name: "Impor Buku Besar" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Unggah", exact: true })).toBeVisible();
   const base = page.url().replace(/\/import.*$/, "");
 
   // A purchase on credit, typed as a journal.

@@ -14,6 +14,15 @@ describe("evidence AI boundaries", () => {
       { key: "profit", value: "100000", locator: "Profil!A1" },
     ] }), input)).toEqual({ kind: "COMPANY_PROFILE", entity: "Citra Ternak PTE LTD", currency: "USD", periodStart: null, periodEnd: null, facts: [{ key: "companyName", value: "Citra Ternak PTE LTD", locator: "Profil!A1" }] });
   });
+  it("never proposes a country name as the currency (production: \"Mata uang: INDONESIA\")", () => {
+    const statement = { context: "", passages: [{ locator: "hal 1", text: "PT CONTOH JAYA, JAKARTA INDONESIA. MATA UANG IDR" }] };
+    const analysis = parseEvidenceAnalysis(JSON.stringify({ kind: "BANK", currency: "INDONESIA", facts: [
+      { key: "currency", value: "INDONESIA", locator: "hal 1" },
+      { key: "currency", value: "IDR", locator: "hal 1" },
+    ] }), statement);
+    expect(analysis.currency).toBeNull();
+    expect(analysis.facts).toEqual([{ key: "currency", value: "IDR", locator: "hal 1" }]);
+  });
   it("does not validate facts using truncated text that model never saw", () => {
     const source = { context: "", passages: [{ locator: "p1", text: `${"x".repeat(400)}secret` }] };
     const analysis = parseEvidenceAnalysis(JSON.stringify({ kind: "OTHER", facts: [{ key: "companyName", value: "secret", locator: "p1" }] }), source);

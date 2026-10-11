@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { openManualImport } from "./qa-helpers";
 
 /**
  * A client at a bank outside the big four: pick it in the searchable bank field, see which banks Buku reads, import an MT940 file
@@ -36,7 +37,8 @@ test("pick a bank, import an MT940 from another bank, record the account at the 
   await page.getByLabel("Nama rekening").fill("Giro Operasional");
   await page.getByRole("button", { name: "Simpan klien" }).click();
 
-  await expect(page.getByRole("heading", { name: "Impor Mutasi" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Unggah", exact: true })).toBeVisible();
+  await openManualImport(page);
   await page.getByRole("button", { name: "Lihat 25 bank" }).click();
   await expect(page.getByTestId("bank-list")).toContainText("SeaBank");
   await expect(page.getByTestId("bank-list")).toContainText("Bank Jago");

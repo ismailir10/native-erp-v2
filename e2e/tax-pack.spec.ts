@@ -20,7 +20,7 @@ test("tax pack: corrections, PPh badan with 31E, credits, current-tax journal", 
   await page.getByLabel("Nama singkat").fill("PJK");
   await page.getByRole("button", { name: "Hapus rekening" }).click();
   await page.getByRole("button", { name: "Simpan klien" }).click();
-  await expect(page.getByRole("heading", { name: "Impor Buku Besar" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Unggah", exact: true })).toBeVisible();
   const base = page.url().replace(/\/import.*$/, "");
 
   // Revenue 1 M from an invoice; salaries 400 jt by journal.
