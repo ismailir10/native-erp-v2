@@ -48,6 +48,9 @@ Verified locally — `18cb6c9` (on `main` @ `0020a07`):
   same four environment-only failures as on `main` locally (they pass on CI). `dokumen-to-unggah` (new) passes.
 - Driver review fixes: the hand-off reads an earlier booked line against the imports that still exist (a removed import
   can be handed over again); the entity/period notes moved inside *Isi manual* (they asked what Unggah reads itself).
+- Review of #148 (`f649722`): `?lanjut=<batchId>` opens exactly the handed-off drop; a combined file counts as
+  booked only while every one of its imports exists. Gate: lint, typecheck, `npm test` 251 files / 1983 tests, build, e2e
+  `dokumen-to-unggah`, `unggah-inbox`, `evidence-workspace` → 5 passed.
 - Highlight shot: `dokumen-handoff.jpg` — a client's rekening koran in Dokumen: one button, one sentence, *Isi manual*.
 
 ## Ship Notes
