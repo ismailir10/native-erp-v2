@@ -53,12 +53,34 @@ seven rekening — every value was printed on the statements the accountant alre
   change expected beyond the inbox cycle's.
 
 ## Tasks
-- [ ] T1 Proposal model: holders → entities (company/person, normalised), rekening grouped — accept: unit tests.
-- [ ] T2 Create-from-files action: client + entities + rekening + hand-off to Unggah processing — accept: DB tests.
-- [ ] T3 Klien baru page: name + drop + card + *Isi manual* — accept: verify flows 1–3.
-- [ ] T4 e2e + docs + full gate — accept: green.
+- [x] T1 Proposal model: holders → entities (company/person, normalised), rekening grouped — accept: unit tests.
+- [x] T2 Create-from-files action: client + entities + rekening + hand-off to Unggah processing — accept: DB tests.
+- [x] T3 Klien baru page: name + drop + card + *Isi manual* — accept: verify flows 1–3.
+- [x] T4 e2e + docs + full gate — accept: green.
 
 ## Implementation
+- Approval: part of the three-cycle plan approved 2026-10-10 ("proceed"); merge on green, production check after merge.
+- Plan: T1–T3 by one worker in a worktree (sequential, shared files), T4 by the driver after the worker's run ended on a
+  full disk. Holder names are optional: the readers print them only once `bank-reader-fixes` (#143) lands.
+- T1 (`lib/inbox/propose.ts`): `proposeClient(files)` → client name, entities with their rekening, valas, unread files,
+  documents. Holders grouped with `names.ts` (company vs person, legal forms / case / spacing ignored); a rekening without
+  a holder goes to the first company, else to one company named after the client; rekening deduped by bank + digits;
+  negative balance → PRK; valas listed, not created. Tests `tests/unit/inbox-propose.test.ts` (holder fixtures included).
+- T2: the reading core of the inbox check is shared (`firmLayouts`, opener, outcome); `previewFile()` reads a file with
+  only the offered password and stores nothing; `previewClientFileAction` (`client.create`, 5 MB). Tests
+  `tests/db/inbox-preview.test.ts` (nothing stored; locked PDF without / wrong / right password; full path preview →
+  create → inbox → plan ready with the keyring holding the password).
+- T3: `components/app/new-client-from-files.tsx` — Nama klien, Bidang usaha, drop zone, one password field, one card
+  "Usulan dari file" (entity names editable, remove / restore, every rekening's *Milik* select incl. *Pemilik baru…*),
+  *Buat klien & impor* → `addClientAction` (its field errors mapped onto the card) → each file into the new client's inbox
+  with one batch → `/clients/<id>/import?lanjut=<batchId>`; files whose rekening all belonged to a removed entity are
+  skipped (kept in Dokumen). Nothing readable → a card with *Isi manual*. `?manual=1` shows the old form unchanged,
+  prefilled with the typed name. e2e specs that need the form open it through `openClientForm` (`e2e/qa-helpers.ts`).
+- T4 (driver): `e2e/new-client-from-files.spec.ts` (verify flows 1 and 3); README onboarding row; Unggah's summary now
+  counts a file whose every row was already booked as "sudah dibukukan sebelumnya" instead of "dibukukan" (seen in the
+  production check of #148).
+- Not built: a Drive folder link on Tambah klien (Unggah has it, one step later); verify flow 2 (two companies) needs
+  holder names from #143 — the code path (remove an entity → its files skipped) is in place.
 
 ## Verification
 
