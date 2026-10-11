@@ -71,5 +71,11 @@ describe("Unggah: adopt a file stored in Dokumen", () => {
     await db.uploadItem.update({ where: { id: first.id }, data: { status: "DRAFT" } });
     expect((await adoptVersion(db, { firmId: g.firm.id, clientId: g.client.id, batchId: "b3", versionId: version.id })).id).toBe(first.id);
     expect(await db.uploadItem.count()).toBe(1);
+
+    // Once its import is removed the file is no longer booked: it can be handed over again.
+    await db.uploadItem.update({ where: { id: first.id }, data: { status: "BOOKED", statementImportIds: ["removed-import"] } });
+    const rebook = await adoptVersion(db, { firmId: g.firm.id, clientId: g.client.id, batchId: "b4", versionId: version.id });
+    expect(rebook).toMatchObject({ batchId: "b4", status: "CHECKED" });
+    expect(await db.uploadItem.count()).toBe(2);
   });
 });

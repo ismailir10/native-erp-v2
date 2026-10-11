@@ -8,6 +8,7 @@ import { ScanError, SourceAmountError, SourceCurrencyError, SourceDateError, Sta
 import { sniffFile } from "@/lib/import/workbook";
 import type { RememberedLayout } from "@/lib/import/mapped";
 import { addPassword, NeedsPasswordError, openWithKeyring } from "./keyring";
+import { withLiveOutcome } from "./live";
 import { storeFile } from "./store";
 
 /** One statement of a bank file as read (amounts in whole Rupiah as strings: JSON has no bigint). */
@@ -201,7 +202,9 @@ export async function adoptVersion(db: Db, input: { firmId: string; clientId: st
     select: { id: true, name: true, hash: true, data: true },
   });
   if (!version) throw new Error("Dokumen tidak ditemukan.");
-  const done = await db.uploadItem.findFirst({ where: { firmId, clientId, evidenceVersionId: version.id, status: { in: ["BOOKED", "DRAFT"] } }, orderBy: { createdAt: "desc" } });
+  // As the books stand now: a line whose import was removed (or draft discarded) no longer counts as booked.
+  const earlier = await db.uploadItem.findMany({ where: { firmId, clientId, evidenceVersionId: version.id, status: { in: ["BOOKED", "DRAFT"] } }, orderBy: { createdAt: "desc" } });
+  const done = (await withLiveOutcome(db, firmId, earlier)).find((r) => r.status === "BOOKED" || r.status === "DRAFT");
   if (done) return itemView(done);
   const fileName = version.name.trim().slice(0, 240) || "file";
   const result = await classify(db, { firmId, clientId, name: fileName, data: Buffer.from(version.data), actorId: input.actorId });
