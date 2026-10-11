@@ -49,6 +49,8 @@ test("Dokumen: a client's rekening koran books through Unggah with one click and
   await expect(page.getByText("Buku membaca rekening dan periodenya dari file.")).toBeVisible();
   await expect(page.getByText("Isi manual", { exact: true })).toBeVisible();
   await expect(page.getByRole("combobox", { name: /^Peran / })).toBeHidden();
+  // What the form would ask (entity, period) is not asked here: Unggah reads it from the file.
+  await expect(page.getByText("Entitas belum dikenali; konfirmasi perusahaan.")).toBeHidden();
   await handoff.click();
 
   // Unggah: the new rekening read from the file, in the one card.
