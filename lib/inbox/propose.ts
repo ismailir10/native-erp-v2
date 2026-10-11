@@ -72,11 +72,12 @@ export function entityName(holder: string): string {
   return [form, titleCase(rest.join(" "))].filter(Boolean).join(" ");
 }
 
-/** The short name tables use: "PT Belifi" for a company, "Budi" for a person. */
+/** The short name tables use: "PT Belifi" for a company, "Budi" for a person; a company named without its legal form keeps its name. */
 export function shortNameOf(name: string, kind: ProposedKind): string {
   const w = words(name);
-  if (kind !== "PERORANGAN" && w.length > 1 && ["PT", "CV", "UD", "PD"].includes(legalWord(w[0]))) return `${w[0]} ${w[1]}`;
-  return w[0] ?? "";
+  if (kind === "PERORANGAN") return w[0] ?? "";
+  if (w.length > 1 && ["PT", "CV", "UD", "PD"].includes(legalWord(w[0]))) return `${w[0]} ${w[1]}`;
+  return w.join(" ");
 }
 
 type Group = { key: string; holders: string[]; company: boolean; banks: ProposedAccount[] };

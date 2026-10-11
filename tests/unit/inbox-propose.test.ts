@@ -53,7 +53,7 @@ describe("Klien baru from files: the proposal", () => {
     expect(p.entities[0]).toMatchObject({ name: "CV Sinar Terang", shortName: "CV Sinar", kind: "CV" });
     expect(entityName("budi  santoso")).toBe("Budi Santoso");
     expect(shortNameOf("Budi Santoso", "PERORANGAN")).toBe("Budi");
-    expect(shortNameOf("Maju Bersama", "PT")).toBe("Maju");
+    expect(shortNameOf("Klien Maju Bersama", "PT")).toBe("Klien Maju Bersama");
   });
 
   it("without holders proposes one company named after the client, with every rekening", () => {
