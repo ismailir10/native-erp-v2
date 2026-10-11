@@ -82,6 +82,9 @@ describe("Dokumen's booked line", () => {
   it("links a ledger draft to its mapping page", () => {
     expect(bookedView(item({ status: "DRAFT", sections: [], ledgerImportId: "l1" }))).toEqual({ status: "DRAFT", label: "Draf buku besar →", href: "/clients/c1/import/ledger/l1" });
   });
+  it("links a posted ledger draft to its import as booked", () => {
+    expect(bookedView(item({ status: "BOOKED", sections: [], ledgerImportId: "l1" }))).toEqual({ status: "BOOKED", label: "Buku besar dibukukan →", href: "/clients/c1/import/ledger/l1" });
+  });
   it("leaves every other file to the role form", () => {
     for (const status of ["KEPT", "FAILED", "CHECKED"]) expect(bookedView(item({ status }))).toBeNull();
   });

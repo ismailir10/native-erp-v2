@@ -3,7 +3,9 @@ import ExcelJS from "exceljs";
 import { db, makeGroup, resetDb } from "../helpers";
 import { makePdf, smbcCombinedPdf, table } from "../pdf-fixture";
 import { checkFile } from "@/lib/inbox/check";
-import { confirmBatch, planBatch, unlockBatch } from "@/lib/inbox/plan";
+import { batchItems, confirmBatch, planBatch, unlockBatch } from "@/lib/inbox/plan";
+import { DRAFT_DISCARDED, LEDGER_POSTED, STATEMENTS_REMOVED } from "@/lib/inbox/live";
+import { removeStatementImport } from "@/lib/imports/remove";
 import { processNext, STALE_CLAIM_MS } from "@/lib/inbox/process";
 import { addBankAccount } from "@/lib/onboarding";
 import { MockProvider } from "@/lib/ai/provider";
@@ -165,6 +167,24 @@ describe("Unggah: book the drop file by file", () => {
     const r = await processNext(db, { ...g.scope, actorId: null, provider: g.provider, passwords: ["salah", "rahasia"] });
     expect([r.item!.status, r.item!.message]).toEqual(["BOOKED", "Dibukukan ke Mandiri ·2222 · Agustus 2026 · 1 baris"]);
     await expectBalanced();
+  });
+
+  it("lines follow the books: a removed import or discarded draft is a kept document again, a posted draft is booked", async () => {
+    const g = await setup();
+    await g.check("gl.xlsx", await ledgerXlsx());
+    await g.check("bca-jan.csv", bcaCsv(1));
+    const [bank, ledger] = await g.drain();
+    const admin = await db.firmMember.create({ data: { firmId: g.firm.id, userId: crypto.randomUUID(), email: `admin-${crypto.randomUUID()}@example.test`, name: "Admin Uji", role: "ADMIN" } });
+    await removeStatementImport(db, { clientId: g.client.id, importId: bank.item!.statementImportIds[0], reason: "File salah rekening", actor: { id: admin.id, role: "ADMIN" } });
+    await db.ledgerImport.update({ where: { id: ledger.item!.ledgerImportId! }, data: { status: "POSTED" } });
+    const status = async () => Object.fromEntries((await batchItems(db, g.scope)).items.map((i) => [i.fileName, [i.status, i.message]]));
+    expect(await status()).toEqual({ "bca-jan.csv": ["KEPT", STATEMENTS_REMOVED], "gl.xlsx": ["BOOKED", LEDGER_POSTED] });
+
+    await db.ledgerImport.update({ where: { id: ledger.item!.ledgerImportId! }, data: { status: "DRAFT" } });
+    await db.ledgerImport.delete({ where: { id: ledger.item!.ledgerImportId! } });
+    expect((await status())["gl.xlsx"]).toEqual(["KEPT", DRAFT_DISCARDED]);
+    // The plan reads the same: nothing to book again, nothing to ask.
+    expect((await planBatch(db, g.scope)).items.map((i) => i.status).sort()).toEqual(["KEPT", "KEPT"]);
   });
 
   it("says when a file was already booked and when its balance has a gap", async () => {

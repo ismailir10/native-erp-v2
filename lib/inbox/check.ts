@@ -6,6 +6,7 @@ import { parseStatementSections } from "@/lib/import/parsers/index";
 import { PdfPasswordError } from "@/lib/import/parsers/pdf";
 import { ScanError, SourceAmountError, SourceCurrencyError, SourceDateError, StatementRepairError, UnreadableFileError, YearNeededError, type ParsedStatement } from "@/lib/import/types";
 import { sniffFile } from "@/lib/import/workbook";
+import type { RememberedLayout } from "@/lib/import/mapped";
 import { addPassword, NeedsPasswordError, openWithKeyring } from "./keyring";
 import { storeFile } from "./store";
 
@@ -108,10 +109,16 @@ const statementRefusal = (e: unknown) => e instanceof YearNeededError || e insta
 /** Reads what a file is (bank / ledger / other), opening a locked PDF with the offered password or the client's keyring. Writes no item. */
 async function classify(db: Db, input: Omit<CheckInput, "batchId">): Promise<Outcome> {
   const { name, data } = input;
+  // The firm's *Atur kolom* layouts (tried only when every reader refuses the file), as the import itself does: a recurring export the
+  // firm once mapped is a bank statement here too. Its rekening is asked in the card; booking reads it with that bank's layouts.
+  const layouts = (await db.statementLayout.findMany({ where: { firmId: input.firmId }, select: { id: true, label: true, signature: true, mapping: true } })).map((l) => ({
+    ...l,
+    mapping: l.mapping as unknown as RememberedLayout["mapping"],
+  }));
   // Non-password errors come back as values: a password that opened the file still opened it, whatever the reader says next.
   const tryOpen = async (password?: string): Promise<{ sections: ParsedStatement[] } | { error: unknown }> => {
     try {
-      return { sections: await parseStatementSections(name, data, { password }) };
+      return { sections: await parseStatementSections(name, data, { password, layouts }) };
     } catch (e) {
       if (e instanceof PdfPasswordError) throw e;
       return { error: e };

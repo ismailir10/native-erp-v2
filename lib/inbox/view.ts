@@ -116,6 +116,7 @@ export function bookedView(item: { clientId: string; status: string; sections: u
   const unggah = `/clients/${item.clientId}/import`;
   if (item.status === "DRAFT") return { status: "DRAFT", label: "Draf buku besar →", href: item.ledgerImportId ? `${unggah}/ledger/${item.ledgerImportId}` : unggah };
   if (item.status !== "BOOKED") return null;
+  if (item.ledgerImportId) return { status: "BOOKED", label: "Buku besar dibukukan →", href: `${unggah}/ledger/${item.ledgerImportId}` };
   // Only the IDR statements without a reading error were booked (lib/inbox/process.ts); the rest stayed in the file's message.
   const sections = Array.isArray(item.sections) ? (item.sections as BankSection[]) : [];
   const booked = sections.filter((s) => !s.error && (s.currency ?? "IDR") === "IDR").map(sectionSummary);

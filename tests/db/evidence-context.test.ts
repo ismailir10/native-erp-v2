@@ -98,13 +98,20 @@ it("a file Unggah booked shows as booked, not as a role form", async () => {
   const [bank, ledger, other] = [await file("bca.pdf"), await file("gl.xlsx"), await file("akta.pdf")];
   const section = { bank: "BCA", number: "123-456-3814", holder: null, currency: "IDR", periodStart: "2026-01-01", periodEnd: "2026-01-31", rows: 3, opening: "0", closing: "0", error: null };
   const item = { firmId: g.firm.id, clientId: g.client.id, batchId: "b1", sha256: "x" };
+  const draft = await db.ledgerImport.create({ data: { firmId: g.firm.id, clientId: g.client.id, fileName: "gl.xlsx", fileHash: "h", sheetName: "GL", mode: "LEDGER", periodStart: new Date("2026-01-01"), periodEnd: new Date("2026-01-31"), rowCount: 2, data: [] } });
   await db.uploadItem.createMany({ data: [
     { ...item, fileName: "bca.pdf", evidenceVersionId: bank.id, kind: "BANK", status: "BOOKED", sections: [section] },
-    { ...item, fileName: "gl.xlsx", evidenceVersionId: ledger.id, kind: "LEDGER", status: "DRAFT", ledgerImportId: "l1" },
+    { ...item, fileName: "gl.xlsx", evidenceVersionId: ledger.id, kind: "LEDGER", status: "DRAFT", ledgerImportId: draft.id },
     { ...item, fileName: "akta.pdf", evidenceVersionId: other.id, kind: "OTHER", status: "KEPT" },
   ] });
   const booked = Object.fromEntries((await loadWorkspace(db, g.firm.id, intake.id)).documents.map(d => [d.name, d.versions[0].booked]));
   expect(booked["bca.pdf"]).toEqual({ status: "BOOKED", label: "Dibukukan → BCA ·3814 · Jan 2026", href: `/clients/${g.client.id}/import` });
-  expect(booked["gl.xlsx"]).toEqual({ status: "DRAFT", label: "Draf buku besar →", href: `/clients/${g.client.id}/import/ledger/l1` });
+  expect(booked["gl.xlsx"]).toEqual({ status: "DRAFT", label: "Draf buku besar →", href: `/clients/${g.client.id}/import/ledger/${draft.id}` });
   expect(booked["akta.pdf"]).toBeNull();
+  // The books move on: the draft is posted, then the statement's import is gone.
+  await db.ledgerImport.update({ where: { id: draft.id }, data: { status: "POSTED" } });
+  await db.uploadItem.updateMany({ where: { fileName: "bca.pdf" }, data: { statementImportIds: ["removed-import"] } });
+  const after = Object.fromEntries((await loadWorkspace(db, g.firm.id, intake.id)).documents.map(d => [d.name, d.versions[0].booked]));
+  expect(after["gl.xlsx"]).toEqual({ status: "BOOKED", label: "Buku besar dibukukan →", href: `/clients/${g.client.id}/import/ledger/${draft.id}` });
+  expect(after["bca.pdf"]).toBeNull();
 });

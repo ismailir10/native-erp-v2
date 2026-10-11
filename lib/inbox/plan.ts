@@ -3,6 +3,7 @@ import type { BankCode, EntityKind, UploadItem } from "@/lib/generated/prisma/cl
 import { json } from "@/lib/evidence/store";
 import { addBankAccount, addEntity, OnboardingError } from "@/lib/onboarding";
 import { itemView, recheckItem, type BankSection, type InboxItem } from "./check";
+import { withLiveOutcome } from "./live";
 import { isCompanyName, matchEntity, normalName, titleCase } from "./names";
 import { accountDisplay } from "./view";
 
@@ -71,7 +72,7 @@ async function load(db: Db, scope: Scope) {
   const client = await db.client.findFirst({ where: { id: scope.clientId, firmId: scope.firmId }, select: { id: true } });
   if (!client) throw new InboxError("Klien tidak ditemukan.");
   const [rows, entities] = await Promise.all([
-    db.uploadItem.findMany({ where: { firmId: scope.firmId, clientId: scope.clientId, batchId: scope.batchId } }),
+    db.uploadItem.findMany({ where: { firmId: scope.firmId, clientId: scope.clientId, batchId: scope.batchId } }).then((r) => withLiveOutcome(db, scope.firmId, r)),
     db.entity.findMany({ where: { clientId: scope.clientId, firmId: scope.firmId }, include: { bankAccounts: true }, orderBy: { name: "asc" } }),
   ]);
   entities.sort((a, b) => RANK[a.kind] - RANK[b.kind]);
@@ -166,7 +167,7 @@ export async function batchItems(db: Db, input: { firmId: string; clientId: stri
   const where = { firmId: input.firmId, clientId: input.clientId };
   const batchId = input.batchId ?? (await db.uploadItem.findFirst({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { batchId: true } }))?.batchId ?? null;
   if (!batchId) return { batchId: null, items: [] };
-  const rows = await db.uploadItem.findMany({ where: { ...where, batchId } });
+  const rows = await withLiveOutcome(db, input.firmId, await db.uploadItem.findMany({ where: { ...where, batchId } }));
   return { batchId, items: rows.sort(order).map(itemView) };
 }
 

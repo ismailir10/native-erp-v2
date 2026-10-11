@@ -593,7 +593,12 @@ function LineRow({ line, clientId }: { line: Line; clientId: string }) {
         <p className="break-all font-mono text-xs">{line.fileName}</p>
         {summary && <p className="num text-sm">{summary}</p>}
         {message && <p className={cn("text-sm whitespace-pre-line", item?.status === "FAILED" || !item ? "text-fail" : "text-muted-foreground")}>{message}</p>}
-        {item?.status === "BOOKED" && (
+        {item?.status === "BOOKED" && item.kind === "LEDGER" && item.ledgerImportId && (
+          <Link href={`/clients/${clientId}/import/ledger/${item.ledgerImportId}`} className="inline-flex items-center gap-0.5 text-sm font-medium text-primary hover:underline">
+            Lihat impor buku besar <ChevronRight className="size-3.5" aria-hidden />
+          </Link>
+        )}
+        {item?.status === "BOOKED" && item.kind === "BANK" && (
           <Link href={`/clients/${clientId}/review`} className="inline-flex items-center gap-0.5 text-sm font-medium text-primary hover:underline">
             Buka Review <ChevronRight className="size-3.5" aria-hidden />
           </Link>
