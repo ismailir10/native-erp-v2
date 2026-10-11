@@ -230,5 +230,34 @@ them and asks only what it truly cannot know, once.
   them) and the other import paths don't; legal date 11 Oktober 2026; pinned by `public-legal.test.ts`.
 
 ## Verification
+Verified locally — `08f54ab` (rebased on `main` @ `7acb301`):
+- `npm run lint` clean · `npm run typecheck` clean · `npm test` → 250 files, 1973 tests passed.
+- `npm run build` OK · `npm run demo:reset && npm run verify:books` → "ALL PASS — 1765 pemeriksaan saldo cocok dengan
+  ground truth."
+- `npm run test:e2e` → 85 passed, 4 failed: `auth-links`, `client-navigation` (Control+a on macOS), `support-session`
+  (TOTP) and `trial-signup` — the same four fail on this laptop on `main` too and pass on CI (Linux). `unggah-inbox` and
+  `investor-demo` pass. (Built at `4b7fe9e`; the two later commits change no page: tracking and AI resume, covered by
+  `tests/db/ai-background.test.ts`.)
+- Verify flows: 1 (whole drop) walked in the browser and in `e2e/unggah-inbox.spec.ts`; 2 (next month, no password) and
+  the keyring clear in `tests/db/inbox-keyring.test.ts` / `inbox-plan.test.ts`; 4 (unreadable / closed month / valas)
+  in the walk below and `inbox-check` / `inbox-process`; 5 (Drive folder) against a fake Drive in
+  `tests/db/inbox-drive.test.ts` only — no Drive connection locally, checked in production after merge. 3 (wrong-client
+  warning) waits for the holder name from `bank-reader-fixes` (#143); the card works without it.
+- Highlight shots (production build, demo client, six walk files): `unggah-card.jpg` (one card, four new rekening, PRK
+  badge, JPY account refused) and `unggah-result.jpg` ("6 file selesai: 3 dibukukan, 1 draf buku besar, 1 disimpan di
+  Dokumen, 1 gagal", one line per account).
+- Not built from Decision 1: the global Dokumen upload box does not route files through Unggah's sorting yet (Dokumen
+  shows what Unggah booked). Next, as its own PR before `new-client-from-files`: "Bukukan lewat Unggah" on an unbooked
+  rekening koran in a client's Dokumen collection.
 
 ## Ship Notes
+- Migration `20261010170721_unggah_inbox` — additive: `EvidenceIntake.isInbox` (+ partial unique per client),
+  `UploadItem`, `ClientPdfPassword`, enums `UploadKind` / `UploadStatus`. Rollback: revert the PR; the tables stay unused.
+- Env: none new. `SETTINGS_SECRET` now also encrypts saved PDF passwords (rotating it makes them ask again).
+- Deck: kantor 08 and perusahaan 12 say passwords are kept encrypted per client and can be cleared; PDFs regenerated.
+- Privacy page: PDF password paragraph updated, legal date 11 Oktober 2026.
+- Also in this PR: untracked the `node_modules` symlink from #145; AI resume paths no longer start a new run (review
+  of #145).
+- Post-merge: Unggah on the Skypuats client in production — drop a statement Buku already has a rekening for (no card),
+  a locked PDF (asks once, then remembered), a Drive folder link; Dokumen shows "Dibukukan →"; Pengaturan klien shows
+  the keyring count.
