@@ -40,5 +40,17 @@ reads the rekening and period from the file and books it with one card; Dokumen 
   keeps its waiting line (the import pipeline also dedupes rows).
 
 ## Verification
+Verified locally — `0d6cb82` (on `main` @ `0020a07`):
+- `npm run lint` clean · `npm run typecheck` clean · `npm test` → 251 files, 1982 tests passed.
+- `npm run build` OK · `npm run demo:reset && npm run verify:books` → "ALL PASS — 1765 pemeriksaan saldo cocok dengan ground
+  truth."
+- `npm run test:e2e` → 86 passed, 4 failed: `auth-links`, `client-navigation`, `support-session`, `trial-signup` — the
+  same four environment-only failures as on `main` locally (they pass on CI). `dokumen-to-unggah` (new) passes.
+- Driver review fixes: the hand-off reads an earlier booked line against the imports that still exist (a removed import
+  can be handed over again); the entity/period notes moved inside *Isi manual* (they asked what Unggah reads itself).
+- Highlight shot: `dokumen-handoff.jpg` — a client's rekening koran in Dokumen: one button, one sentence, *Isi manual*.
 
 ## Ship Notes
+- No migration, no env change. Rollback: revert the PR.
+- Post-merge: in production, a BCA statement in Skypuats' Dokumen collection shows *Bukukan lewat Unggah*; the click
+  opens Unggah and books it (or says it was booked before).
