@@ -197,7 +197,7 @@ export default async function ImportPage({ params, searchParams }: { params: Pro
         <NextStep href={setup.next?.href} cta={setup.next?.cta}>{setup.next?.text}</NextStep>
       )}
       <SetupSteps progress={setup} />
-      <UnggahInbox clientId={client.id} initial={inbox} drive={drive} aiRun={aiRun} />
+      <UnggahInbox clientId={client.id} initial={inbox} drive={drive} aiRun={aiRun} handedOver={sp.lanjut === "1"} />
       {completeness.rows.length > 0 && <CompletenessCard months={completeness.months} rows={completeness.rows} />}
       <UnggahTabs history={history} manual={manual} />
       {request && <DataRequestCard message={request.text} items={request.items} clientId={client.id} canLink={evidenceEnabled()} />}
